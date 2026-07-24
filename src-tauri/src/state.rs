@@ -496,6 +496,12 @@ impl AppState {
             // generation so any in-flight lookahead resolve discards itself (double-enqueue).
             let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
             tracing::info!("no primed lookahead at track end — loading next explicitly");
+            // start_current's loadfile *replaces* mpv's playlist, so whatever was recorded here is
+            // gone either way — clear it like every other load path (play_index, on_track_failed,
+            // play_tracks) does. Left stale, the re-prime below can no-op as "already primed"
+            // against an entry mpv no longer holds, and the next track end finds nothing to
+            // advance into.
+            self.queue.lock().await.lookahead_loaded = None;
             if self.start_current(gen).await {
                 self.prime_lookahead(gen).await;
             }
@@ -728,6 +734,17 @@ impl AppState {
             tracing::debug!(index = next_idx, "queue changed during lookahead resolve — dropped");
             return;
         }
+        // Another prime already claimed this slot while we resolved. Two run concurrently at the
+        // autoplay trigger point — `start_current` spawns `extend_queue_radio` (which primes after
+        // extending) and its caller primes right after, both on the same generation, so the
+        // pre-resolve "already primed" check in `prime_lookahead` can't see the other one. Appending
+        // again leaves a *duplicate* entry in mpv's playlist, and since the queue advances one index
+        // per end-file, that offsets mpv from `current` for the rest of the session: the dup replays
+        // while the UI shows the track after it.
+        if q.lookahead_loaded == Some(next_idx) {
+            tracing::debug!(index = next_idx, "lookahead already primed by a concurrent resolve — dropped");
+            return;
+        }
         // Headers are global in mpv; the direct-URL clients need none beyond UA, which the
         // current track already set. Just append the URL.
         if let Err(e) = self.player.enqueue(&data.stream_url) {
@@ -817,9 +834,19 @@ impl AppState {
             let repeat = if q.repeat == RepeatMode::One { RepeatMode::All } else { q.repeat };
             next_index(q.items.len(), q.current, repeat)
         };
-        // Repeat off at the tail → None → no-op (play_index also bounds-checks).
-        if let Some(i) = i {
-            self.play_index(i).await;
+        match i {
+            Some(i) => self.play_index(i).await,
+            // Repeat off at the tail. Autoplay tops the queue up asynchronously (on track start /
+            // track end), so the continuation may simply not have landed yet — fetch it now rather
+            // than leaving Skip a dead button. Still a no-op when autoplay is off, when the user is
+            // a guest, or when the radio returns nothing: there genuinely is no next track then.
+            None => {
+                let gen = self.generation.load(Ordering::SeqCst);
+                if self.extend_queue_radio(gen).await > 0 {
+                    let next = self.queue.lock().await.current + 1;
+                    self.play_index(next).await;
+                }
+            }
         }
     }
 
@@ -1313,9 +1340,10 @@ impl AppState {
     }
 
     /// Toggle shuffle on the current queue. ON: snapshot the order, then Fisher–Yates only the
-    /// *upcoming* items. OFF: restore the snapshot, keeping the playing track. Guests: host-only
-    /// hint. ponytail: OFF restores the snapshot verbatim — tracks added while shuffled are
-    /// dropped from the restored order (still playing/played fine; snapshot semantics).
+    /// *upcoming* items. OFF: restore the snapshot, keeping the playing track, minus anything the
+    /// shuffle already played (see [`unshuffled`]). Guests: host-only hint.
+    /// ponytail: OFF restores from the snapshot — tracks added while shuffled are dropped from the
+    /// restored order (still playing/played fine; snapshot semantics).
     pub async fn toggle_shuffle(self: &std::sync::Arc<Self>) {
         if self.lt.is_guest().await {
             self.emit_guest_hint();
@@ -1329,7 +1357,11 @@ impl AppState {
             if let Some(orig) = q.shuffle_orig.take() {
                 let playing = q.items[q.current].video_id.clone();
                 let fallback = q.current;
-                let (items, idx) = unshuffled(orig, &playing, fallback);
+                // The shuffled prefix (through the playing track) is what's already been played —
+                // the restored order must not offer any of it again.
+                let heard: HashSet<String> =
+                    q.items[..=q.current].iter().map(|i| i.video_id.clone()).collect();
+                let (items, idx) = unshuffled(orig, &heard, &playing, fallback);
                 q.items = items;
                 q.current = idx;
             } else {
@@ -1345,7 +1377,14 @@ impl AppState {
         }
         self.emit_queue().await;
         self.persist_queue().await;
-        self.prime_lookahead(self.generation.load(Ordering::SeqCst)).await;
+        let gen = self.generation.load(Ordering::SeqCst);
+        self.prime_lookahead(gen).await;
+        // Un-shuffling can leave nothing upcoming — a full shuffled pass through an album drops
+        // every heard track from the restored order. Autoplay's own triggers only fire on track
+        // start / track end, so without this the queue panel shows no continuation (and the gapless
+        // lookahead has nothing to prime) until the current song runs out. No-op unless the tail is
+        // actually near.
+        self.extend_queue_radio(gen).await;
         self.lt_broadcast_queue().await;
     }
 
@@ -1616,15 +1655,32 @@ fn next_index(len: usize, current: usize, repeat: RepeatMode) -> Option<usize> {
     }
 }
 
-/// Un-shuffle: restore the snapshot and re-locate the playing track in it.
-/// ponytail: dupes match by first videoId occurrence — same song queued twice may land on the
-/// other copy; harmless (identical items).
-fn unshuffled(orig: Vec<SongItem>, playing_id: &str, fallback: usize) -> (Vec<SongItem>, usize) {
+/// Un-shuffle: restore the snapshot, re-locate the playing track in it, then drop from what's
+/// still *upcoming* anything the shuffle already played (`heard`). Restoring verbatim re-queues
+/// those: shuffle through a whole album and the tracks that happen to sit after the last shuffled
+/// one in album order come back as "up next" the moment shuffle goes off, even though they just
+/// played. Heard tracks *behind* the playing one stay — they're the hidden history, and removing
+/// them would only move the playing track's index for no visible gain.
+/// ponytail: dupes match by videoId — the same song twice in one queue keeps only its first copy
+/// past the playing track; harmless (identical items).
+fn unshuffled(
+    orig: Vec<SongItem>,
+    heard: &HashSet<String>,
+    playing_id: &str,
+    fallback: usize,
+) -> (Vec<SongItem>, usize) {
     let idx = orig
         .iter()
         .position(|i| i.video_id == playing_id)
         .unwrap_or_else(|| fallback.min(orig.len().saturating_sub(1)));
-    (orig, idx)
+    let mut items = orig;
+    let mut i = 0;
+    items.retain(|it| {
+        let keep = i <= idx || !heard.contains(&it.video_id);
+        i += 1;
+        keep
+    });
+    (items, idx)
 }
 
 /// The unplayed manually-queued tracks (`queued`, after `current`) — carried into a new queue on
@@ -1711,6 +1767,7 @@ mod tests {
         guest_insert_index, loudness_gain, merge_radio, next_index, radio_seed_for,
         shuffle_new_queue, shuffle_upcoming, unshuffled, upcoming_queued, RepeatMode,
     };
+    use std::collections::HashSet;
 
     // `by.is_some()` (a named guest/host add) and a nameless solo add are both manual adds:
     // the `queued` marker is what forms the FIFO block, not the name.
@@ -1764,11 +1821,25 @@ mod tests {
     #[test]
     fn unshuffle_restores_order_and_current() {
         let orig = vec![song("a", None), song("b", None), song("c", None), song("d", None)];
-        let (items, idx) = unshuffled(orig.clone(), "c", 9);
-        assert_eq!(items.iter().map(|i| i.video_id.as_str()).collect::<Vec<_>>(), ["a", "b", "c", "d"]);
+        let heard = |ids: &[&str]| ids.iter().map(|s| (*s).to_owned()).collect::<HashSet<String>>();
+        let ids = |items: &[innertube::SongItem]| {
+            items.iter().map(|i| i.video_id.clone()).collect::<Vec<_>>()
+        };
+        // Shuffle played "c" first → nothing upcoming has been heard, plain restore.
+        let (items, idx) = unshuffled(orig.clone(), &heard(&["c"]), "c", 9);
+        assert_eq!(ids(&items), ["a", "b", "c", "d"]);
         assert_eq!(idx, 2);
+        // A full shuffled pass ending on "c": "d" already played, so it must not come back as
+        // up-next; "a"/"b" stay behind the playing track as hidden history.
+        let (items, idx) = unshuffled(orig.clone(), &heard(&["a", "b", "c", "d"]), "c", 9);
+        assert_eq!(ids(&items), ["a", "b", "c"]);
+        assert_eq!(idx, 2);
+        // Partial pass: only the heard ones are dropped from upcoming, order otherwise intact.
+        let (items, idx) = unshuffled(orig.clone(), &heard(&["a", "c"]), "a", 9);
+        assert_eq!(ids(&items), ["a", "b", "d"]);
+        assert_eq!(idx, 0);
         // Playing id absent from the snapshot → fallback index, clamped to len-1.
-        let (_, idx) = unshuffled(orig, "zz", 9);
+        let (_, idx) = unshuffled(orig, &HashSet::new(), "zz", 9);
         assert_eq!(idx, 3);
     }
 
