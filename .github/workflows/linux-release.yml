@@ -23,24 +23,33 @@ name: Linux release binaries
 #   TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD   (mandatory — no sig, no update)
 #   LASTFM_API_KEY / LASTFM_API_SECRET                               (optional — warn-only)
 
+# DISPATCH ONLY, ON PURPOSE — do not add `release: published` back. Actions caches are ref-scoped:
+# a run can read caches from its own ref and from the default branch, nothing else. A run triggered
+# by a release executes on the *tag* ref, so every such build wrote a cache no later run could ever
+# read and then recompiled from scratch. Windows was paying 11m25s of cold Rust compile on every
+# single release because of it. A dispatched run executes on master, so the cache is shared, while
+# the checkout below still pins the build to the tag. scripts/release.sh dispatches both workflows.
+# Consequence: publishing a release from the GitHub UI builds nothing. Use the script.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
         description: Existing release tag to build the Linux AppImage for (e.g. v0.2.9)
         required: true
         type: string
+      dry_run:
+        description: Build and run every check, but attach nothing to the release
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write # upload assets onto the release
 
-# Shared with windows-release.yml ON PURPOSE: both jobs read-modify-write the same latest.json on
-# the same release, so they must never run at the same time or one silently drops the other's
-# platform entry. Same group = the second one waits. Either order works.
+# Per-workflow, NOT shared with windows-release.yml any more: the two now run in parallel, and the
+# only thing they contend for is latest.json, which the upload step merges with a read-back retry.
 concurrency:
-  group: release-assets-${{ github.event.release.tag_name || inputs.tag }}
+  group: linux-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -50,7 +59,7 @@ jobs:
       - name: Resolve the tag
         id: rel
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          TAG="${{ inputs.tag }}"
           [ -n "$TAG" ] || { echo "::error::no tag to build for"; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -230,7 +239,12 @@ jobs:
             exit 1
           fi
 
+      - name: Dry run — built and verified, attaching nothing
+        if: ${{ inputs.dry_run }}
+        run: echo "dry_run - every build step and guard passed; release assets left untouched."
+
       - name: Attach the AppImage + teach latest.json about Linux
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -246,19 +260,33 @@ jobs:
             echo "::error::no .sig next to the AppImage — signing key missing, or createUpdaterArtifacts got turned off"; exit 1
           fi
 
-          # scripts/release.sh published a latest.json with an empty `platforms`. Merge into it
-          # rather than rewriting, so a windows-x86_64 entry added by the other workflow survives.
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir manifest
-          MANIFEST_VERSION="$(jq -r .version manifest/latest.json)"
-          if [ "$MANIFEST_VERSION" != "$VERSION" ]; then
-            echo "::error::the release's latest.json is for $MANIFEST_VERSION but we built $VERSION"; exit 1
-          fi
-          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$APPIMAGE")"
-          jq --arg sig "$(cat "$SIG")" --arg url "$URL" \
-            '.platforms["linux-x86_64"] = { signature: $sig, url: $url }' \
-            manifest/latest.json > latest.json
+          gh release upload "$TAG" "$APPIMAGE" "$SIG" --clobber --repo "$GITHUB_REPOSITORY"
 
-          gh release upload "$TAG" "$APPIMAGE" "$SIG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          # latest.json is the one thing both release workflows write, and they now run in parallel.
+          # There is no compare-and-swap on release assets, so: merge, upload, read back, and retry
+          # if the other job clobbered us in between. Whoever loses a round re-merges onto the
+          # winner's copy, so it converges — normally on the first attempt, worst case the second.
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$APPIMAGE")"
+          for attempt in 1 2 3 4 5; do
+            rm -rf manifest && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir manifest
+            MANIFEST_VERSION="$(jq -r .version manifest/latest.json)"
+            if [ "$MANIFEST_VERSION" != "$VERSION" ]; then
+              echo "::error::the release's latest.json is for $MANIFEST_VERSION but we built $VERSION"; exit 1
+            fi
+            jq --arg sig "$(cat "$SIG")" --arg url "$URL" \
+              '.platforms["linux-x86_64"] = { signature: $sig, url: $url }' \
+              manifest/latest.json > latest.json
+            gh release upload "$TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+
+            sleep $((3 + RANDOM % 5))
+            rm -rf check && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir check
+            if [ "$(jq -r '.platforms["linux-x86_64"].url // ""' check/latest.json)" = "$URL" ]; then
+              echo "latest.json carries linux-x86_64 (attempt $attempt): $(jq -c '.platforms | keys' check/latest.json)"
+              break
+            fi
+            [ "$attempt" -lt 5 ] || { echo "::error::linux-x86_64 kept getting clobbered out of latest.json"; exit 1; }
+            echo "the Windows job clobbered the manifest, re-merging"
+          done
 
           # Only now is the release fit to be "Latest". The updater resolves through
           # /releases/latest/download/latest.json, so flipping this last means users keep seeing the

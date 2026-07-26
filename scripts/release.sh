@@ -60,6 +60,16 @@ gh release create "$TAG" \
   --latest=false \
   "$RPM" target/release/bundle/latest.json
 
-echo "==> Published $TAG (not yet marked Latest). CI is now building the AppImage and the Windows"
-echo "    installers; when Linux finishes it marks the release Latest and testers get prompted."
-echo "    Watch: gh run watch   |   Actions ▸ Linux release binaries"
+# Dispatched from master rather than fired by the `release: published` event, and that ref matters:
+# Actions caches are readable only from the ref that wrote them plus the default branch. A
+# release-triggered run executes on the tag ref, so it could never reuse the previous release's
+# cache — Windows recompiled all of Rust from scratch every time, 11m25s of a 15m run. Dispatching
+# from master shares one cache across releases. Both workflows check out $TAG regardless, so the
+# binaries still come from the tagged source. They also run in parallel now.
+echo "==> Dispatching the build workflows…"
+gh workflow run "Linux release binaries"   --repo "$REPO" --ref master -f tag="$TAG"
+gh workflow run "Windows release binaries" --repo "$REPO" --ref master -f tag="$TAG"
+
+echo "==> Published $TAG (not yet marked Latest). Both builds are running in parallel; when Linux"
+echo "    finishes it marks the release Latest and testers get prompted."
+echo "    Watch: gh run watch   |   Actions ▸ Linux / Windows release binaries"
