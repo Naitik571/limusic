@@ -132,8 +132,13 @@ jobs:
             echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set — the build would produce an unsignable AppImage"
             exit 1
           fi
-          (cd ui && pnpm build)      # tauri's beforeBuildCommand runs this too; doing it here makes a frontend failure obvious
-          tauri build --bundles appimage   # the .rpm is built on Fedora by scripts/release.sh
+          (cd ui && pnpm build)
+          # beforeBuildCommand is emptied because we just ran it, deterministically. Left on, tauri
+          # runs `pnpm build` from the repo root — which has no package.json, so which of the two
+          # frontend packages (ui/, website/) pnpm picks is up to the filesystem: Windows resolved
+          # it to ui, Linux to website, whose deps this job never installs. It only works locally
+          # because you run it from ui/.
+          tauri build --bundles appimage --config '{"build":{"beforeBuildCommand":""}}'
           # Strip the bundled TLS trust stack + gio modules out of the AppDir and repack: they are
           # coupled to the build host's config and leave the webview with no TLS backend anywhere
           # else. Repacking invalidates the bundler's signature, so the script re-signs — which is

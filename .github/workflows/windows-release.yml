@@ -162,8 +162,11 @@ jobs:
             echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set — the build would produce unsignable installers"
             exit 1
           fi
-          (cd ui && pnpm build)   # tauri's beforeBuildCommand runs this too; doing it here makes a frontend failure obvious
-          tauri build             # → target/release/bundle/{nsis,msi}/
+          (cd ui && pnpm build)
+          # beforeBuildCommand emptied: we just ran it. Left on, tauri runs `pnpm build` from the
+          # repo root, which has no package.json, so pnpm's choice between ui/ and website/ is down
+          # to the filesystem — it resolves to ui here and to website on Linux. Working by accident.
+          tauri build --config '{"build":{"beforeBuildCommand":""}}'   # → target/release/bundle/{nsis,msi}/
 
       - name: Attach installers + teach latest.json about Windows
         shell: bash
