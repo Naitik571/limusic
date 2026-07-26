@@ -169,7 +169,7 @@ jobs:
           APPDIR=target/release/bundle/appimage/limusic.AppDir
           HOST_BASELINE="ld-linux-x86-64.so.2 libc.so.6 libm.so.6 libresolv.so.2 libgcc_s.so.1
             libstdc++.so.6 libGL.so.1 libEGL.so.1 libGLX.so.0 libGLdispatch.so.0 libOpenGL.so.0
-            libdrm.so.2 libgbm.so.1 libX11.so.6
+            libdrm.so.2 libgbm.so.1 libwayland-client.so.0 libX11.so.6
             libX11-xcb.so.1 libxcb.so.1 libxcb-dri3.so.0 libexpat.so.1 libfontconfig.so.1
             libfreetype.so.6 libharfbuzz.so.0 libfribidi.so.0 libz.so.1 libasound.so.2
             libusb-1.0.so.0 libcom_err.so.2 libgpg-error.so.0"
@@ -195,29 +195,22 @@ jobs:
           fi
           echo "every DT_NEEDED is either bundled or a host baseline library"
 
-      # The static guards above only see this runner. Tonight's failures (v0.2.10 undefined symbol,
-      # v0.2.11 missing libnettle.so.8 on Arch, gvfs symbol errors on Debian testing) all looked
-      # fine on Ubuntu and only appeared on someone else's distro. So load the thing on two of them:
-      # Debian sid for the newest GLib, Arch because its sonames differ from everyone else's.
-      # `ldd -r` resolves every symbol, which is precisely what those failures tripped over.
-      - name: Verify it loads on foreign distros
+      # The static guards above only see this runner. Every failure in this family (v0.2.10's
+      # undefined symbol, v0.2.11's missing libnettle.so.8 on Arch, v0.2.14's dead webviews on
+      # Mesa) looked fine on Ubuntu and only appeared on someone else's distro. So run the app on
+      # two of them: Debian sid for the newest GLib and Mesa, Arch because its sonames differ from
+      # everyone else's. The script resolves every symbol, checks that the AppDir doesn't break the
+      # host libraries the app dlopens, and then actually starts the thing under Xvfb — v0.2.14
+      # passed both static checks and still could not open a single webview.
+      - name: Verify it loads and runs on foreign distros
         run: |
           set -euo pipefail
           APPDIR="$PWD/target/release/bundle/appimage/limusic.AppDir"
-          check() { # $1 = image, $2 = package install command
-            echo "── $1"
-            docker run --rm -v "$APPDIR:/app:ro" "$1" bash -c "
-              $2 >/dev/null 2>&1
-              export LD_LIBRARY_PATH=/app/usr/lib
-              bad=\$(ldd -r /app/usr/bin/limusic-app 2>&1 | grep -E 'not found|undefined symbol' | sort -u)
-              if [ -n \"\$bad\" ]; then echo \"\$bad\"; exit 1; fi
-              echo '   loads clean'"
-          }
-          check debian:sid "apt-get update -qq && apt-get install -y -qq libharfbuzz0b libkrb5-3 \
-            libgssapi-krb5-2 libpango-1.0-0 libgl1 libegl1 libasound2t64 libfribidi0 libusb-1.0-0 \
-            libcom-err2 libgpg-error0 libexpat1 libfontconfig1"
-          check archlinux:latest "pacman -Sy --noconfirm --quiet harfbuzz harfbuzz-icu krb5 pango \
-            mesa alsa-lib fribidi libusb expat fontconfig"
+          for image in debian:sid archlinux:latest; do
+            echo "── $image"
+            docker run --rm -v "$APPDIR:/app:ro" \
+              -v "$PWD/scripts/appdir-foreign-check.sh:/check.sh:ro" "$image" bash /check.sh
+          done
 
       # The regression test for this whole workflow. Nothing bundled may need a newer glibc than the
       # runner's own, or the AppImage only runs on distros at least as new as the build host — the

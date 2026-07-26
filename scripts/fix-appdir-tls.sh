@@ -2,7 +2,7 @@
 # Repair the bundled AppDir so it runs on hosts that aren't the build machine, then repack and
 # re-sign the AppImage in place.
 #
-# Two defects, both from linuxdeploy:
+# Four defects, all from linuxdeploy:
 #
 #   1. GIO_EXTRA_MODULES is written with a literal newline in it, plus an absolute path into the
 #      build machine's own target/ directory. GLib parses one garbage path, finds no module, and
@@ -17,14 +17,35 @@
 #      the shim came from the host, wanted pw_log_topic_register from pipewire 1.6, and resolved
 #      against the pipewire 1.0 in the bundle.
 #
-# WHAT THIS SCRIPT MUST NOT DO: prune libraries out of the AppDir. v0.2.11 tried that and broke
-# worse than what it fixed. Two independent reasons, both learned the hard way:
+#   3. libwayland-client.so.0 gets bundled even though it is on the upstream AppImage excludelist,
+#      and that one library breaks the app on every Mesa host (KI-9). Ubuntu 24.04 ships wayland
+#      1.22; Mesa 25/26 as shipped by Debian testing, Arch and Fedora 44 needs wl_fixes_interface,
+#      wl_display_create_queue_with_name and wl_display_dispatch_queue_timeout, all wayland >= 1.23.
+#      The AppDir is first on LD_LIBRARY_PATH, so when the WebKit web process dlopens the host's
+#      libEGL_mesa.so.0 it resolves against our 1.22 and fails on those three symbols. libglvnd then
+#      has no vendor, eglGetDisplay returns EGL_NO_DISPLAY, and WebKit kills the process:
+#      "Could not create default EGL display: EGL_BAD_PARAMETER. Aborting..." — once per webview,
+#      so the window and both hidden webviews are dead and the app does nothing at all. Invisible on
+#      NVIDIA, whose EGL vendor library does not use those symbols, which is why it survived every
+#      test on the maintainer's desktop.
 #
-#   - Sonames are not portable. Arch ships libnettle.so.9; the bundle's libarchive and libsrt want
-#     .so.8, so dropping it made the app unloadable there.
-#   - Host gio modules are built against the host's GLib. Once GIO_EXTRA_MODULES pointed at host
-#     directories, GLib tried to load *every* module there — and gvfs on Debian testing wants
-#     g_variant_builder_init_static, which arrived in GLib 2.84 and isn't in the 2.80 we bundle.
+#   4. GLib scans its compiled-in module directory in addition to GIO_EXTRA_MODULES, and for an
+#      Ubuntu build that is /usr/lib/x86_64-linux-gnu/gio/modules — a path that also exists on the
+#      user's Debian or Ubuntu host, holding modules built against their much newer GLib. It loads
+#      them into our 2.80 and they fail. Fixed by also setting GIO_MODULE_DIR, which replaces the
+#      compiled-in path rather than adding to it.
+#
+# ON PRUNING. v0.2.11 pruned eight libraries and broke worse than what it fixed, so the bar is high,
+# but "never prune" is the wrong rule — defect 3 above is only fixable by pruning. What made v0.2.11
+# wrong, and what a prune has to clear:
+#
+#   - Sonames must be portable. Arch ships libnettle.so.9; the bundle's libarchive and libsrt want
+#     .so.8, so dropping it made the app unloadable there. libwayland-client.so.0 is .so.0 on every
+#     distro and its ABI only ever gains symbols, so the host's copy always satisfies our 1.22 users.
+#   - The host must be guaranteed to have it. GTK 3 and Mesa both hard-depend on libwayland-client,
+#     so any host that can run a GUI has it. That is also why upstream lists it as a system library.
+#   - It must not be a plugin directory. Host gio modules are built against the host's GLib; that
+#     half of v0.2.11 is what produced the gvfs errors, and defect 4 is the last of it.
 #
 # The trust store that started all of this needs no help now: Ubuntu's gnutls has
 # /etc/ssl/certs/ca-certificates.crt compiled in, and that path exists on Debian, Ubuntu, Fedora and
@@ -99,18 +120,36 @@ else
   bundle_deps_of "$TLSMOD"
 fi
 
+# 1c. Drop libwayland-client. It has to be the host's copy, because the host's Mesa is linked
+#     against it and we are first on LD_LIBRARY_PATH — see defect 3 in the header. Everything the
+#     bundle needs from it exists in 1.22, and every host that can open a window ships a newer one.
+for lib in "$APPDIR"/usr/lib/libwayland-client.so.0*; do
+  [ -e "$lib" ] || continue
+  rm -f "$lib"
+  echo "==> removed $(basename "$lib") — the host's Mesa must link its own"
+done
+
 # 2. Point GIO_EXTRA_MODULES at the AppDir's own module directories — never the host's, see the
 #    header. Appended rather than edited in place: AppRun *sources* the hook, so the last assignment
 #    wins, and appending can't be broken by linuxdeploy reshaping the lines above it.
 HOOK="$APPDIR/apprun-hooks/linuxdeploy-plugin-gtk.sh"
 [ -f "$HOOK" ] || { echo "no GTK apprun hook at $HOOK — did linuxdeploy's plugin layout change?"; exit 1; }
 echo "==> Overriding GIO_EXTRA_MODULES with the bundled module dirs…"
-grep -q '^# Limusic: the value written above' "$HOOK" || cat >> "$HOOK" <<'EOF'
+# The sentinel is the newest thing this block writes, not the first: grepping for the comment would
+# make the script decide it had already run over an AppDir fixed by an older copy of itself, and
+# silently leave half the fix out.
+grep -q 'GIO_MODULE_DIR' "$HOOK" || cat >> "$HOOK" <<'EOF'
 
 # Limusic: the value written above is unusable — it contains a literal newline and an absolute path
 # into the build machine's target/ dir. Bundled dirs only: host modules are built against the host's
 # GLib and fail to load into ours (gvfs wants g_variant_builder_init_static, GLib >= 2.84).
 export GIO_EXTRA_MODULES="$APPDIR/usr/lib/gio/modules:$APPDIR/usr/lib64/gio/modules"
+# GIO_EXTRA_MODULES only *adds* a directory. GLib still scans the one compiled into it, which for an
+# Ubuntu build is /usr/lib/x86_64-linux-gnu/gio/modules — the same path the user's Debian or Ubuntu
+# host keeps its own gvfs modules in, built against a GLib far newer than the one we ship. GLib
+# loads them, they fail, two lines of "undefined symbol: g_variant_builder_init_static" per process.
+# GIO_MODULE_DIR replaces that compiled-in path instead of adding to it.
+export GIO_MODULE_DIR="$APPDIR/usr/lib/gio/modules"
 EOF
 
 # …and make sure there is actually something there to load. An AppDir with no TLS module is the
