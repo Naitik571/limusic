@@ -20,8 +20,9 @@
 # rule — never bundle a library that reads host configuration. The alternative, bundling
 # p11-kit-trust.so plus our own CA store, is more code and more to keep current.
 #
-# libssl/libcrypto stay bundled: since innertube pinned rustypipe to rustls the Rust side no longer
-# touches OpenSSL, and ffmpeg/libmpv use it without needing trust anchors.
+# The general rule this script enforces: if the host supplies a plugin, module, or shim that links
+# library X, then X must come from the host too — bundling half of a matched pair is how you get a
+# symbol lookup error on someone else's machine. See the prune list for the specific pairs.
 #
 # Usage:  scripts/fix-appdir-tls.sh [bundle-dir]     (default: target/release/bundle/appimage)
 # Runs from CI (.github/workflows/linux-release.yml) and by hand after a local
@@ -37,10 +38,23 @@ APPIMAGE="$(ls "$BUNDLE"/limusic_*.AppImage 2>/dev/null | head -1 || true)"
 [ -n "$APPIMAGE" ] || { echo "no limusic_*.AppImage in $BUNDLE"; exit 1; }
 APPIMAGE="$(readlink -f "$APPIMAGE")"
 
-# 1. The trust-store-coupled libraries. `rm -f` so a lib that isn't there can't abort us under -e:
+# 1. Libraries the host must agree with. `rm -f` so a lib that isn't there can't abort us under -e:
 #    the bundled set differs between build hosts, and "already absent" is the desired state anyway.
-echo "==> Pruning host-coupled TLS libraries from the AppDir…"
-for lib in libgnutls.so.30 libp11-kit.so.0 libnettle.so.8 libhogweed.so.6 libtasn1.so.6; do
+#
+#    libpipewire is the one that bit hardest: linuxdeploy's excludelist deliberately leaves
+#    libjack.so.0 to the host (it has to match the local JACK), but bundled libpipewire anyway —
+#    and on any pipewire-based desktop the host's libjack IS pipewire's shim. Ubuntu 24.04 bundles
+#    pipewire 1.0; Fedora 44's shim is built against 1.6 and wants pw_log_topic_register, which
+#    1.0 doesn't export, so v0.2.10 died at startup with a symbol lookup error before showing a
+#    window. They are a matched pair: if libjack comes from the host, libpipewire must too.
+#
+#    libssl/libcrypto: bundled OpenSSL 3.0 is older than what a modern host's libcurl wants
+#    (OPENSSL_3.2.0 on Fedora), which broke loading the host's gio proxy module. Nothing Rust-side
+#    needs OpenSSL since innertube moved to rustls; ffmpeg/libmpv are happy with the host's, whose
+#    symbol versions are additive and so always new enough for a bundle built on an older base.
+echo "==> Pruning host-coupled libraries from the AppDir…"
+for lib in libgnutls.so.30 libp11-kit.so.0 libnettle.so.8 libhogweed.so.6 libtasn1.so.6 \
+           libpipewire-0.3.so.0 libssl.so.3 libcrypto.so.3; do
   rm -fv "$APPDIR"/usr/lib/"$lib"* "$APPDIR"/usr/lib64/"$lib"*
 done
 
