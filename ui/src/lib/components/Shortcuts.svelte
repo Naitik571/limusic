@@ -40,9 +40,16 @@
 	let failed = $state<Record<string, boolean>>({});
 
 	// One handler for the whole section: the tile under the cursor carries its id in `data-pick`, so
-	// hovering anywhere else (a gap, the header, the empty dropzone) means "append".
-	const targetId = (e: DragEvent) =>
-		(e.target as HTMLElement | null)?.closest('[data-pick]')?.getAttribute('data-pick') ?? null;
+	// hovering anywhere else (the header, the empty dropzone, past the last row) means "append".
+	// The gaps *between* tiles are the exception — they belong to the grid, and reading them as
+	// "append" made the marker teleport to the end of the row every time the cursor crossed one, so
+	// there they hold whatever the last tile decided.
+	function targetId(e: DragEvent): string | null {
+		const el = e.target as HTMLElement | null;
+		const tile = el?.closest('[data-pick]');
+		if (tile) return tile.getAttribute('data-pick');
+		return el?.closest('[data-grid]') ? (before ?? null) : null;
+	}
 
 	function over(e: DragEvent) {
 		if (!isDragItem(e)) return; // a file or a link — leave it to the page
@@ -71,6 +78,10 @@
 	}
 </script>
 
+<!-- A drag cancelled with Esc never reaches `drop`, and only fires `dragleave` if the pointer happens
+     to be moving — without this the marker stays painted until the next drag. -->
+<svelte:window ondragend={() => (before = undefined)} />
+
 <section>
 	<div class="mb-3 flex items-baseline justify-between gap-3">
 		<h2 class="font-heading text-lg font-semibold">Shortcuts</h2>
@@ -93,8 +104,13 @@
 		ondragover={over}
 		ondrop={drop}
 		ondragleave={(e) => {
-			// Only when the pointer leaves the section itself, not on every hop between its children.
-			if (!e.currentTarget.contains(e.relatedTarget as Node)) before = undefined;
+			// Only when the pointer leaves the section itself, not on every hop between its children —
+			// and measured against the box, not `relatedTarget`, which WebKit leaves null on drag
+			// events. That made every hop between a tile's cover, its title and the next tile read as a
+			// real exit, so the marker blinked out from under the cursor while it was still inside.
+			const r = e.currentTarget.getBoundingClientRect();
+			if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom)
+				before = undefined;
 		}}
 	>
 		{#if !picks.length}
@@ -122,7 +138,7 @@
 				</span>
 			</button>
 		{:else}
-			<div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
+			<div data-grid class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
 				{#each picks as item (item.id)}
 					{@const round = item.kind === 'artist'}
 					<!-- group/pick, not `group`: nested unnamed groups would fire each other's hovers. -->
