@@ -1,28 +1,35 @@
 #!/usr/bin/env bash
-# Make the bundled AppDir survive contact with a host that isn't the build machine, then repack and
+# Repair the bundled AppDir so it runs on hosts that aren't the build machine, then repack and
 # re-sign the AppImage in place.
 #
-# linuxdeploy bundles two things that are coupled to the *build host's* configuration and therefore
-# cannot travel:
+# Two defects, both from linuxdeploy:
 #
-#   1. The TLS trust stack (gnutls, p11-kit, nettle, hogweed, tasn1). Its CA anchors come from
-#      p11-kit at /usr/lib64/pkcs11 + /etc/pki/ca-trust, which are NOT bundled — so anywhere but
-#      Fedora the bundled gnutls loads fine and then reports "System trust contains zero trusted
-#      certificates".
-#   2. The glib-networking GIO module that provides GTlsBackend. The GTK plugin writes
-#      GIO_EXTRA_MODULES containing a literal newline plus an absolute path into the build machine's
-#      own target/ directory, so GLib parses one garbage path, finds no module, and the webview
-#      falls back to GDummyTlsBackend (supports_tls=False) — no HTTPS at all: no thumbnails, no
-#      player.js, no PoToken, and mpv gets handed a dead URL.
+#   1. GIO_EXTRA_MODULES is written with a literal newline in it, plus an absolute path into the
+#      build machine's own target/ directory. GLib parses one garbage path, finds no module, and
+#      the webview falls back to GDummyTlsBackend (supports_tls=False): no HTTPS at all, so no
+#      thumbnails, no player.js, no PoToken, and mpv gets handed a dead URL. Fixed by pointing it
+#      at the AppDir's own module directories.
 #
-# Both get the same treatment: drop the bundled copies, use the host's. Every mainstream desktop
-# distro ships gnutls + glib-networking (GNOME depends on them), and this is the standard AppImage
-# rule — never bundle a library that reads host configuration. The alternative, bundling
-# p11-kit-trust.so plus our own CA store, is more code and more to keep current.
+#   2. libjack.so.0 is on linuxdeploy's excludelist (it normally must match the host's JACK), but
+#      libmpv.so.2 and libavdevice.so.60 DT_NEED it — so on a host with no JACK at all the app
+#      cannot even start: "error while loading shared libraries: libjack.so.0". Fixed by bundling
+#      it. That also makes the host's pipewire-jack shim unreachable, which is what killed v0.2.10:
+#      the shim came from the host, wanted pw_log_topic_register from pipewire 1.6, and resolved
+#      against the pipewire 1.0 in the bundle.
 #
-# The general rule this script enforces: if the host supplies a plugin, module, or shim that links
-# library X, then X must come from the host too — bundling half of a matched pair is how you get a
-# symbol lookup error on someone else's machine. See the prune list for the specific pairs.
+# WHAT THIS SCRIPT MUST NOT DO: prune libraries out of the AppDir. v0.2.11 tried that and broke
+# worse than what it fixed. Two independent reasons, both learned the hard way:
+#
+#   - Sonames are not portable. Arch ships libnettle.so.9; the bundle's libarchive and libsrt want
+#     .so.8, so dropping it made the app unloadable there.
+#   - Host gio modules are built against the host's GLib. Once GIO_EXTRA_MODULES pointed at host
+#     directories, GLib tried to load *every* module there — and gvfs on Debian testing wants
+#     g_variant_builder_init_static, which arrived in GLib 2.84 and isn't in the 2.80 we bundle.
+#
+# The trust store that started all of this needs no help now: Ubuntu's gnutls has
+# /etc/ssl/certs/ca-certificates.crt compiled in, and that path exists on Debian, Ubuntu, Fedora and
+# Arch alike (verified against the bundled stack in containers on each). Building on Fedora is what
+# made the anchors unreachable, and the build moved to Ubuntu.
 #
 # Usage:  scripts/fix-appdir-tls.sh [bundle-dir]     (default: target/release/bundle/appimage)
 # Runs from CI (.github/workflows/linux-release.yml) and by hand after a local
@@ -38,45 +45,60 @@ APPIMAGE="$(ls "$BUNDLE"/limusic_*.AppImage 2>/dev/null | head -1 || true)"
 [ -n "$APPIMAGE" ] || { echo "no limusic_*.AppImage in $BUNDLE"; exit 1; }
 APPIMAGE="$(readlink -f "$APPIMAGE")"
 
-# 1. Libraries the host must agree with. `rm -f` so a lib that isn't there can't abort us under -e:
-#    the bundled set differs between build hosts, and "already absent" is the desired state anyway.
-#
-#    libpipewire is the one that bit hardest: linuxdeploy's excludelist deliberately leaves
-#    libjack.so.0 to the host (it has to match the local JACK), but bundled libpipewire anyway —
-#    and on any pipewire-based desktop the host's libjack IS pipewire's shim. Ubuntu 24.04 bundles
-#    pipewire 1.0; Fedora 44's shim is built against 1.6 and wants pw_log_topic_register, which
-#    1.0 doesn't export, so v0.2.10 died at startup with a symbol lookup error before showing a
-#    window. They are a matched pair: if libjack comes from the host, libpipewire must too.
-#
-#    libssl/libcrypto: bundled OpenSSL 3.0 is older than what a modern host's libcurl wants
-#    (OPENSSL_3.2.0 on Fedora), which broke loading the host's gio proxy module. Nothing Rust-side
-#    needs OpenSSL since innertube moved to rustls; ffmpeg/libmpv are happy with the host's, whose
-#    symbol versions are additive and so always new enough for a bundle built on an older base.
-echo "==> Pruning host-coupled libraries from the AppDir…"
-for lib in libgnutls.so.30 libp11-kit.so.0 libnettle.so.8 libhogweed.so.6 libtasn1.so.6 \
-           libpipewire-0.3.so.0 libssl.so.3 libcrypto.so.3; do
-  rm -fv "$APPDIR"/usr/lib/"$lib"* "$APPDIR"/usr/lib64/"$lib"*
-done
+# 1. libjack: bundle the build host's copy. Prefer a real jackd2 libjack over a pipewire-jack shim
+#    if the host has both, since the shim drags libpipewire's version coupling back in.
+if [ -e "$APPDIR/usr/lib/libjack.so.0" ]; then
+  echo "==> libjack already bundled"
+else
+  JACK=""
+  for cand in /usr/lib/x86_64-linux-gnu/libjack.so.0 /usr/lib64/libjack.so.0 /usr/lib/libjack.so.0; do
+    [ -e "$cand" ] && { JACK="$cand"; break; }
+  done
+  # Fallback for hosts that keep it off the default path — Fedora's pipewire-jack lives in
+  # /usr/lib64/pipewire-0.3/jack/. CI hits the standard path above and gets jackd2's real libjack;
+  # this only matters for local test builds, where the shim pairs with that host's own libpipewire.
+  # `|| true`: head closing the pipe early makes ldconfig die of SIGPIPE, which pipefail would
+  # otherwise turn into a silent fatal exit 141.
+  [ -n "$JACK" ] || JACK="$(ldconfig -p 2>/dev/null | awk '/libjack\.so\.0 /{print $NF}' | head -1 || true)"
+  [ -n "$JACK" ] || { echo "libjack.so.0 not found on the build host — install libjack-jackd2-0"; exit 1; }
+  cp -L "$JACK" "$APPDIR/usr/lib/libjack.so.0"
+  echo "==> bundled libjack.so.0 from $JACK"
 
-# 2. Both bundled gio module dirs — the host's glib-networking serves the webview instead.
-echo "==> Dropping the bundled gio modules…"
-rm -rfv "$APPDIR"/usr/lib/gio/modules "$APPDIR"/usr/lib64/gio/modules
+  # …and whatever it drags in that linuxdeploy didn't already bundle. jackd2's libjack needs
+  # libdb-5.3, which Arch doesn't ship at all — copying libjack alone would just move the "cannot
+  # open shared object file" one library along. glibc and the compiler runtime are the host's job.
+  while read -r name path; do
+    case "$name" in libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*) continue;; esac
+    [ -e "$APPDIR/usr/lib/$name" ] && continue
+    [ -e "$path" ] || continue
+    cp -L "$path" "$APPDIR/usr/lib/$name"
+    echo "==> bundled $name (dependency of libjack)"
+  done < <(ldd "$JACK" | awk '/=> \//{print $1, $3}')
+fi
 
-# 3. Point GIO_EXTRA_MODULES at the host's module dirs, covering the three layouts in the wild
-#    (Fedora/RHEL, Debian/Ubuntu, Arch). Appended rather than edited in place: AppRun *sources* the
-#    hook, so the last assignment wins, and appending can't be broken by linuxdeploy reshaping the
-#    lines above it.
+# 2. Point GIO_EXTRA_MODULES at the AppDir's own module directories — never the host's, see the
+#    header. Appended rather than edited in place: AppRun *sources* the hook, so the last assignment
+#    wins, and appending can't be broken by linuxdeploy reshaping the lines above it.
 HOOK="$APPDIR/apprun-hooks/linuxdeploy-plugin-gtk.sh"
 [ -f "$HOOK" ] || { echo "no GTK apprun hook at $HOOK — did linuxdeploy's plugin layout change?"; exit 1; }
-echo "==> Overriding GIO_EXTRA_MODULES with host paths…"
+echo "==> Overriding GIO_EXTRA_MODULES with the bundled module dirs…"
 grep -q '^# Limusic: the value written above' "$HOOK" || cat >> "$HOOK" <<'EOF'
 
 # Limusic: the value written above is unusable — it contains a literal newline and an absolute path
-# into the build machine's target/ dir. Host paths only; the bundled modules were removed.
-export GIO_EXTRA_MODULES="/usr/lib64/gio/modules:/usr/lib/x86_64-linux-gnu/gio/modules:/usr/lib/gio/modules"
+# into the build machine's target/ dir. Bundled dirs only: host modules are built against the host's
+# GLib and fail to load into ours (gvfs wants g_variant_builder_init_static, GLib >= 2.84).
+export GIO_EXTRA_MODULES="$APPDIR/usr/lib/gio/modules:$APPDIR/usr/lib64/gio/modules"
 EOF
 
-# 4. Repack with the packer Tauri already downloaded for the original bundle.
+# …and make sure there is actually something there to load. An AppDir with no TLS module is the
+# original bug in a new hat: the app starts, looks fine, and can't reach YouTube.
+if ! ls "$APPDIR"/usr/lib/gio/modules/libgio*.so "$APPDIR"/usr/lib64/gio/modules/libgio*.so >/dev/null 2>&1; then
+  echo "no gio modules bundled — install glib-networking on the build host, or the webview gets no TLS backend"
+  exit 1
+fi
+echo "==> bundled gio modules: $(ls "$APPDIR"/usr/lib/gio/modules "$APPDIR"/usr/lib64/gio/modules 2>/dev/null | grep -c '\.so')"
+
+# 3. Repack with the packer Tauri already downloaded for the original bundle.
 # Globbed, not hardcoded: the exact filename is Tauri's business and CI runs a different CLI version.
 PACKER="$(ls "$HOME"/.cache/tauri/linuxdeploy-plugin-appimage*.AppImage 2>/dev/null | head -1 || true)"
 [ -n "$PACKER" ] && [ -x "$PACKER" ] || {
@@ -90,7 +112,7 @@ ARCH=x86_64 NO_STRIP=true OUTPUT="$APPIMAGE" APPIMAGE_EXTRACT_AND_RUN=1 \
 [ -f "$APPIMAGE" ] || { echo "packer produced no $APPIMAGE"; exit 1; }
 chmod +x "$APPIMAGE"
 
-# 5. Re-sign: repacking invalidated the signature the bundler made, and latest.json is generated
+# 4. Re-sign: repacking invalidated the signature the bundler made, and latest.json is generated
 #    from the .sig — a stale one silently breaks every self-update.
 if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"

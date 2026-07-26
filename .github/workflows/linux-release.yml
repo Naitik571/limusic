@@ -78,7 +78,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
-            libssl-dev libdbus-1-dev libmpv-dev patchelf file
+            libssl-dev libdbus-1-dev libmpv-dev patchelf file \
+            libjack-jackd2-0 glib-networking
+          # libjack: linuxdeploy excludes it, so fix-appdir-tls.sh copies it in by hand.
+          # glib-networking: supplies the gio TLS module that gets bundled. Without it the webview
+          # has no TLS backend at all, which is the bug that started this whole saga.
 
       - uses: actions/setup-node@v4
         with:
@@ -144,6 +148,39 @@ jobs:
           # else. Repacking invalidates the bundler's signature, so the script re-signs — which is
           # why it runs inside this step, where the key is in scope.
           scripts/fix-appdir-tls.sh
+
+      # v0.2.11 shipped an AppImage that couldn't start on a host without JACK, because libmpv
+      # DT_NEEDs libjack.so.0 and linuxdeploy excludes it. Everything the bundle links must either be
+      # inside the AppDir or be a library any Linux desktop is guaranteed to have. The allowlist
+      # below is the calibrated set for this app; if a new name shows up, decide deliberately
+      # whether to bundle it or add it here — don't widen it to make a build pass.
+      - name: Check nothing is missing from the bundle
+        run: |
+          set -euo pipefail
+          APPDIR=target/release/bundle/appimage/limusic.AppDir
+          HOST_BASELINE="ld-linux-x86-64.so.2 libc.so.6 libm.so.6 libresolv.so.2 libgcc_s.so.1
+            libstdc++.so.6 libGL.so.1 libEGL.so.1 libGLX.so.0 libGLdispatch.so.0 libOpenGL.so.0
+            libdrm.so.2 libgbm.so.1 libX11.so.6
+            libX11-xcb.so.1 libxcb.so.1 libxcb-dri3.so.0 libexpat.so.1 libfontconfig.so.1
+            libfreetype.so.6 libharfbuzz.so.0 libfribidi.so.0 libz.so.1 libasound.so.2
+            libusb-1.0.so.0 libcom_err.so.2 libgpg-error.so.0"
+          for f in "$APPDIR"/usr/lib/*.so* "$APPDIR"/usr/bin/*; do
+            objdump -p "$f" 2>/dev/null | awk '/NEEDED/{print $2}'
+          done | sort -u > /tmp/needed.txt
+          ls "$APPDIR"/usr/lib "$APPDIR"/usr/lib64 2>/dev/null | sort -u > /tmp/have.txt
+          MISSING=""
+          while read -r lib; do
+            [ -n "$lib" ] || continue
+            grep -qx "$lib" /tmp/have.txt && continue
+            echo "$HOST_BASELINE" | tr -s ' \n' '\n' | grep -qx "$lib" && continue
+            MISSING="$MISSING $lib"
+          done < /tmp/needed.txt
+          if [ -n "$MISSING" ]; then
+            echo "::error::bundle links libraries it neither ships nor can assume:$MISSING"
+            echo "Bundle them in scripts/fix-appdir-tls.sh, or add them to HOST_BASELINE if every distro really has them."
+            exit 1
+          fi
+          echo "every DT_NEEDED is either bundled or a host baseline library"
 
       # The regression test for this whole workflow. Nothing bundled may need a newer glibc than the
       # runner's own, or the AppImage only runs on distros at least as new as the build host — the
