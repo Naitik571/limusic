@@ -54,7 +54,7 @@ YouTube Music client, and grew from there.
 
 | Platform | File | Notes |
 |---|---|---|
-| Linux | `.AppImage` | Self-updating, libmpv bundled |
+| Linux | `.AppImage` | Self-updating, libmpv bundled. Needs glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+) |
 | Linux (Fedora/RHEL) | `.rpm` | Needs `mpv-libs` installed (`sudo dnf install mpv-libs`) |
 | Windows | `-setup.exe` | Self-updating |
 | Windows | `.msi` | Plain installer, no auto-update |

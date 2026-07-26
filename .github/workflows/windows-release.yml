@@ -3,9 +3,9 @@ name: Windows release binaries
 # Builds and signs the Windows installers for a release that ALREADY EXISTS, attaches them to it,
 # and adds the `windows-x86_64` entry to latest.json so Windows installs get auto-updates.
 #
-# The Linux release is still cut from Fedora with `scripts/release.sh` (it creates the GitHub
-# release). Publishing that release fires this workflow automatically — a few minutes later the
-# Windows assets appear on the same release. Nobody boots Windows.
+# `scripts/release.sh` on Fedora creates the GitHub release and its .rpm. Publishing it fires this
+# workflow automatically — a few minutes later the Windows assets appear on the same release. Nobody
+# boots Windows. The Linux AppImage is built the same way, by linux-release.yml.
 #
 # It can also be run by hand against an older tag to backfill:
 #   Actions ▸ Windows release binaries ▸ Run workflow ▸ tag = v0.1.4
@@ -30,8 +30,11 @@ on:
 permissions:
   contents: write # upload assets onto the release
 
+# Shared with linux-release.yml ON PURPOSE: both jobs read-modify-write the same latest.json on the
+# same release, so they must never run at the same time or one silently drops the other's platform
+# entry. Same group = the second one waits. Either order works.
 concurrency:
-  group: windows-release-${{ github.event.release.tag_name || inputs.tag }}
+  group: release-assets-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 env:
@@ -180,9 +183,9 @@ jobs:
             echo "::error::no .sig next to the installer — signing key missing, or createUpdaterArtifacts got turned off"; exit 1
           fi
 
-          # scripts/release.sh already published a latest.json carrying only linux-x86_64. Merge the
-          # Windows platform into it rather than rewriting it, so the Linux entry (and its signature)
-          # survives untouched.
+          # scripts/release.sh published a latest.json with an empty `platforms`. Merge the Windows
+          # platform into it rather than rewriting, so a linux-x86_64 entry added by the other
+          # workflow (and its signature) survives untouched.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir manifest
           MANIFEST_VERSION="$(jq -r .version manifest/latest.json)"
           if [ "$MANIFEST_VERSION" != "$VERSION" ]; then

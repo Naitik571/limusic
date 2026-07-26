@@ -1,0 +1,199 @@
+name: Linux release binaries
+
+# Builds and signs the Linux AppImage for a release that ALREADY EXISTS, attaches it, adds the
+# `linux-x86_64` entry to latest.json, and finally marks the release "Latest".
+#
+# WHY THIS EXISTS: an AppImage bundles the *build host's* system libraries but cannot bundle glibc,
+# so it inherits the build host's glibc floor. Built on Fedora (glibc 2.43) the 0.2.9 AppImage
+# refused to start anywhere else — 78 of its 368 bundled libs demanded GLIBC_2.43, which only
+# Fedora 44 / Arch / rawhide have. Building here on a pinned, deliberately older runner puts the
+# floor at glibc 2.39: Ubuntu 24.04+, Debian 13+, Fedora 40+, current Arch.
+#
+# `runs-on` is PINNED ON PURPOSE. Never change it to `ubuntu-latest` — that tracks the newest
+# Ubuntu and would silently reintroduce exactly the bug this workflow exists to fix. The
+# "Check the glibc floor" step below fails the build if someone does it anyway.
+#
+# scripts/release.sh (run on Fedora) still builds and publishes the .rpm — an rpm links against the
+# host's system libs, so Fedora is the correct place to build it.
+#
+# It can also be run by hand against an older tag to backfill:
+#   Actions ▸ Linux release binaries ▸ Run workflow ▸ tag = v0.2.9
+#
+# Requires repo secrets (same set as the Windows workflow):
+#   TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD   (mandatory — no sig, no update)
+#   LASTFM_API_KEY / LASTFM_API_SECRET                               (optional — warn-only)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build the Linux AppImage for (e.g. v0.2.9)
+        required: true
+        type: string
+
+permissions:
+  contents: write # upload assets onto the release
+
+# Shared with windows-release.yml ON PURPOSE: both jobs read-modify-write the same latest.json on
+# the same release, so they must never run at the same time or one silently drops the other's
+# platform entry. Same group = the second one waits. Either order works.
+concurrency:
+  group: release-assets-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04 # glibc 2.39 — see the header. NOT ubuntu-latest.
+    steps:
+      - name: Resolve the tag
+        id: rel
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          [ -n "$TAG" ] || { echo "::error::no tag to build for"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.rel.outputs.tag }}
+
+      # The tag is the contract: the binaries must be built from the source that tag points at, and
+      # the updater compares tauri.conf.json's version. If they disagree, the version bump never got
+      # committed — stop before shipping a mislabelled AppImage.
+      - name: Check the tag matches the app version
+        run: |
+          VERSION="$(jq -r .version src-tauri/tauri.conf.json)"
+          if [ "v$VERSION" != "${{ steps.rel.outputs.tag }}" ]; then
+            echo "::error::tauri.conf.json says $VERSION but the tag is ${{ steps.rel.outputs.tag }} — was the version bump committed before the tag was cut?"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # webkit2gtk-4.1 + gtk3 + appindicator are Tauri's; libmpv-dev is ours (libmpv2-sys ships
+      # pregenerated bindings and just emits `-lmpv`, so only the link-time lib is needed);
+      # libdbus-1-dev comes from tao, libssl-dev from reqwest's native-tls path.
+      - name: Build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libdbus-1-dev libmpv-dev patchelf file
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Frontend deps
+        run: |
+          npm install -g pnpm@10
+          cd ui && pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Tauri CLI
+        # The npm CLI ships a prebuilt binary — `cargo install tauri-cli` would compile it from
+        # source on every cache miss (~5 min for nothing).
+        run: npm install -g "@tauri-apps/cli@^2"
+
+      # The gitignored src-tauri/lastfm.keys (read by build.rs) obviously isn't in the checkout —
+      # recreate it from repo secrets. Missing secrets are a warning, not a failure: the app is
+      # fully functional without Last.fm.
+      - name: Last.fm API keys
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+        run: |
+          if [ -n "$LASTFM_API_KEY" ] && [ -n "$LASTFM_API_SECRET" ]; then
+            printf 'LIMUSIC_LASTFM_API_KEY=%s\nLIMUSIC_LASTFM_API_SECRET=%s\n' \
+              "$LASTFM_API_KEY" "$LASTFM_API_SECRET" > src-tauri/lastfm.keys
+            echo "lastfm.keys written"
+          else
+            echo "::warning::LASTFM_API_KEY / LASTFM_API_SECRET secrets not set — this Linux build ships without Last.fm scrobbling"
+          fi
+
+      - name: Build + sign the AppImage
+        env:
+          # Scoped to this step only — no other step (or third-party action) sees the signing key.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # linuxdeploy bundles an ancient `strip` that chokes on modern ELF sections (DT_RELR).
+          NO_STRIP: "true"
+          # The bundler runs linuxdeploy/appimagetool, themselves AppImages — the runner has no
+          # FUSE, so make them self-extract instead.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set — the build would produce an unsignable AppImage"
+            exit 1
+          fi
+          (cd ui && pnpm build)      # tauri's beforeBuildCommand runs this too; doing it here makes a frontend failure obvious
+          tauri build --bundles appimage   # the .rpm is built on Fedora by scripts/release.sh
+          # Strip the bundled TLS trust stack + gio modules out of the AppDir and repack: they are
+          # coupled to the build host's config and leave the webview with no TLS backend anywhere
+          # else. Repacking invalidates the bundler's signature, so the script re-signs — which is
+          # why it runs inside this step, where the key is in scope.
+          scripts/fix-appdir-tls.sh
+
+      # The regression test for this whole workflow. Nothing bundled may need a newer glibc than the
+      # runner's own, or the AppImage only runs on distros at least as new as the build host — the
+      # 0.2.9 failure. Runs against the AppDir the bundler just assembled.
+      - name: Check the glibc floor
+        run: |
+          set -euo pipefail
+          FLOOR=2.39   # keep in sync with `runs-on` above
+          APPDIR=target/release/bundle/appimage/limusic.AppDir
+          [ -d "$APPDIR" ] || { echo "::error::no AppDir at $APPDIR — did the bundler change its layout?"; exit 1; }
+          # `|| true`: objdump exits nonzero on the non-ELF files that live under usr/lib (module
+          # caches, pkgconfig, …), which under pipefail would fail the step for no reason.
+          WORST="$(find "$APPDIR/usr/lib" "$APPDIR/usr/bin" -type f -exec objdump -T {} + 2>/dev/null \
+            | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 || true)"
+          echo "highest glibc symbol required by the bundle: ${WORST:-none}"
+          if [ "$(printf '%s\nGLIBC_%s\n' "$WORST" "$FLOOR" | sort -V | tail -1)" != "GLIBC_$FLOOR" ]; then
+            echo "::error::bundle requires $WORST but the floor is GLIBC_$FLOOR — is runs-on still pinned to an old runner?"
+            find "$APPDIR/usr/lib" -type f -exec sh -c 'objdump -T "$1" 2>/dev/null | grep -q "$2" && echo "  $1"' _ {} "$WORST" \; || true
+            exit 1
+          fi
+
+      - name: Attach the AppImage + teach latest.json about Linux
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.rel.outputs.tag }}"
+          APPIMAGE="$(ls target/release/bundle/appimage/limusic_${VERSION}_*.AppImage 2>/dev/null | head -1 || true)"
+          SIG="$APPIMAGE.sig"
+
+          if [ -z "$APPIMAGE" ] || [ ! -f "$APPIMAGE" ]; then
+            echo "::error::no AppImage for $VERSION"; find target/release/bundle -maxdepth 2; exit 1
+          fi
+          if [ ! -f "$SIG" ]; then
+            echo "::error::no .sig next to the AppImage — signing key missing, or createUpdaterArtifacts got turned off"; exit 1
+          fi
+
+          # scripts/release.sh published a latest.json with an empty `platforms`. Merge into it
+          # rather than rewriting, so a windows-x86_64 entry added by the other workflow survives.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir manifest
+          MANIFEST_VERSION="$(jq -r .version manifest/latest.json)"
+          if [ "$MANIFEST_VERSION" != "$VERSION" ]; then
+            echo "::error::the release's latest.json is for $MANIFEST_VERSION but we built $VERSION"; exit 1
+          fi
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$APPIMAGE")"
+          jq --arg sig "$(cat "$SIG")" --arg url "$URL" \
+            '.platforms["linux-x86_64"] = { signature: $sig, url: $url }' \
+            manifest/latest.json > latest.json
+
+          gh release upload "$TAG" "$APPIMAGE" "$SIG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+
+          # Only now is the release fit to be "Latest". The updater resolves through
+          # /releases/latest/download/latest.json, so flipping this last means users keep seeing the
+          # previous (complete) manifest while this one is still half-built, instead of a manifest
+          # with no Linux entry.
+          gh release edit "$TAG" --latest --repo "$GITHUB_REPOSITORY"
+
+          echo "Published. latest.json now covers: $(jq -c '.platforms | keys' latest.json)"

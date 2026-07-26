@@ -31,6 +31,16 @@ cargo tauri build            # → target/release/bundle/rpm/limusic-*.rpm
 
 - libmpv is system-provided (`mpv-libs`), found on the default linker path — no bundling needed.
 - Media keys use **MPRIS** over D-Bus (needs a running session bus — normal on a desktop session).
+- **The release AppImage is not built here.** An AppImage inherits its build host's glibc floor, and
+  Fedora's is the newest that exists — one built on this machine starts on almost nothing else.
+  `.github/workflows/linux-release.yml` builds it on a pinned `ubuntu-24.04` runner (glibc 2.39) and
+  fails the build if anything bundled needs newer. A local `cargo tauri build` still emits one into
+  `target/release/bundle/appimage/` for testing; never upload that to a release.
+- A freshly bundled AppDir is **not portable** until `scripts/fix-appdir-tls.sh` has run over it —
+  linuxdeploy bundles the host's TLS trust stack (whose CA anchors live outside the bundle) and
+  writes a `GIO_EXTRA_MODULES` containing a literal newline and a path into your own `target/` dir,
+  which leaves the webview with `GDummyTlsBackend` and no HTTPS anywhere but this machine. CI runs
+  the script automatically; run it by hand if you're testing a local AppImage elsewhere.
 
 ---
 

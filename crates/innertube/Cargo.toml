@@ -14,7 +14,7 @@ tokio = { workspace = true, features = ["time"] }
 sha1 = "0.10"
 hex = "0.4"
 urlencoding = "2"
-rustypipe = "0.11"
+rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
