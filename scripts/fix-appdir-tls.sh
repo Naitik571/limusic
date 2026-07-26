@@ -45,6 +45,20 @@ APPIMAGE="$(ls "$BUNDLE"/limusic_*.AppImage 2>/dev/null | head -1 || true)"
 [ -n "$APPIMAGE" ] || { echo "no limusic_*.AppImage in $BUNDLE"; exit 1; }
 APPIMAGE="$(readlink -f "$APPIMAGE")"
 
+# Copy every DT_NEEDED of $1 that the AppDir doesn't already have. glibc and the loader are the
+# host's job; everything else has to travel with us, or we just move "cannot open shared object
+# file" one library along (jackd2's libjack needs libdb-5.3, which Arch doesn't ship at all).
+bundle_deps_of() {
+  local of="$1" name path
+  while read -r name path; do
+    case "$name" in libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*) continue;; esac
+    [ -e "$APPDIR/usr/lib/$name" ] && continue
+    [ -e "$path" ] || continue
+    cp -L "$path" "$APPDIR/usr/lib/$name"
+    echo "==> bundled $name (dependency of $(basename "$of"))"
+  done < <(ldd "$of" | awk '/=> \//{print $1, $3}')
+}
+
 # 1. libjack: bundle the build host's copy. Prefer a real jackd2 libjack over a pipewire-jack shim
 #    if the host has both, since the shim drags libpipewire's version coupling back in.
 if [ -e "$APPDIR/usr/lib/libjack.so.0" ]; then
@@ -63,17 +77,26 @@ else
   [ -n "$JACK" ] || { echo "libjack.so.0 not found on the build host — install libjack-jackd2-0"; exit 1; }
   cp -L "$JACK" "$APPDIR/usr/lib/libjack.so.0"
   echo "==> bundled libjack.so.0 from $JACK"
+  bundle_deps_of "$JACK"
+fi
 
-  # …and whatever it drags in that linuxdeploy didn't already bundle. jackd2's libjack needs
-  # libdb-5.3, which Arch doesn't ship at all — copying libjack alone would just move the "cannot
-  # open shared object file" one library along. glibc and the compiler runtime are the host's job.
-  while read -r name path; do
-    case "$name" in libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*) continue;; esac
-    [ -e "$APPDIR/usr/lib/$name" ] && continue
-    [ -e "$path" ] || continue
-    cp -L "$path" "$APPDIR/usr/lib/$name"
-    echo "==> bundled $name (dependency of libjack)"
-  done < <(ldd "$JACK" | awk '/=> \//{print $1, $3}')
+# 1b. The gio TLS module. linuxdeploy's GTK plugin bundles it on Fedora but not on Ubuntu, so copy
+#     it in ourselves rather than depend on that. Only this one module: gvfs and libproxy are built
+#     against the host's GLib and blow up against the older one we bundle, which is exactly what
+#     v0.2.11 shipped.
+if ls "$APPDIR"/usr/lib/gio/modules/libgiognutls.so >/dev/null 2>&1; then
+  echo "==> gio TLS module already bundled"
+else
+  TLSMOD=""
+  for dir in "$(pkg-config --variable=giomoduledir gio-2.0 2>/dev/null || true)" \
+             /usr/lib/x86_64-linux-gnu/gio/modules /usr/lib64/gio/modules /usr/lib/gio/modules; do
+    [ -n "$dir" ] && [ -e "$dir/libgiognutls.so" ] && { TLSMOD="$dir/libgiognutls.so"; break; }
+  done
+  [ -n "$TLSMOD" ] || { echo "libgiognutls.so not found — install glib-networking on the build host"; exit 1; }
+  mkdir -p "$APPDIR/usr/lib/gio/modules"
+  cp -L "$TLSMOD" "$APPDIR/usr/lib/gio/modules/libgiognutls.so"
+  echo "==> bundled the gio TLS module from $TLSMOD"
+  bundle_deps_of "$TLSMOD"
 fi
 
 # 2. Point GIO_EXTRA_MODULES at the AppDir's own module directories — never the host's, see the
