@@ -115,11 +115,18 @@ EOF
 
 # …and make sure there is actually something there to load. An AppDir with no TLS module is the
 # original bug in a new hat: the app starts, looks fine, and can't reach YouTube.
-if ! ls "$APPDIR"/usr/lib/gio/modules/libgio*.so "$APPDIR"/usr/lib64/gio/modules/libgio*.so >/dev/null 2>&1; then
+# Counted with an explicit loop, not `ls dirA/glob dirB/glob`: ls exits nonzero when *either* path
+# is missing, even after listing the other one fine. Ubuntu AppDirs have no usr/lib64, so that
+# spelling reported "no modules" while the module sat right there. It cost a release number.
+MODS=0
+for d in "$APPDIR/usr/lib/gio/modules" "$APPDIR/usr/lib64/gio/modules"; do
+  [ -d "$d" ] || continue
+  for f in "$d"/libgio*.so; do [ -e "$f" ] && MODS=$((MODS + 1)); done
+done
+[ "$MODS" -gt 0 ] || {
   echo "no gio modules bundled — install glib-networking on the build host, or the webview gets no TLS backend"
-  exit 1
-fi
-echo "==> bundled gio modules: $(ls "$APPDIR"/usr/lib/gio/modules "$APPDIR"/usr/lib64/gio/modules 2>/dev/null | grep -c '\.so')"
+  exit 1; }
+echo "==> bundled gio modules: $MODS"
 
 # 3. Repack with the packer Tauri already downloaded for the original bundle.
 # Globbed, not hardcoded: the exact filename is Tauri's business and CI runs a different CLI version.

@@ -164,10 +164,14 @@ jobs:
             libX11-xcb.so.1 libxcb.so.1 libxcb-dri3.so.0 libexpat.so.1 libfontconfig.so.1
             libfreetype.so.6 libharfbuzz.so.0 libfribidi.so.0 libz.so.1 libasound.so.2
             libusb-1.0.so.0 libcom_err.so.2 libgpg-error.so.0"
-          for f in "$APPDIR"/usr/lib/*.so* "$APPDIR"/usr/bin/*; do
+          for f in "$APPDIR"/usr/lib/*.so* "$APPDIR"/usr/lib64/*.so* "$APPDIR"/usr/bin/*; do
+            [ -e "$f" ] || continue
             objdump -p "$f" 2>/dev/null | awk '/NEEDED/{print $2}'
           done | sort -u > /tmp/needed.txt
-          ls "$APPDIR"/usr/lib "$APPDIR"/usr/lib64 2>/dev/null | sort -u > /tmp/have.txt
+          # `find`, not `ls dirA dirB`: ls exits nonzero if either path is missing, and an Ubuntu
+          # AppDir has no usr/lib64 — under pipefail that fails the step for no reason.
+          find "$APPDIR/usr/lib" "$APPDIR/usr/lib64" -maxdepth 1 -printf '%f\n' 2>/dev/null \
+            | sort -u > /tmp/have.txt || true
           MISSING=""
           while read -r lib; do
             [ -n "$lib" ] || continue
@@ -181,6 +185,30 @@ jobs:
             exit 1
           fi
           echo "every DT_NEEDED is either bundled or a host baseline library"
+
+      # The static guards above only see this runner. Tonight's failures (v0.2.10 undefined symbol,
+      # v0.2.11 missing libnettle.so.8 on Arch, gvfs symbol errors on Debian testing) all looked
+      # fine on Ubuntu and only appeared on someone else's distro. So load the thing on two of them:
+      # Debian sid for the newest GLib, Arch because its sonames differ from everyone else's.
+      # `ldd -r` resolves every symbol, which is precisely what those failures tripped over.
+      - name: Verify it loads on foreign distros
+        run: |
+          set -euo pipefail
+          APPDIR="$PWD/target/release/bundle/appimage/limusic.AppDir"
+          check() { # $1 = image, $2 = package install command
+            echo "── $1"
+            docker run --rm -v "$APPDIR:/app:ro" "$1" bash -c "
+              $2 >/dev/null 2>&1
+              export LD_LIBRARY_PATH=/app/usr/lib
+              bad=\$(ldd -r /app/usr/bin/limusic-app 2>&1 | grep -E 'not found|undefined symbol' | sort -u)
+              if [ -n \"\$bad\" ]; then echo \"\$bad\"; exit 1; fi
+              echo '   loads clean'"
+          }
+          check debian:sid "apt-get update -qq && apt-get install -y -qq libharfbuzz0b libkrb5-3 \
+            libgssapi-krb5-2 libpango-1.0-0 libgl1 libegl1 libasound2t64 libfribidi0 libusb-1.0-0 \
+            libcom-err2 libgpg-error0 libexpat1 libfontconfig1"
+          check archlinux:latest "pacman -Sy --noconfirm --quiet harfbuzz harfbuzz-icu krb5 pango \
+            mesa alsa-lib fribidi libusb expat fontconfig"
 
       # The regression test for this whole workflow. Nothing bundled may need a newer glibc than the
       # runner's own, or the AppImage only runs on distros at least as new as the build host — the
