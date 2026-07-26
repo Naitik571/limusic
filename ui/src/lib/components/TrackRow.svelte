@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { PlayIcon, PlayListAddIcon } from '@hugeicons/core-free-icons';
+	import { FavouriteIcon, PlayIcon, PlayListAddIcon } from '@hugeicons/core-free-icons';
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
+	import { isLiked, toggleLike } from '$lib/player.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 
 	let {
@@ -12,6 +13,7 @@
 		index,
 		active = false,
 		hideThumb = false,
+		compact = false,
 		onplay,
 		onAdd,
 		onRemove,
@@ -23,6 +25,12 @@
 		active?: boolean;
 		/** Hide the leading thumbnail (album track lists show a number, not a cover). */
 		hideThumb?: boolean;
+		/**
+		 * Grid variant (home's Forgotten favourites): the duration joins the artist line instead of
+		 * claiming its own column, and a like heart sits next to the ⋯ — narrow columns have no room
+		 * for a separate duration column, and hearting is the whole point of that shelf.
+		 */
+		compact?: boolean;
 		onplay: () => void;
 		/** Adds an "Add to playlist" menu item. */
 		onAdd?: () => void;
@@ -89,32 +97,56 @@
 					</span>
 				{/if}
 			</div>
-			{#if song.artist_id}
-				<button
-					class="block max-w-full cursor-pointer truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
-					onclick={(e) => {
-						e.stopPropagation();
-						goto(`/artist/${encodeURIComponent(song.artist_id!)}`);
-					}}
-				>
-					{song.artists}
-				</button>
-			{:else}
-				<div class="truncate text-xs text-muted-foreground">{song.artists}</div>
-			{/if}
+			<div class="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+				{#if song.artist_id}
+					<button
+						class="min-w-0 cursor-pointer truncate text-left hover:text-foreground hover:underline"
+						onclick={(e) => {
+							e.stopPropagation();
+							goto(`/artist/${encodeURIComponent(song.artist_id!)}`);
+						}}
+					>
+						{song.artists}
+					</button>
+				{:else}
+					<span class="truncate">{song.artists}</span>
+				{/if}
+				{#if compact && song.duration}
+					<span class="shrink-0">· {song.duration}</span>
+				{/if}
+			</div>
 		</div>
 	</div>
 
-	<div class="flex shrink-0 items-center gap-2">
-		{#if song.duration}
+	<div class="flex shrink-0 items-center {compact ? 'gap-0.5' : 'gap-2'}">
+		{#if song.duration && !compact}
 			<span class="text-xs text-muted-foreground">{song.duration}</span>
+		{/if}
+		{#if compact}
+			<!-- Persistent, not hover-only: a filled heart is state the row has to keep showing. -->
+			<button
+				class="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground"
+				aria-label={isLiked(song) ? 'Remove from liked songs' : 'Save to liked songs'}
+				aria-pressed={isLiked(song)}
+				onclick={(e) => {
+					e.stopPropagation();
+					toggleLike(song);
+				}}
+			>
+				<HugeiconsIcon
+					icon={FavouriteIcon}
+					class="h-4 w-4 {isLiked(song) ? 'fill-current text-primary' : ''}"
+				/>
+			</button>
 		{/if}
 		<TrackMenu
 			{song}
 			{onAdd}
 			{onRemove}
 			{removeLabel}
-			triggerClass="rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:bg-accent/20 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground focus-visible:opacity-100 {compact
+				? ''
+				: 'opacity-0 group-hover:opacity-100'}"
 		/>
 	</div>
 </div>

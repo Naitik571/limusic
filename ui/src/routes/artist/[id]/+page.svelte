@@ -73,7 +73,7 @@
 		menuOpen = true;
 	}
 
-	// This artist as a card, for the sidebar's last-played sort and the Quick Picks grid.
+	// This artist as a card, for the sidebar's last-played sort and the Shortcuts grid.
 	const asItem = (): BrowseItem => ({
 		kind: 'artist',
 		id,
@@ -240,7 +240,7 @@
 				addPick(asItem());
 			}}
 		>
-			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to Quick Picks
+			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to shortcuts
 		</button>
 	</div>
 {/if}

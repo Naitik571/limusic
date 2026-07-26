@@ -36,6 +36,14 @@
 			class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
 			onerror={() => (artFailed = true)}
 		/>
+	{:else}
+		<!-- Nothing playing: without this the header is a bare strip with a greeting in it. An accent
+		     wash keeps it a header. Inline style so it can't be lost to a stale dev stylesheet, and it
+		     rides --primary so every preset theme gets its own. -->
+		<div
+			class="pointer-events-none absolute inset-0 opacity-[0.18]"
+			style="background:radial-gradient(120% 130% at 12% 0%, var(--primary) 0%, transparent 58%)"
+		></div>
 	{/if}
 	<div
 		class="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/40"

@@ -18,7 +18,7 @@
 	import type { SongItem } from '$lib/api';
 	import { lt } from '$lib/lt.svelte';
 	import { anchorMenu } from '$lib/menu';
-	import { addPick, playback, toast } from '$lib/player.svelte';
+	import { addPick, isLiked, toast, toggleLike } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -67,25 +67,7 @@
 		if (lt.role !== 'guest') toast('Added to queue');
 	}
 
-	// Like state: the player bar owns it for the current track, so mirror that; otherwise track it
-	// locally, seeded from the row's own likeStatus.
-	let rowLiked = $state<boolean | undefined>(undefined); // set once the user toggles this song
-	const isNow = $derived(playback.now?.videoId === song.video_id);
-	const liked = $derived(isNow ? playback.liked : (rowLiked ?? song.liked ?? false));
-
-	async function toggleLike() {
-		const next = !liked;
-		rowLiked = next; // optimistic
-		if (isNow) playback.liked = next;
-		try {
-			await api.like(song.video_id, next);
-			toast(next ? 'Added to liked songs' : 'Removed from liked songs');
-		} catch (e) {
-			rowLiked = !next; // revert on failure
-			if (isNow) playback.liked = !next;
-			toast(String(e));
-		}
-	}
+	const liked = $derived(isLiked(song));
 </script>
 
 <button class="{triggerClass} {menuOpen ? 'opacity-100' : ''}" onclick={openMenu} aria-label="Track options">
@@ -109,7 +91,7 @@
 		</button>
 		<button
 			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={(e) => run(e, toggleLike)}
+			onclick={(e) => run(e, () => toggleLike(song))}
 		>
 			<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4 {liked ? 'fill-current text-primary' : ''}" />
 			{liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
@@ -143,7 +125,7 @@
 					})
 				)}
 		>
-			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to Quick Picks
+			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to shortcuts
 		</button>
 		{#if onAdd}
 			<button

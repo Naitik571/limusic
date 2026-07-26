@@ -30,6 +30,10 @@ pub struct BrowseItem {
     pub subtitle: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<String>,
+    /// "3:47" — only on song rows from a list-style carousel (a card shelf carries none). Kept out
+    /// of `subtitle` so the queue and the scrobbler still get a clean artist string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<String>,
 }
 
 /// A titled row of cards on the home feed.
@@ -282,10 +286,10 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)
     {
-        return Some(BrowseItem { kind: browse_kind_from_id(bid), id: bid.to_owned(), title, subtitle, thumbnail });
+        return Some(BrowseItem { kind: browse_kind_from_id(bid), id: bid.to_owned(), title, subtitle, thumbnail, duration: None });
     }
     let vid = list_item_video_id(node)?;
-    Some(BrowseItem { kind: "song", id: vid, title, subtitle, thumbnail })
+    Some(BrowseItem { kind: "song", id: vid, title, subtitle, thumbnail, duration: None })
 }
 
 /// The primary match of a top-result card shelf.
@@ -304,13 +308,13 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
     if let Some(vid) =
         nav.and_then(|n| n.get("watchEndpoint")).and_then(|w| w.get("videoId")).and_then(Value::as_str)
     {
-        return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail });
+        return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail, duration: None });
     }
     let bid = nav
         .and_then(|n| n.get("browseEndpoint"))
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
-    Some(BrowseItem { kind: browse_kind_from_id(bid), id: bid.to_owned(), title, subtitle, thumbnail })
+    Some(BrowseItem { kind: browse_kind_from_id(bid), id: bid.to_owned(), title, subtitle, thumbnail, duration: None })
 }
 
 /// Parse an album (`MPRE…`) browse response. context/08.
@@ -496,6 +500,7 @@ fn parse_carousel_item(node: &Value) -> Option<BrowseItem> {
             title: song.title,
             subtitle: Some(song.artists).filter(|s| !s.is_empty()),
             thumbnail: song.thumbnail,
+            duration: song.duration,
         });
     }
     None
@@ -512,7 +517,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
     if let Some(vid) =
         nav.and_then(|n| n.get("watchEndpoint")).and_then(|w| w.get("videoId")).and_then(Value::as_str)
     {
-        return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail });
+        return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail, duration: None });
     }
     // Playlist via watchPlaylistEndpoint (some carousels expose the raw playlistId).
     if let Some(pid) = nav
@@ -526,6 +531,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
             title,
             subtitle,
             thumbnail,
+            duration: None,
         });
     }
     // Otherwise a browseEndpoint → playlist/album/artist by browseId prefix.
@@ -539,6 +545,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
         title,
         subtitle,
         thumbnail,
+        duration: None,
     })
 }
 
@@ -627,6 +634,25 @@ mod tests {
                             "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREc_xyz" } }
                         } }
                     ]
+                } },
+                // A list-style shelf ("Forgotten favourites", "Quick picks"): song rows, not cards.
+                { "musicCarouselShelfRenderer": {
+                    "header": { "musicCarouselShelfBasicHeaderRenderer": {
+                        "title": { "runs": [{ "text": "Forgotten favourites" }] }
+                    } },
+                    "contents": [
+                        { "musicResponsiveListItemRenderer": {
+                            "playlistItemData": { "videoId": "vid123" },
+                            "flexColumns": [
+                                { "musicResponsiveListItemFlexColumnRenderer": {
+                                    "text": { "runs": [{ "text": "Old Song" }] } } },
+                                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                                    { "text": "The Artist" }, { "text": " • " },
+                                    { "text": "The Album" }, { "text": " • " }, { "text": "3:47" }
+                                ] } } }
+                            ]
+                        } }
+                    ]
                 } }
             ] } }
         });
@@ -634,7 +660,7 @@ mod tests {
         assert_eq!(home.chips.len(), 1);
         assert_eq!(home.chips[0].title, "Workout");
         assert_eq!(home.chips[0].params, "ggNC0");
-        assert_eq!(home.sections.len(), 2);
+        assert_eq!(home.sections.len(), 3);
         let s = &home.sections[0];
         assert_eq!(s.title, "Mixed for you");
         assert_eq!(s.items.len(), 2);
@@ -650,6 +676,12 @@ mod tests {
         assert_eq!(s2.title, "Recommended albums");
         assert_eq!(s2.more_browse_id, None);
         assert_eq!(s2.more_params, None);
+        // A song row keeps artist and duration apart: the row shows both, the queue gets the artist.
+        let song = &home.sections[2].items[0];
+        assert_eq!(song.kind, "song");
+        assert_eq!(song.id, "vid123");
+        assert_eq!(song.subtitle.as_deref(), Some("The Artist"));
+        assert_eq!(song.duration.as_deref(), Some("3:47"));
         assert_eq!(home.continuation.as_deref(), Some("HOME_MORE"));
     }
 

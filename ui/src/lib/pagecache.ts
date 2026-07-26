@@ -1,7 +1,8 @@
 // Keyed in-memory cache for browse pages: show instantly on revisit, revalidate in background.
 // Data is copied into each page's own $state, so no reactivity is needed here.
 const TTL_MS = 5 * 60_000; // YouTube browse data is stable on this horizon
-const MAX_ENTRIES = 40;
+// Community cards each cache the playlist they preview, so a scrolled shelf alone can fill 20 slots.
+const MAX_ENTRIES = 80;
 
 const store = new Map<string, { data: unknown; at: number }>();
 

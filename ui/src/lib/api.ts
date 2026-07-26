@@ -63,6 +63,8 @@ export interface BrowseItem {
 	title: string;
 	subtitle?: string;
 	thumbnail?: string;
+	/** "3:47" — song items from a list-style shelf only (card shelves don't carry one). */
+	duration?: string;
 }
 
 export interface HomeSection {

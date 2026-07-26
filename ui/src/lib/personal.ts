@@ -1,4 +1,4 @@
-// Local personalization: the Quick Picks grid, sidebar pins, and the play-recency / top-artist
+// Local personalization: the home Shortcuts grid, sidebar pins, and the play-recency / top-artist
 // bookkeeping both of those need. Pure and rune-free on purpose — `personal.check.ts` runs it under
 // plain node (`node --experimental-strip-types`). The reactive wrapper and persistence live in
 // `player.svelte.ts`; nothing here touches storage, the network, or Svelte.
@@ -10,11 +10,12 @@ export const MAX_PINS = 3;
 const MAX_RECENT = 100;
 const MAX_ARTISTS = 100;
 
-/** A Quick Picks tile — always something the user added by hand. */
+/**
+  * A Shortcuts tile — always something the user added by hand. Array order in `picks` IS display
+  * order: the user arranges the grid by dragging, so nothing else may reshuffle it.
+  */
 export type Pick = BrowseItem & {
-	/** Fixed at insertion — drives display order, so tiles never move while you listen. */
-	addedAt: number;
-	/** Bumped on every play/click — drives eviction only. */
+	/** Bumped on every play/click — drives eviction only, never order. */
 	lastUsedAt: number;
 };
 
@@ -54,22 +55,48 @@ export function hydrate(raw: unknown): Personal {
 	return base;
 }
 
-// --- Quick Picks -------------------------------------------------------------------------------
+// --- Shortcuts grid -------------------------------------------------------------------------------
 
-/** Add. Returns false when it was already on the grid (its recency is refreshed instead). */
+/** Append. Returns false when it was already on the grid (its recency is refreshed instead). */
 export function addPick(p: Personal, item: BrowseItem, now = Date.now()): boolean {
 	const existing = p.picks.find((x) => x.id === item.id);
 	if (existing) {
 		existing.lastUsedAt = now;
 		return false;
 	}
-	// Full: drop the tile the user has gone longest without playing or opening.
-	if (p.picks.length >= MAX_PICKS) {
+	p.picks.push({ ...item, lastUsedAt: now });
+	evictStalest(p);
+	return true;
+}
+
+/**
+ * Where a drag lands: put `item` immediately before `beforeId`, or at the end when it's null.
+ * Handles both jobs the grid needs — moving a tile already on it, and taking one dropped in from a
+ * shelf. Addressing the drop by neighbour rather than by index keeps a rightward move off by one.
+ */
+export function placePick(
+	p: Personal,
+	item: BrowseItem,
+	beforeId: string | null,
+	now = Date.now()
+): void {
+	if (beforeId === item.id) return; // dropped on itself
+	const existing = p.picks.find((x) => x.id === item.id);
+	const rest = p.picks.filter((x) => x.id !== item.id);
+	const tile: Pick = existing ?? { ...item, lastUsedAt: now };
+	const at = beforeId ? rest.findIndex((x) => x.id === beforeId) : -1;
+	if (at < 0) rest.push(tile);
+	else rest.splice(at, 0, tile);
+	p.picks = rest;
+	evictStalest(p);
+}
+
+/** Over capacity: drop the tile the user has gone longest without playing or opening. */
+function evictStalest(p: Personal): void {
+	while (p.picks.length > MAX_PICKS) {
 		const stalest = p.picks.reduce((a, b) => (b.lastUsedAt < a.lastUsedAt ? b : a));
 		p.picks = p.picks.filter((x) => x !== stalest);
 	}
-	p.picks.push({ ...item, addedAt: now, lastUsedAt: now });
-	return true;
 }
 
 export function removePick(p: Personal, id: string): void {
@@ -85,11 +112,6 @@ export function touchPick(p: Personal, id: string, now = Date.now()): boolean {
 	if (!hit) return false;
 	hit.lastUsedAt = now;
 	return true;
-}
-
-/** Display order: the order they were added. Stable — independent of `lastUsedAt`. */
-export function orderedPicks(p: Personal): Pick[] {
-	return [...p.picks].sort((a, b) => a.addedAt - b.addedAt);
 }
 
 // --- Sidebar pins + ordering -------------------------------------------------------------------

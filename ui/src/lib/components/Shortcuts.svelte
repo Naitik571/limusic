@@ -1,0 +1,222 @@
+<script lang="ts">
+	// The home grid the user curates (was "Quick Picks" — renamed: YouTube Music has a shelf by that
+	// name and it isn't this one). Nothing is ever auto-added; it holds exactly what was put in it, in
+	// the order it was dragged into. Unlike before it renders even when empty — a section that hides
+	// itself is a section nobody discovers. Logic in $lib/personal.ts.
+	//
+	// Not square cards: these were 5.5rem tiles and every label came out as "アプソリュ…" over a
+	// subtitle that was "Simo Hypers •…" fifteen times. A shortcut is a thing you already know, so
+	// what it owes you is its *name* at a size you can read, not another piece of cover art competing
+	// with the shelves below. Hence wide tiles with the art flush to the leading edge — four to a row
+	// instead of seven, and the title gets four times the width.
+	//
+	// ponytail: drag is the only way to reorder (no keyboard equivalent). Add/remove/open all work
+	// from the keyboard; wire arrow-key moves onto the tiles if anyone actually needs it.
+	import { flip } from 'svelte/animate';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import {
+		Cancel01Icon,
+		Add01Icon,
+		PlayIcon,
+		MusicNote01Icon,
+		UserIcon
+	} from '@hugeicons/core-free-icons';
+	import ShortcutPicker from './ShortcutPicker.svelte';
+	import type { BrowseItem } from '$lib/api';
+	import { thumb } from '$lib/thumb';
+	import { openItem, playItem } from '$lib/browse';
+	import { personal, placePick, removePick } from '$lib/player.svelte';
+	import { MAX_PICKS } from '$lib/personal';
+	import { getDragItem, isDragItem, setDragItem } from '$lib/dnd';
+
+	const picks = $derived(personal.picks);
+	let picking = $state(false);
+	// Where a drop would land: the id of the tile it goes in front of, `null` for the end of the grid,
+	// `undefined` when no drag of ours is over the section at all.
+	let before = $state<string | null | undefined>(undefined);
+	let busy = $state<string | null>(null); // id of the tile whose fetch-then-play is in flight
+	// Google's CDN 404s some rewritten sizes; a dead thumb degrades to a placeholder icon rather than
+	// the browser's broken-image glyph.
+	let failed = $state<Record<string, boolean>>({});
+
+	// One handler for the whole section: the tile under the cursor carries its id in `data-pick`, so
+	// hovering anywhere else (a gap, the header, the empty dropzone) means "append".
+	const targetId = (e: DragEvent) =>
+		(e.target as HTMLElement | null)?.closest('[data-pick]')?.getAttribute('data-pick') ?? null;
+
+	function over(e: DragEvent) {
+		if (!isDragItem(e)) return; // a file or a link — leave it to the page
+		e.preventDefault(); // required, or the drop is refused
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		before = targetId(e);
+	}
+
+	function drop(e: DragEvent) {
+		const beforeId = before ?? targetId(e);
+		before = undefined;
+		const item = getDragItem(e);
+		if (!item) return;
+		e.preventDefault();
+		placePick(item, beforeId);
+	}
+
+	async function play(item: BrowseItem) {
+		if (busy) return;
+		busy = item.id;
+		try {
+			await playItem(item);
+		} finally {
+			busy = null;
+		}
+	}
+</script>
+
+<section>
+	<div class="mb-3 flex items-baseline justify-between gap-3">
+		<h2 class="font-heading text-lg font-semibold">Shortcuts</h2>
+		{#if picks.length && picks.length < MAX_PICKS}
+			<!-- Adding is an action, not a tile: as a trailing "+" square it left a dashed hole at the
+			     end of the grid forever, and a ragged one whenever the last row was short. -->
+			<button
+				onclick={() => (picking = true)}
+				class="flex shrink-0 cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+			>
+				<HugeiconsIcon icon={Add01Icon} class="h-3.5 w-3.5" />
+				Add
+			</button>
+		{/if}
+	</div>
+
+	<div
+		role="group"
+		aria-label="Shortcuts"
+		ondragover={over}
+		ondrop={drop}
+		ondragleave={(e) => {
+			// Only when the pointer leaves the section itself, not on every hop between its children.
+			if (!e.currentTarget.contains(e.relatedTarget as Node)) before = undefined;
+		}}
+	>
+		{#if !picks.length}
+			<!-- Empty: one wide drop target, not a heading plus a paragraph plus a row of ghost tiles.
+			     This sits at the top of home for anyone who never uses the feature, so it earns its
+			     space by being a single line and an obvious place to drop something. -->
+			<button
+				onclick={() => (picking = true)}
+				class="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 text-left transition-colors hover:border-foreground/30 hover:bg-accent/5 {before ===
+				null
+					? 'border-primary bg-accent/5'
+					: ''}"
+			>
+				<span
+					class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed text-muted-foreground"
+				>
+					<HugeiconsIcon icon={Add01Icon} class="h-5 w-5" />
+				</span>
+				<span class="min-w-0">
+					<span class="block text-sm font-medium">Add a shortcut</span>
+					<span class="block text-xs text-muted-foreground">
+						Whatever you reach for most, one click from home. Drag any card here, or pick from your
+						library.
+					</span>
+				</span>
+			</button>
+		{:else}
+			<div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
+				{#each picks as item (item.id)}
+					{@const round = item.kind === 'artist'}
+					<!-- group/pick, not `group`: nested unnamed groups would fire each other's hovers. -->
+					<div class="group/pick relative" data-pick={item.id} animate:flip={{ duration: 200 }}>
+						<!-- Where the drop lands: a bar down the leading edge of the tile it goes in front of. -->
+						{#if before === item.id}
+							<div class="absolute -left-1 bottom-0 top-0 z-20 w-0.5 rounded-full bg-primary"></div>
+						{/if}
+						<div
+							class="flex h-16 cursor-pointer items-center gap-3 overflow-hidden rounded-xl border bg-card/40 text-left transition-colors hover:border-foreground/20 hover:bg-card"
+							role="button"
+							tabindex="0"
+							draggable="true"
+							ondragstart={(e) => setDragItem(e, item)}
+							onclick={() => openItem(item)}
+							onkeydown={(e) => {
+								if (e.target !== e.currentTarget) return;
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									openItem(item);
+								}
+							}}
+							title={item.subtitle ? `${item.title} — ${item.subtitle}` : item.title}
+						>
+							<!-- Art bleeds into the tile's leading edge (a circle can't, so an artist's is
+							     inset). Play lives *on* the cover rather than as a third control on the right:
+							     no reserved gutter, and it puts the action where the eye already is. -->
+							<div
+								class="relative shrink-0 overflow-hidden bg-muted {round
+									? 'my-2 ml-2 h-12 w-12 rounded-full'
+									: 'h-16 w-16'}"
+							>
+								{#if item.thumbnail && !failed[item.id]}
+									<img
+										src={thumb(item.thumbnail, 400)}
+										alt=""
+										class="h-full w-full object-cover"
+										loading="lazy"
+										draggable="false"
+										onerror={() => (failed = { ...failed, [item.id]: true })}
+									/>
+								{:else}
+									<div class="flex h-full w-full items-center justify-center text-muted-foreground/50">
+										<HugeiconsIcon icon={round ? UserIcon : MusicNote01Icon} class="h-5 w-5" />
+									</div>
+								{/if}
+								{#if !round}
+									<button
+										class="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/50 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover/pick:opacity-100"
+										class:animate-pulse={busy === item.id}
+										disabled={busy === item.id}
+										aria-label="Play {item.title}"
+										onclick={(e) => {
+											e.stopPropagation();
+											play(item);
+										}}
+									>
+										<HugeiconsIcon icon={PlayIcon} class="h-5 w-5" />
+									</button>
+								{/if}
+							</div>
+							<!-- pr-8 keeps the title clear of the remove button that appears in the corner. -->
+							<div class="min-w-0 flex-1 pr-8">
+								<div class="truncate text-sm font-medium">{item.title}</div>
+								{#if item.subtitle}
+									<div class="truncate text-xs text-muted-foreground">{item.subtitle}</div>
+								{/if}
+							</div>
+						</div>
+						<button
+							onclick={() => removePick(item.id)}
+							title="Remove from shortcuts"
+							aria-label="Remove from shortcuts"
+							class="absolute right-1 top-1 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/pick:opacity-100"
+						>
+							<HugeiconsIcon icon={Cancel01Icon} class="h-3 w-3" />
+						</button>
+					</div>
+				{/each}
+
+				<!-- The append slot only exists while a drag is actually heading for the end of the grid,
+				     so nothing dangles off the last row the rest of the time. -->
+				{#if before === null && picks.length < MAX_PICKS}
+					<div
+						class="flex h-16 items-center justify-center rounded-xl border border-dashed border-primary text-xs font-medium text-primary"
+					>
+						Add to the end
+					</div>
+				{/if}
+			</div>
+		{/if}
+	</div>
+</section>
+
+{#if picking}
+	<ShortcutPicker onclose={() => (picking = false)} />
+{/if}

@@ -155,7 +155,7 @@
 		}
 	}
 
-	// This playlist as a card, for the sidebar's last-played sort and the Quick Picks grid.
+	// This playlist as a card, for the sidebar's last-played sort and the Shortcuts grid.
 	const asItem = (): BrowseItem => ({
 		kind: 'playlist',
 		id,
@@ -416,7 +416,7 @@
 			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 			onclick={() => run(() => addPick(asItem()))}
 		>
-			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to Quick Picks
+			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to shortcuts
 		</button>
 		{#if editable}
 			<button

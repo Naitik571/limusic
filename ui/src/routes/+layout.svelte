@@ -7,6 +7,7 @@
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { initTheme } from '$lib/theme.svelte';
+	import { dragScroll } from '$lib/dnd';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
 	import ResizeBorders from '$lib/components/ResizeBorders.svelte';
@@ -58,7 +59,9 @@
 	<!-- relative: lets QueuePanel overlay the content on narrow windows (see QueuePanel). -->
 	<div class="relative flex min-h-0 flex-1">
 		<Sidebar />
-		<main class="min-w-0 flex-1 overflow-y-auto">
+		<!-- dragScroll: dragging a card up to home's Shortcuts grid has to be possible from anywhere in
+		     the feed, so aiming at the top edge scrolls this container while the drag is in flight. -->
+		<main class="min-w-0 flex-1 overflow-y-auto" {@attach dragScroll}>
 			<!-- Remount the current page on sign-in/out so it refetches with the new account. -->
 			{#key auth.epoch}
 				{@render children()}

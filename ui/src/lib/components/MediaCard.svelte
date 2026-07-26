@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { PlayIcon, MusicNote01Icon, UserIcon } from '@hugeicons/core-free-icons';
-	import * as api from '$lib/api';
-	import type { BrowseItem, SongItem } from '$lib/api';
+	import type { BrowseItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
-	import { openAddToPlaylist, playFrom, toast, touchPick } from '$lib/player.svelte';
+	import { setDragItem } from '$lib/dnd';
+	import { asSong, openItem, playItem } from '$lib/browse';
+	import { openAddToPlaylist } from '$lib/player.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import PlaylistMenu from './PlaylistMenu.svelte';
 
@@ -26,54 +26,14 @@
 	const src = $derived(attempt === 0 ? sized : item.thumbnail);
 	// Skip the retry when `thumb` left the URL untouched — it would refetch the same dead URL.
 	const imgFailed = () => (attempt = attempt === 0 && sized !== item.thumbnail ? 1 : 2);
-	// Song cards get the same ⋯ menu as list rows (Add to queue / like) — the card shape it maps to.
-	const asSong = (i: BrowseItem): SongItem => ({
-		video_id: i.id,
-		title: i.title,
-		artists: i.subtitle ?? '',
-		thumbnail: i.thumbnail
-	});
-
-	function activate() {
-		// A click counts as "used" for Quick Picks eviction, wherever the card lives. No-op unless
-		// this item is actually on the grid.
-		touchPick(item.id);
-		if (item.kind === 'song') {
-			api.play({
-				video_id: item.id,
-				title: item.title,
-				artists: item.subtitle ?? '',
-				thumbnail: item.thumbnail
-			});
-		} else if (item.kind === 'artist') {
-			goto(`/artist/${encodeURIComponent(item.id)}`);
-		} else if (item.kind === 'album') {
-			goto(`/album/${encodeURIComponent(item.id)}`);
-		} else {
-			goto(`/playlist/${encodeURIComponent(item.id)}`);
-		}
-	}
 
 	let playing = $state(false); // in-flight guard for the fetch-then-play path
 
 	async function playNow() {
-		touchPick(item.id);
-		if (item.kind === 'song') {
-			api.play(asSong(item));
-			return;
-		}
 		if (playing) return;
 		playing = true;
 		try {
-			if (item.kind === 'album') {
-				const album = await api.getAlbum(item.id);
-				await playFrom(item, album.items, null, album.playlistId ?? undefined);
-			} else {
-				const pl = await api.getPlaylist(item.id);
-				await playFrom(item, pl.items, null, item.id);
-			}
-		} catch (e) {
-			toast('Could not play — try opening it instead');
+			await playItem(item);
 		} finally {
 			playing = false;
 		}
@@ -81,18 +41,21 @@
 </script>
 
 <div class="group relative flex w-full flex-col gap-2">
+	<!-- draggable: every card is a drag source for home's Shortcuts grid (the only drop target). -->
 	<div
 		class="flex flex-col text-left transition-colors hover:bg-accent/10 {compact
 			? 'gap-1.5 rounded-lg p-1.5'
 			: 'gap-2 rounded-xl p-2'}"
 		role="button"
 		tabindex="0"
-		onclick={activate}
+		draggable="true"
+		ondragstart={(e) => setDragItem(e, item)}
+		onclick={() => openItem(item)}
 		onkeydown={(e) => {
 			if (e.target !== e.currentTarget) return;
 			if (e.key === 'Enter' || e.key === ' ') {
 				e.preventDefault();
-				activate();
+				openItem(item);
 			}
 		}}
 		title={item.subtitle ? `${item.title} — ${item.subtitle}` : item.title}
@@ -108,6 +71,7 @@
 					alt=""
 					class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
 					loading="lazy"
+					draggable="false"
 					onerror={imgFailed}
 				/>
 			{:else}

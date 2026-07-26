@@ -75,8 +75,8 @@ export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 	});
 }
 
-// --- Personalization: Quick Picks, sidebar pins, play recency (see personal.ts) -----------------
-// The Quick Picks grid holds only what the user puts in it — nothing is ever auto-added.
+// --- Personalization: the Shortcuts grid, sidebar pins, play recency (see personal.ts) ----------
+// The Shortcuts grid holds only what the user puts in it — nothing is ever auto-added.
 // localStorage rather than SQLite: only the webview ever reads this, so a table + commands + a
 // `UI_SETTINGS` allowlist entry would buy nothing. Loaded at module scope (guarded like the layout's
 // `initTheme`) so the sidebar and home grid render sorted on the very first paint.
@@ -102,11 +102,18 @@ function savePersonal() {
 	}
 }
 
-/** Add to Quick Picks (evicting the tile gone longest unplayed when the grid is full). */
+/** Add to Shortcuts (evicting the tile gone longest unplayed when the grid is full). */
 export function addPick(item: BrowseItem) {
 	const added = pl.addPick(personal, item);
 	savePersonal();
-	toast(added ? 'Added to Quick Picks' : 'Already in Quick Picks');
+	toast(added ? 'Added to shortcuts' : 'Already in shortcuts');
+}
+
+/** Drop landed: move (or add) a tile so it sits before `beforeId` — null appends. No toast: the
+ *  grid rearranging under the cursor is its own feedback. */
+export function placePick(item: BrowseItem, beforeId: string | null) {
+	pl.placePick(personal, item, beforeId);
+	savePersonal();
 }
 
 export function removePick(id: string) {
@@ -126,9 +133,36 @@ export function togglePin(id: string) {
 	return result;
 }
 
+// Like state that outlives one row. A song's `liked` flag is a snapshot from whenever its page was
+// fetched, and the same song shows up in several places at once (a list row, its ⋯ menu, the player
+// bar). One override map keyed by videoId keeps them all telling the same story; the current track
+// stays owned by `playback.liked`, which the Rust side reseeds on every track change.
+const likedSongs = $state<Record<string, boolean>>({});
+
+export function isLiked(song: SongItem): boolean {
+	if (playback.now?.videoId === song.video_id) return playback.liked;
+	return likedSongs[song.video_id] ?? song.liked ?? false;
+}
+
+/** Optimistic like toggle, reverted if YouTube rejects it. */
+export async function toggleLike(song: SongItem) {
+	const next = !isLiked(song);
+	const isNow = playback.now?.videoId === song.video_id;
+	likedSongs[song.video_id] = next;
+	if (isNow) playback.liked = next;
+	try {
+		await api.like(song.video_id, next);
+		toast(next ? 'Added to liked songs' : 'Removed from liked songs');
+	} catch (e) {
+		likedSongs[song.video_id] = !next;
+		if (isNow) playback.liked = !next;
+		toast(String(e));
+	}
+}
+
 /**
  * Play a playlist/album/artist and record that it was played, which is what sorts the sidebar and
- * seeds Quick Picks. Every "play these tracks from somewhere" call site goes through this.
+ * seeds Shortcuts. Every "play these tracks from somewhere" call site goes through this.
  * `sourceId` (playlist/album pages only) points autoplay at that context's radio.
  */
 export function playFrom(
@@ -195,7 +229,7 @@ export function initApp(): () => void {
 			playback.now = n;
 			playback.liked = n.liked ?? false; // reflect the track's real like status when known
 			playback.error = null; // a track started → clear any stale dead-end banner
-			// Feeds Quick Picks recency and the community shelf's artist seed. Every play lands here,
+			// Feeds Shortcuts recency and the community shelf's artist seed. Every play lands here,
 			// gapless advances included, so it's the one hook that sees them all.
 			pl.touchPick(personal, n.videoId);
 			if (n.artists) pl.noteArtist(personal, n.artistId ?? n.artists, pl.firstArtist(n.artists));

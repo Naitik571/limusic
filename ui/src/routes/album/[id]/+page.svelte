@@ -78,7 +78,7 @@
         if (id) load(id);
     });
 
-    // This album as a card, for the sidebar's last-played sort and the Quick Picks grid.
+    // This album as a card, for the sidebar's last-played sort and the Shortcuts grid.
     const asItem = (): BrowseItem => ({
         kind: "album",
         id,
@@ -275,7 +275,7 @@
                             <HugeiconsIcon
                                 icon={DashboardSquare02Icon}
                                 class="h-4 w-4"
-                            /> Add to Quick Picks
+                            /> Add to shortcuts
                         </button>
                     </div>
                 {/if}
