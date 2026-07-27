@@ -287,6 +287,18 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
     Ok(items)
 }
 
+#[tauri::command]
+pub async fn get_library_albums(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
+    let client = metadata_client(&state)?;
+    state.it.library_albums(client).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_library_artists(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
+    let client = metadata_client(&state)?;
+    state.it.library_artists(client).await.map_err(|e| e.to_string())
+}
+
 /// A playlist or album page. `id` is the browseId (`VL…` / `MPRE…`); Liked Songs is `VLLM`, and
 /// `LIMUSIC_ON_REPEAT` is the local auto-playlist rather than anything YouTube knows about.
 #[tauri::command]
@@ -392,6 +404,14 @@ fn require_login(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, Str
 pub async fn like(state: St<'_>, video_id: String, liked: bool) -> Result<(), String> {
     let client = require_login(&state)?;
     state.it.like(client, &video_id, liked).await.map_err(|e| e.to_string())
+}
+
+/// Save an album to the library, or remove it. `playlist_id` is the album's `OLAK5uy_…`
+/// (`AlbumPage.playlistId`).
+#[tauri::command]
+pub async fn set_album_saved(state: St<'_>, playlist_id: String, saved: bool) -> Result<(), String> {
+    let client = require_login(&state)?;
+    state.it.like_playlist(client, &playlist_id, saved).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

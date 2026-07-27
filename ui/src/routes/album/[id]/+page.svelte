@@ -8,6 +8,8 @@
         ShuffleIcon,
         PlayListAddIcon,
         DashboardSquare02Icon,
+        BookmarkAdd02Icon,
+        BookmarkCheck02Icon,
     } from "@hugeicons/core-free-icons";
     import TrackRow from "$lib/components/TrackRow.svelte";
     import TrackRowSkeleton from "$lib/components/TrackRowSkeleton.svelte";
@@ -17,9 +19,11 @@
     import type { AlbumPage, BrowseItem } from "$lib/api";
     import {
         addPick,
+        auth,
         playback,
         openAddManyToPlaylist,
         playFrom,
+        toast,
     } from "$lib/player.svelte";
     import { getCached, putCached } from "$lib/pagecache";
 
@@ -96,6 +100,27 @@
         // Real order + shuffle flag — the backend shuffles (fresh each time, restorable).
         playFrom(asItem(), album.items, null, album.playlistId, true);
     }
+    // Saving an album to the library is a "like" on its audio playlist. Optimistic: the button
+    // flips now and reverts if YouTube rejects it. Mutating `album` also updates the page cache,
+    // which holds this same object.
+    let savingLibrary = $state(false);
+    async function toggleLibrary() {
+        const a = album;
+        if (!a?.playlistId || savingLibrary) return;
+        const next = !a.inLibrary;
+        a.inLibrary = next;
+        savingLibrary = true;
+        try {
+            await api.setAlbumSaved(a.playlistId, next);
+            toast(next ? "Saved to library" : "Removed from library");
+        } catch (e) {
+            a.inLibrary = !next;
+            toast(String(e));
+        } finally {
+            savingLibrary = false;
+        }
+    }
+
     function saveToPlaylist() {
         if (!album?.items.length) return;
         menuOpen = false;
@@ -239,6 +264,24 @@
                 >
                     <HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle
                 </button>
+                {#if auth.account?.signedIn && album.playlistId}
+                    <button
+                        class="flex cursor-pointer items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition hover:bg-accent/10 disabled:opacity-50"
+                        class:border-primary={album.inLibrary}
+                        class:text-primary={album.inLibrary}
+                        onclick={toggleLibrary}
+                        disabled={savingLibrary}
+                    >
+                        <!-- altIcon/showAlt, not a ternary: `icon` is read once at mount. -->
+                        <HugeiconsIcon
+                            icon={BookmarkAdd02Icon}
+                            altIcon={BookmarkCheck02Icon}
+                            showAlt={album.inLibrary}
+                            class="h-4 w-4"
+                        />
+                        {album.inLibrary ? "In library" : "Save to library"}
+                    </button>
+                {/if}
                 <button
                     class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent/10 hover:text-foreground"
                     onclick={() => (menuOpen = !menuOpen)}

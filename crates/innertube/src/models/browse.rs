@@ -135,8 +135,11 @@ pub struct AlbumPage {
     pub thumbnail: Option<String>,
     pub items: Vec<SongItem>,
     pub continuation: Option<String>,
-    /// The album's audio playlist id (`OLAK5uy_…`) — the radio seed for autoplay continuation.
+    /// The album's audio playlist id (`OLAK5uy_…`) — the radio seed for autoplay continuation and
+    /// the target of the library save (an album in your library is a "like" on this playlist).
     pub playlist_id: Option<String>,
+    /// Whether the album is already saved to the signed-in user's library.
+    pub in_library: bool,
 }
 
 /// Parse a `FEmusic_home` response into filter chips + titled carousel sections. context/08.
@@ -177,9 +180,19 @@ pub fn parse_home(root: &Value) -> HomePage {
     HomePage { chips, sections, continuation: continuation_token(root) }
 }
 
-/// Parse a `FEmusic_liked_playlists` response into a flat grid of playlist cards. context/08.
+/// Parse a `FEmusic_liked_*` response into a flat grid of cards. context/08. Playlists and albums
+/// come back as a grid of two-row cards; library artists come back as a shelf of list rows
+/// instead, so fall back to those when the grid is empty.
 pub fn parse_library(root: &Value) -> Vec<BrowseItem> {
-    find_all(root, "musicTwoRowItemRenderer").into_iter().filter_map(parse_two_row_item).collect()
+    let cards: Vec<BrowseItem> =
+        find_all(root, "musicTwoRowItemRenderer").into_iter().filter_map(parse_two_row_item).collect();
+    if !cards.is_empty() {
+        return cards;
+    }
+    find_all(root, "musicResponsiveListItemRenderer")
+        .into_iter()
+        .filter_map(list_item_to_browse_item)
+        .collect()
 }
 
 /// Parse a playlist/album (`VL…` / `MPRE…`) browse response. context/08.
@@ -286,7 +299,8 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)
     {
-        return Some(BrowseItem { kind: browse_kind_from_id(bid), id: bid.to_owned(), title, subtitle, thumbnail, duration: None });
+        let (kind, id) = browse_target(bid);
+        return Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None });
     }
     let vid = list_item_video_id(node)?;
     Some(BrowseItem { kind: "song", id: vid, title, subtitle, thumbnail, duration: None })
@@ -314,7 +328,8 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
         .and_then(|n| n.get("browseEndpoint"))
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
-    Some(BrowseItem { kind: browse_kind_from_id(bid), id: bid.to_owned(), title, subtitle, thumbnail, duration: None })
+    let (kind, id) = browse_target(bid);
+    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None })
 }
 
 /// Parse an album (`MPRE…`) browse response. context/08.
@@ -360,8 +375,27 @@ pub fn parse_album(root: &Value) -> AlbumPage {
         thumbnail,
         items,
         continuation: continuation_token(root),
-        playlist_id: album_playlist_id(root),
+        // Track rows carry the OLAK id; an album with no playable rows still has it on the
+        // header's save-to-library button.
+        playlist_id: album_playlist_id(root).or_else(|| library_toggle_playlist_id(header)),
+        in_library: library_toggle(header).is_some_and(|t| {
+            t.get("isToggled").and_then(Value::as_bool).unwrap_or(false)
+        }),
     }
+}
+
+/// The header's save-to-library `toggleButtonRenderer` — the one whose action is a `likeEndpoint`
+/// on the album's playlist (the header's other buttons are play/menu). Saving an album to the
+/// library IS a like on its `OLAK5uy_` playlist; `isToggled` is the current state. Live-verified
+/// 2026-07.
+fn library_toggle(header: Option<&Value>) -> Option<&Value> {
+    find_all(header?, "toggleButtonRenderer")
+        .into_iter()
+        .find(|t| !find_all(t, "likeEndpoint").is_empty())
+}
+
+fn library_toggle_playlist_id(header: Option<&Value>) -> Option<String> {
+    find_first_str(library_toggle(header)?, "playlistId")
 }
 
 /// Per-track "this row links the music video, not the album audio" flags, aligned with
@@ -539,14 +573,8 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
         .and_then(|n| n.get("browseEndpoint"))
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
-    Some(BrowseItem {
-        kind: browse_kind_from_id(browse_id),
-        id: browse_id.to_owned(),
-        title,
-        subtitle,
-        thumbnail,
-        duration: None,
-    })
+    let (kind, id) = browse_target(browse_id);
+    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None })
 }
 
 /// Classify a browseId: albums are `MPRE…`, artist/user channels are `UC…`, everything else
@@ -559,6 +587,14 @@ fn browse_kind_from_id(id: &str) -> &'static str {
     } else {
         "playlist"
     }
+}
+
+/// A browseId as the UI should store it: kind plus the id to navigate with. Library-artist rows
+/// link `MPLA` + the channelId (the "artist, filtered to your library" page); strip the prefix so
+/// they open the normal artist page like every other artist card. context/08.
+fn browse_target(id: &str) -> (&'static str, String) {
+    let id = id.strip_prefix("MPLA").unwrap_or(id);
+    (browse_kind_from_id(id), id.to_owned())
 }
 
 /// The playlist/album header node — recursion finds the detail renderer even when it's wrapped in
@@ -726,6 +762,28 @@ mod tests {
         assert!(items.iter().all(|i| i.kind == "playlist"));
         assert_eq!(items[0].id, "VLPLchill");
         assert_eq!(items[0].subtitle.as_deref(), Some("12 songs"));
+    }
+
+    /// Library artists come back as a shelf of list rows (no grid), and each links `MPLA` + the
+    /// channelId — which has to become a plain `UC…` artist card.
+    #[test]
+    fn parses_library_artists_shelf() {
+        let root = json!({
+            "musicShelfRenderer": { "contents": [
+                { "musicResponsiveListItemRenderer": {
+                    "flexColumns": [
+                        { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Yuki Kajiura" }] } } },
+                        { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "181 songs" }] } } }
+                    ],
+                    "navigationEndpoint": { "browseEndpoint": { "browseId": "MPLAUCkajiura" } }
+                } }
+            ] }
+        });
+        let items = parse_library(&root);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, "artist");
+        assert_eq!(items[0].id, "UCkajiura");
+        assert_eq!(items[0].subtitle.as_deref(), Some("181 songs"));
     }
 
     #[test]
@@ -950,6 +1008,28 @@ mod tests {
         assert_eq!(a.items[0].thumbnail.as_deref(), Some("cover_big.jpg"));
         // The album's own OLAK id from the track rows — never the carousel's other-album id.
         assert_eq!(a.playlist_id.as_deref(), Some("OLAK5uy_iceman"));
+        assert!(!a.in_library); // no save button in this fixture
+    }
+
+    /// The header's save-to-library toggle: `isToggled` is the state, and its like target carries
+    /// the OLAK id even when no track row does (an album with nothing playable).
+    #[test]
+    fn reads_album_library_toggle() {
+        let header = |toggled: bool| {
+            json!({ "header": { "musicResponsiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Saved" }] },
+                "buttons": [{ "toggleButtonRenderer": {
+                    "isToggled": toggled,
+                    "defaultServiceEndpoint": { "likeEndpoint": {
+                        "status": "LIKE", "target": { "playlistId": "OLAK5uy_saved" }
+                    } }
+                } }]
+            } } })
+        };
+        let a = parse_album(&header(true));
+        assert!(a.in_library);
+        assert_eq!(a.playlist_id.as_deref(), Some("OLAK5uy_saved"));
+        assert!(!parse_album(&header(false)).in_library);
     }
 
     #[test]

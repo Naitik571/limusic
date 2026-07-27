@@ -130,8 +130,10 @@ export interface AlbumPage {
 	thumbnail?: string;
 	items: SongItem[];
 	continuation?: string;
-	/** The album's audio playlist id (`OLAK5uy_…`) — autoplay's radio seed for this album. */
+	/** The album's audio playlist id (`OLAK5uy_…`) — autoplay's radio seed, and the save target. */
 	playlistId?: string;
+	/** Already saved to the signed-in user's library. */
+	inLibrary: boolean;
 }
 
 export interface ArtistPage {
@@ -190,6 +192,8 @@ export const loginWebview = () => invoke<void>('login_webview');
 export const getHome = (params?: string) => invoke<HomePage>('get_home', { params });
 export const getHomeMore = (token: string) => invoke<HomePage>('get_home_more', { token });
 export const getLibrary = () => invoke<BrowseItem[]>('get_library');
+export const getLibraryAlbums = () => invoke<BrowseItem[]>('get_library_albums');
+export const getLibraryArtists = () => invoke<BrowseItem[]>('get_library_artists');
 export const getPlaylist = (id: string) => invoke<PlaylistPage>('get_playlist', { id });
 export const getPlaylistMore = (token: string) =>
 	invoke<PlaylistContinuation>('get_playlist_more', { token });
@@ -225,6 +229,9 @@ export const deletePlaylist = (playlistId: string) =>
 	invoke<void>('delete_playlist', { playlistId });
 export const subscribe = (channelId: string, subscribed: boolean) =>
 	invoke<void>('subscribe', { channelId, subscribed });
+/** Save an album to the library (or remove it). `playlistId` is `AlbumPage.playlistId`. */
+export const setAlbumSaved = (playlistId: string, saved: boolean) =>
+	invoke<void>('set_album_saved', { playlistId, saved });
 
 // --- events (context/11). Each returns an unlisten fn; call it on component teardown. --------
 export const onNowPlaying = (cb: (n: NowPlaying) => void): Promise<UnlistenFn> =>

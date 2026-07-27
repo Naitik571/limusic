@@ -225,6 +225,20 @@ impl InnerTube {
         Ok(browse::parse_library(&value))
     }
 
+    /// Saved albums grid (`FEmusic_liked_albums`). context/08. Needs login.
+    pub async fn library_albums(&self, client: &YouTubeClient) -> Result<Vec<BrowseItem>, Error> {
+        let value = self.browse(client, Some("FEmusic_liked_albums"), None).await?;
+        Ok(browse::parse_library(&value))
+    }
+
+    /// Library artists (`FEmusic_library_corpus_track_artists`) — the artists behind the songs and
+    /// albums in your library, which is what YouTube Music's own Artists tab shows (subscriptions
+    /// live under `FEmusic_library_corpus_artists`). context/08. Needs login.
+    pub async fn library_artists(&self, client: &YouTubeClient) -> Result<Vec<BrowseItem>, Error> {
+        let value = self.browse(client, Some("FEmusic_library_corpus_track_artists"), None).await?;
+        Ok(browse::parse_library(&value))
+    }
+
     /// A playlist or album page by browseId (`VL…` / `MPRE…`). context/08.
     pub async fn playlist(
         &self,
@@ -358,6 +372,34 @@ impl InnerTube {
         let body = LikeBody {
             context: self.context_for(client),
             target: Target { video_id: video_id.to_owned() },
+        };
+        self.post(path, client, &body, true).await?;
+        Ok(())
+    }
+
+    /// Save an album/playlist to the library, or remove it. Same `like` endpoint as a track, with
+    /// a playlist target: for an album pass its `OLAK5uy_…` audio playlist id. Live-verified.
+    pub async fn like_playlist(
+        &self,
+        client: &YouTubeClient,
+        playlist_id: &str,
+        liked: bool,
+    ) -> Result<(), Error> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LikeBody {
+            context: Context,
+            target: Target,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Target {
+            playlist_id: String,
+        }
+        let path = if liked { "like/like" } else { "like/removelike" };
+        let body = LikeBody {
+            context: self.context_for(client),
+            target: Target { playlist_id: strip_vl(playlist_id).to_owned() },
         };
         self.post(path, client, &body, true).await?;
         Ok(())

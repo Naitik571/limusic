@@ -5,19 +5,50 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import MediaCard from '$lib/components/MediaCard.svelte';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import * as api from '$lib/api';
+	import type { BrowseItem } from '$lib/api';
 	import { auth, toast, library, loadLibrary, createLibraryPlaylist } from '$lib/player.svelte';
 
 	let dialogOpen = $state(false);
 	let newTitle = $state('');
 	let busy = $state(false);
+	let tab = $state('all');
 
-	// Shared library state (see player.svelte) — kept in sync with the sidebar list. Refresh on visit.
+	// Playlists live in the shared `library` store (the sidebar renders them too). Albums and
+	// artists have this page as their only consumer, so they stay local and refresh on each visit.
+	let albums = $state<BrowseItem[]>([]);
+	let artists = $state<BrowseItem[]>([]);
+	let extraLoading = $state(false);
+	let extraError = $state<string | null>(null);
+
+	const all = $derived([...library.items, ...albums, ...artists]);
+	const loading = $derived((library.loading || extraLoading) && !all.length);
+	const error = $derived(library.error ?? extraError);
+
 	onMount(() => {
-		if (auth.account?.signedIn) loadLibrary(true);
+		if (auth.account?.signedIn) load();
 	});
+
+	function load() {
+		loadLibrary(true);
+		loadExtras();
+	}
+
+	async function loadExtras() {
+		extraLoading = true;
+		extraError = null;
+		try {
+			[albums, artists] = await Promise.all([api.getLibraryAlbums(), api.getLibraryArtists()]);
+		} catch (e) {
+			extraError = String(e);
+		} finally {
+			extraLoading = false;
+		}
+	}
 
 	async function createNew() {
 		const title = newTitle.trim();
@@ -35,6 +66,18 @@
 		}
 	}
 </script>
+
+{#snippet grid(items: BrowseItem[], empty: string)}
+	{#if items.length}
+		<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+			{#each items as item (item.kind + item.id)}
+				<MediaCard {item} />
+			{/each}
+		</div>
+	{:else}
+		<p class="text-sm text-muted-foreground">{empty}</p>
+	{/if}
+{/snippet}
 
 <div class="p-6">
 	<div class="mb-6 flex items-center justify-between">
@@ -74,19 +117,32 @@
 
 	{#if !auth.account?.signedIn}
 		<p class="text-sm text-muted-foreground">Sign in to see your playlists and liked songs.</p>
-	{:else if library.loading && !library.items.length}
+	{:else if loading}
 		<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
 			{#each Array(12) as _, i (i)}
 				<MediaCardSkeleton />
 			{/each}
 		</div>
-	{:else if library.error}
-		<ErrorState message={library.error} onRetry={() => loadLibrary(true)} />
+	{:else if error}
+		<ErrorState message={error} onRetry={load} />
 	{:else}
-		<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
-			{#each library.items as item (item.id)}
-				<MediaCard {item} />
-			{/each}
-		</div>
+		<Tabs.Root bind:value={tab}>
+			<Tabs.List class="mb-4">
+				<Tabs.Trigger value="all">All</Tabs.Trigger>
+				<Tabs.Trigger value="playlists">Playlists</Tabs.Trigger>
+				<Tabs.Trigger value="albums">Albums</Tabs.Trigger>
+				<Tabs.Trigger value="artists">Artists</Tabs.Trigger>
+			</Tabs.List>
+			<Tabs.Content value="all">{@render grid(all, 'Your library is empty.')}</Tabs.Content>
+			<Tabs.Content value="playlists">
+				{@render grid(library.items, 'No playlists yet.')}
+			</Tabs.Content>
+			<Tabs.Content value="albums">
+				{@render grid(albums, 'No saved albums yet. Open an album and hit Save to library.')}
+			</Tabs.Content>
+			<Tabs.Content value="artists">
+				{@render grid(artists, 'No artists yet. They show up once you save their songs or albums.')}
+			</Tabs.Content>
+		</Tabs.Root>
 	{/if}
 </div>
