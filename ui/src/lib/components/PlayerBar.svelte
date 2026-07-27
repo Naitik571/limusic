@@ -16,12 +16,12 @@
 		Add01Icon,
 		InfinityIcon
 	} from '@hugeicons/core-free-icons';
-	import { goto } from '$app/navigation';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import * as api from '$lib/api';
 	import { playback, toast, openAddToPlaylist } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
+	import ArtistLine from './ArtistLine.svelte';
 
 	let {
 		onToggleQueue,
@@ -154,16 +154,11 @@
 					</span>
 				{/if}
 			</div>
-			{#if playback.now?.artistId}
-				<button
-					class="block max-w-full cursor-pointer truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
-					onclick={() => goto(`/artist/${encodeURIComponent(playback.now!.artistId!)}`)}
-				>
-					{playback.now.artists}
-				</button>
-			{:else}
-				<div class="truncate text-xs text-muted-foreground">{playback.now?.artists ?? ''}</div>
-			{/if}
+			<ArtistLine
+				runs={playback.now?.artistRuns}
+				text={playback.now?.artists ?? ''}
+				class="block max-w-full text-xs text-muted-foreground"
+			/>
 		</div>
 		{#if playback.now}
 			<div class="flex items-center">

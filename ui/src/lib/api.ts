@@ -40,6 +40,8 @@ export interface NowPlaying {
 	title: string;
 	artists: string;
 	artistId?: string;
+	/** The artist line run by run — links each artist of a collab separately. */
+	artistRuns?: ArtistRun[];
 	thumbnail?: string;
 	duration?: string;
 	streamClient: string;

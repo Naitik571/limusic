@@ -786,6 +786,8 @@ impl AppState {
                 "title": item.title,
                 "artists": item.artists,
                 "artistId": item.artist_id,
+                // Per-artist links, so a collab in the player bar navigates like it does in a row.
+                "artistRuns": item.artist_runs,
                 "thumbnail": item.thumbnail,
                 "duration": item.duration,
                 "streamClient": stream_client,
