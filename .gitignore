@@ -1,4 +1,5 @@
 /target
+.mcp.json
 # rustypipe scratch (older builds wrote these into CWD; now redirected to temp)
 rustypipe_cache.json
 rustypipe_reports/
@@ -19,5 +20,6 @@ rustypipe_reports/
 /CLAUDE.md
 /PHASE1-PROMPT.md
 /RELEASING.md
+/TWEETING.md
 /skills-lock.json
 /plans
