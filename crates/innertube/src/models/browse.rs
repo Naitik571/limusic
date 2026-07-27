@@ -11,7 +11,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::metadata::{
-    find_all, find_all_shallow, find_first_str, first_artist_id, flex_column_text, last_thumbnail,
+    artist_runs, find_all, find_all_shallow, find_first_str, first_artist_id, flex_column_text,
+    last_thumbnail, ArtistRun,
     list_item_video_id, parse_list_item, runs_text, runs_text_opt, SongItem,
 };
 
@@ -125,6 +126,9 @@ pub struct AlbumPage {
     pub artist: Option<String>,
     /// The album artist's channel browseId (`UC…`) — links to the artist page.
     pub artist_id: Option<String>,
+    /// The artist line run by run, so a collaborative album links each artist separately.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artist_runs: Vec<ArtistRun>,
     pub artist_thumbnail: Option<String>,
     /// e.g. "Album • 2026".
     pub subtitle: Option<String>,
@@ -342,8 +346,8 @@ pub fn parse_album(root: &Value) -> AlbumPage {
     // The artist link + avatar live in the header's "strapline".
     let strapline = header.and_then(|h| h.get("straplineTextOne"));
     let artist = strapline.and_then(runs_text_opt);
-    let artist_id =
-        strapline.and_then(|s| s.get("runs")).and_then(Value::as_array).and_then(|r| first_artist_id(r));
+    let strapline_runs = strapline.and_then(|s| s.get("runs")).and_then(Value::as_array);
+    let artist_id = strapline_runs.and_then(|r| first_artist_id(r));
     let artist_thumbnail = header.and_then(|h| h.get("straplineThumbnail")).and_then(last_thumbnail);
 
     // Target the header's own thumbnail subtree so we get the cover, not the artist avatar.
@@ -368,6 +372,7 @@ pub fn parse_album(root: &Value) -> AlbumPage {
         title,
         artist,
         artist_id,
+        artist_runs: strapline_runs.map(|r| artist_runs(r)).unwrap_or_default(),
         artist_thumbnail,
         subtitle,
         second_subtitle,
@@ -803,6 +808,9 @@ mod tests {
                         "flexColumns": [
                             { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Track One" }] } } },
                             { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Artist X" }] } } }
+                        ],
+                        "fixedColumns": [
+                            { "musicResponsiveListItemFixedColumnRenderer": { "text": { "runs": [{ "text": "3:47" }] } } }
                         ]
                     } },
                     { "musicResponsiveListItemRenderer": {
@@ -821,6 +829,8 @@ mod tests {
         assert_eq!(p.thumbnail.as_deref(), Some("cover.jpg"));
         assert_eq!(p.items.len(), 2);
         assert_eq!(p.items[0].video_id, "vid1");
+        // Length lives in the row's fixed column, not the subtitle.
+        assert_eq!(p.items[0].duration.as_deref(), Some("3:47"));
         assert_eq!(p.items[1].title, "Track Two");
         assert_eq!(p.continuation.as_deref(), Some("MORE_TOKEN"));
         // A plain header (someone else's playlist) is not editable.
@@ -955,7 +965,9 @@ mod tests {
                 "subtitle": { "runs": [{ "text": "Album • 2026" }] },
                 "secondSubtitle": { "runs": [{ "text": "18 songs • 1 hour, 8 minutes" }] },
                 "straplineTextOne": { "runs": [
-                    { "text": "Drake", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCdrake" } } }
+                    { "text": "Drake", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCdrake" } } },
+                    { "text": " & " },
+                    { "text": "Metro", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCmetro" } } }
                 ] },
                 "straplineThumbnail": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [
                     { "url": "artist_avatar.jpg" }
@@ -997,8 +1009,13 @@ mod tests {
         assert_eq!(a.title.as_deref(), Some("ICEMAN"));
         assert_eq!(a.subtitle.as_deref(), Some("Album • 2026"));
         assert_eq!(a.second_subtitle.as_deref(), Some("18 songs • 1 hour, 8 minutes"));
-        assert_eq!(a.artist.as_deref(), Some("Drake"));
+        assert_eq!(a.artist.as_deref(), Some("Drake & Metro"));
         assert_eq!(a.artist_id.as_deref(), Some("UCdrake"));
+        // A collab links each artist to its own page, separator run kept unlinked.
+        assert_eq!(
+            a.artist_runs.iter().map(|r| (r.text.as_str(), r.id.as_deref())).collect::<Vec<_>>(),
+            vec![("Drake", Some("UCdrake")), (" & ", None), ("Metro", Some("UCmetro"))]
+        );
         assert_eq!(a.artist_thumbnail.as_deref(), Some("artist_avatar.jpg"));
         assert_eq!(a.thumbnail.as_deref(), Some("cover_big.jpg"));
         assert_eq!(a.description.as_deref(), Some("Iceman is one of three studio albums."));

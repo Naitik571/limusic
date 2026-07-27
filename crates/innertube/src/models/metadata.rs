@@ -20,6 +20,11 @@ pub struct SongItem {
     /// the artist name navigate to its artist page. context/08.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artist_id: Option<String>,
+    /// The artist line split into its original runs, each tagged with its own channel id when it
+    /// links one — a collab ("Future & Metro Boomin") links each name separately. Empty when the
+    /// row links no artist at all; the UI then falls back to plain `artists`. context/08.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artist_runs: Vec<ArtistRun>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
     /// The album's browseId (`MPRE…`), when the row links one — lets the UI navigate to the album.
@@ -49,6 +54,15 @@ pub struct SongItem {
     /// "Autoplay" divider + player-bar badge. Pure queue metadata, never parsed.
     #[serde(default)]
     pub autoplay: bool,
+}
+
+/// One run of an artist line: the literal text plus its channel browseId when it links one
+/// (separators like " & " carry no id).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ArtistRun {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -168,6 +182,8 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         .and_then(|t| t.get("runs"))
         .and_then(Value::as_array);
     let (artists, album, duration) = split_subtitle(subtitle_runs);
+    // Playlist/album rows keep the length in a fixed column instead of the subtitle. context/08.
+    let duration = duration.or_else(|| fixed_column_text(node));
     let artist_id = subtitle_runs.and_then(|r| first_artist_id(r));
     let set_video_id = node
         .get("playlistItemData")
@@ -179,6 +195,7 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         title,
         artists,
         artist_id,
+        artist_runs: subtitle_runs.map(|r| artist_runs(r)).unwrap_or_default(),
         album,
         album_id: album_id(node),
         duration,
@@ -201,6 +218,30 @@ fn album_id(node: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// The artist portion of a run list (everything before the first "•" separator), kept run by run so
+/// each linked artist of a collab navigates to its own page. Empty when nothing links a channel.
+/// context/08.
+pub(crate) fn artist_runs(runs: &[Value]) -> Vec<ArtistRun> {
+    let out: Vec<ArtistRun> = runs
+        .iter()
+        .take_while(|r| r.get("text").and_then(Value::as_str).is_none_or(|t| t.trim() != "•"))
+        .map(|r| ArtistRun {
+            text: r.get("text").and_then(Value::as_str).unwrap_or_default().to_owned(),
+            id: r
+                .get("navigationEndpoint")
+                .and_then(|n| n.get("browseEndpoint"))
+                .and_then(|b| b.get("browseId"))
+                .and_then(Value::as_str)
+                .filter(|id| id.starts_with("UC"))
+                .map(str::to_owned),
+        })
+        .collect();
+    if out.iter().all(|r| r.id.is_none()) {
+        return Vec::new();
+    }
+    out
+}
+
 /// First run that links an artist channel (`browseEndpoint.browseId` starting with `UC`). context/08.
 pub(crate) fn first_artist_id(runs: &[Value]) -> Option<String> {
     runs.iter().find_map(|r| {
@@ -220,14 +261,15 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
     let title = runs_text(node.get("title"))?;
     let byline = node.get("longBylineText").or_else(|| node.get("shortBylineText"));
     let artists = byline.and_then(runs_text_opt).unwrap_or_default();
-    let artist_id =
-        byline.and_then(|b| b.get("runs")).and_then(Value::as_array).and_then(|r| first_artist_id(r));
+    let byline_runs = byline.and_then(|b| b.get("runs")).and_then(Value::as_array);
+    let artist_id = byline_runs.and_then(|r| first_artist_id(r));
     let duration = node.get("lengthText").and_then(runs_text_opt);
     Some(SongItem {
         video_id,
         title,
         artists,
         artist_id,
+        artist_runs: byline_runs.map(|r| artist_runs(r)).unwrap_or_default(),
         album: None,
         album_id: album_id(node),
         duration,
@@ -269,6 +311,19 @@ pub(crate) fn list_item_video_id(node: &Value) -> Option<String> {
 }
 
 // --- small helpers ------------------------------------------------------------------------
+
+/// The row's `fixedColumns` duration ("3:47"). Playlist and album track rows carry it here.
+fn fixed_column_text(node: &Value) -> Option<String> {
+    node.get("fixedColumns")
+        .and_then(Value::as_array)?
+        .iter()
+        .find_map(|c| {
+            c.get("musicResponsiveListItemFixedColumnRenderer")
+                .and_then(|r| r.get("text"))
+                .and_then(runs_text_opt)
+        })
+        .filter(|s| s.contains(':'))
+}
 
 fn flex_text(col: &Value) -> Option<String> {
     col.get("musicResponsiveListItemFlexColumnRenderer")
@@ -411,6 +466,8 @@ mod tests {
                     { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Song Title" }] } } },
                     { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
                         { "text": "The Artist", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCartist1" } } },
+                        { "text": " & " },
+                        { "text": "Guest", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCartist2" } } },
                         { "text": " • " },
                         { "text": "The Album", "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREalbum1" } } },
                         { "text": " • " }, { "text": "3:21" }
@@ -426,8 +483,13 @@ mod tests {
         let s = &r.items[0];
         assert_eq!(s.video_id, "abc123");
         assert_eq!(s.title, "Song Title");
-        assert_eq!(s.artists, "The Artist");
+        assert_eq!(s.artists, "The Artist & Guest");
         assert_eq!(s.artist_id.as_deref(), Some("UCartist1"));
+        // Each artist keeps its own link; the run list stops at the first "•" (album/duration).
+        assert_eq!(
+            s.artist_runs.iter().map(|r| (r.text.as_str(), r.id.as_deref())).collect::<Vec<_>>(),
+            vec![("The Artist", Some("UCartist1")), (" & ", None), ("Guest", Some("UCartist2"))]
+        );
         assert_eq!(s.album.as_deref(), Some("The Album"));
         assert_eq!(s.album_id.as_deref(), Some("MPREalbum1"));
         assert_eq!(s.duration.as_deref(), Some("3:21"));

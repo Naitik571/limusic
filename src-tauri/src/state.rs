@@ -1608,6 +1608,7 @@ fn track_to_song(t: &Track) -> SongItem {
         title: t.title.clone(),
         artists: t.artist.clone(),
         artist_id: None,
+        artist_runs: Vec::new(),
         album: None,
         album_id: None,
         duration: if t.duration_ms > 0 { Some(format_duration(t.duration_ms)) } else { None },

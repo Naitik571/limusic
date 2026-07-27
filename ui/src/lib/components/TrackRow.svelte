@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { FavouriteIcon, PlayIcon, PlayListAddIcon } from '@hugeicons/core-free-icons';
 	import type { SongItem } from '$lib/api';
@@ -7,6 +6,7 @@
 	import { lt } from '$lib/lt.svelte';
 	import { isLiked, toggleLike } from '$lib/player.svelte';
 	import TrackMenu from './TrackMenu.svelte';
+	import ArtistLine from './ArtistLine.svelte';
 
 	let {
 		song,
@@ -98,19 +98,7 @@
 				{/if}
 			</div>
 			<div class="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-				{#if song.artist_id}
-					<button
-						class="min-w-0 cursor-pointer truncate text-left hover:text-foreground hover:underline"
-						onclick={(e) => {
-							e.stopPropagation();
-							goto(`/artist/${encodeURIComponent(song.artist_id!)}`);
-						}}
-					>
-						{song.artists}
-					</button>
-				{:else}
-					<span class="truncate">{song.artists}</span>
-				{/if}
+				<ArtistLine runs={song.artist_runs} text={song.artists} />
 				{#if compact && song.duration}
 					<span class="shrink-0">· {song.duration}</span>
 				{/if}

@@ -14,6 +14,7 @@
     import TrackRow from "$lib/components/TrackRow.svelte";
     import TrackRowSkeleton from "$lib/components/TrackRowSkeleton.svelte";
     import ErrorState from "$lib/components/ErrorState.svelte";
+    import ArtistLine from "$lib/components/ArtistLine.svelte";
     import { Skeleton } from "$lib/components/ui/skeleton";
     import * as api from "$lib/api";
     import type { AlbumPage, BrowseItem } from "$lib/api";
@@ -202,15 +203,8 @@
                         class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
                     >
                         {#if album.artist}
-                            <button
-                                class="flex items-center gap-1.5 font-medium text-foreground hover:underline disabled:cursor-default disabled:no-underline"
-                                class:cursor-pointer={!!album.artistId}
-                                onclick={() =>
-                                    album!.artistId &&
-                                    goto(
-                                        `/artist/${encodeURIComponent(album!.artistId)}`,
-                                    )}
-                                disabled={!album.artistId}
+                            <span
+                                class="flex items-center gap-1.5 font-medium text-foreground"
                             >
                                 {#if album.artistThumbnail}
                                     <img
@@ -219,8 +213,11 @@
                                         class="h-5 w-5 rounded-full object-cover"
                                     />
                                 {/if}
-                                {album.artist}
-                            </button>
+                                <ArtistLine
+                                    runs={album.artistRuns}
+                                    text={album.artist}
+                                />
+                            </span>
                         {/if}
                         {#if album.secondSubtitle}
                             <span class="text-muted-foreground/60">•</span>

@@ -3,12 +3,21 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+/** One run of an artist line: its text, plus a channel id when that run links an artist. */
+export interface ArtistRun {
+	text: string;
+	id?: string;
+}
+
 export interface SongItem {
 	video_id: string;
 	title: string;
 	artists: string;
 	/** Primary artist's channel browseId (`UC…`), when linked — makes the artist name navigable. */
 	artist_id?: string;
+	/** The artist line run by run — a collab links each name to its own page. Empty/absent when
+	 * nothing is linked; render plain `artists` then. */
+	artist_runs?: ArtistRun[];
 	album?: string;
 	/** The album's browseId (`MPRE…`), when linked — makes the album navigable. */
 	album_id?: string;
@@ -123,6 +132,8 @@ export interface AlbumPage {
 	title?: string;
 	artist?: string;
 	artistId?: string;
+	/** The artist line run by run — links each artist of a collaborative album separately. */
+	artistRuns?: ArtistRun[];
 	artistThumbnail?: string;
 	subtitle?: string;
 	secondSubtitle?: string;
