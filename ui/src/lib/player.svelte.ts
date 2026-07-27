@@ -76,7 +76,8 @@ export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 }
 
 // --- Personalization: the Shortcuts grid, sidebar pins, play recency (see personal.ts) ----------
-// The Shortcuts grid holds only what the user puts in it — nothing is ever auto-added.
+// The Shortcuts grid holds what the user puts in it, plus the one tile the app suggests (On
+// Repeat, via `seedOnRepeatPick`). See `personal.ts`.
 // localStorage rather than SQLite: only the webview ever reads this, so a table + commands + a
 // `UI_SETTINGS` allowlist entry would buy nothing. Loaded at module scope (guarded like the layout's
 // `initTheme`) so the sidebar and home grid render sorted on the very first paint.
@@ -119,6 +120,33 @@ export function placePick(item: BrowseItem, beforeId: string | null) {
 export function removePick(id: string) {
 	pl.removePick(personal, id);
 	savePersonal();
+}
+
+/** How many songs On Repeat needs before it's worth a tile on the grid. */
+const ON_REPEAT_SEED_MIN = 5;
+
+/**
+ * Put On Repeat on the Shortcuts grid once it has enough songs to be useful: the one tile the app
+ * adds by itself. Called on every home visit; `seedPick` owns the "should this go on" decision, so
+ * removing the tile is permanent no matter how many times this runs. Cheap to repeat: On Repeat is
+ * built from local SQLite, so the fetch never touches the network.
+ */
+export async function seedOnRepeatPick() {
+	try {
+		const onRepeat = await api.getPlaylist(api.ON_REPEAT_ID);
+		if (onRepeat.items.length < ON_REPEAT_SEED_MIN) return;
+		const added = pl.seedPick(personal, {
+			kind: 'playlist',
+			id: api.ON_REPEAT_ID,
+			title: onRepeat.title ?? 'On Repeat',
+			// Not a track count: the tile is stored as-is, so a number here would go stale the next
+			// time the playlist re-ranks itself.
+			subtitle: 'Your most played'
+		});
+		if (added) savePersonal();
+	} catch {
+		// No tile this time; the next home visit tries again.
+	}
 }
 
 /** Called from every card click app-wide, so only persist when the id was actually on the grid. */

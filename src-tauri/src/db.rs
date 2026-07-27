@@ -37,6 +37,13 @@ impl Db {
                 lyrics     TEXT,
                 fetched_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS plays (
+                id        INTEGER PRIMARY KEY,
+                video_id  TEXT NOT NULL,
+                played_at INTEGER NOT NULL,
+                song_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS plays_played_at ON plays(played_at);
             "#,
         )?;
         // Migrate pre-Phase-4 DBs that predate the loudness_db column. Errors ("duplicate column")
@@ -154,6 +161,91 @@ impl Db {
              ON CONFLICT(video_id) DO UPDATE SET lyrics = excluded.lyrics, fetched_at = excluded.fetched_at",
             rusqlite::params![video_id, lyrics, now],
         );
+    }
+
+    // --- play history (the On Repeat playlist) ------------------------------------------------
+
+    /// Record one completed play and drop everything that has fallen out of the window, so the
+    /// table stays bounded at roughly a month of listening whether or not anyone opens the
+    /// playlist. `song_json` is the serialized `SongItem`, kept per row so the playlist can be
+    /// rebuilt without asking YouTube for metadata it already gave us.
+    pub fn record_play(&self, video_id: &str, song_json: &str, now: i64, window: i64) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute(
+            "INSERT INTO plays(video_id, played_at, song_json) VALUES(?1, ?2, ?3)",
+            rusqlite::params![video_id, now, song_json],
+        );
+        let _ = conn.execute("DELETE FROM plays WHERE played_at < ?1", [now - window]);
+    }
+
+    /// The most-played songs since `since`, as `(song_json, play_count)` ranked by plays and then
+    /// by recency. Each row's JSON comes from that song's latest play: SQLite resolves a bare
+    /// column against the row matching the single `max()` in the query.
+    pub fn top_plays(&self, since: i64, limit: usize) -> Vec<(String, i64)> {
+        let conn = self.0.lock().unwrap();
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT song_json, COUNT(*) AS plays, MAX(played_at) AS last FROM plays
+             WHERE played_at >= ?1
+             GROUP BY video_id
+             ORDER BY plays DESC, last DESC
+             LIMIT ?2",
+        ) {
+            if let Ok(rows) = stmt
+                .query_map(rusqlite::params![since, limit as i64], |r| Ok((r.get(0)?, r.get(1)?)))
+            {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn db() -> Db {
+        Db::open(std::path::Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn top_plays_ranks_by_count_then_recency_and_carries_the_latest_metadata() {
+        let d = db();
+        // "a" twice, "b" three times, "c" once but most recently, "old" outside the window.
+        for (id, json, at) in [
+            ("old", "{\"old\":1}", 100),
+            ("a", "{\"a\":1}", 1_000),
+            ("a", "{\"a\":2}", 1_100),
+            ("b", "{\"b\":1}", 1_000),
+            ("b", "{\"b\":2}", 1_050),
+            ("b", "{\"b\":3}", 1_060),
+            ("c", "{\"c\":1}", 2_000),
+        ] {
+            // A window wide enough that inserting doesn't prune what the next row needs; the
+            // "old" row is excluded by `since` below instead.
+            d.record_play(id, json, at, 10_000);
+        }
+
+        let top = d.top_plays(900, 20);
+        assert_eq!(
+            top,
+            vec![
+                ("{\"b\":3}".into(), 3), // most plays
+                ("{\"a\":2}".into(), 2), // latest json wins for a song, not the first
+                ("{\"c\":1}".into(), 1), // ties on count break toward the recent play
+            ],
+            "'old' is outside the window and must not appear"
+        );
+        assert_eq!(d.top_plays(900, 2).len(), 2, "limit applies");
+    }
+
+    #[test]
+    fn record_play_prunes_outside_the_window() {
+        let d = db();
+        d.record_play("stale", "{}", 1_000, 60);
+        d.record_play("fresh", "{}", 5_000, 60); // prunes anything before 4_940
+        assert_eq!(d.top_plays(0, 20), vec![("{}".to_string(), 1)]);
     }
 }
 

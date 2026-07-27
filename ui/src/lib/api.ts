@@ -84,6 +84,13 @@ export interface HomePage {
 	continuation?: string;
 }
 
+/**
+ * The On Repeat auto-playlist's synthetic browseId (mirrors `ON_REPEAT_ID` in state.rs). It routes
+ * like any other playlist; the only thing the UI does differently is draw an icon cover, because
+ * a playlist built from local play counts has no artwork of its own.
+ */
+export const ON_REPEAT_ID = 'LIMUSIC_ON_REPEAT';
+
 export interface PlaylistPage {
 	title?: string;
 	subtitle?: string;

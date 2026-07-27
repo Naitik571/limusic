@@ -18,6 +18,7 @@ import {
 	placePick,
 	recentItems,
 	removePick,
+	seedPick,
 	togglePin,
 	touchPick
 } from './personal.ts';
@@ -196,6 +197,35 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 		picks: [{ id: 'kept', manual: true }, { id: 'seeded', manual: false }, { id: 'new' }]
 	});
 	ok(ids(migrated.picks).join() === 'kept,new', 'auto-seeded tiles from the old build are dropped');
+	ok(hydrate({ dismissedSeeds: ['a', 7] }).dismissedSeeds.join() === 'a', 'junk dismissals drop');
+}
+
+// --- a seeded tile is a suggestion: never forced, and never suggested twice ----------------------
+{
+	const p = empty();
+	ok(seedPick(p, item('onrepeat')), 'an empty grid takes the suggestion');
+	ok(!seedPick(p, item('onrepeat')), 'a suggestion already on the grid is not re-added');
+
+	// The whole point of the dismissal: removing it has to stick across every later attempt.
+	removePick(p, 'onrepeat');
+	ok(p.picks.length === 0, 'removing the tile takes it off the grid');
+	ok(!seedPick(p, item('onrepeat')), 'a removed suggestion never comes back');
+	ok(!seedPick(p, item('onrepeat'), 9999), 'not on a later visit either');
+
+	// A dismissal only gates suggestions. The user can still put it back by hand, and removing it
+	// again re-arms the dismissal rather than leaving it stuck on.
+	addPick(p, item('onrepeat'));
+	ok(ids(p.picks).join() === 'onrepeat', 'the user can still add it manually');
+	removePick(p, 'onrepeat');
+	ok(!seedPick(p, item('onrepeat')), 'and removing it again still blocks the suggestion');
+}
+
+// --- a suggestion must never push a hand-picked tile off a full grid -----------------------------
+{
+	const p = empty();
+	range(MAX_PICKS, 'mine').forEach((it, i) => addPick(p, it, 1000 + i));
+	ok(!seedPick(p, item('onrepeat')), 'a full grid refuses the suggestion');
+	ok(p.picks.length === MAX_PICKS && !ids(p.picks).includes('onrepeat'), 'nothing was evicted');
 }
 
 console.log('ok');

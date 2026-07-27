@@ -10,7 +10,8 @@
 		MoreVerticalIcon,
 		Tick02Icon,
 		Cancel01Icon,
-		DashboardSquare02Icon
+		DashboardSquare02Icon,
+		ListRestartIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -18,6 +19,7 @@
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import * as api from '$lib/api';
+	import { ON_REPEAT_ID } from '$lib/api';
 	import type { BrowseItem, PlaylistPage, SongItem } from '$lib/api';
 	import { getCached, putCached, invalidateCached } from '$lib/pagecache';
 	import {
@@ -51,6 +53,8 @@
 	const nowId = $derived(playback.now?.videoId);
 	// The liked-music auto-playlist isn't a user playlist — no rename/delete, but shuffle is fine.
 	const isLiked = $derived(id === 'VLLM');
+	// On Repeat is built locally from play counts: no artwork, and no radio to seed autoplay from.
+	const isOnRepeat = $derived(id === ON_REPEAT_ID);
 	// Only offer rename/delete on playlists the signed-in user actually owns (backend `owned` flag).
 	// Liked Music reports owned but can't be renamed/deleted, so exclude it explicitly.
 	const editable = $derived((pl?.owned ?? false) && !isLiked);
@@ -161,11 +165,15 @@
 		id,
 		title: pl?.title ?? 'Playlist',
 		subtitle: pl?.subtitle,
-		thumbnail: pl?.thumbnail ?? bgImage ?? undefined
+		// On Repeat stays artwork-free wherever it's rendered (shortcuts, recents) so it always
+		// draws its icon rather than one of its songs' covers.
+		thumbnail: isOnRepeat ? undefined : (pl?.thumbnail ?? bgImage ?? undefined)
 	});
 
+	// `sourceId` points autoplay at that playlist's radio. On Repeat has no YouTube id, so pass
+	// none and let autoplay seed off the last video instead.
 	function playAll(start: number | null) {
-		if (pl) playFrom(asItem(), pl.items, start, id);
+		if (pl) playFrom(asItem(), pl.items, start, isOnRepeat ? undefined : id);
 	}
 
 	// Random cover from the songs, picked once per load so it stays stable while browsing
@@ -187,7 +195,7 @@
 		if (!pl?.items.length) return;
 		// Real order + shuffle flag — the backend owns shuffling, so the shuffle toggle can
 		// restore the true playlist order and every re-shuffle is fresh.
-		playFrom(asItem(), pl.items, null, id, true);
+		playFrom(asItem(), pl.items, null, isOnRepeat ? undefined : id, true);
 	}
 
 	function openMenu(e: MouseEvent) {
@@ -305,7 +313,13 @@
 				class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/20"
 			></div>
 			<div class="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent"></div>
-			{#if pl.thumbnail}
+			{#if isOnRepeat}
+				<div
+					class="relative flex h-40 w-40 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-lg"
+				>
+					<HugeiconsIcon icon={ListRestartIcon} class="h-20 w-20" />
+				</div>
+			{:else if pl.thumbnail}
 				<img
 					src={pl.thumbnail}
 					alt=""

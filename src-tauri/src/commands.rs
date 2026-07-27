@@ -9,7 +9,7 @@ use innertube::{
 };
 use tauri::State;
 
-use crate::state::AppState;
+use crate::state::{AppState, ON_REPEAT_ID, ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS};
 
 type St<'a> = State<'a, Arc<AppState>>;
 
@@ -267,14 +267,62 @@ pub async fn get_home_more(state: St<'_>, token: String) -> Result<HomePage, Str
 #[tauri::command]
 pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
     let client = metadata_client(&state)?;
-    state.it.library_playlists(client).await.map_err(|e| e.to_string())
+    let mut items = state.it.library_playlists(client).await.map_err(|e| e.to_string())?;
+    // On Repeat leads the library once there's anything in it. Hidden while empty rather than
+    // shown as a dead tile on a fresh install.
+    let songs = on_repeat_songs(&state);
+    if !songs.is_empty() {
+        items.insert(
+            0,
+            BrowseItem {
+                kind: "playlist",
+                id: ON_REPEAT_ID.into(),
+                title: "On Repeat".into(),
+                subtitle: Some(format!("{} songs", songs.len())),
+                thumbnail: None, // the UI draws an icon cover for this one
+                duration: None,
+            },
+        );
+    }
+    Ok(items)
 }
 
-/// A playlist or album page. `id` is the browseId (`VL…` / `MPRE…`); Liked Songs is `VLLM`.
+/// A playlist or album page. `id` is the browseId (`VL…` / `MPRE…`); Liked Songs is `VLLM`, and
+/// `LIMUSIC_ON_REPEAT` is the local auto-playlist rather than anything YouTube knows about.
 #[tauri::command]
 pub async fn get_playlist(state: St<'_>, id: String) -> Result<PlaylistPage, String> {
+    if id == ON_REPEAT_ID {
+        let items = on_repeat_songs(&state);
+        return Ok(PlaylistPage {
+            title: Some("On Repeat".into()),
+            subtitle: Some(format!("{} songs you've played most this month", items.len())),
+            thumbnail: None,
+            items,
+            continuation: None,
+            owned: false, // nothing to rename or delete; it rebuilds itself from what you play
+        });
+    }
     let client = metadata_client(&state)?;
     state.it.playlist(client, &id).await.map_err(|e| e.to_string())
+}
+
+/// The On Repeat track list: most-played first, over the trailing window. Rows whose stored JSON
+/// no longer parses (a `SongItem` shape change) are dropped rather than failing the whole page.
+fn on_repeat_songs(state: &Arc<AppState>) -> Vec<SongItem> {
+    let since = now_secs() - ON_REPEAT_WINDOW_SECS;
+    state
+        .db
+        .top_plays(since, ON_REPEAT_LIMIT)
+        .into_iter()
+        .filter_map(|(json, _plays)| serde_json::from_str(&json).ok())
+        .collect()
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 #[tauri::command]

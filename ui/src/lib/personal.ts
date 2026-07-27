@@ -4,7 +4,11 @@
 // `player.svelte.ts`; nothing here touches storage, the network, or Svelte.
 import type { BrowseItem } from './api';
 
-/** Grid capacity. The grid holds only what the user puts in it — nothing is ever auto-added. */
+/**
+ * Grid capacity. Everything on the grid was put there by hand, with one exception: `seedPick` lets
+ * the app suggest a tile (today only On Repeat, once it has enough songs to be worth one). A seeded
+ * tile is never forced: it can't evict a hand-picked one, and removing it is permanent.
+ */
 export const MAX_PICKS = 18;
 export const MAX_PINS = 3;
 const MAX_RECENT = 100;
@@ -29,10 +33,15 @@ export type Personal = {
 	recent: Record<string, RecentEntry>;
 	/** Play counts per artist, keyed by channel id (or name when there's no id). */
 	artists: Record<string, { name: string; count: number }>;
+	/**
+	 * Tiles the user has taken off the grid. Only `seedPick` consults it, so this is purely "don't
+	 * suggest this again": a hand-added tile is unaffected, since `addPick` ignores the list.
+	 */
+	dismissedSeeds: string[];
 };
 
 export function empty(): Personal {
-	return { picks: [], pins: [], recent: {}, artists: {} };
+	return { picks: [], pins: [], recent: {}, artists: {}, dismissedSeeds: [] };
 }
 
 /** Tolerant parse of a persisted blob — a corrupt or older shape degrades to empty, never throws. */
@@ -41,8 +50,9 @@ export function hydrate(raw: unknown): Personal {
 	if (!raw || typeof raw !== 'object') return base;
 	const o = raw as Partial<Personal>;
 	if (Array.isArray(o.picks)) {
-		// `manual: false` marks a tile from the old auto-seeding build. Seeding is gone — the grid is
-		// the user's alone now — so those are dropped instead of being inherited forever.
+		// `manual: false` marks a tile from the old auto-seeding build, which filled the grid on the
+		// user's behalf. Those are dropped rather than inherited forever. (Today's `seedPick` is a
+		// narrower thing: one suggestion, refusable, and it writes no `manual` flag.)
 		base.picks = o.picks.filter(
 			(p) => p && typeof p.id === 'string' && (p as { manual?: boolean }).manual !== false
 		);
@@ -52,6 +62,9 @@ export function hydrate(raw: unknown): Personal {
 	}
 	if (o.recent && typeof o.recent === 'object') base.recent = o.recent;
 	if (o.artists && typeof o.artists === 'object') base.artists = o.artists;
+	if (Array.isArray(o.dismissedSeeds)) {
+		base.dismissedSeeds = o.dismissedSeeds.filter((id) => typeof id === 'string');
+	}
 	return base;
 }
 
@@ -99,8 +112,26 @@ function evictStalest(p: Personal): void {
 	}
 }
 
+/**
+ * A tile the app suggests rather than one the user added. Refused if it's already on the grid, if
+ * the user has ever removed it, or if the grid is full (a suggestion never evicts something the
+ * user chose). Returns whether the grid changed.
+ */
+export function seedPick(p: Personal, item: BrowseItem, now = Date.now()): boolean {
+	if (p.picks.length >= MAX_PICKS) return false;
+	if (p.dismissedSeeds.includes(item.id)) return false;
+	if (p.picks.some((x) => x.id === item.id)) return false;
+	p.picks.push({ ...item, lastUsedAt: now });
+	return true;
+}
+
 export function removePick(p: Personal, id: string): void {
 	p.picks = p.picks.filter((x) => x.id !== id);
+	// Every removal is remembered, not just seeded ones: the list only ever gates `seedPick`, and
+	// working out which tiles were suggested would mean storing provenance we otherwise don't need.
+	// ponytail: grows one string per distinct tile ever removed, so it's bounded by how many times
+	// a human clicks the ✕. Cap it if that ever stops being true.
+	if (!p.dismissedSeeds.includes(id)) p.dismissedSeeds.push(id);
 }
 
 /**

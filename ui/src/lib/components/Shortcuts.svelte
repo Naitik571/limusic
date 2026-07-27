@@ -1,8 +1,9 @@
 <script lang="ts">
 	// The home grid the user curates (was "Quick Picks" — renamed: YouTube Music has a shelf by that
-	// name and it isn't this one). Nothing is ever auto-added; it holds exactly what was put in it, in
-	// the order it was dragged into. Unlike before it renders even when empty — a section that hides
-	// itself is a section nobody discovers. Logic in $lib/personal.ts.
+	// name and it isn't this one). It holds what was put in it, in the order it was dragged into, plus
+	// On Repeat once that has enough songs (the only tile the app suggests, and removing it is
+	// permanent). Unlike before it renders even when empty — a section that hides itself is a section
+	// nobody discovers. Logic in $lib/personal.ts.
 	//
 	// Not square cards: these were 5.5rem tiles and every label came out as "アプソリュ…" over a
 	// subtitle that was "Simo Hypers •…" fifteen times. A shortcut is a thing you already know, so
@@ -19,9 +20,11 @@
 		Add01Icon,
 		PlayIcon,
 		MusicNote01Icon,
-		UserIcon
+		UserIcon,
+		ListRestartIcon
 	} from '@hugeicons/core-free-icons';
 	import ShortcutPicker from './ShortcutPicker.svelte';
+	import { ON_REPEAT_ID } from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { openItem, playItem } from '$lib/browse';
@@ -141,6 +144,7 @@
 			<div data-grid class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
 				{#each picks as item (item.id)}
 					{@const round = item.kind === 'artist'}
+					{@const onRepeat = item.id === ON_REPEAT_ID}
 					<!-- group/pick, not `group`: nested unnamed groups would fire each other's hovers. -->
 					<div class="group/pick relative" data-pick={item.id} animate:flip={{ duration: 200 }}>
 						<!-- Where the drop lands: a bar down the leading edge of the tile it goes in front of. -->
@@ -171,7 +175,7 @@
 									? 'my-2 ml-2 h-12 w-12 rounded-full'
 									: 'h-16 w-16'}"
 							>
-								{#if item.thumbnail && !failed[item.id]}
+								{#if item.thumbnail && !failed[item.id] && !onRepeat}
 									<img
 										src={thumb(item.thumbnail, 400)}
 										alt=""
@@ -181,8 +185,18 @@
 										onerror={() => (failed = { ...failed, [item.id]: true })}
 									/>
 								{:else}
-									<div class="flex h-full w-full items-center justify-center text-muted-foreground/50">
-										<HugeiconsIcon icon={round ? UserIcon : MusicNote01Icon} class="h-5 w-5" />
+									<div
+										class="flex h-full w-full items-center justify-center {onRepeat
+											? 'bg-primary/10 text-primary'
+											: 'text-muted-foreground/50'}"
+									>
+										<!-- altIcon/showAlt, not a third ternary: `icon` is read once at mount. -->
+										<HugeiconsIcon
+											icon={round ? UserIcon : MusicNote01Icon}
+											altIcon={ListRestartIcon}
+											showAlt={onRepeat}
+											class={onRepeat ? 'h-7 w-7' : 'h-5 w-5'}
+										/>
 									</div>
 								{/if}
 								{#if !round}

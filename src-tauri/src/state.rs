@@ -17,6 +17,16 @@ use crate::listentogether::{LtSession, SyncCommand};
 use crate::media::MediaHandle;
 use crate::orchestrator::{Orchestrator, PlaybackData, ResolveError};
 
+/// Synthetic browseId for the On Repeat playlist. Not a YouTube id: `get_playlist` intercepts it
+/// and builds the page from local play counts, so it must never collide with a real browseId
+/// (`VL…` / `MPRE…` / `RD…`).
+pub const ON_REPEAT_ID: &str = "LIMUSIC_ON_REPEAT";
+/// How far back On Repeat looks. A month is long enough to survive a quiet week and short enough
+/// that the list still turns over with what you're actually playing.
+pub const ON_REPEAT_WINDOW_SECS: i64 = 30 * 24 * 60 * 60;
+/// How many songs it holds.
+pub const ON_REPEAT_LIMIT: usize = 20;
+
 pub struct AppState {
     pub it: InnerTube,
     pub clients: Clients,
@@ -904,12 +914,13 @@ impl AppState {
         })
     }
 
-    /// A position tick from mpv. Fires the watch-history ping once the current track passes the
-    /// play threshold (context/01 §registerPlayback) — latched to fire exactly once per play,
+    /// A position tick from mpv. Once the current track passes the play threshold (context/01
+    /// §registerPlayback) this counts the play locally (the On Repeat playlist) and fires the
+    /// watch-history ping, latched to happen exactly once per play. The ping is additionally
     /// gated on the `enable_history` setting + being logged in. Best-effort (errors logged).
     pub async fn on_position(&self, pos: f64) {
         self.record_position(pos);
-        let ping = {
+        let crossed = {
             let mut q = self.queue.lock().await;
             if q.history_pinged {
                 None
@@ -918,12 +929,28 @@ impl AppState {
                 let threshold = if q.duration > 1.0 { (q.duration / 2.0).min(30.0) } else { 30.0 };
                 if pos >= threshold {
                     q.history_pinged = true; // latch even if the URL is missing — never retry
-                    q.playback_url.clone().map(|url| (url, q.cpn.clone()))
+                    let ping = q.playback_url.clone().map(|url| (url, q.cpn.clone()));
+                    Some((ping, q.items.get(q.current).cloned()))
                 } else {
                     None
                 }
             }
         };
+        let Some((ping, played)) = crossed else { return };
+
+        // Local play count, on the same threshold. Deliberately not gated on `enable_history` or
+        // sign-in: that setting is about registering plays with YouTube, while this never leaves
+        // the machine and has to work signed out.
+        // ponytail: resuming a restored track from past the threshold counts it a second time (the
+        // watch-history ping has always done the same). One extra count per launch, for one song,
+        // against a month of plays. If it ever skews the list, pass the `pending_seek` offset into
+        // the latch and skip the record when the play didn't start near zero.
+        if let Some(item) = played {
+            if let Ok(json) = serde_json::to_string(&item) {
+                self.db.record_play(&item.video_id, &json, now_secs(), ON_REPEAT_WINDOW_SECS);
+            }
+        }
+
         let Some((url, cpn)) = ping else { return };
         if !self.history_enabled() || !self.it.is_logged_in() {
             return;

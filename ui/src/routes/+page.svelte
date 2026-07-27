@@ -15,7 +15,7 @@
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import * as api from '$lib/api';
 	import type { BrowseItem, HomeChip, HomePage, HomeSection } from '$lib/api';
-	import { auth, personal, toast } from '$lib/player.svelte';
+	import { auth, personal, playback, seedOnRepeatPick, toast } from '$lib/player.svelte';
 	import { interleave, recentItems, topArtists } from '$lib/personal';
 	import { getCached, putCached } from '$lib/pagecache';
 
@@ -195,6 +195,14 @@
 	});
 
 	onMount(() => load(null));
+
+	// On Repeat crosses its threshold while you listen, so re-check on every track change rather
+	// than once per visit: sitting on home through your fifth song should be enough to see the tile.
+	// The check is a local SQLite read, and `seedPick` is what actually decides.
+	$effect(() => {
+		playback.now?.videoId;
+		seedOnRepeatPick();
+	});
 </script>
 
 <div>

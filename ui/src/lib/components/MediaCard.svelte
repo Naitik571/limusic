@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { PlayIcon, MusicNote01Icon, UserIcon } from '@hugeicons/core-free-icons';
+	import {
+		PlayIcon,
+		MusicNote01Icon,
+		UserIcon,
+		ListRestartIcon
+	} from '@hugeicons/core-free-icons';
+	import { ON_REPEAT_ID } from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { setDragItem } from '$lib/dnd';
@@ -12,6 +18,9 @@
 	let { item, compact = false }: { item: BrowseItem; compact?: boolean } = $props();
 
 	const round = $derived(item.kind === 'artist');
+	// On Repeat has no artwork by nature, so its cover is the icon rather than the neutral
+	// placeholder every failed thumbnail lands on.
+	const onRepeat = $derived(item.id === ON_REPEAT_ID);
 
 	// Google's CDN doesn't serve every rewritten size — asking for one it doesn't have 404s, and the
 	// browser then paints its broken-image glyph. So: try the sized URL, retry the original once, and
@@ -65,7 +74,7 @@
 				? 'rounded-full'
 				: 'rounded-lg'}"
 		>
-			{#if item.thumbnail && attempt < 2}
+			{#if item.thumbnail && attempt < 2 && !onRepeat}
 				<img
 					{src}
 					alt=""
@@ -75,10 +84,17 @@
 					onerror={imgFailed}
 				/>
 			{:else}
-				<div class="flex h-full w-full items-center justify-center text-muted-foreground/50">
+				<div
+					class="flex h-full w-full items-center justify-center {onRepeat
+						? 'bg-primary/10 text-primary'
+						: 'text-muted-foreground/50'}"
+				>
+					<!-- altIcon/showAlt, not a third ternary: `icon` is read once at mount. -->
 					<HugeiconsIcon
 						icon={round ? UserIcon : MusicNote01Icon}
-						class={compact ? 'h-5 w-5' : 'h-7 w-7'}
+						altIcon={ListRestartIcon}
+						showAlt={onRepeat}
+						class={onRepeat ? (compact ? 'h-7 w-7' : 'h-10 w-10') : compact ? 'h-5 w-5' : 'h-7 w-7'}
 					/>
 				</div>
 			{/if}
