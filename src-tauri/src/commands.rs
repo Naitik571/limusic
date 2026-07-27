@@ -414,13 +414,25 @@ pub async fn set_album_saved(state: St<'_>, playlist_id: String, saved: bool) ->
     state.it.like_playlist(client, &playlist_id, saved).await.map_err(|e| e.to_string())
 }
 
+/// Login, plus the guard every playlist edit needs: On Repeat has no YouTube playlist behind it, so
+/// its synthetic id must never reach `edit_playlist`, which answers 400 for an id it doesn't know.
+fn editable_playlist<'a>(
+    state: &'a Arc<AppState>,
+    playlist_id: &str,
+) -> Result<&'a innertube::YouTubeClient, String> {
+    if playlist_id == ON_REPEAT_ID {
+        return Err("On Repeat builds itself from what you play.".into());
+    }
+    require_login(state)
+}
+
 #[tauri::command]
 pub async fn add_to_playlist(
     state: St<'_>,
     playlist_id: String,
     video_id: String,
 ) -> Result<(), String> {
-    let client = require_login(&state)?;
+    let client = editable_playlist(&state, &playlist_id)?;
     state.it.playlist_add(client, &playlist_id, &video_id).await.map_err(|e| e.to_string())
 }
 
@@ -431,7 +443,7 @@ pub async fn remove_from_playlist(
     video_id: String,
     set_video_id: String,
 ) -> Result<(), String> {
-    let client = require_login(&state)?;
+    let client = editable_playlist(&state, &playlist_id)?;
     state
         .it
         .playlist_remove(client, &playlist_id, &video_id, &set_video_id)
@@ -447,13 +459,13 @@ pub async fn create_playlist(state: St<'_>, title: String) -> Result<String, Str
 
 #[tauri::command]
 pub async fn rename_playlist(state: St<'_>, playlist_id: String, name: String) -> Result<(), String> {
-    let client = require_login(&state)?;
+    let client = editable_playlist(&state, &playlist_id)?;
     state.it.playlist_rename(client, &playlist_id, &name).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_playlist(state: St<'_>, playlist_id: String) -> Result<(), String> {
-    let client = require_login(&state)?;
+    let client = editable_playlist(&state, &playlist_id)?;
     state.it.delete_playlist(client, &playlist_id).await.map_err(|e| e.to_string())
 }
 
