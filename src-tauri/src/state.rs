@@ -1760,7 +1760,10 @@ fn parse_duration_ms(s: Option<&str>) -> i64 {
 
 fn format_duration(ms: i64) -> String {
     let total = ms / 1000;
-    format!("{}:{:02}", total / 60, total % 60)
+    match total / 3600 {
+        0 => format!("{}:{:02}", total / 60, total % 60),
+        h => format!("{}:{:02}:{:02}", h, (total % 3600) / 60, total % 60),
+    }
 }
 
 /// Fill a missing item duration from the player response's `lengthSeconds` (e.g. "167") — the
@@ -1792,9 +1795,19 @@ fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        guest_insert_index, loudness_gain, merge_radio, next_index, radio_seed_for,
-        shuffle_new_queue, shuffle_upcoming, unshuffled, upcoming_queued, RepeatMode,
+        format_duration, guest_insert_index, loudness_gain, merge_radio, next_index,
+        parse_duration_ms, radio_seed_for, shuffle_new_queue, shuffle_upcoming, unshuffled,
+        upcoming_queued, RepeatMode,
     };
+
+    #[test]
+    fn durations_round_trip_past_an_hour() {
+        assert_eq!(format_duration(191_000), "3:11");
+        assert_eq!(format_duration(5_468_000), "1:31:08");
+        // The parser is the inverse for both shapes (queue rows persist the string).
+        assert_eq!(parse_duration_ms(Some("1:31:08")), 5_468_000);
+        assert_eq!(parse_duration_ms(Some("3:11")), 191_000);
+    }
     use std::collections::HashSet;
 
     // `by.is_some()` (a named guest/host add) and a nameless solo add are both manual adds:
@@ -1805,6 +1818,7 @@ mod tests {
             title: id.into(),
             artists: String::new(),
             artist_id: None,
+            artist_runs: Vec::new(),
             album: None,
             album_id: None,
             duration: None,

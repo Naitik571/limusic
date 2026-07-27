@@ -55,9 +55,12 @@
 
 	const fmt = (secs: number) => {
 		if (!secs || secs < 0) return '0:00';
-		const m = Math.floor(secs / 60);
-		const s = Math.floor(secs % 60);
-		return `${m}:${s.toString().padStart(2, '0')}`;
+		const t = Math.floor(secs);
+		const h = Math.floor(t / 3600);
+		const m = Math.floor((t % 3600) / 60);
+		const s = t % 60;
+		const mm = h ? m.toString().padStart(2, '0') : `${m}`;
+		return `${h ? `${h}:` : ''}${mm}:${s.toString().padStart(2, '0')}`;
 	};
 
 	const shuffleOn = $derived(playback.queue.shuffle ?? false);

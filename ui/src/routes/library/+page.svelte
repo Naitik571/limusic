@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Add01Icon } from '@hugeicons/core-free-icons';
+	import {
+		Add01Icon,
+		MusicNoteSquare02Icon,
+		Playlist02Icon,
+		SquareStackIcon,
+		UserSharingIcon
+	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -128,10 +134,18 @@
 	{:else}
 		<Tabs.Root bind:value={tab}>
 			<Tabs.List class="mb-4">
-				<Tabs.Trigger value="all">All</Tabs.Trigger>
-				<Tabs.Trigger value="playlists">Playlists</Tabs.Trigger>
-				<Tabs.Trigger value="albums">Albums</Tabs.Trigger>
-				<Tabs.Trigger value="artists">Artists</Tabs.Trigger>
+				<Tabs.Trigger value="all">
+					<HugeiconsIcon icon={SquareStackIcon} class="h-4 w-4" /> All
+				</Tabs.Trigger>
+				<Tabs.Trigger value="playlists">
+					<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Playlists
+				</Tabs.Trigger>
+				<Tabs.Trigger value="albums">
+					<HugeiconsIcon icon={MusicNoteSquare02Icon} class="h-4 w-4" /> Albums
+				</Tabs.Trigger>
+				<Tabs.Trigger value="artists">
+					<HugeiconsIcon icon={UserSharingIcon} class="h-4 w-4" /> Artists
+				</Tabs.Trigger>
 			</Tabs.List>
 			<Tabs.Content value="all">{@render grid(all, 'Your library is empty.')}</Tabs.Content>
 			<Tabs.Content value="playlists">

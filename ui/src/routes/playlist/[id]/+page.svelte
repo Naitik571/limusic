@@ -36,6 +36,10 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let loadingMore = $state(false);
+	let moreError = $state(false);
+	let inflight: Promise<void> | null = null;
+	// Walking the remaining pages so the queue gets the whole playlist — the play buttons wait on it.
+	let preparing = $state(false);
 	let confirmingDelete = $state(false);
 	// A random song's cover, used as a blurred hero backdrop (like the artist/album pages).
 	let bgImage = $state<string | null>(null);
@@ -145,18 +149,45 @@
 		if (pl) putCached(`playlist:${id}`, pl);
 	}
 
-	async function loadMore() {
-		if (!pl?.continuation || loadingMore) return;
+	// One page at a time, shared: the scroll sentinel and the "load the rest before playing" walk
+	// both go through here, so they can never fire overlapping requests for the same token.
+	function loadMore(): Promise<void> {
+		inflight ??= fetchPage().finally(() => (inflight = null));
+		return inflight;
+	}
+
+	async function fetchPage() {
+		const token = pl?.continuation;
+		if (!token) return;
 		loadingMore = true;
+		moreError = false;
 		try {
-			const more = await api.getPlaylistMore(pl.continuation);
-			pl = { ...pl, items: [...pl.items, ...more.items], continuation: more.continuation };
+			const more = await api.getPlaylistMore(token);
+			if (pl?.continuation !== token) return; // stale (navigated or mutated mid-flight)
+			pl = {
+				...pl,
+				items: [...pl.items, ...more.items],
+				// An empty page would leave the sentinel in view with nothing to show — that's the end.
+				continuation: more.items.length ? more.continuation : undefined
+			};
 			cacheCurrent();
 		} catch {
-			/* keep what we have */
+			// Stop auto-loading and offer a retry — auto-retrying a visible sentinel would spin.
+			moreError = true;
 		} finally {
 			loadingMore = false;
 		}
+	}
+
+	// One page per approach to the bottom: the observer only fires when the sentinel *enters* view,
+	// so an appended page that pushes it back out is required before the next fetch. rootMargin
+	// starts the fetch early enough that the rows are usually there by the time you reach them.
+	function sentinel(node: HTMLElement) {
+		const io = new IntersectionObserver(([e]) => e.isIntersecting && loadMore(), {
+			rootMargin: '600px 0px'
+		});
+		io.observe(node);
+		return () => io.disconnect();
 	}
 
 	// This playlist as a card, for the sidebar's last-played sort and the Shortcuts grid.
@@ -170,10 +201,31 @@
 		thumbnail: isOnRepeat ? undefined : (pl?.thumbnail ?? bgImage ?? undefined)
 	});
 
+	/**
+	 * The queue is the whole playlist, not the pages scrolled so far: YouTube hands out tracks 100
+	 * at a time, so playing a 500-track playlist has to walk the rest of the continuations first.
+	 * A page that fails stops the walk — better a short queue than no playback.
+	 */
+	async function loadRest(): Promise<SongItem[]> {
+		preparing = true;
+		try {
+			while (pl?.continuation && !moreError) {
+				const before = pl.items.length;
+				await loadMore();
+				if (pl && pl.items.length === before) break;
+			}
+		} finally {
+			preparing = false;
+		}
+		return pl?.items ?? [];
+	}
+
 	// `sourceId` points autoplay at that playlist's radio. On Repeat has no YouTube id, so pass
 	// none and let autoplay seed off the last video instead.
-	function playAll(start: number | null) {
-		if (pl) playFrom(asItem(), pl.items, start, isOnRepeat ? undefined : id);
+	async function playAll(start: number | null) {
+		if (!pl) return;
+		const items = await loadRest();
+		if (pl) playFrom(asItem(), items, start, isOnRepeat ? undefined : id);
 	}
 
 	// Random cover from the songs, picked once per load so it stays stable while browsing
@@ -191,11 +243,13 @@
 		return url.replace(/=w\d+-h\d+/, '=w1200-h1200').replace(/=s\d+/, '=s1200');
 	}
 
-	function shufflePlay() {
+	async function shufflePlay() {
 		if (!pl?.items.length) return;
 		// Real order + shuffle flag — the backend owns shuffling, so the shuffle toggle can
-		// restore the true playlist order and every re-shuffle is fresh.
-		playFrom(asItem(), pl.items, null, isOnRepeat ? undefined : id, true);
+		// restore the true playlist order and every re-shuffle is fresh. Shuffling only the loaded
+		// page would silently drop the rest of a long playlist, hence the walk first.
+		const items = await loadRest();
+		if (pl) playFrom(asItem(), items, null, isOnRepeat ? undefined : id, true);
 	}
 
 	function openMenu(e: MouseEvent) {
@@ -361,8 +415,13 @@
 				{/if}
 				{#if pl.subtitle}<p class="mt-2 text-sm text-muted-foreground">{pl.subtitle}</p>{/if}
 				<div class="mt-4 flex items-center gap-2">
-					<Button class="gap-2" onclick={() => playAll(null)} disabled={!pl.items.length}>
-						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play
+					<Button
+						class="gap-2"
+						onclick={() => playAll(null)}
+						disabled={!pl.items.length || preparing}
+					>
+						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" />
+						{preparing ? 'Loading…' : 'Play'}
 					</Button>
 					{#if confirmingDelete}
 						<div class="flex items-center gap-2 rounded-lg border border-destructive/40 px-2 py-1">
@@ -399,11 +458,24 @@
 				<p class="p-4 text-sm text-muted-foreground">This playlist is empty.</p>
 			{/each}
 			{#if pl.continuation}
-				<div class="p-3 text-center">
-					<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
-						{loadingMore ? 'Loading…' : 'Load more'}
-					</Button>
-				</div>
+				{#if moreError}
+					<div class="p-3 text-center">
+						<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
+							{loadingMore ? 'Loading…' : 'Try again'}
+						</Button>
+					</div>
+				{:else}
+					<!-- The sentinel sits above the skeletons: it triggers the next page as it scrolls
+					     into range, so the rest of a long playlist arrives without a button. -->
+					<div aria-busy={loadingMore}>
+						<div {@attach sentinel}></div>
+						{#if loadingMore}
+							{#each Array(4) as _, i (i)}
+								<TrackRowSkeleton />
+							{/each}
+						{/if}
+					</div>
+				{/if}
 			{/if}
 		</div>
 	{/if}

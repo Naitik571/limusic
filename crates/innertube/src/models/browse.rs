@@ -12,8 +12,8 @@ use serde_json::Value;
 
 use super::metadata::{
     artist_runs, find_all, find_all_shallow, find_first_str, first_artist_id, flex_column_text,
-    last_thumbnail, ArtistRun,
-    list_item_video_id, parse_list_item, runs_text, runs_text_opt, SongItem,
+    last_thumbnail, list_item_video_id, parse_list_item, runs_text, runs_text_opt, ArtistRun,
+    SongItem,
 };
 
 /// One clickable card in a home carousel or library grid. Flat + `kind`-tagged so the UI can
@@ -213,7 +213,7 @@ pub fn parse_playlist(root: &Value) -> PlaylistPage {
         .collect();
     // Present only for playlists the signed-in user owns — the sole reliable ownership signal.
     let owned = !find_all(root, "musicEditablePlaylistDetailHeaderRenderer").is_empty();
-    PlaylistPage { title, subtitle, thumbnail, items, continuation: continuation_token(root), owned }
+    PlaylistPage { title, subtitle, thumbnail, items, continuation: shelf_continuation(root), owned }
 }
 
 /// Parse a browse continuation response (more playlist tracks). context/08.
@@ -224,7 +224,9 @@ pub fn parse_playlist_continuation(root: &Value) -> PlaylistContinuation {
         .into_iter()
         .filter_map(parse_list_item)
         .collect();
-    PlaylistContinuation { items, continuation: continuation_token(root) }
+    // A continuation response is mostly shelf already; the sweep stays as the fallback for the
+    // `…ShelfContinuation` shapes that carry no `…ShelfRenderer` node to scope to.
+    PlaylistContinuation { items, continuation: shelf_continuation(root).or_else(|| continuation_token(root)) }
 }
 
 /// Categorized results for an unfiltered search: a mix of a "top result" set plus the per-type
@@ -379,7 +381,7 @@ pub fn parse_album(root: &Value) -> AlbumPage {
         description,
         thumbnail,
         items,
-        continuation: continuation_token(root),
+        continuation: shelf_continuation(root),
         // Track rows carry the OLAK id; an album with no playable rows still has it on the
         // header's save-to-library button.
         playlist_id: album_playlist_id(root).or_else(|| library_toggle_playlist_id(header)),
@@ -610,6 +612,23 @@ fn playlist_header(root: &Value) -> Option<&Value> {
         .find_map(|key| find_all(root, key).into_iter().next())
 }
 
+/// The shelf holding the playlist's/album's own tracks — the first one in the response, since the
+/// suggestions section always comes after it.
+fn track_shelf(root: &Value) -> Option<&Value> {
+    find_all(root, "musicPlaylistShelfRenderer")
+        .into_iter()
+        .next()
+        .or_else(|| find_all(root, "musicShelfRenderer").into_iter().next())
+}
+
+/// The track shelf's own paging token. Scoped on purpose: an owned playlist's page also carries a
+/// "suggestions" section with a continuation of its own, and paging *that* appends recommended
+/// songs the playlist doesn't contain (a 6-track playlist grew to 13). Falls back to nothing rather
+/// than to a whole-tree sweep — a token from the wrong shelf is worse than no paging.
+fn shelf_continuation(root: &Value) -> Option<String> {
+    continuation_token(track_shelf(root)?)
+}
+
 /// Paging token, modern (`continuationCommand.token`) or legacy (`nextContinuationData`). context/08.
 fn continuation_token(root: &Value) -> Option<String> {
     if let Some(t) =
@@ -835,6 +854,40 @@ mod tests {
         assert_eq!(p.continuation.as_deref(), Some("MORE_TOKEN"));
         // A plain header (someone else's playlist) is not editable.
         assert!(!p.owned);
+    }
+
+    /// An owned playlist's page carries a suggestions section ("add more to this playlist") with a
+    /// continuation of its own. Paging that appended recommended songs to the track list — a
+    /// 6-track playlist showed 13. Only the track shelf's own token counts.
+    #[test]
+    fn short_playlist_ignores_the_suggestion_shelf_token() {
+        let root = json!({
+            "header": { "musicResponsiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Vibesss" }] }
+            } },
+            "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [{ "tabRenderer": { "content": {
+                "sectionListRenderer": { "contents": [
+                    // The tracks: no continuation, the playlist fits on one page.
+                    { "musicPlaylistShelfRenderer": { "contents": [
+                        { "musicResponsiveListItemRenderer": {
+                            "playlistItemData": { "videoId": "mine1" },
+                            "flexColumns": [
+                                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "End Of The Road" }] } } }
+                            ]
+                        } }
+                    ] } },
+                    // "Suggestions" shelf — its token must never be treated as more tracks.
+                    { "musicShelfRenderer": {
+                        "title": { "runs": [{ "text": "Suggestions" }] },
+                        "contents": [],
+                        "continuations": [{ "nextContinuationData": { "continuation": "SUGGEST_TOKEN" } }]
+                    } }
+                ] }
+            } } }] } }
+        });
+        let p = parse_playlist(&root);
+        assert_eq!(p.items.len(), 1);
+        assert_eq!(p.continuation, None, "the suggestions token is not a track continuation");
     }
 
     #[test]
