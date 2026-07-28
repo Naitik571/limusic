@@ -33,6 +33,9 @@
 
 	const inRoom = $derived(lt.role !== 'none');
 	const isHost = $derived(lt.role === 'host');
+	// The only thing worth showing or sending: the bare room code is useless to a guest who doesn't
+	// already know the server URL, and every self-hosted server has a different one.
+	const invite = $derived(makeInvite(lt.serverUrl, lt.roomCode ?? ''));
 	// Sitting between "asked to join" and "in the room" — show a waiting state, block re-sends.
 	const waiting = $derived(lt.requesting && lt.role === 'none');
 
@@ -78,7 +81,7 @@
 		const parsed = parseInvite(inviteInput);
 		if (!parsed || !parsed.code) return toast('Paste the invite code your friend sent');
 		const server = parsed.server || lt.serverUrl;
-		if (!server) return toast('Paste the full invite from the host — it carries the server address');
+		if (!server) return toast('Paste the full invite from the host, it carries the server address');
 		busy = true;
 		try {
 			if (server !== lt.serverUrl) await api.ltSetServerUrl(server);
@@ -94,9 +97,7 @@
 	}
 
 	function copyInvite() {
-		navigator.clipboard
-			.writeText(makeInvite(lt.serverUrl, lt.roomCode ?? ''))
-			.then(() => toast('Invite copied — send it to a friend'));
+		navigator.clipboard.writeText(invite).then(() => toast('Invite copied, send it to a friend'));
 	}
 </script>
 
@@ -144,7 +145,7 @@
 							<div class="mb-1 text-sm font-medium">Invite code</div>
 							<Input bind:value={inviteInput} placeholder="Paste the invite your friend sent" />
 							<p class="mt-1 text-xs text-muted-foreground">
-								The invite carries the server address — nothing else to set up.
+								The invite carries the server address, nothing else to set up.
 							</p>
 						</div>
 						<div>
@@ -173,13 +174,17 @@
 		{:else}
 			<!-- In a room. -->
 			<div class="flex flex-col gap-4 pt-1">
-				<!-- Role + room code -->
+				<!-- Role + invite -->
 				<div class="rounded-lg border bg-muted/40 p-4 text-center">
 					<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						{isHost ? 'Hosting' : 'Listening'} · {lt.status}
 					</div>
-					<div class="mt-1 font-mono text-3xl font-bold tracking-[0.2em]">{lt.roomCode}</div>
-					<Button variant="outline" size="sm" class="mt-3" onclick={copyInvite}>
+					<div
+						class="mt-2 select-all break-all rounded-md bg-background px-2 py-1.5 text-left font-mono text-[11px] leading-snug"
+					>
+						{invite}
+					</div>
+					<Button variant="outline" size="sm" class="mt-3 w-full" onclick={copyInvite}>
 						<HugeiconsIcon icon={Copy01Icon} class="h-4 w-4" />
 						Copy invite
 					</Button>
