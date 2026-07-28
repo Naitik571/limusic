@@ -114,7 +114,7 @@ impl Player {
     ) -> Result<(), Error> {
         self.apply_headers(headers)?;
         self.apply_gain(gain_db)?;
-        self.mpv.command("loadfile", &[url, "replace"])?;
+        self.mpv.command("loadfile", &[&quoted(url), "replace"])?;
         Ok(())
     }
 
@@ -124,7 +124,7 @@ impl Player {
     /// inherit the currently-set headers. Phase 1 direct-URL clients need no per-track cookies,
     /// so this is fine; per-track header divergence is a Phase 2+ concern (WEB_REMIX `&pot=`).
     pub fn enqueue(&self, url: &str) -> Result<(), Error> {
-        self.mpv.command("loadfile", &[url, "append"])?;
+        self.mpv.command("loadfile", &[&quoted(url), "append"])?;
         Ok(())
     }
 
@@ -276,6 +276,18 @@ fn event_loop(mut ev: EventContext, tx: tokio::sync::mpsc::UnboundedSender<Playe
     }
 }
 
+/// Quote a filename/URL for mpv's command parser.
+///
+/// libmpv2's `command` builds one space-joined string and hands it to `mpv_command_string`, which
+/// splits it back apart on whitespace. So `loadfile /music/My music/a, b.mp3 replace` reaches mpv
+/// as six arguments and fails with INVALID_PARAMETER (-4) — which is every local file whose path
+/// has a space in it. Inside double quotes mpv only treats `\` specially, so escaping those two
+/// characters is the whole job (verified against libmpv: quotes, commas, `$` and backslashes all
+/// round-trip byte for byte through `playlist/0/filename`).
+fn quoted(arg: &str) -> String {
+    format!("\"{}\"", arg.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// Slider percent (perceptual, linear-in-dB over 40 dB) → mpv `volume` value. mpv applies
 /// gain = (v/100)³, i.e. 60·log10(v/100) dB, so v = 100·10^((s−100)/150) yields a perceived
 /// level of 0.4·(s−100) dB. 0 stays a hard mute.
@@ -288,7 +300,18 @@ fn perceptual_to_mpv(percent: i64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::perceptual_to_mpv;
+    use super::{perceptual_to_mpv, quoted};
+
+    #[test]
+    fn paths_survive_mpvs_command_parser() {
+        // The bug this exists for: a space used to end the argument.
+        assert_eq!(quoted("/music/My music/a, b.mp3"), "\"/music/My music/a, b.mp3\"");
+        // Only backslash and double quote mean anything inside the quotes.
+        assert_eq!(quoted(r#"/m/say "hi".mp3"#), r#""/m/say \"hi\".mp3""#);
+        assert_eq!(quoted(r"C:\Music\x.mp3"), r#""C:\\Music\\x.mp3""#);
+        // A stream URL is unchanged apart from the wrapper.
+        assert_eq!(quoted("https://x/y?a=1&b=2"), "\"https://x/y?a=1&b=2\"");
+    }
 
     #[test]
     fn volume_curve() {
