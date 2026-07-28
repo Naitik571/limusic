@@ -45,6 +45,9 @@ pub struct PlaybackData {
 pub enum ResolveError {
     #[error("no client could resolve a playable stream for {0}")]
     AllClientsFailed(String),
+    /// A local file that was in the library but is no longer on disk (context: local.rs).
+    #[error("this file is no longer on your disk: {0}")]
+    LocalMissing(String),
 }
 
 /// Client keys that need the `n`-transform applied to their stream URLs. context/06.

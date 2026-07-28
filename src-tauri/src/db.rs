@@ -44,6 +44,18 @@ impl Db {
                 song_json TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS plays_played_at ON plays(played_at);
+            CREATE TABLE IF NOT EXISTS local_tracks (
+                path          TEXT PRIMARY KEY,
+                title         TEXT NOT NULL,
+                artist        TEXT NOT NULL,
+                album         TEXT NOT NULL,
+                album_key     TEXT NOT NULL,
+                track_no      INTEGER NOT NULL,
+                duration_secs INTEGER NOT NULL,
+                cover         TEXT,
+                mtime         INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS local_tracks_album ON local_tracks(album_key);
             "#,
         )?;
         // Migrate pre-Phase-4 DBs that predate the loudness_db column. Errors ("duplicate column")
@@ -199,6 +211,115 @@ impl Db {
         }
         out
     }
+
+    // --- local music library (local.rs) -------------------------------------------------------
+
+    /// Every known file with its recorded mtime — the scanner re-reads tags only where it differs.
+    pub fn local_mtimes(&self) -> std::collections::HashMap<String, i64> {
+        let conn = self.0.lock().unwrap();
+        let mut out = std::collections::HashMap::new();
+        if let Ok(mut stmt) = conn.prepare("SELECT path, mtime FROM local_tracks") {
+            if let Ok(rows) = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))) {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+
+    /// Upsert a batch in one transaction. SQLite fsyncs per statement otherwise, which is the
+    /// difference between a first scan taking a second and taking minutes.
+    pub fn put_local_tracks(&self, tracks: &[LocalTrack]) {
+        if tracks.is_empty() {
+            return;
+        }
+        let mut conn = self.0.lock().unwrap();
+        let Ok(tx) = conn.transaction() else { return };
+        for t in tracks {
+            let _ = tx.execute(
+                LOCAL_TRACK_UPSERT,
+                rusqlite::params![
+                    t.path, t.title, t.artist, t.album, t.album_key, t.track_no, t.duration_secs,
+                    t.cover, t.mtime
+                ],
+            );
+        }
+        let _ = tx.commit();
+    }
+
+    pub fn local_album_key(&self, path: &str) -> Option<String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row("SELECT album_key FROM local_tracks WHERE path = ?1", [path], |r| r.get(0))
+            .ok()
+    }
+
+    /// Forget files that are no longer on disk (the user deleted or moved them).
+    pub fn delete_local_tracks(&self, paths: &[String]) {
+        if paths.is_empty() {
+            return;
+        }
+        let mut conn = self.0.lock().unwrap();
+        let Ok(tx) = conn.transaction() else { return };
+        for p in paths {
+            let _ = tx.execute("DELETE FROM local_tracks WHERE path = ?1", [p]);
+        }
+        let _ = tx.commit();
+    }
+
+    /// All tracks, or one album's, in album order. ponytail: loads the whole table — a personal
+    /// collection is thousands of rows, so paging it would buy nothing.
+    pub fn local_tracks(&self, album_key: Option<&str>) -> Vec<LocalTrack> {
+        let conn = self.0.lock().unwrap();
+        let sql = "SELECT path, title, artist, album, album_key, track_no, duration_secs, cover, mtime
+                   FROM local_tracks {WHERE} ORDER BY album, track_no, title";
+        let sql = sql.replace("{WHERE}", if album_key.is_some() { "WHERE album_key = ?1" } else { "" });
+        let mut out = Vec::new();
+        let row = |r: &rusqlite::Row| {
+            Ok(LocalTrack {
+                path: r.get(0)?,
+                title: r.get(1)?,
+                artist: r.get(2)?,
+                album: r.get(3)?,
+                album_key: r.get(4)?,
+                track_no: r.get(5)?,
+                duration_secs: r.get(6)?,
+                cover: r.get(7)?,
+                mtime: r.get(8)?,
+            })
+        };
+        if let Ok(mut stmt) = conn.prepare(&sql) {
+            let rows = match album_key {
+                Some(k) => stmt.query_map([k], row),
+                None => stmt.query_map([], row),
+            };
+            if let Ok(rows) = rows {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+}
+
+const LOCAL_TRACK_UPSERT: &str =
+    "INSERT INTO local_tracks(path, title, artist, album, album_key, track_no, duration_secs, cover, mtime)
+     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+     ON CONFLICT(path) DO UPDATE SET title = excluded.title, artist = excluded.artist,
+        album = excluded.album, album_key = excluded.album_key, track_no = excluded.track_no,
+        duration_secs = excluded.duration_secs, cover = excluded.cover, mtime = excluded.mtime";
+
+/// One file in the local library. Tag data as read at scan time; `mtime` is the change detector.
+#[derive(Debug, Clone)]
+pub struct LocalTrack {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    /// Stable, human-readable album id fragment (`artist--album`, sanitized). See `local.rs`.
+    pub album_key: String,
+    pub track_no: i64,
+    pub duration_secs: i64,
+    /// Absolute path to the cover image (extracted or found next to the files).
+    pub cover: Option<String>,
+    pub mtime: i64,
 }
 
 #[cfg(test)]

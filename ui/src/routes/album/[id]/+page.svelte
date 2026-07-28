@@ -27,6 +27,7 @@
         toast,
     } from "$lib/player.svelte";
     import { getCached, putCached } from "$lib/pagecache";
+    import { thumb } from "$lib/thumb";
 
     let album = $state<AlbumPage | null>(null);
     let artistHero = $state<string | null>(null);
@@ -36,6 +37,9 @@
     let menuOpen = $state(false);
 
     const id = $derived(page.params.id ?? "");
+    // A local album has no YouTube playlist behind it: nothing to save, add to a playlist, or
+    // fetch an artist hero for. Playing, shuffling and Shortcuts all work exactly the same.
+    const isLocal = $derived(api.isLocalId(id));
     const nowId = $derived(playback.now?.videoId);
 
     async function load(aid: string) {
@@ -81,6 +85,23 @@
 
     $effect(() => {
         if (id) load(id);
+    });
+
+    // A local track deleted off disk vanishes from the open page too, header count included: the
+    // page is rebuilt from SQLite (already pruned) rather than patched, so nothing can go stale.
+    // An album whose last file is gone has no page left to show — step back to the library.
+    $effect(() => {
+        const un = api.onLocalChanged(async (removed) => {
+            const a = album;
+            if (!isLocal || !a) return;
+            const gone = new Set(removed);
+            const items = a.items.filter((i) => !gone.has(i.video_id));
+            if (items.length === a.items.length) return; // not this album
+            a.items = items; // the row goes now; the refetch below repairs the header counts
+            await load(id);
+            if (!album?.items.length) goto("/library?tab=local");
+        });
+        return () => un.then((f) => f());
     });
 
     // This album as a card, for the sidebar's last-played sort and the Shortcuts grid.
@@ -162,7 +183,7 @@
             />
         {:else if album.thumbnail}
             <img
-                src={album.thumbnail}
+                src={thumb(album.thumbnail, 400)}
                 alt=""
                 class="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
             />
@@ -177,7 +198,7 @@
                 <!-- hasn't regenerated a newly-used spacing utility (would fall back to intrinsic size). -->
                 {#if album.thumbnail}
                     <img
-                        src={album.thumbnail}
+                        src={thumb(album.thumbnail, 400)}
                         alt=""
                         style="width:7rem;height:7rem"
                         class="shrink-0 rounded-xl object-cover shadow-2xl"
@@ -296,15 +317,17 @@
                     <div
                         class="absolute bottom-12 left-40 z-50 min-w-48 origin-bottom-left animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
                     >
-                        <button
-                            class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-                            onclick={saveToPlaylist}
-                        >
-                            <HugeiconsIcon
-                                icon={PlayListAddIcon}
-                                class="h-4 w-4"
-                            /> Save to playlist
-                        </button>
+                        {#if !isLocal}
+                            <button
+                                class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+                                onclick={saveToPlaylist}
+                            >
+                                <HugeiconsIcon
+                                    icon={PlayListAddIcon}
+                                    class="h-4 w-4"
+                                /> Save to playlist
+                            </button>
+                        {/if}
                         <button
                             class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
                             onclick={() => {
@@ -332,7 +355,7 @@
                 hideThumb
                 active={item.video_id === nowId}
                 onplay={() => playAll(i)}
-                onAdd={() => openAddManyToPlaylist([item])}
+                onAdd={isLocal ? undefined : () => openAddManyToPlaylist([item])}
             />
         {:else}
             <p class="p-4 text-sm text-muted-foreground">

@@ -245,6 +245,17 @@ impl AppState {
     }
 
     async fn resolve(&self, video_id: &str) -> Result<PlaybackData, ResolveError> {
+        // A local file is its own "stream": no network, no cache, no extraction (local.rs).
+        if let Some(path) = crate::local::song_path(video_id) {
+            return crate::local::playback_data(video_id, path).map_err(|_| {
+                // Gone since the last scan. Forget it here rather than at the next scan, and say
+                // so — the UI drops the row (and any Shortcuts tile) on the spot instead of
+                // leaving something that can only fail again.
+                let removed = crate::local::forget_missing(&self.db, path);
+                let _ = self.app.emit("local-changed", serde_json::json!({ "removed": removed }));
+                ResolveError::LocalMissing(path.to_owned())
+            });
+        }
         // Latency cache first (context/11) — honor expiry, never a source of truth.
         // 60s safety margin: a URL that expires mid-load/mid-buffer fails as Raw(-13).
         let now = now_secs();
@@ -302,7 +313,9 @@ impl AppState {
             // Unplayed manual adds survive a context switch (Spotify semantics): they follow the
             // new track, ahead of its radio (hydration appends behind them).
             let mut carried = upcoming_queued(&q.items, q.current);
-            q.source_name = Some(format!("{} Radio", seed.title));
+            // A local file has no radio behind it (see below), so don't promise one in the header.
+            q.source_name = (!crate::local::is_local_song(&seed.video_id))
+                .then(|| format!("{} Radio", seed.title));
             q.items = vec![seed];
             q.items.append(&mut carried);
             q.current = 0;
@@ -313,6 +326,14 @@ impl AppState {
         }
 
         if !self.start_current(gen).await {
+            return;
+        }
+
+        // A local file isn't a videoId YouTube has ever heard of: asking for its radio is a
+        // guaranteed-useless request, and offline (where local music earns its keep) it's a
+        // guaranteed-failing one.
+        if crate::local::is_local_song(&video_id) {
+            self.prime_lookahead(gen).await;
             return;
         }
 
@@ -603,6 +624,35 @@ impl AppState {
             let Some(item) = self.current_item().await else { return false };
             match self.resolve(&item.video_id).await {
                 Ok(d) => break (item, d),
+                // A deleted local file is gone for good, so it leaves the queue outright rather
+                // than being skipped over — a row that can only ever fail again is noise. Every
+                // other failure is transient in principle (network, region, a cipher self-heal),
+                // so those keep their place.
+                Err(ResolveError::LocalMissing(_)) => {
+                    let exhausted = {
+                        let mut q = self.queue.lock().await;
+                        let cur = q.current;
+                        if cur < q.items.len() {
+                            q.items.remove(cur);
+                        }
+                        q.lookahead_loaded = None;
+                        // `current` now points at what followed it. When it was the tail, step
+                        // back onto the last surviving track: an index past the end leaves the
+                        // transport pointing at nothing, and Play does nothing at all.
+                        let exhausted = q.current >= q.items.len();
+                        if exhausted {
+                            q.current = q.items.len().saturating_sub(1);
+                        }
+                        exhausted
+                    };
+                    self.emit_queue().await;
+                    self.persist_queue().await;
+                    self.lt_broadcast_queue().await;
+                    self.emit_notice(&format!("{} is no longer on your disk", item.title));
+                    if exhausted {
+                        return false;
+                    }
+                }
                 Err(e) => {
                     let mut q = self.queue.lock().await;
                     // Deliberately ignores repeat-all: wrapping the unplayable-skip would spin
@@ -797,7 +847,11 @@ impl AppState {
         let _ = self.app.emit("playback-state", "playing");
         // Push the same metadata to the OS media widget (context/16) and Discord.
         if let Some(m) = &self.media {
-            m.set_metadata(&item.title, &item.artists, item.album.as_deref(), item.thumbnail.as_deref());
+            // MPRIS/SMTC want a URL; a local track's artwork is a path, so hand it a file:// one.
+            let cover = item.thumbnail.as_ref().map(|t| {
+                if t.starts_with('/') { format!("file://{t}") } else { t.clone() }
+            });
+            m.set_metadata(&item.title, &item.artists, item.album.as_deref(), cover.as_deref());
         }
         if let Some(d) = &self.discord {
             d.set_track(item);
@@ -894,6 +948,12 @@ impl AppState {
             "playback-notice",
             serde_json::json!({ "message": "The host controls playback — click a song to add it to the session queue" }),
         );
+    }
+
+    /// A transient toast. Same channel as [`Self::emit_skip`], for messages that phrase themselves.
+    fn emit_notice(&self, message: &str) {
+        tracing::info!(message, "playback notice");
+        let _ = self.app.emit("playback-notice", serde_json::json!({ "message": message }));
     }
 
     /// A track was auto-skipped because no client could resolve it — a transient toast, not the
@@ -1012,6 +1072,11 @@ impl AppState {
                 return 0; // tail not near yet
             }
             let Some(last) = q.items.last() else { return 0 };
+            // Nothing to continue from when the queue ends on a local file: its path is not a
+            // videoId, and a queue of local music is exactly the case that has to work offline.
+            if q.radio_seed.is_none() && crate::local::is_local_song(&last.video_id) {
+                return 0;
+            }
             let seed = q.radio_seed.clone().unwrap_or_else(|| format!("RDAMVM{}", last.video_id));
             let existing: HashSet<String> = q.items.iter().map(|i| i.video_id.clone()).collect();
             (last.video_id.clone(), seed, existing)

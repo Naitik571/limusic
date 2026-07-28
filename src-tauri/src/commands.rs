@@ -349,6 +349,10 @@ pub async fn get_playlist_more(
 /// An album page. `id` is the album browseId (`MPRE…`).
 #[tauri::command]
 pub async fn get_album(state: St<'_>, id: String) -> Result<AlbumPage, String> {
+    // A local album is built from SQLite, so it opens the same page while offline (local.rs).
+    if let Some(key) = id.strip_prefix(crate::local::ALBUM_PREFIX) {
+        return Ok(crate::local::album_page(&state.db, key));
+    }
     let client = metadata_client(&state)?;
     state.it.album(client, &id).await.map_err(|e| e.to_string())
 }
@@ -473,6 +477,49 @@ pub async fn delete_playlist(state: St<'_>, playlist_id: String) -> Result<(), S
 pub async fn subscribe(state: St<'_>, channel_id: String, subscribed: bool) -> Result<(), String> {
     let client = require_login(&state)?;
     state.it.subscribe(client, &channel_id, subscribed).await.map_err(|e| e.to_string())
+}
+
+// --- local music (local.rs) ------------------------------------------------------------------
+
+/// Rescan the watched folders and return the library. The scan is the deletion check too: its
+/// `removed` list is every id that was on screen but is gone from disk, so the UI can drop those
+/// tiles without waiting for anyone to click a dead one.
+#[tauri::command]
+pub async fn get_local_library(state: St<'_>) -> Result<crate::local::LocalLibrary, String> {
+    scan_local(&state).await
+}
+
+#[tauri::command]
+pub async fn add_local_folder(
+    state: St<'_>,
+    path: String,
+) -> Result<crate::local::LocalLibrary, String> {
+    crate::local::add_folder(&state.db, path);
+    scan_local(&state).await
+}
+
+/// Stop watching a folder. Its tracks disappear from the library on the rescan that follows (they
+/// come back untouched if the folder is added again — nothing on disk is modified).
+#[tauri::command]
+pub async fn remove_local_folder(
+    state: St<'_>,
+    path: String,
+) -> Result<crate::local::LocalLibrary, String> {
+    crate::local::remove_folder(&state.db, &path);
+    scan_local(&state).await
+}
+
+/// Disk IO + tag parsing off the async runtime's worker threads.
+async fn scan_local(state: &Arc<AppState>) -> Result<crate::local::LocalLibrary, String> {
+    let app = state.app.clone();
+    let state = state.clone();
+    let covers = crate::local::covers_dir(&state.app);
+    let lib = tauri::async_runtime::spawn_blocking(move || crate::local::scan(&state.db, &covers))
+        .await
+        .map_err(|e| e.to_string())?;
+    // Artwork reaches the page over the asset protocol, which starts out allowing nothing.
+    crate::local::allow_covers(&app, &lib.songs);
+    Ok(lib)
 }
 
 // --- Listen Together (context/19) ----------------------------------------------------------

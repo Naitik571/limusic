@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		Add01Icon,
+		DriveIcon,
 		MusicNoteSquare02Icon,
 		Playlist02Icon,
 		SquareStackIcon,
@@ -12,6 +14,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import LocalMusic from '$lib/components/LocalMusic.svelte';
 	import MediaCard from '$lib/components/MediaCard.svelte';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -22,7 +25,9 @@
 	let dialogOpen = $state(false);
 	let newTitle = $state('');
 	let busy = $state(false);
-	let tab = $state('all');
+	// `?tab=local` so anything that sends you back here (an album whose files were deleted) lands
+	// on the tab you came from instead of a sign-in prompt.
+	let tab = $state(page.url.searchParams.get('tab') ?? 'all');
 
 	// Playlists live in the shared `library` store (the sidebar renders them too). Albums and
 	// artists have this page as their only consumer, so they stay local and refresh on each visit.
@@ -121,32 +126,43 @@
 		</Dialog.Content>
 	</Dialog.Root>
 
-	{#if !auth.account?.signedIn}
-		<p class="text-sm text-muted-foreground">Sign in to see your playlists and liked songs.</p>
-	{:else if loading}
-		<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
-			{#each Array(12) as _, i (i)}
-				<MediaCardSkeleton />
-			{/each}
-		</div>
-	{:else if error}
-		<ErrorState message={error} onRetry={load} />
-	{:else}
-		<Tabs.Root bind:value={tab}>
-			<Tabs.List class="mb-4">
-				<Tabs.Trigger value="all">
-					<HugeiconsIcon icon={SquareStackIcon} class="h-4 w-4" /> All
-				</Tabs.Trigger>
-				<Tabs.Trigger value="playlists">
-					<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Playlists
-				</Tabs.Trigger>
-				<Tabs.Trigger value="albums">
-					<HugeiconsIcon icon={MusicNoteSquare02Icon} class="h-4 w-4" /> Albums
-				</Tabs.Trigger>
-				<Tabs.Trigger value="artists">
-					<HugeiconsIcon icon={UserSharingIcon} class="h-4 w-4" /> Artists
-				</Tabs.Trigger>
-			</Tabs.List>
+	<!-- The tabs always render: Local music needs neither an account nor a connection. -->
+	<Tabs.Root bind:value={tab}>
+		<Tabs.List class="mb-4">
+			<Tabs.Trigger value="all">
+				<HugeiconsIcon icon={SquareStackIcon} class="h-4 w-4" /> All
+			</Tabs.Trigger>
+			<Tabs.Trigger value="playlists">
+				<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Playlists
+			</Tabs.Trigger>
+			<Tabs.Trigger value="albums">
+				<HugeiconsIcon icon={MusicNoteSquare02Icon} class="h-4 w-4" /> Albums
+			</Tabs.Trigger>
+			<Tabs.Trigger value="artists">
+				<HugeiconsIcon icon={UserSharingIcon} class="h-4 w-4" /> Artists
+			</Tabs.Trigger>
+			<Tabs.Trigger value="local">
+				<HugeiconsIcon icon={DriveIcon} class="h-4 w-4" /> Local
+			</Tabs.Trigger>
+		</Tabs.List>
+		<!-- Local stands alone: no account, no connection, and none of the states below apply. -->
+		<Tabs.Content value="local"><LocalMusic /></Tabs.Content>
+		{#if tab === 'local'}
+			<!-- nothing else: the YouTube states below have no bearing on files on this disk -->
+		{:else if !auth.account?.signedIn}
+			<p class="text-sm text-muted-foreground">
+				Sign in to see your playlists and liked songs, or open the Local tab for music on this
+				device.
+			</p>
+		{:else if loading}
+			<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+				{#each Array(12) as _, i (i)}
+					<MediaCardSkeleton />
+				{/each}
+			</div>
+		{:else if error}
+			<ErrorState message={error} onRetry={load} />
+		{:else}
 			<Tabs.Content value="all">{@render grid(all, 'Your library is empty.')}</Tabs.Content>
 			<Tabs.Content value="playlists">
 				{@render grid(library.items, 'No playlists yet.')}
@@ -157,6 +173,6 @@
 			<Tabs.Content value="artists">
 				{@render grid(artists, 'No artists yet. They show up once you save their songs or albums.')}
 			</Tabs.Content>
-		</Tabs.Root>
-	{/if}
+		{/if}
+	</Tabs.Root>
 </div>

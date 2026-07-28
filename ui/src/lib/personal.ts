@@ -135,6 +135,21 @@ export function removePick(p: Personal, id: string): void {
 }
 
 /**
+ * Drop everything that points at something which no longer exists — local files the user deleted
+ * off disk. Returns how many grid tiles went, so the caller can say so. Unlike `removePick` this
+ * doesn't remember the id: nothing was refused, the thing just stopped existing.
+ */
+export function forgetIds(p: Personal, ids: string[]): number {
+	if (!ids.length) return 0;
+	const gone = new Set(ids);
+	const before = p.picks.length;
+	p.picks = p.picks.filter((x) => !gone.has(x.id));
+	p.pins = p.pins.filter((id) => !gone.has(id));
+	for (const id of ids) delete p.recent[id];
+	return before - p.picks.length;
+}
+
+/**
  * Mark a tile as used (played or clicked). Returns whether anything changed — most calls come from
  * cards that aren't on the grid, and the caller uses this to skip a pointless write.
  */

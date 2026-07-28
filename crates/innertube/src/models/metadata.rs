@@ -11,7 +11,7 @@ use serde_json::Value;
 
 /// A song item — the minimum the playback path (context/06) needs. context/08.
 /// Round-trips through the UI (serialized into search results, deserialized back into `play`).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct SongItem {
     pub video_id: String,
     pub title: String,

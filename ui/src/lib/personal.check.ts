@@ -11,6 +11,7 @@ import {
 	addPick,
 	empty,
 	firstArtist,
+	forgetIds,
 	hydrate,
 	interleave,
 	noteRecent,
@@ -226,6 +227,24 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 	range(MAX_PICKS, 'mine').forEach((it, i) => addPick(p, it, 1000 + i));
 	ok(!seedPick(p, item('onrepeat')), 'a full grid refuses the suggestion');
 	ok(p.picks.length === MAX_PICKS && !ids(p.picks).includes('onrepeat'), 'nothing was evicted');
+}
+
+// --- files that vanish off disk take their tiles, pins and recents with them ---------------------
+{
+	const p = empty();
+	addPick(p, item('LOCALALBUM:gone'));
+	addPick(p, item('LOCALALBUM:kept'));
+	togglePin(p, 'LOCALALBUM:gone');
+	noteRecent(p, item('LOCALALBUM:gone'));
+	noteRecent(p, item('LOCALALBUM:kept'));
+
+	ok(forgetIds(p, ['LOCALALBUM:gone']) === 1, 'one tile was dropped');
+	ok(ids(p.picks).join() === 'LOCALALBUM:kept', 'only the deleted album left the grid');
+	ok(p.pins.length === 0, 'its sidebar pin went too');
+	ok(!p.recent['LOCALALBUM:gone'] && !!p.recent['LOCALALBUM:kept'], 'and its recency entry');
+	// Not a dismissal: the user refused nothing, so re-adding it later behaves normally.
+	ok(seedPick(p, item('LOCALALBUM:gone')), 'a forgotten id can be suggested again if it returns');
+	ok(forgetIds(p, []) === 0, 'nothing to forget is a no-op');
 }
 
 console.log('ok');

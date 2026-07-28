@@ -111,7 +111,13 @@ impl DiscordHandle {
             artists: item.artists.clone(),
             album: item.album.clone(),
             // Upscale here (stored thumbs are often 60px) and drop over-long URLs outright.
-            thumbnail: item.thumbnail.as_deref().and_then(discord_thumb),
+            // A local track's artwork is a path on this machine: Discord can't fetch it, and it
+            // would put the user's directory layout on their profile. Send none.
+            thumbnail: item
+                .thumbnail
+                .as_deref()
+                .filter(|_| !crate::local::is_local_song(&item.video_id))
+                .and_then(discord_thumb),
         })));
     }
 
@@ -412,14 +418,17 @@ impl Presence {
         let mut act = activity::Activity::new()
             .activity_type(activity::ActivityType::Listening)
             .details(field(&track.title))
-            .timestamps(ts)
-            .buttons(vec![
-                activity::Button::new(
-                    "Listen on YouTube Music",
-                    format!("{SONG_URL}{}", track.video_id),
-                ),
-                activity::Button::new("Get Limusic", REPO_URL),
-            ]);
+            .timestamps(ts);
+        // A local file has no YouTube page to link, and its id is a path — never put it in a URL.
+        let mut buttons = Vec::new();
+        if !crate::local::is_local_song(&track.video_id) {
+            buttons.push(activity::Button::new(
+                "Listen on YouTube Music",
+                format!("{SONG_URL}{}", track.video_id),
+            ));
+        }
+        buttons.push(activity::Button::new("Get Limusic", REPO_URL));
+        act = act.buttons(buttons);
         if !track.artists.is_empty() {
             act = act.state(field(&track.artists));
         }

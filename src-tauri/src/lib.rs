@@ -6,6 +6,7 @@ mod db;
 mod discord;
 mod lastfm;
 mod listentogether;
+mod local;
 mod lyrics;
 mod media;
 mod orchestrator;
@@ -73,6 +74,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // Folder picker for the local-music library (local.rs).
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -159,6 +162,10 @@ pub fn run() {
                 lastfm,
             ));
             app.manage(app_state.clone());
+
+            // Local music artwork reaches the webview over the asset protocol, whose configured
+            // scope is empty — the folders it may read are the ones the user picked (local.rs).
+            local::allow_music_paths(&handle, &app_state.db);
 
             // System tray: playback controls + show/quit while running in the background.
             if let Err(e) = tray::init(&handle) {
@@ -267,6 +274,9 @@ pub fn run() {
             commands::get_playlist,
             commands::get_playlist_more,
             commands::get_album,
+            commands::get_local_library,
+            commands::add_local_folder,
+            commands::remove_local_folder,
             commands::get_artist,
             commands::get_browse_grid,
             commands::play_playlist,
