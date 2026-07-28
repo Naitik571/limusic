@@ -124,7 +124,9 @@ async function runLocal(call: () => Promise<api.LocalLibrary>) {
 	}
 }
 
-export const scanLocal = () => runLocal(api.getLocalLibrary);
+/** No-op while a scan is already running: the startup scan and opening the Local tab overlap. */
+export const scanLocal = () =>
+	local.loading ? Promise.resolve() : runLocal(api.getLocalLibrary);
 export const addLocalFolder = (path: string) => runLocal(() => api.addLocalFolder(path));
 export const removeLocalFolder = (path: string) => runLocal(() => api.removeLocalFolder(path));
 

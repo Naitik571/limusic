@@ -2,6 +2,7 @@
 	// The Library page's Local tab: music that lives on this machine. Works signed out and offline,
 	// because nothing here goes near YouTube (Rust `local.rs`). Albums open the normal album page
 	// and songs play through the normal queue, so everything past this component is shared.
+	import { onMount } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import {
@@ -28,7 +29,17 @@
 		toast
 	} from '$lib/player.svelte';
 
+	// Files come and go while the app runs, so the tab rescans when you open it (a no-op scan is a
+	// stat per file). The startup scan is what keeps deleted music out of the home grid.
+	onMount(() => {
+		scanLocal();
+	});
+
 	let view = $state('albums');
+	// A local collection can be thousands of files, and WebKitGTK does not enjoy thousands of rows.
+	// Render a page at a time — Play all and Shuffle still take the whole list.
+	const PAGE = 300;
+	let shown = $state(PAGE);
 	const nowId = $derived(playback.now?.videoId);
 	// The whole local collection as one queue — what the Play/Shuffle buttons above the song list
 	// do, and what the queue panel calls it. Not a `playFrom`: there's no page behind "everything on
@@ -123,6 +134,11 @@
 						<MediaCard item={album} />
 					{/each}
 				</div>
+				{#if local.songs.length > shown}
+					<Button variant="ghost" class="mt-2 w-full" onclick={() => (shown += PAGE)}>
+						Show more ({local.songs.length - shown} left)
+					</Button>
+				{/if}
 			</Tabs.Content>
 			<Tabs.Content value="songs">
 				<div class="mb-3 flex gap-2">
@@ -139,7 +155,7 @@
 					</Button>
 				</div>
 				<div class="content-in">
-					{#each local.songs as song, i (song.video_id)}
+					{#each local.songs.slice(0, shown) as song, i (song.video_id)}
 						<TrackRow
 							{song}
 							index={i + 1}

@@ -145,8 +145,10 @@
 				<HugeiconsIcon icon={DriveIcon} class="h-4 w-4" /> Local
 			</Tabs.Trigger>
 		</Tabs.List>
+		<!-- Local stands alone: no account, no connection, and none of the states below apply. -->
+		<Tabs.Content value="local"><LocalMusic /></Tabs.Content>
 		{#if tab === 'local'}
-			<LocalMusic />
+			<!-- nothing else: the YouTube states below have no bearing on files on this disk -->
 		{:else if !auth.account?.signedIn}
 			<p class="text-sm text-muted-foreground">
 				Sign in to see your playlists and liked songs, or open the Local tab for music on this

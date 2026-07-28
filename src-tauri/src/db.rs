@@ -226,19 +226,24 @@ impl Db {
         out
     }
 
-    pub fn put_local_track(&self, t: &LocalTrack) {
-        let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
-            "INSERT INTO local_tracks(path, title, artist, album, album_key, track_no, duration_secs, cover, mtime)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(path) DO UPDATE SET title = excluded.title, artist = excluded.artist,
-                album = excluded.album, album_key = excluded.album_key, track_no = excluded.track_no,
-                duration_secs = excluded.duration_secs, cover = excluded.cover, mtime = excluded.mtime",
-            rusqlite::params![
-                t.path, t.title, t.artist, t.album, t.album_key, t.track_no, t.duration_secs,
-                t.cover, t.mtime
-            ],
-        );
+    /// Upsert a batch in one transaction. SQLite fsyncs per statement otherwise, which is the
+    /// difference between a first scan taking a second and taking minutes.
+    pub fn put_local_tracks(&self, tracks: &[LocalTrack]) {
+        if tracks.is_empty() {
+            return;
+        }
+        let mut conn = self.0.lock().unwrap();
+        let Ok(tx) = conn.transaction() else { return };
+        for t in tracks {
+            let _ = tx.execute(
+                LOCAL_TRACK_UPSERT,
+                rusqlite::params![
+                    t.path, t.title, t.artist, t.album, t.album_key, t.track_no, t.duration_secs,
+                    t.cover, t.mtime
+                ],
+            );
+        }
+        let _ = tx.commit();
     }
 
     pub fn local_album_key(&self, path: &str) -> Option<String> {
@@ -249,10 +254,15 @@ impl Db {
 
     /// Forget files that are no longer on disk (the user deleted or moved them).
     pub fn delete_local_tracks(&self, paths: &[String]) {
-        let conn = self.0.lock().unwrap();
-        for p in paths {
-            let _ = conn.execute("DELETE FROM local_tracks WHERE path = ?1", [p]);
+        if paths.is_empty() {
+            return;
         }
+        let mut conn = self.0.lock().unwrap();
+        let Ok(tx) = conn.transaction() else { return };
+        for p in paths {
+            let _ = tx.execute("DELETE FROM local_tracks WHERE path = ?1", [p]);
+        }
+        let _ = tx.commit();
     }
 
     /// All tracks, or one album's, in album order. ponytail: loads the whole table — a personal
@@ -288,6 +298,13 @@ impl Db {
         out
     }
 }
+
+const LOCAL_TRACK_UPSERT: &str =
+    "INSERT INTO local_tracks(path, title, artist, album, album_key, track_no, duration_secs, cover, mtime)
+     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+     ON CONFLICT(path) DO UPDATE SET title = excluded.title, artist = excluded.artist,
+        album = excluded.album, album_key = excluded.album_key, track_no = excluded.track_no,
+        duration_secs = excluded.duration_secs, cover = excluded.cover, mtime = excluded.mtime";
 
 /// One file in the local library. Tag data as read at scan time; `mtime` is the change detector.
 #[derive(Debug, Clone)]

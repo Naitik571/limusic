@@ -163,6 +163,10 @@ pub fn run() {
             ));
             app.manage(app_state.clone());
 
+            // Local music artwork reaches the webview over the asset protocol, whose configured
+            // scope is empty — the folders it may read are the ones the user picked (local.rs).
+            local::allow_music_paths(&handle, &app_state.db);
+
             // System tray: playback controls + show/quit while running in the background.
             if let Err(e) = tray::init(&handle) {
                 tracing::warn!(error = %e, "tray init failed (continuing without tray)");

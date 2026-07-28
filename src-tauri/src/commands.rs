@@ -511,11 +511,15 @@ pub async fn remove_local_folder(
 
 /// Disk IO + tag parsing off the async runtime's worker threads.
 async fn scan_local(state: &Arc<AppState>) -> Result<crate::local::LocalLibrary, String> {
+    let app = state.app.clone();
     let state = state.clone();
     let covers = crate::local::covers_dir(&state.app);
-    tauri::async_runtime::spawn_blocking(move || crate::local::scan(&state.db, &covers))
+    let lib = tauri::async_runtime::spawn_blocking(move || crate::local::scan(&state.db, &covers))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // Artwork reaches the page over the asset protocol, which starts out allowing nothing.
+    crate::local::allow_covers(&app, &lib.songs);
+    Ok(lib)
 }
 
 // --- Listen Together (context/19) ----------------------------------------------------------

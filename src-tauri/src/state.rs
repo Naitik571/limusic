@@ -313,7 +313,9 @@ impl AppState {
             // Unplayed manual adds survive a context switch (Spotify semantics): they follow the
             // new track, ahead of its radio (hydration appends behind them).
             let mut carried = upcoming_queued(&q.items, q.current);
-            q.source_name = Some(format!("{} Radio", seed.title));
+            // A local file has no radio behind it (see below), so don't promise one in the header.
+            q.source_name = (!crate::local::is_local_song(&seed.video_id))
+                .then(|| format!("{} Radio", seed.title));
             q.items = vec![seed];
             q.items.append(&mut carried);
             q.current = 0;
@@ -324,6 +326,14 @@ impl AppState {
         }
 
         if !self.start_current(gen).await {
+            return;
+        }
+
+        // A local file isn't a videoId YouTube has ever heard of: asking for its radio is a
+        // guaranteed-useless request, and offline (where local music earns its keep) it's a
+        // guaranteed-failing one.
+        if crate::local::is_local_song(&video_id) {
+            self.prime_lookahead(gen).await;
             return;
         }
 
@@ -626,10 +636,18 @@ impl AppState {
                             q.items.remove(cur);
                         }
                         q.lookahead_loaded = None;
-                        q.current >= q.items.len() // `current` now points at what followed it
+                        // `current` now points at what followed it. When it was the tail, step
+                        // back onto the last surviving track: an index past the end leaves the
+                        // transport pointing at nothing, and Play does nothing at all.
+                        let exhausted = q.current >= q.items.len();
+                        if exhausted {
+                            q.current = q.items.len().saturating_sub(1);
+                        }
+                        exhausted
                     };
                     self.emit_queue().await;
                     self.persist_queue().await;
+                    self.lt_broadcast_queue().await;
                     self.emit_notice(&format!("{} is no longer on your disk", item.title));
                     if exhausted {
                         return false;
@@ -1054,6 +1072,11 @@ impl AppState {
                 return 0; // tail not near yet
             }
             let Some(last) = q.items.last() else { return 0 };
+            // Nothing to continue from when the queue ends on a local file: its path is not a
+            // videoId, and a queue of local music is exactly the case that has to work offline.
+            if q.radio_seed.is_none() && crate::local::is_local_song(&last.video_id) {
+                return 0;
+            }
             let seed = q.radio_seed.clone().unwrap_or_else(|| format!("RDAMVM{}", last.video_id));
             let existing: HashSet<String> = q.items.iter().map(|i| i.video_id.clone()).collect();
             (last.video_id.clone(), seed, existing)

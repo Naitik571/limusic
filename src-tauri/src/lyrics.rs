@@ -77,15 +77,22 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     //    length of the cut this videoId plays. The queue item often has no duration (card plays;
     //    stream-cache replays skip /player entirely), and duration is what keeps LRCLIB from
     //    matching a differently-timed cut, so resolve it here where it's always available.
-    let next = match state
-        .it
-        .next(state.clients.get(innertube::METADATA_CLIENT).unwrap(), &req.video_id, None)
-        .await
-    {
-        Ok(n) => Some(n),
-        Err(e) => {
-            tracing::debug!(error = %e, "lyrics: next() failed");
-            None
+    //    A local file has no videoId to ask about — its duration came off the file itself, and
+    //    YouTube has no lyrics browseId for it. Skip straight to LRCLIB (title + artist), which is
+    //    the only provider that can answer for it anyway.
+    let next = if crate::local::is_local_song(&req.video_id) {
+        None
+    } else {
+        match state
+            .it
+            .next(state.clients.get(innertube::METADATA_CLIENT).unwrap(), &req.video_id, None)
+            .await
+        {
+            Ok(n) => Some(n),
+            Err(e) => {
+                tracing::debug!(error = %e, "lyrics: next() failed");
+                None
+            }
         }
     };
     let browse_id = next.as_ref().and_then(|n| n.lyrics_browse_id.clone());

@@ -163,6 +163,9 @@ impl Scrobbler {
 
     async fn now_playing(&self) {
         let (Some(sk), Some(t)) = (&self.session, &self.track) else { return };
+        if !scrobbleable(t) {
+            return;
+        }
         let mut params = vec![
             ("artist".to_string(), t.artists.clone()),
             ("track".to_string(), t.title.clone()),
@@ -179,6 +182,9 @@ impl Scrobbler {
 
     async fn scrobble(&self) {
         let (Some(sk), Some(t)) = (&self.session, &self.track) else { return };
+        if !scrobbleable(t) {
+            return;
+        }
         let mut params = vec![
             ("artist".to_string(), t.artists.clone()),
             ("track".to_string(), t.title.clone()),
@@ -196,6 +202,15 @@ impl Scrobbler {
             Err(e) => tracing::warn!(error = %e.message, "last.fm scrobble failed"),
         }
     }
+}
+
+/// Whether a track is worth sending to Last.fm at all. An untagged local file has a filename for a
+/// title and no artist behind it; submitting that writes "Unknown artist" into the user's public
+/// profile, which is worse than not scrobbling it.
+fn scrobbleable(t: &Track) -> bool {
+    !t.title.trim().is_empty()
+        && !t.artists.trim().is_empty()
+        && t.artists != crate::local::UNKNOWN_ARTIST
 }
 
 /// Last.fm's scrobble rule: half the track or 4 minutes, whichever comes first; tracks under 30s
