@@ -23,9 +23,12 @@ pub const ALBUM_PREFIX: &str = "LOCALALBUM:";
 /// Where the folder list lives (JSON array of absolute paths).
 const FOLDERS_SETTING: &str = "local_folders";
 
-/// Extensions we bother probing. Anything else in the folder is ignored, not reported as an error.
-const AUDIO_EXT: [&str; 10] =
-    ["mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "wma"];
+/// Extensions we pick up. Playback itself is mpv, which decodes far more than this — the list is
+/// only about what a music folder plausibly holds, so a scan doesn't try to probe every stray file.
+const AUDIO_EXT: [&str; 15] = [
+    "mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "wma", "aiff", "aif", "ape",
+    "wv", "mka",
+];
 /// Cover images sitting next to the tracks, in preference order (used when nothing is embedded).
 const COVER_FILES: [&str; 6] =
     ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "album.jpg"];
@@ -159,12 +162,14 @@ fn mtime_of(path: &Path) -> i64 {
         .unwrap_or(0)
 }
 
-/// Read one file's tags. Missing tags fall back to the filename and the parent folder, so an
-/// untagged rip still shows up as something playable rather than "Unknown — Unknown".
+/// Read one file's tags. Missing tags fall back to the filename and the parent folder, and a file
+/// lofty can't parse at all is still listed from its filename — mpv plays far more formats than
+/// any tag reader understands, and a track that silently never appears is worse than one with a
+/// thin label.
 fn read_track(file: &Path, path: &str, mtime: i64, covers_dir: &Path) -> Option<LocalTrack> {
-    let tagged = lofty::probe::Probe::open(file).ok()?.read().ok()?;
-    let duration_secs = tagged.properties().duration().as_secs() as i64;
-    let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
+    let tagged = lofty::probe::Probe::open(file).ok().and_then(|p| p.read().ok());
+    let duration_secs = tagged.as_ref().map(|t| t.properties().duration().as_secs() as i64).unwrap_or(0);
+    let tag = tagged.as_ref().and_then(|t| t.primary_tag().or_else(|| t.first_tag()));
 
     let stem = || file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let title = tag.and_then(|t| t.title().map(|s| s.to_string())).filter(|s| !s.is_empty());
@@ -266,7 +271,8 @@ pub fn to_song(t: &LocalTrack) -> SongItem {
         artists: t.artist.clone(),
         album: Some(t.album.clone()),
         album_id: Some(album_id_of(t)),
-        duration: Some(fmt_duration(t.duration_secs)),
+        // 0 means "the tag reader couldn't say"; mpv fills the real length in once it plays.
+        duration: (t.duration_secs > 0).then(|| fmt_duration(t.duration_secs)),
         thumbnail: t.cover.clone(),
         ..Default::default()
     }

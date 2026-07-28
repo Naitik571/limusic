@@ -152,7 +152,8 @@
 		</Tabs.Root>
 	{:else if local.folders.length}
 		<p class="text-sm text-muted-foreground">
-			Nothing playable found in those folders yet. Supported: mp3, flac, m4a, ogg, opus, wav, wma.
+			Nothing playable found in those folders yet. Looking for mp3, flac, m4a, aac, ogg, opus,
+			wav, wma, aiff, ape, wv and mka files.
 		</p>
 	{/if}
 </div>
