@@ -247,8 +247,14 @@ impl AppState {
     async fn resolve(&self, video_id: &str) -> Result<PlaybackData, ResolveError> {
         // A local file is its own "stream": no network, no cache, no extraction (local.rs).
         if let Some(path) = crate::local::song_path(video_id) {
-            return crate::local::playback_data(video_id, path)
-                .map_err(|_| ResolveError::LocalMissing(path.to_owned()));
+            return crate::local::playback_data(video_id, path).map_err(|_| {
+                // Gone since the last scan. Forget it here rather than at the next scan, and say
+                // so — the UI drops the row (and any Shortcuts tile) on the spot instead of
+                // leaving something that can only fail again.
+                let removed = crate::local::forget_missing(&self.db, path);
+                let _ = self.app.emit("local-changed", serde_json::json!({ "removed": removed }));
+                ResolveError::LocalMissing(path.to_owned())
+            });
         }
         // Latency cache first (context/11) — honor expiry, never a source of truth.
         // 60s safety margin: a URL that expires mid-load/mid-buffer fails as Raw(-13).
@@ -608,6 +614,27 @@ impl AppState {
             let Some(item) = self.current_item().await else { return false };
             match self.resolve(&item.video_id).await {
                 Ok(d) => break (item, d),
+                // A deleted local file is gone for good, so it leaves the queue outright rather
+                // than being skipped over — a row that can only ever fail again is noise. Every
+                // other failure is transient in principle (network, region, a cipher self-heal),
+                // so those keep their place.
+                Err(ResolveError::LocalMissing(_)) => {
+                    let exhausted = {
+                        let mut q = self.queue.lock().await;
+                        let cur = q.current;
+                        if cur < q.items.len() {
+                            q.items.remove(cur);
+                        }
+                        q.lookahead_loaded = None;
+                        q.current >= q.items.len() // `current` now points at what followed it
+                    };
+                    self.emit_queue().await;
+                    self.persist_queue().await;
+                    self.emit_notice(&format!("{} is no longer on your disk", item.title));
+                    if exhausted {
+                        return false;
+                    }
+                }
                 Err(e) => {
                     let mut q = self.queue.lock().await;
                     // Deliberately ignores repeat-all: wrapping the unplayable-skip would spin
@@ -903,6 +930,12 @@ impl AppState {
             "playback-notice",
             serde_json::json!({ "message": "The host controls playback — click a song to add it to the session queue" }),
         );
+    }
+
+    /// A transient toast. Same channel as [`Self::emit_skip`], for messages that phrase themselves.
+    fn emit_notice(&self, message: &str) {
+        tracing::info!(message, "playback notice");
+        let _ = self.app.emit("playback-notice", serde_json::json!({ "message": message }));
     }
 
     /// A track was auto-skipped because no client could resolve it — a transient toast, not the

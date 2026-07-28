@@ -289,6 +289,12 @@ export const onPlaybackNotice = (cb: (msg: string) => void): Promise<UnlistenFn>
 	listen<{ message: string }>('playback-notice', (e) => cb(e.payload.message));
 export const onAuthChanged = (cb: (a: Account) => void): Promise<UnlistenFn> =>
 	listen<Account>('auth-changed', (e) => cb(e.payload));
+/**
+ * Local music disappeared from disk. Fired when a play attempt finds nothing there, carrying the
+ * song (and album, if that emptied it) so every view holding those ids can drop them at once.
+ */
+export const onLocalChanged = (cb: (removed: string[]) => void): Promise<UnlistenFn> =>
+	listen<{ removed: string[] }>('local-changed', (e) => cb(e.payload.removed));
 export const onLoginError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
 	listen<string>('login-error', (e) => cb(e.payload));
 export const onLoginDone = (cb: () => void): Promise<UnlistenFn> =>

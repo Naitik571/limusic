@@ -89,19 +89,28 @@ export const local = $state({
 });
 
 /**
- * Take a scan result: replace the library, then forget anything it says is gone from disk.
- * That prune is the "the user deleted their music" story — a Shortcuts tile or a sidebar pin for a
- * deleted album vanishes on the spot rather than waiting to be clicked and failing.
+ * Music that is no longer on disk, from a scan or from a play attempt that found nothing there.
+ * Everything holding those ids drops them in the same tick: the Local tab's lists, the Shortcuts
+ * grid, sidebar pins, recents. Nothing waits for a refetch, and nothing is left to fail later.
  */
+export function forgetLocal(removed: string[]) {
+	if (!removed.length) return;
+	const gone = new Set(removed);
+	local.songs = local.songs.filter((s) => !gone.has(s.video_id));
+	local.albums = local.albums.filter((a) => !gone.has(a.id));
+	const dropped = pl.forgetIds(personal, removed);
+	savePersonal();
+	if (dropped) toast(`Removed ${dropped} shortcut${dropped === 1 ? '' : 's'} for deleted music`);
+}
+
+/** Take a scan result: replace the library, then prune whatever it reports as gone. */
 function applyLocal(lib: api.LocalLibrary) {
 	local.folders = lib.folders;
 	local.albums = lib.albums;
 	local.songs = lib.songs;
 	local.scanned = true;
 	local.error = null;
-	const dropped = pl.forgetIds(personal, lib.removed);
-	if (lib.removed.length) savePersonal();
-	if (dropped) toast(`Removed ${dropped} shortcut${dropped === 1 ? '' : 's'} for deleted music`);
+	forgetLocal(lib.removed);
 }
 
 async function runLocal(call: () => Promise<api.LocalLibrary>) {
@@ -313,6 +322,7 @@ export function initApp(): () => void {
 		api.onPlaybackState((s) => (playback.paused = s === 'paused')),
 		api.onPlaybackError((msg) => (playback.error = msg)),
 		api.onPlaybackNotice((msg) => toast(msg)), // auto-skipped an unplayable track
+		api.onLocalChanged(forgetLocal), // a local file turned out to be gone — drop it everywhere
 		api.onAuthChanged((a) => {
 			auth.account = a;
 			if (a.signedIn) loadLibrary(true);

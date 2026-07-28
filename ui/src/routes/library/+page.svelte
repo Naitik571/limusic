@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		Add01Icon,
@@ -24,7 +25,9 @@
 	let dialogOpen = $state(false);
 	let newTitle = $state('');
 	let busy = $state(false);
-	let tab = $state('all');
+	// `?tab=local` so anything that sends you back here (an album whose files were deleted) lands
+	// on the tab you came from instead of a sign-in prompt.
+	let tab = $state(page.url.searchParams.get('tab') ?? 'all');
 
 	// Playlists live in the shared `library` store (the sidebar renders them too). Albums and
 	// artists have this page as their only consumer, so they stay local and refresh on each visit.

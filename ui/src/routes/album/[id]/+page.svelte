@@ -87,6 +87,23 @@
         if (id) load(id);
     });
 
+    // A local track deleted off disk vanishes from the open page too, header count included: the
+    // page is rebuilt from SQLite (already pruned) rather than patched, so nothing can go stale.
+    // An album whose last file is gone has no page left to show — step back to the library.
+    $effect(() => {
+        const un = api.onLocalChanged(async (removed) => {
+            const a = album;
+            if (!isLocal || !a) return;
+            const gone = new Set(removed);
+            const items = a.items.filter((i) => !gone.has(i.video_id));
+            if (items.length === a.items.length) return; // not this album
+            a.items = items; // the row goes now; the refetch below repairs the header counts
+            await load(id);
+            if (!album?.items.length) goto("/library?tab=local");
+        });
+        return () => un.then((f) => f());
+    });
+
     // This album as a card, for the sidebar's last-played sort and the Shortcuts grid.
     const asItem = (): BrowseItem => ({
         kind: "album",

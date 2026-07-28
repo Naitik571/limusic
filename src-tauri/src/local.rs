@@ -204,6 +204,21 @@ fn read_track(file: &Path, path: &str, mtime: i64, covers_dir: &Path) -> Option<
     })
 }
 
+/// Forget a single file the moment it turns out to be gone (a play attempt found nothing there).
+/// Returns the ids the UI might still be showing: the song, plus its album when that was the last
+/// track left in it. Same shape as a scan's `removed`, so both feed one prune on the UI side.
+pub fn forget_missing(db: &Db, path: &str) -> Vec<String> {
+    let key = db.local_album_key(path);
+    db.delete_local_tracks(&[path.to_owned()]);
+    let mut ids = vec![format!("{SONG_PREFIX}{path}")];
+    if let Some(k) = key {
+        if db.local_tracks(Some(&k)).is_empty() {
+            ids.push(format!("{ALBUM_PREFIX}{k}"));
+        }
+    }
+    ids
+}
+
 /// A stable, readable album id: `artist--album`, sanitized to a safe filename (it doubles as the
 /// extracted cover's name). Deliberately not a hash — this id is persisted in Shortcuts, so it has
 /// to survive across releases. Tracks with no album at all fall back to their folder.
@@ -442,6 +457,37 @@ mod tests {
         );
         assert!(scan(&db, &dir.join("covers")).removed.is_empty(), "a second scan reports nothing");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn forgetting_one_file_only_reports_the_album_when_it_empties() {
+        let db = Db::open(std::path::Path::new(":memory:")).unwrap();
+        let track = |path: &str, key: &str| LocalTrack {
+            path: path.into(),
+            title: path.into(),
+            artist: "Band".into(),
+            album: "Album".into(),
+            album_key: key.into(),
+            track_no: 1,
+            duration_secs: 10,
+            cover: None,
+            mtime: 1,
+        };
+        db.put_local_track(&track("/m/a.mp3", "band--album"));
+        db.put_local_track(&track("/m/b.mp3", "band--album"));
+
+        assert_eq!(
+            forget_missing(&db, "/m/a.mp3"),
+            vec!["LOCAL:/m/a.mp3".to_string()],
+            "the album still has a track, so only the song id is reported"
+        );
+        assert_eq!(
+            forget_missing(&db, "/m/b.mp3"),
+            vec!["LOCAL:/m/b.mp3".to_string(), "LOCALALBUM:band--album".to_string()],
+            "the last track takes the album with it"
+        );
+        assert!(db.local_tracks(None).is_empty(), "and both rows are gone");
+        assert!(forget_missing(&db, "/m/a.mp3").len() == 1, "forgetting twice is harmless");
     }
 
     #[test]
