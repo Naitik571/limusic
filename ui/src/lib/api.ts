@@ -102,6 +102,25 @@ export interface HomePage {
  */
 export const ON_REPEAT_ID = 'LIMUSIC_ON_REPEAT';
 
+/**
+ * Local music (Rust `local.rs`). A file on disk is a song whose `video_id` is `LOCAL:<path>`, and
+ * an album of them is a browseId `LOCALALBUM:<key>` — so local items ride every existing surface
+ * (cards, queue, Shortcuts, the album page) and play with no network.
+ */
+export const LOCAL_SONG_PREFIX = 'LOCAL:';
+export const LOCAL_ALBUM_PREFIX = 'LOCALALBUM:';
+export const isLocalId = (id: string | undefined | null): boolean =>
+	!!id && (id.startsWith(LOCAL_SONG_PREFIX) || id.startsWith(LOCAL_ALBUM_PREFIX));
+
+export interface LocalLibrary {
+	/** Watched folders, as absolute paths. */
+	folders: string[];
+	albums: BrowseItem[];
+	songs: SongItem[];
+	/** Song/album ids that were in the library but are gone from disk since the last scan. */
+	removed: string[];
+}
+
 export interface PlaylistPage {
 	title?: string;
 	subtitle?: string;
@@ -228,6 +247,13 @@ export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>
 	invoke<BrowseItem[]>('get_browse_grid', { id, params });
+
+// --- local music (local.rs) ------------------------------------------------------------------
+/** Rescan the watched folders. Cheap when nothing changed (one stat per file). */
+export const getLocalLibrary = () => invoke<LocalLibrary>('get_local_library');
+export const addLocalFolder = (path: string) => invoke<LocalLibrary>('add_local_folder', { path });
+export const removeLocalFolder = (path: string) =>
+	invoke<LocalLibrary>('remove_local_folder', { path });
 
 // --- write actions (context/01 ✎) ----------------------------------------------------------
 export const like = (videoId: string, liked: boolean) => invoke<void>('like', { videoId, liked });

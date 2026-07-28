@@ -68,6 +68,9 @@
 	}
 
 	const liked = $derived(isLiked(song));
+	// A local file has no YouTube identity: liking it or putting it in a YTM playlist is not a
+	// thing, so those items don't show. Queue, shortcuts and go-to-album work normally.
+	const isLocal = $derived(api.isLocalId(song.video_id));
 </script>
 
 <button class="{triggerClass} {menuOpen ? 'opacity-100' : ''}" onclick={openMenu} aria-label="Track options">
@@ -89,13 +92,15 @@
 		>
 			<HugeiconsIcon icon={AddToListIcon} class="h-4 w-4" /> Add to queue
 		</button>
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={(e) => run(e, () => toggleLike(song))}
-		>
-			<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4 {liked ? 'fill-current text-primary' : ''}" />
-			{liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
-		</button>
+		{#if !isLocal}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => run(e, () => toggleLike(song))}
+			>
+				<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4 {liked ? 'fill-current text-primary' : ''}" />
+				{liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+			</button>
+		{/if}
 		{#if song.artist_id}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
@@ -127,7 +132,7 @@
 		>
 			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to shortcuts
 		</button>
-		{#if onAdd}
+		{#if onAdd && !isLocal}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={(e) => run(e, onAdd)}

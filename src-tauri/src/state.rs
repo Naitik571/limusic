@@ -245,6 +245,11 @@ impl AppState {
     }
 
     async fn resolve(&self, video_id: &str) -> Result<PlaybackData, ResolveError> {
+        // A local file is its own "stream": no network, no cache, no extraction (local.rs).
+        if let Some(path) = crate::local::song_path(video_id) {
+            return crate::local::playback_data(video_id, path)
+                .map_err(|_| ResolveError::LocalMissing(path.to_owned()));
+        }
         // Latency cache first (context/11) — honor expiry, never a source of truth.
         // 60s safety margin: a URL that expires mid-load/mid-buffer fails as Raw(-13).
         let now = now_secs();
@@ -797,7 +802,11 @@ impl AppState {
         let _ = self.app.emit("playback-state", "playing");
         // Push the same metadata to the OS media widget (context/16) and Discord.
         if let Some(m) = &self.media {
-            m.set_metadata(&item.title, &item.artists, item.album.as_deref(), item.thumbnail.as_deref());
+            // MPRIS/SMTC want a URL; a local track's artwork is a path, so hand it a file:// one.
+            let cover = item.thumbnail.as_ref().map(|t| {
+                if t.starts_with('/') { format!("file://{t}") } else { t.clone() }
+            });
+            m.set_metadata(&item.title, &item.artists, item.album.as_deref(), cover.as_deref());
         }
         if let Some(d) = &self.discord {
             d.set_track(item);

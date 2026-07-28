@@ -6,6 +6,7 @@ mod db;
 mod discord;
 mod lastfm;
 mod listentogether;
+mod local;
 mod lyrics;
 mod media;
 mod orchestrator;
@@ -73,6 +74,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // Folder picker for the local-music library (local.rs).
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -267,6 +270,9 @@ pub fn run() {
             commands::get_playlist,
             commands::get_playlist_more,
             commands::get_album,
+            commands::get_local_library,
+            commands::add_local_folder,
+            commands::remove_local_folder,
             commands::get_artist,
             commands::get_browse_grid,
             commands::play_playlist,

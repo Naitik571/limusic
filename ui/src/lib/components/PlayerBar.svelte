@@ -162,18 +162,21 @@
 		</div>
 		{#if playback.now}
 			<div class="flex items-center">
-				<Button variant="ghost" size="icon-sm" onclick={toggleLike} aria-label="Like">
-					<span
-						class="inline-flex"
-						class:animate-heart-pop={justLiked}
-						onanimationend={() => (justLiked = false)}
-					>
-						<HugeiconsIcon
-							icon={FavouriteIcon}
-							class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : 'text-muted-foreground'}"
-						/>
-					</span>
-				</Button>
+				<!-- Nothing to like on a local file: it has no YouTube identity (see api.isLocalId). -->
+				{#if !api.isLocalId(playback.now.videoId)}
+					<Button variant="ghost" size="icon-sm" onclick={toggleLike} aria-label="Like">
+						<span
+							class="inline-flex"
+							class:animate-heart-pop={justLiked}
+							onanimationend={() => (justLiked = false)}
+						>
+							<HugeiconsIcon
+								icon={FavouriteIcon}
+								class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : 'text-muted-foreground'}"
+							/>
+						</span>
+					</Button>
+				{/if}
 				<Button
 					variant="ghost"
 					size="icon-sm"

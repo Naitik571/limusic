@@ -75,6 +75,50 @@ export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 	});
 }
 
+// --- Local music (Rust local.rs) --------------------------------------------------------------
+// Shared like `library` is: the Library page renders it, and the app rescans at startup so tiles
+// pointing at deleted files disappear before anyone clicks one.
+
+export const local = $state({
+	folders: [] as string[],
+	albums: [] as BrowseItem[],
+	songs: [] as SongItem[],
+	loading: false,
+	scanned: false,
+	error: null as string | null
+});
+
+/**
+ * Take a scan result: replace the library, then forget anything it says is gone from disk.
+ * That prune is the "the user deleted their music" story — a Shortcuts tile or a sidebar pin for a
+ * deleted album vanishes on the spot rather than waiting to be clicked and failing.
+ */
+function applyLocal(lib: api.LocalLibrary) {
+	local.folders = lib.folders;
+	local.albums = lib.albums;
+	local.songs = lib.songs;
+	local.scanned = true;
+	local.error = null;
+	const dropped = pl.forgetIds(personal, lib.removed);
+	if (lib.removed.length) savePersonal();
+	if (dropped) toast(`Removed ${dropped} shortcut${dropped === 1 ? '' : 's'} for deleted music`);
+}
+
+async function runLocal(call: () => Promise<api.LocalLibrary>) {
+	local.loading = true;
+	try {
+		applyLocal(await call());
+	} catch (e) {
+		local.error = String(e);
+	} finally {
+		local.loading = false;
+	}
+}
+
+export const scanLocal = () => runLocal(api.getLocalLibrary);
+export const addLocalFolder = (path: string) => runLocal(() => api.addLocalFolder(path));
+export const removeLocalFolder = (path: string) => runLocal(() => api.removeLocalFolder(path));
+
 // --- Personalization: the Shortcuts grid, sidebar pins, play recency (see personal.ts) ----------
 // The Shortcuts grid holds what the user puts in it, plus the one tile the app suggests (On
 // Repeat, via `seedOnRepeatPick`). See `personal.ts`.
@@ -315,6 +359,9 @@ export function initApp(): () => void {
 			if (a.signedIn) loadLibrary();
 		})
 		.catch(() => {});
+	// Scan the local folders once at startup: it seeds the Library's Local tab and, more to the
+	// point, prunes shortcuts for music that was deleted while the app was closed.
+	scanLocal();
 	// Seed the Listen Together state (server URL, any active room after a UI reload).
 	api.ltGetState().then(applyLtState).catch(() => {});
 	return () => subs.forEach((u) => u.then((f) => f()));
