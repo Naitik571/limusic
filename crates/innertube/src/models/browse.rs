@@ -11,9 +11,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::metadata::{
-    artist_runs, find_all, find_all_shallow, find_first_str, first_artist_id, flex_column_text,
-    last_thumbnail, list_item_video_id, parse_list_item, runs_text, runs_text_opt, ArtistRun,
-    SongItem,
+    artist_runs, artists_from_runs, find_all, find_all_shallow, find_first_str, first_artist_id,
+    flex_column_text, flex_runs, last_thumbnail, list_item_video_id, parse_list_item, runs_text,
+    runs_text_opt, ArtistRun, SongItem,
 };
 
 /// One clickable card in a home carousel or library grid. Flat + `kind`-tagged so the UI can
@@ -309,6 +309,9 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
         return Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None });
     }
     let vid = list_item_video_id(node)?;
+    // A song card's subtitle doubles as its artist string once it's played (and scrobbled), so it
+    // carries the artist alone, never the "Song • … • 3:02" descriptor YouTube puts on the row.
+    let subtitle = artists_from_runs(flex_runs(node, 1)).or(subtitle);
     Some(BrowseItem { kind: "song", id: vid, title, subtitle, thumbnail, duration: None })
 }
 
@@ -328,6 +331,11 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
     if let Some(vid) =
         nav.and_then(|n| n.get("watchEndpoint")).and_then(|w| w.get("videoId")).and_then(Value::as_str)
     {
+        // Same as a song row: the top-result card's subtitle becomes the artist when it plays.
+        let subtitle = artists_from_runs(
+            card.get("subtitle").and_then(|s| s.get("runs")).and_then(Value::as_array),
+        )
+        .or(subtitle);
         return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail, duration: None });
     }
     let bid = nav

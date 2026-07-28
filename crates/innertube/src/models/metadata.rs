@@ -175,12 +175,7 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         return None;
     }
     // Second flex column holds subtitle runs: "Artist • Album • duration" (• separated).
-    let subtitle_runs = flex
-        .and_then(|c| c.get(1))
-        .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
-        .and_then(|r| r.get("text"))
-        .and_then(|t| t.get("runs"))
-        .and_then(Value::as_array);
+    let subtitle_runs = flex_runs(node, 1);
     let (artists, album, duration) = split_subtitle(subtitle_runs);
     // Playlist/album rows keep the length in a fixed column instead of the subtitle. context/08.
     let duration = duration.or_else(|| fixed_column_text(node));
@@ -260,8 +255,10 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
     let video_id = node.get("videoId").and_then(Value::as_str)?.to_owned();
     let title = runs_text(node.get("title"))?;
     let byline = node.get("longBylineText").or_else(|| node.get("shortBylineText"));
-    let artists = byline.and_then(runs_text_opt).unwrap_or_default();
     let byline_runs = byline.and_then(|b| b.get("runs")).and_then(Value::as_array);
+    // The byline is a full descriptor ("Delara • Sjelen • 2026"), not a name: take its artist
+    // field only, or the queue (and the scrobbler behind it) gets the whole string as the artist.
+    let artists = artists_from_runs(byline_runs).unwrap_or_default();
     let artist_id = byline_runs.and_then(|r| first_artist_id(r));
     let duration = node.get("lengthText").and_then(runs_text_opt);
     Some(SongItem {
@@ -284,6 +281,17 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
 
 /// Joined text of a `musicResponsiveListItemRenderer` flex column (0 = title, 1 = subtitle). Used
 /// by the search-section parser to build cards from list rows. context/08.
+/// The raw runs of a list row's `i`th flex column (the text with its per-run links intact).
+pub(crate) fn flex_runs(node: &Value, i: usize) -> Option<&Vec<Value>> {
+    node.get("flexColumns")
+        .and_then(Value::as_array)
+        .and_then(|c| c.get(i))
+        .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
+        .and_then(|r| r.get("text"))
+        .and_then(|t| t.get("runs"))
+        .and_then(Value::as_array)
+}
+
 pub(crate) fn flex_column_text(node: &Value, i: usize) -> Option<String> {
     node.get("flexColumns")
         .and_then(Value::as_array)
@@ -342,26 +350,68 @@ pub(crate) fn runs_text_opt(v: &Value) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
-/// Split a "• "-separated subtitle run list into (artists, album, duration). context/08.
-fn split_subtitle(runs: Option<&Vec<Value>>) -> (String, Option<String>, Option<String>) {
-    let Some(runs) = runs else { return (String::new(), None, None) };
-    let mut groups: Vec<String> = Vec::new();
-    let mut cur = String::new();
+/// One "•"-separated field of a subtitle, plus whether it links an artist channel (`UC…`).
+struct Group {
+    text: String,
+    artist_link: bool,
+}
+
+/// Cut a subtitle run list at its "•" separators, keeping each field's artist link.
+fn subtitle_groups(runs: &[Value]) -> Vec<Group> {
+    let mut groups: Vec<Group> = Vec::new();
+    let mut cur = Group { text: String::new(), artist_link: false };
     for run in runs {
         let t = run.get("text").and_then(Value::as_str).unwrap_or("");
         if t.trim() == "•" {
-            groups.push(std::mem::take(&mut cur));
+            groups.push(std::mem::replace(&mut cur, Group {
+                text: String::new(),
+                artist_link: false,
+            }));
         } else {
-            cur.push_str(t);
+            cur.text.push_str(t);
+            cur.artist_link |= first_artist_id(std::slice::from_ref(run)).is_some();
         }
     }
     groups.push(cur);
-    let groups: Vec<String> = groups.into_iter().map(|g| g.trim().to_string()).collect();
+    for g in &mut groups {
+        g.text = g.text.trim().to_string();
+    }
+    groups
+}
+
+/// Result rows on an unfiltered search lead with the result type: "Song • Delara • 3:02". Nothing
+/// downstream wants that word, and taken as an artist it lands in the user's Last.fm scrobbles.
+fn is_type_label(s: &str) -> bool {
+    matches!(
+        s,
+        "Song" | "Video" | "Album" | "Single" | "EP" | "Playlist" | "Artist" | "Episode" | "Podcast"
+    )
+}
+
+/// Split a "• "-separated subtitle run list into (artists, album, duration). context/08.
+fn split_subtitle(runs: Option<&Vec<Value>>) -> (String, Option<String>, Option<String>) {
+    let Some(runs) = runs else { return (String::new(), None, None) };
+    let mut groups = subtitle_groups(runs);
+    // Drop a leading type label so artist/album don't both shift one field to the right. A later
+    // field linking an artist channel proves the first one isn't the artist; the word list covers
+    // the rows where nothing is linked at all.
+    if groups.len() > 1
+        && !groups[0].artist_link
+        && (is_type_label(&groups[0].text) || groups[1..].iter().any(|g| g.artist_link))
+    {
+        groups.remove(0);
+    }
+    let groups: Vec<String> = groups.into_iter().map(|g| g.text).collect();
     let artists = groups.first().cloned().unwrap_or_default();
     // Last group that looks like a duration (contains ':') is the duration; the middle is album.
     let duration = groups.iter().rev().find(|g| g.contains(':')).cloned();
     let album = groups.get(1).filter(|g| Some(*g) != duration.as_ref()).cloned();
     (artists, album, duration)
+}
+
+/// Just the artist field of a subtitle run list, for the surfaces that keep a flat string.
+pub(crate) fn artists_from_runs(runs: Option<&Vec<Value>>) -> Option<String> {
+    Some(split_subtitle(runs).0).filter(|s| !s.is_empty())
 }
 
 /// Deepest/last thumbnail URL under this node (highest resolution).
@@ -522,6 +572,47 @@ mod tests {
         assert_eq!(r.items[0].duration.as_deref(), Some("4:05"));
         assert_eq!(r.continuation.as_deref(), Some("CONT_TOKEN"));
         assert_eq!(r.lyrics_browse_id.as_deref(), Some("MPLYt_abc123"));
+    }
+
+    /// An unfiltered search row leads with the result type ("Song • Delara • 3:02"). It must not
+    /// end up in `artists` — that string is what gets scrobbled.
+    #[test]
+    fn drops_the_result_type_from_a_search_row() {
+        let root = json!({
+            "a": { "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": "abc123" },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Hele uka" }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Song" }, { "text": " • " },
+                        { "text": "Delara", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCdelara" } } },
+                        { "text": " • " }, { "text": "3:02" }
+                    ] } } }
+                ]
+            }}
+        });
+        let s = &parse_search(&root).items[0];
+        assert_eq!(s.artists, "Delara");
+        assert_eq!(s.album, None);
+        assert_eq!(s.duration.as_deref(), Some("3:02"));
+    }
+
+    /// A queue row's byline is a whole descriptor; only its artist field is the artist.
+    #[test]
+    fn panel_byline_keeps_only_the_artist() {
+        let root = json!({
+            "contents": { "playlistPanelRenderer": { "contents": [
+                { "playlistPanelVideoRenderer": {
+                    "videoId": "vid9",
+                    "title": { "runs": [{ "text": "Hele uka" }] },
+                    "longBylineText": { "runs": [
+                        { "text": "Delara", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCdelara" } } },
+                        { "text": " • " }, { "text": "Sjelen" }, { "text": " • " }, { "text": "2026" }
+                    ] }
+                }}
+            ] } }
+        });
+        assert_eq!(parse_next(&root).items[0].artists, "Delara");
     }
 
     #[test]

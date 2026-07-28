@@ -1007,7 +1007,9 @@ impl AppState {
         // watch-history ping has always done the same). One extra count per launch, for one song,
         // against a month of plays. If it ever skews the list, pass the `pending_seek` offset into
         // the latch and skip the record when the play didn't start near zero.
-        if let Some(item) = played {
+        // Local files don't count: On Repeat is the only thing built from this table, and it's a
+        // YouTube Music playlist — a row pointing at a path on this disk doesn't belong in it.
+        if let Some(item) = played.filter(|i| !crate::local::is_local_song(&i.video_id)) {
             if let Ok(json) = serde_json::to_string(&item) {
                 self.db.record_play(&item.video_id, &json, now_secs(), ON_REPEAT_WINDOW_SECS);
             }

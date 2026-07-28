@@ -61,6 +61,9 @@ impl Db {
         // Migrate pre-Phase-4 DBs that predate the loudness_db column. Errors ("duplicate column")
         // on fresh DBs are expected and ignored — the cache is disposable anyway.
         let _ = conn.execute("ALTER TABLE stream_url_cache ADD COLUMN loudness_db REAL", []);
+        // Local files are no longer recorded as plays (see `AppState::on_position`), but 0.3.1
+        // recorded them for a while, so clear out anything already sitting in On Repeat's table.
+        let _ = conn.execute("DELETE FROM plays WHERE video_id LIKE 'LOCAL:%'", []);
         Ok(Db(Mutex::new(conn)))
     }
 
@@ -359,6 +362,23 @@ mod tests {
             "'old' is outside the window and must not appear"
         );
         assert_eq!(d.top_plays(900, 2).len(), 2, "limit applies");
+    }
+
+    #[test]
+    fn opening_the_db_clears_local_files_out_of_on_repeat() {
+        // 0.3.1 counted local plays before On Repeat excluded them; opening the db drops the rows.
+        let path = std::env::temp_dir().join("limusic-plays-purge-test.sqlite");
+        std::fs::remove_file(&path).ok();
+        {
+            let d = Db::open(&path).unwrap();
+            d.record_play("LOCAL:/music/a.mp3", "{\"local\":1}", 1_000, 10_000);
+            d.record_play("dQw4w9WgXcQ", "{\"yt\":1}", 1_000, 10_000);
+            assert_eq!(d.top_plays(0, 20).len(), 2, "both were recorded");
+        }
+        let d = Db::open(&path).unwrap();
+        assert_eq!(d.top_plays(0, 20), vec![("{\"yt\":1}".to_string(), 1)], "only the YouTube play survives");
+        drop(d);
+        std::fs::remove_file(&path).ok();
     }
 
     #[test]

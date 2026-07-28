@@ -374,7 +374,10 @@ pub fn to_song(t: &LocalTrack) -> SongItem {
         title: t.title.clone(),
         artists: t.artist.clone(),
         album: Some(t.album.clone()),
-        album_id: Some(album_id_of(t)),
+        // No `album_id`: that field is what puts "Go to album" in a track's ⋯ menu, and a file on
+        // this disk has no album page worth offering there. The Local tab's album grid is how you
+        // get to one. The album *name* stays — scrobbling and lyrics matching both use it.
+        album_id: None,
         // 0 means "the tag reader couldn't say"; mpv fills the real length in once it plays.
         duration: (t.duration_secs > 0).then(|| fmt_duration(t.duration_secs)),
         thumbnail: t.cover.clone(),
@@ -576,6 +579,13 @@ mod tests {
             folder_key(Some(Path::new("/a/Downloads")), "Downloads"),
             folder_key(Some(Path::new("/b/Downloads")), "Downloads")
         );
+    }
+
+    #[test]
+    fn a_local_song_offers_no_album_to_go_to() {
+        let s = to_song(&track("/m/x/a.mp3", "Drake", "Views", "drake--views"));
+        assert_eq!(s.album.as_deref(), Some("Views"), "the name still travels (scrobbles, lyrics)");
+        assert_eq!(s.album_id, None, "but nothing for the ⋯ menu to navigate to");
     }
 
     #[test]

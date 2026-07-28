@@ -109,7 +109,9 @@
 				<HugeiconsIcon icon={UserListIcon} class="h-4 w-4" /> Go to artist
 			</button>
 		{/if}
-		{#if song.album_id}
+		<!-- Local files carry no album_id (local.rs). Checked here too: a queue restored from before
+		     that changed still has one on its rows, and it would open a page this menu shouldn't offer. -->
+		{#if song.album_id && !isLocal}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={(e) => run(e, () => goto(`/album/${encodeURIComponent(song.album_id!)}`))}
