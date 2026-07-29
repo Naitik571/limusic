@@ -2418,6 +2418,7 @@ dependencies = [
  "futures-util",
  "innertube",
  "ksni",
+ "libc",
  "listen-protocol",
  "lofty",
  "md-5",
@@ -2443,6 +2444,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "urlencoding",
+ "webkit2gtk",
 ]
 
 [[package]]

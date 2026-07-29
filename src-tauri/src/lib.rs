@@ -29,6 +29,58 @@ use orchestrator::Orchestrator;
 use potoken::PoTokenGenerator;
 use state::AppState;
 
+/// Hand glibc's freed-but-retained heap back to the OS every few minutes.
+///
+/// glibc gives each thread its own arena and never returns those pages on `free`, so this process
+/// (45 threads across tokio, GTK, mpv and souvlaki) accumulates empty heap it will never reuse.
+/// Measured against a running 0.3.2 build: `malloc_trim(0)` dropped it from 211 MiB to 160 MiB PSS
+/// and the slack came back at roughly 15 MiB per 15 minutes, so a periodic trim keeps it flat.
+///
+/// ponytail: trim only. `mallopt(M_ARENA_MAX, 2)` would cap the sprawl at the source, but it
+/// serialises allocation across all those threads for a win the trim already gets. Reach for it
+/// only if RSS starts climbing between trims.
+#[cfg(target_os = "linux")]
+fn spawn_heap_trimmer() {
+    tauri::async_runtime::spawn(async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(180)).await;
+            // Safe: no arguments, no allocation, glibc walks its own arenas.
+            unsafe { libc::malloc_trim(0) };
+        }
+    });
+}
+
+/// Pull WebKitGTK off its full-browser cache defaults, which wry never touches.
+///
+/// WebKitGTK defaults to `WEBKIT_CACHE_MODEL_WEB_BROWSER` ("cache a very large number of resources
+/// and previously viewed content"), sized against total system RAM. A music client browsing YTM
+/// shelves fills that with thumbnails: measured 627 MiB of on-disk WebKitCache and a web process
+/// that would not give the memory back (`malloc_trim` there freed 1 MiB, so it is all live cache).
+/// `DocumentBrowser` keeps a working cache but drops dead resources instead of hoarding them.
+///
+/// wry also hard-enables the back/forward page cache (`webkitgtk/mod.rs:438`), which keeps whole
+/// previous documents alive. This is a SvelteKit SPA doing client-side routing, so it never gets a
+/// back/forward navigation to restore and that memory is pure waste.
+#[cfg(target_os = "linux")]
+fn tune_webkit_caches(app: &tauri::AppHandle) {
+    use webkit2gtk::{CacheModel, SettingsExt, WebContextExt, WebViewExt};
+
+    let Some(main) = app.get_webview_window("main") else { return };
+    let res = main.with_webview(|wv| {
+        let webview = wv.inner();
+        if let Some(ctx) = WebViewExt::context(&webview) {
+            ctx.set_cache_model(CacheModel::DocumentBrowser);
+        }
+        if let Some(settings) = WebViewExt::settings(&webview) {
+            settings.set_enable_page_cache(false);
+        }
+    });
+    match res {
+        Ok(()) => tracing::info!("webkit: cache model DocumentBrowser, page cache off"),
+        Err(e) => tracing::warn!(error = %e, "webkit cache tuning failed (continuing)"),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // NVIDIA + Wayland: WebKitGTK's DMABUF renderer trips over NVIDIA's explicit
@@ -50,9 +102,27 @@ pub fn run() {
         // on the system webkit (same 2.52.4) while the AppImage white-screens, and only
         // disabling DMABUF makes the AppImage paint. Cost: CPU software rendering, so gate
         // it tightly — rpm/dev builds and non-NVIDIA AppImages keep full GPU compositing.
+        //
+        // That cost is much larger than "no GPU compositing" implies. Measured on this
+        // WebKitGTK 2.52.5, same page of 300 cards, only the renderer differing:
+        //
+        //     GPU compositing      97 MiB idle → 135 MiB
+        //     software rendering   62 MiB idle → 245 MiB
+        //
+        // The gap grows with content, because every composited layer becomes a CPU-side
+        // backing store. It is the single biggest term in this app's memory use, far ahead
+        // of thumbnail sizes or DOM size (both measured, both made no difference).
+        //
+        // This workaround is also older than the fix that probably caused the failure:
+        // it went in 2026-07-15, and b4d98fa (2026-07-27) stopped the AppDir shadowing the
+        // host's libwayland-client, which broke Mesa's EGL vendor loading — the same class
+        // of failure, and its commit message notes it was "invisible on NVIDIA". Set
+        // LIMUSIC_FORCE_GPU=1 to skip the workaround and check whether the AppImage still
+        // white-screens. If it renders, delete this block.
         if std::env::var_os("APPIMAGE").is_some()
             && std::path::Path::new("/dev/nvidiactl").exists()
             && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+            && std::env::var_os("LIMUSIC_FORCE_GPU").is_none()
         {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
@@ -238,6 +308,12 @@ pub fn run() {
                         potoken.teardown_if_idle(Duration::from_secs(60)).await;
                     }
                 });
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                tune_webkit_caches(app.handle());
+                spawn_heap_trimmer();
             }
             Ok(())
         })

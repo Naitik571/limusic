@@ -191,8 +191,10 @@
                 class="absolute inset-0 h-full w-full object-cover object-top"
             />
         {:else if album.thumbnail}
+            <!-- Blurred backdrop: blur-2xl destroys any detail a bigger source would carry, so
+                 ask for the smallest thing that still reads as the cover's colours. -->
             <img
-                src={thumb(album.thumbnail, 400)}
+                src={thumb(album.thumbnail, 96)}
                 alt=""
                 class="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
             />

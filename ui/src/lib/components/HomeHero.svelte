@@ -30,8 +30,11 @@
 
 <div class="relative overflow-hidden border-b">
 	{#if playback.now?.thumbnail && !artFailed}
+		<!-- 96px, not display size: blur-2xl is a 40px blur, so every detail above a handful of
+		     pixels is thrown away anyway. The old 1200px source decoded to 5.7 MiB for this, and
+		     re-decoded on every track change. -->
 		<img
-			src={thumb(playback.now.thumbnail, 1200)}
+			src={thumb(playback.now.thumbnail, 96)}
 			alt=""
 			class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
 			onerror={() => (artFailed = true)}
