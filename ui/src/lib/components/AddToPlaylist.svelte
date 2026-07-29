@@ -19,7 +19,7 @@
 			api
 				.getLibrary()
 				.then((p) => (playlists = p.filter((i) => i.id !== api.ON_REPEAT_ID)))
-				.catch((e) => toast(String(e)))
+				.catch((e) => toast.error(String(e)))
 				.finally(() => (loading = false));
 		}
 	});
@@ -37,9 +37,11 @@
 			for (const song of songs) await api.addToPlaylist(pl.id, song.video_id);
 			bumpLibraryTrackCount(pl.id, songs.length);
 			notePlaylistAdd(pl.id, songs);
-			toast(songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`);
+			toast.success(
+				songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`
+			);
 		} catch (e) {
-			toast(String(e));
+			toast.error(String(e));
 		}
 	}
 </script>

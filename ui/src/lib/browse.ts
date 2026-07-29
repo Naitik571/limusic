@@ -61,6 +61,6 @@ export async function playItem(item: BrowseItem): Promise<void> {
 			);
 		}
 	} catch {
-		toast('Could not play — try opening it instead');
+		toast.error('Could not play — try opening it instead');
 	}
 }

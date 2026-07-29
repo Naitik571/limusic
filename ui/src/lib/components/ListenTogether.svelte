@@ -62,9 +62,9 @@
 	}
 
 	async function host() {
-		if (!name.trim()) return toast('Enter a name first');
+		if (!name.trim()) return toast.error('Enter a name first');
 		const u = serverUrl.trim();
-		if (!u) return toast('Enter your sync server URL');
+		if (!u) return toast.error('Enter your sync server URL');
 		busy = true;
 		try {
 			if (u !== lt.serverUrl) await api.ltSetServerUrl(u);
@@ -77,11 +77,11 @@
 
 	async function join(e?: Event) {
 		e?.preventDefault();
-		if (!name.trim()) return toast('Enter a name first');
+		if (!name.trim()) return toast.error('Enter a name first');
 		const parsed = parseInvite(inviteInput);
-		if (!parsed || !parsed.code) return toast('Paste the invite code your friend sent');
+		if (!parsed || !parsed.code) return toast.error('Paste the invite code your friend sent');
 		const server = parsed.server || lt.serverUrl;
-		if (!server) return toast('Paste the full invite from the host, it carries the server address');
+		if (!server) return toast.error('Paste the full invite from the host, it carries the server address');
 		busy = true;
 		try {
 			if (server !== lt.serverUrl) await api.ltSetServerUrl(server);
@@ -97,7 +97,7 @@
 	}
 
 	function copyInvite() {
-		navigator.clipboard.writeText(invite).then(() => toast('Invite copied, send it to a friend'));
+		navigator.clipboard.writeText(invite).then(() => toast.success('Invite copied, send it to a friend'));
 	}
 </script>
 

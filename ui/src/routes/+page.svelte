@@ -142,7 +142,7 @@
 		} catch (e) {
 			// Stop auto-loading and offer a retry — auto-retrying a visible sentinel would spin.
 			moreError = true;
-			toast('Could not load more');
+			toast.error('Could not load more');
 		} finally {
 			loadingMore = false;
 		}

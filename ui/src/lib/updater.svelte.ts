@@ -56,7 +56,7 @@ export async function installUpdate() {
 		await pending.downloadAndInstall();
 		await relaunch();
 	} catch (e) {
-		toast(`Update failed: ${e}`);
+		toast.error(`Update failed: ${e}`);
 		updateState.installing = false;
 	}
 }

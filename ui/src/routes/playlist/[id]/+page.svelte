@@ -261,11 +261,11 @@
 		try {
 			await api.renamePlaylist(id, name);
 			cacheCurrent();
-			toast('Playlist renamed');
+			toast.success('Playlist renamed');
 		} catch (e) {
 			pl = { ...pl, title: prev }; // revert
 			cacheCurrent();
-			toast(String(e));
+			toast.error(String(e));
 		}
 	}
 
@@ -283,17 +283,17 @@
 		try {
 			if (isLiked) {
 				await api.like(track.video_id, false);
-				toast('Removed from Liked Music');
+				toast.success('Removed from Liked Music');
 			} else {
 				await api.removeFromPlaylist(id, track.video_id, track.set_video_id!);
 				bumpLibraryTrackCount(id, -1);
-				toast('Removed from playlist');
+				toast.success('Removed from playlist');
 			}
 			cacheCurrent();
 		} catch (e) {
 			pl = { ...pl, items: prev }; // revert
 			cacheCurrent();
-			toast(String(e));
+			toast.error(String(e));
 		}
 	}
 
@@ -301,10 +301,10 @@
 		try {
 			await api.deletePlaylist(id);
 			invalidateCached(`playlist:${id}`);
-			toast('Playlist deleted');
+			toast.success('Playlist deleted');
 			goto('/library');
 		} catch (e) {
-			toast(String(e));
+			toast.error(String(e));
 			confirmingDelete = false;
 		}
 	}

@@ -97,10 +97,10 @@
 		try {
 			await api.subscribe(artist.channelId, next);
 			putCached(`artist:${id}`, { ...artist, subscribed: next }); // keep the cache truthful
-			toast(next ? `Subscribed to ${artist.name ?? ''}` : `Unsubscribed`);
+			toast.success(next ? `Subscribed to ${artist.name ?? ''}` : `Unsubscribed`);
 		} catch (e) {
 			subscribed = !next; // revert
-			toast(String(e));
+			toast.error(String(e));
 		} finally {
 			subBusy = false;
 		}

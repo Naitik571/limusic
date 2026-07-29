@@ -134,10 +134,10 @@
         savingLibrary = true;
         try {
             await api.setAlbumSaved(a.playlistId, next);
-            toast(next ? "Saved to library" : "Removed from library");
+            toast.success(next ? "Saved to library" : "Removed from library");
         } catch (e) {
             a.inLibrary = !next;
-            toast(String(e));
+            toast.error(String(e));
         } finally {
             savingLibrary = false;
         }

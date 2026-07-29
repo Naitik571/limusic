@@ -49,7 +49,7 @@
 			clients = c;
 			proxyInput = s.proxy ?? '';
 		} catch (e) {
-			toast(String(e));
+			toast.error(String(e));
 		}
 		loaded = true;
 	}
@@ -80,7 +80,7 @@
 		await api.setSetting('quality', q);
 		// Cached URLs are keyed by video only, so clear them to apply the new quality everywhere.
 		await api.clearCaches();
-		toast('Audio quality updated');
+		toast.success('Audio quality updated');
 	}
 
 	async function setHistory(on: boolean) {
@@ -109,7 +109,7 @@
 			await api.setSetting('autostart', settings.autostart);
 		} catch (e) {
 			settings.autostart = on ? 'false' : 'true'; // registration failed — revert the switch
-			toast(String(e));
+			toast.error(String(e));
 		}
 	}
 
@@ -124,14 +124,14 @@
 	async function saveProxy() {
 		settings.proxy = proxyInput.trim();
 		await api.setSetting('proxy', settings.proxy);
-		toast('Proxy saved — restart to apply');
+		toast.success('Proxy saved — restart to apply');
 	}
 
 	async function doClearCaches() {
 		clearing = true;
 		try {
 			await api.clearCaches();
-			toast('Caches cleared');
+			toast.success('Caches cleared');
 		} finally {
 			clearing = false;
 		}

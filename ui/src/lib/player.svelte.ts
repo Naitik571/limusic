@@ -162,7 +162,7 @@ function savePersonal() {
 export function addPick(item: BrowseItem) {
 	const added = pl.addPick(personal, item);
 	savePersonal();
-	toast(added ? 'Added to shortcuts' : 'Already in shortcuts');
+	toast.success(added ? 'Added to shortcuts' : 'Already in shortcuts');
 }
 
 /** Drop landed: move (or add) a tile so it sits before `beforeId` — null appends. No toast: the
@@ -211,7 +211,7 @@ export function touchPick(id: string) {
 
 export function togglePin(id: string) {
 	const result = pl.togglePin(personal, id);
-	if (result === 'full') toast(`Unpin one first — ${pl.MAX_PINS} pins max`);
+	if (result === 'full') toast.error(`Unpin one first — ${pl.MAX_PINS} pins max`);
 	else savePersonal();
 	return result;
 }
@@ -235,11 +235,11 @@ export async function toggleLike(song: SongItem) {
 	if (isNow) playback.liked = next;
 	try {
 		await api.like(song.video_id, next);
-		toast(next ? 'Added to liked songs' : 'Removed from liked songs');
+		toast.success(next ? 'Added to liked songs' : 'Removed from liked songs');
 	} catch (e) {
 		likedSongs[song.video_id] = !next;
 		if (isNow) playback.liked = !next;
-		toast(String(e));
+		toast.error(String(e));
 	}
 }
 
@@ -267,17 +267,31 @@ export function playFrom(
 // Transient UI state for write actions.
 export const ui = $state({
 	addSongs: null as SongItem[] | null, // add-to-playlist picker target(s), full items for optimistic appends
-	toast: null as string | null,
+	toast: null as Toast | null,
 	settingsOpen: false, // the settings modal
 	ltOpen: false // the Listen Together modal
 });
 
-export function toast(msg: string) {
-	ui.toast = msg;
+export type Toast = { msg: string; kind: 'info' | 'success' | 'error' };
+
+// A counter, not the toast itself: $state proxies the stored object, so `ui.toast === t` is never
+// true and the toast would never clear. It also means a repeated message can't cut its own retry short.
+let seq = 0;
+
+function show(msg: string, kind: Toast['kind']) {
+	const id = ++seq;
+	ui.toast = { msg, kind };
 	setTimeout(() => {
-		if (ui.toast === msg) ui.toast = null;
+		if (seq === id) ui.toast = null;
 	}, 2500);
 }
+
+/** Sonner-shaped. Bare `toast(msg)` is a neutral notice; .success/.error pick the icon. */
+export const toast = Object.assign((msg: string) => show(msg, 'info'), {
+	info: (msg: string) => show(msg, 'info'),
+	success: (msg: string) => show(msg, 'success'),
+	error: (msg: string) => show(msg, 'error')
+});
 
 export function openAddToPlaylist(song: SongItem) {
 	ui.addSongs = [song];
@@ -338,8 +352,8 @@ export function initApp(): () => void {
 			clearCached();
 			auth.epoch++;
 		}),
-		api.onLoginError((msg) => toast(msg)),
-		api.onLoginDone(() => toast('Signed in')),
+		api.onLoginError((msg) => toast.error(msg)),
+		api.onLoginDone(() => toast.success('Signed in')),
 		// Listen Together (context/19): mirror the Rust session state; surface notices as toasts.
 		api.onLtState((s) => applyLtState(s)),
 		api.onLtNotice((msg) => toast(msg))

@@ -64,7 +64,7 @@
 	// session queue."), so only toast locally for host/solo.
 	function addToQueue() {
 		api.addToQueue(song);
-		if (lt.role !== 'guest') toast('Added to queue');
+		if (lt.role !== 'guest') toast.success('Added to queue');
 	}
 
 	const liked = $derived(isLiked(song));

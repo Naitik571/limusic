@@ -58,7 +58,7 @@
 
 	async function forget(path: string) {
 		await removeLocalFolder(path);
-		toast('Folder removed from your local library');
+		toast.success('Folder removed from your local library');
 	}
 </script>
 

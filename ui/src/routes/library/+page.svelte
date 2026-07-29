@@ -67,11 +67,11 @@
 		busy = true;
 		try {
 			await createLibraryPlaylist(title);
-			toast(`Created "${title}"`);
+			toast.success(`Created "${title}"`);
 			newTitle = '';
 			dialogOpen = false;
 		} catch (e) {
-			toast(String(e));
+			toast.error(String(e));
 		} finally {
 			busy = false;
 		}

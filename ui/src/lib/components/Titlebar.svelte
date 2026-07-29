@@ -42,10 +42,10 @@
 		discordOn = next;
 		try {
 			await api.setSetting('discord_rpc', next ? 'true' : 'false');
-			toast(next ? 'Discord presence on' : 'Discord presence off');
+			toast.success(next ? 'Discord presence on' : 'Discord presence off');
 		} catch (e) {
 			discordOn = !next;
-			toast(String(e));
+			toast.error(String(e));
 		}
 	}
 
@@ -64,9 +64,9 @@
 			connecting = false;
 			connected = s.connected;
 			username = s.username ?? null;
-			if (s.error) toast(s.error);
-			else if (s.connected) toast(`Scrobbling as ${s.username}`);
-			else if (!wasConnecting) toast('Last.fm disconnected');
+			if (s.error) toast.error(s.error);
+			else if (s.connected) toast.success(`Scrobbling as ${s.username}`);
+			else if (!wasConnecting) toast.success('Last.fm disconnected');
 		});
 		return () => sub.then((u) => u());
 	});
@@ -88,7 +88,7 @@
 			toast('Approve Limusic in your browser');
 		} catch (err) {
 			connecting = false;
-			toast(String(err));
+			toast.error(String(err));
 		}
 	}
 
@@ -101,7 +101,7 @@
 
 	function disconnect() {
 		menuOpen = false;
-		api.lastfmDisconnect().catch((e) => toast(String(e)));
+		api.lastfmDisconnect().catch((e) => toast.error(String(e)));
 	}
 
 	const scrobblerTitle = $derived(

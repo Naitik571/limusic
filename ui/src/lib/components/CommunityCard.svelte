@@ -71,7 +71,7 @@
 		try {
 			run(await load());
 		} catch {
-			toast('Could not load that playlist — try opening it instead');
+			toast.error('Could not load that playlist — try opening it instead');
 		} finally {
 			busy = false;
 		}

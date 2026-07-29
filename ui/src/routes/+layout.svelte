@@ -2,6 +2,12 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { ModeWatcher } from 'mode-watcher';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import {
+		CheckmarkCircle02Icon,
+		AlertCircleIcon,
+		InformationCircleIcon
+	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
@@ -88,10 +94,12 @@
 <SettingsDialog />
 <ListenTogether />
 
+<!-- The three notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
+     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. -->
 {#if updateState.available}
 	<div
 		transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-		class="fixed bottom-24 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
+		class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
 	>
 		<span>Update available — v{updateState.available.version}</span>
 		<Button size="sm" onclick={installUpdate} disabled={updateState.installing}>
@@ -108,18 +116,28 @@
 {/if}
 
 {#if ui.toast}
+	{@const t = ui.toast}
 	<div
 		transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-		class="fixed bottom-40 left-1/2 z-50 -translate-x-1/2 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
+		class="fixed bottom-40 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
 	>
-		{ui.toast}
+		<!-- Three branches instead of a ternary on `icon`: HugeiconsIcon freezes `icon` at mount, so a
+		     new toast replacing a visible one would keep the old glyph. -->
+		{#if t.kind === 'success'}
+			<HugeiconsIcon icon={CheckmarkCircle02Icon} class="h-4 w-4 shrink-0 text-primary" />
+		{:else if t.kind === 'error'}
+			<HugeiconsIcon icon={AlertCircleIcon} class="h-4 w-4 shrink-0 text-destructive" />
+		{:else}
+			<HugeiconsIcon icon={InformationCircleIcon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+		{/if}
+		{t.msg}
 	</div>
 {/if}
 
 {#if playback.error}
 	<div
 		transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-		class="fixed bottom-24 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-card px-4 py-2 text-sm text-destructive shadow-lg"
+		class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-card px-4 py-2 text-sm text-destructive shadow-lg"
 	>
 		<span>{playback.error}</span>
 		<button

@@ -46,10 +46,10 @@
 		if (next) justLiked = true;
 		try {
 			await api.like(playback.now.videoId, next);
-			toast(next ? 'Added to liked songs' : 'Removed from liked songs');
+			toast.success(next ? 'Added to liked songs' : 'Removed from liked songs');
 		} catch (e) {
 			playback.liked = !next; // revert on failure
-			toast(String(e));
+			toast.error(String(e));
 		}
 	}
 
