@@ -119,7 +119,7 @@
 			{#each tracks as t, i (t.video_id + ':' + i)}
 				<button
 					class="flex cursor-pointer items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-accent/10"
-					onclick={() => playFrom(item, pl!.items, i, item.id)}
+					onclick={() => playFrom(item, pl!.items, i, item.id, undefined, pl!.continuation)}
 					title={t.artists ? `${t.title} — ${t.artists}` : t.title}
 				>
 					{#if t.thumbnail}
@@ -158,7 +158,7 @@
 			disabled={busy}
 			class:animate-pulse={busy}
 			class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition hover:brightness-110"
-			onclick={() => act((p) => playFrom(item, p.items, null, item.id))}
+			onclick={() => act((p) => playFrom(item, p.items, null, item.id, undefined, p.continuation))}
 		>
 			<HugeiconsIcon icon={PlayIcon} class="h-3.5 w-3.5" />
 		</button>

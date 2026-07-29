@@ -38,8 +38,6 @@
 	let loadingMore = $state(false);
 	let moreError = $state(false);
 	let inflight: Promise<void> | null = null;
-	// Walking the remaining pages so the queue gets the whole playlist — the play buttons wait on it.
-	let preparing = $state(false);
 	let confirmingDelete = $state(false);
 	// A random song's cover, used as a blurred hero backdrop (like the artist/album pages).
 	let bgImage = $state<string | null>(null);
@@ -201,31 +199,14 @@
 		thumbnail: isOnRepeat ? undefined : (pl?.thumbnail ?? bgImage ?? undefined)
 	});
 
-	/**
-	 * The queue is the whole playlist, not the pages scrolled so far: YouTube hands out tracks 100
-	 * at a time, so playing a 500-track playlist has to walk the rest of the continuations first.
-	 * A page that fails stops the walk — better a short queue than no playback.
-	 */
-	async function loadRest(): Promise<SongItem[]> {
-		preparing = true;
-		try {
-			while (pl?.continuation && !moreError) {
-				const before = pl.items.length;
-				await loadMore();
-				if (pl && pl.items.length === before) break;
-			}
-		} finally {
-			preparing = false;
-		}
-		return pl?.items ?? [];
-	}
-
 	// `sourceId` points autoplay at that playlist's radio. On Repeat has no YouTube id, so pass
-	// none and let autoplay seed off the last video instead.
-	async function playAll(start: number | null) {
+	// none and let autoplay seed off the last video instead. The queue is the whole playlist, not
+	// the pages scrolled so far, but waiting for it here is what made long playlists take forever
+	// to start: YouTube hands out tracks 100 at a time and the tokens are chained, so the backend
+	// takes the token and walks the rest into the queue while page 1 is already playing.
+	function playAll(start: number | null) {
 		if (!pl) return;
-		const items = await loadRest();
-		if (pl) playFrom(asItem(), items, start, isOnRepeat ? undefined : id);
+		playFrom(asItem(), pl.items, start, isOnRepeat ? undefined : id, undefined, pl.continuation);
 	}
 
 	// Random cover from the songs, picked once per load so it stays stable while browsing
@@ -243,13 +224,13 @@
 		return url.replace(/=w\d+-h\d+/, '=w1200-h1200').replace(/=s\d+/, '=s1200');
 	}
 
-	async function shufflePlay() {
+	function shufflePlay() {
 		if (!pl?.items.length) return;
 		// Real order + shuffle flag — the backend owns shuffling, so the shuffle toggle can
-		// restore the true playlist order and every re-shuffle is fresh. Shuffling only the loaded
-		// page would silently drop the rest of a long playlist, hence the walk first.
-		const items = await loadRest();
-		if (pl) playFrom(asItem(), items, null, isOnRepeat ? undefined : id, true);
+		// restore the true playlist order and every re-shuffle is fresh. It also mixes each page
+		// it walks into the unplayed tail, so this stays a shuffle of the whole playlist rather
+		// than of the pages that happen to be loaded.
+		playFrom(asItem(), pl.items, null, isOnRepeat ? undefined : id, true, pl.continuation);
 	}
 
 	function openMenu(e: MouseEvent) {
@@ -415,13 +396,9 @@
 				{/if}
 				{#if pl.subtitle}<p class="mt-2 text-sm text-muted-foreground">{pl.subtitle}</p>{/if}
 				<div class="mt-4 flex items-center gap-2">
-					<Button
-						class="gap-2"
-						onclick={() => playAll(null)}
-						disabled={!pl.items.length || preparing}
-					>
+					<Button class="gap-2" onclick={() => playAll(null)} disabled={!pl.items.length}>
 						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" />
-						{preparing ? 'Loading…' : 'Play'}
+						Play
 					</Button>
 					{#if confirmingDelete}
 						<div class="flex items-center gap-2 rounded-lg border border-destructive/40 px-2 py-1">

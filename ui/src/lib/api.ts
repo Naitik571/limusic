@@ -241,8 +241,9 @@ export const playPlaylist = (
 	start: number | null,
 	sourceId?: string,
 	sourceName?: string,
-	shuffle?: boolean
-) => invoke<void>('play_playlist', { items, start, sourceId, sourceName, shuffle });
+	shuffle?: boolean,
+	continuation?: string
+) => invoke<void>('play_playlist', { items, start, sourceId, sourceName, shuffle, continuation });
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>

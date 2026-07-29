@@ -247,18 +247,21 @@ export async function toggleLike(song: SongItem) {
  * Play a playlist/album/artist and record that it was played, which is what sorts the sidebar and
  * seeds Shortcuts. Every "play these tracks from somewhere" call site goes through this.
  * `sourceId` (playlist/album pages only) points autoplay at that context's radio.
+ * `continuation` (the playlist page's next-page token) hands the rest of a long playlist to the
+ * backend to walk in the background, so playback starts on the tracks already loaded.
  */
 export function playFrom(
 	source: BrowseItem,
 	items: SongItem[],
 	start: number | null,
 	sourceId?: string,
-	shuffle?: boolean
+	shuffle?: boolean,
+	continuation?: string
 ) {
 	pl.noteRecent(personal, source);
 	pl.touchPick(personal, source.id);
 	savePersonal();
-	return api.playPlaylist(items, start, sourceId, source.title, shuffle);
+	return api.playPlaylist(items, start, sourceId, source.title, shuffle, continuation);
 }
 
 // Transient UI state for write actions.

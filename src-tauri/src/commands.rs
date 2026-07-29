@@ -380,7 +380,9 @@ pub async fn get_browse_grid(
 /// `source_id` (the page's playlist/album playlist id) makes autoplay continue with that
 /// context's radio when the queue runs out. `source_name` (the page title) feeds the queue
 /// panel's "Next from" header; `shuffle: true` (page Shuffle buttons) turns shuffle on for
-/// this queue — pass the items in their real order, the backend shuffles.
+/// this queue — pass the items in their real order, the backend shuffles. `continuation` is the
+/// page's next-page token when it has one: pass the tracks that are loaded and the backend walks
+/// the rest into the queue in the background, so playback starts on page 1.
 #[tauri::command]
 pub async fn play_playlist(
     state: St<'_>,
@@ -389,9 +391,12 @@ pub async fn play_playlist(
     source_id: Option<String>,
     source_name: Option<String>,
     shuffle: Option<bool>,
+    continuation: Option<String>,
 ) -> Result<(), String> {
     let state = state.inner().clone();
-    state.play_tracks(items, start, source_id, source_name, shuffle.unwrap_or(false)).await;
+    state
+        .play_tracks(items, start, source_id, source_name, shuffle.unwrap_or(false), continuation)
+        .await;
     Ok(())
 }
 

@@ -377,6 +377,12 @@ impl AppState {
     /// page title for the queue panel's "Next from" header; `shuffle` (the page Shuffle buttons)
     /// turns shuffle ON for this queue — the backend owns the randomization, so un-shuffle can
     /// restore the true order and every re-shuffle is fresh.
+    ///
+    /// `continuation` is the playlist page's next-page token, if it has one: the queue is seeded
+    /// from the tracks the page had loaded and the rest is walked in the background
+    /// ([`Self::fill_playlist`]) so a long playlist starts playing now instead of after ~50
+    /// chained round trips.
+    #[allow(clippy::too_many_arguments)]
     pub async fn play_tracks(
         self: &std::sync::Arc<Self>,
         items: Vec<SongItem>,
@@ -384,6 +390,7 @@ impl AppState {
         source_id: Option<String>,
         source_name: Option<String>,
         shuffle: bool,
+        continuation: Option<String>,
     ) {
         if items.is_empty() {
             return;
@@ -392,6 +399,8 @@ impl AppState {
             self.emit_guest_hint();
             return;
         }
+        // A mix has no "rest of the playlist" worth walking (see `is_mix`) — drop the token.
+        let continuation = continuation.filter(|_| !is_mix(source_id.as_deref()));
         let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         {
             let mut q = self.queue.lock().await;
@@ -427,6 +436,72 @@ impl AppState {
         // start_current emits now-playing + queue + persists; prime the gapless lookahead after.
         if self.start_current(gen).await {
             self.prime_lookahead(gen).await;
+        }
+        if let Some(token) = continuation {
+            let me = self.clone();
+            tokio::spawn(async move { me.fill_playlist(gen, token).await });
+        }
+    }
+
+    /// Walk the rest of a playlist in the background and append it to the playing queue, page by
+    /// page. The alternative (what the UI used to do) is loading every page *before* starting
+    /// playback: continuation tokens are chained, so that's ~50 sequential round trips on a
+    /// 5000-track playlist, all of them before the first note.
+    ///
+    /// Shuffle stays a real shuffle. Each arriving page is mixed through the *unplayed* tail
+    /// ([`append_page`]), so the only track not drawn from the full playlist is the one already
+    /// playing — and the walk is long finished before it ends.
+    ///
+    /// Guarded by `gen`: if the user starts something else mid-walk, the pages are dropped rather
+    /// than appended to a queue they don't belong to.
+    async fn fill_playlist(self: &std::sync::Arc<Self>, gen: u64, mut token: String) {
+        // ponytail: ~5k tracks at 100/page. A bound so a playlist that keeps handing out tokens
+        // can't walk forever; raise it if a real playlist ever hits the cap.
+        const MAX_PAGES: usize = 50;
+        let Some(client) = self.clients.get(innertube::METADATA_CLIENT) else { return };
+        let mut pages = 0;
+        for _ in 0..MAX_PAGES {
+            let page = match self.it.playlist_continuation(client, &token).await {
+                Ok(page) => page,
+                // A page that fails ends the walk — better a short queue than a stalled one.
+                Err(e) => {
+                    tracing::warn!(error = %e, "playlist fill stopped early");
+                    break;
+                }
+            };
+            if self.generation.load(Ordering::SeqCst) != gen {
+                return; // another queue owns the state now — don't touch it, don't persist
+            }
+            if page.items.is_empty() {
+                break; // an empty page is the end, token or not
+            }
+            {
+                let mut q = self.queue.lock().await;
+                append_page(&mut q, page.items);
+                // An append can retarget a primed repeat-all wrap (index 0 → the new tail); drop
+                // the lookahead when it stops pointing at what plays next, same check as
+                // `insert_queued_song`. `append_page` leaves a still-valid slot alone, so the
+                // common case re-primes to a no-op instead of re-resolving on every page.
+                let expected = next_index(q.items.len(), q.current, q.repeat);
+                if q.lookahead_loaded.is_some() && q.lookahead_loaded != expected {
+                    q.lookahead_loaded = None;
+                    let _ = self.player.clear_playlist();
+                }
+            }
+            pages += 1;
+            self.emit_queue().await;
+            self.prime_lookahead(gen).await;
+            match page.continuation {
+                Some(next) => token = next,
+                None => break,
+            }
+        }
+        // Persist/broadcast once at the end, not per page: the queue JSON grows with every page and
+        // nothing else reads it mid-walk.
+        if pages > 0 {
+            tracing::info!(pages, "playlist fill appended pages");
+            self.persist_queue().await;
+            self.lt_broadcast_queue().await;
         }
     }
 
@@ -1708,7 +1783,14 @@ fn guest_insert_index(items: &[SongItem], current: usize) -> usize {
 fn radio_seed_for(source_id: Option<String>) -> Option<String> {
     source_id.map(|id| {
         let id = id.strip_prefix("VL").unwrap_or(&id);
-        format!("RDAMPL{id}")
+        // A mix id already *is* a radio playlist; wrapping it in another `RDAMPL` asks for a
+        // playlist YouTube has never heard of. This is the seed that continues a mix past the page
+        // the UI had loaded, since `fill_playlist` deliberately doesn't walk one.
+        if id.starts_with("RD") {
+            id.to_owned()
+        } else {
+            format!("RDAMPL{id}")
+        }
     })
 }
 
@@ -1803,6 +1885,32 @@ fn shuffle_upcoming(items: &mut [SongItem], current: usize) {
     }
 }
 
+/// Append a background-walked playlist page ([`AppState::fill_playlist`]) to a queue that's
+/// already playing. The page goes onto `shuffle_orig` in its true order too, so un-shuffle still
+/// restores the *whole* playlist and not just the part that had loaded when playback started.
+///
+/// With shuffle on, the unplayed tail is re-shuffled so the new page is mixed through it instead
+/// of sitting at the end. The pivot is the primed gapless slot when there is one: that track is
+/// already loaded into mpv, so moving it would desync what mpv plays next from what the queue says
+/// is next. It was drawn from the same random tail anyway.
+fn append_page(q: &mut QueueState, page: Vec<SongItem>) {
+    if let Some(orig) = q.shuffle_orig.as_mut() {
+        orig.extend(page.iter().cloned());
+    }
+    q.items.extend(page);
+    if q.shuffle_orig.is_some() {
+        let pivot = q.lookahead_loaded.filter(|&i| i > q.current).unwrap_or(q.current);
+        shuffle_upcoming(&mut q.items, pivot);
+    }
+}
+
+/// A mix (`RD…`, reached as the `VLRD…` browseId) is a generated, effectively endless feed rather
+/// than a playlist with an end, and `extend_queue_radio` already tops the queue up from its tail.
+/// Walking its continuations would fetch page after page for no gain.
+fn is_mix(source_id: Option<&str>) -> bool {
+    source_id.is_some_and(|id| id.strip_prefix("VL").unwrap_or(id).starts_with("RD"))
+}
+
 /// Shuffle a *fresh* queue around the clicked track (shuffle was already on when it started,
 /// Spotify semantics): the clicked track plays first, everything else follows in random order.
 /// Returns the new current index (always 0). The swap is fine — everything past 0 is shuffled.
@@ -1864,9 +1972,9 @@ fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_duration, guest_insert_index, loudness_gain, merge_radio, next_index,
-        parse_duration_ms, radio_seed_for, shuffle_new_queue, shuffle_upcoming, unshuffled,
-        upcoming_queued, RepeatMode,
+        append_page, format_duration, guest_insert_index, is_mix, loudness_gain, merge_radio,
+        next_index, parse_duration_ms, radio_seed_for, shuffle_new_queue, shuffle_upcoming,
+        unshuffled, upcoming_queued, QueueState, RepeatMode,
     };
 
     #[test]
@@ -1927,6 +2035,70 @@ mod tests {
         assert_eq!(next_index(3, 0, RepeatMode::Off), Some(1));
         assert_eq!(next_index(0, 0, RepeatMode::All), None);
         assert_eq!(next_index(1, 0, RepeatMode::All), Some(0)); // single-item wrap
+    }
+
+    // The background playlist walk: a page that lands mid-playback has to reach the *unplayed*
+    // tail (otherwise "shuffle" only ever shuffles page 1), without moving the track already
+    // handed to mpv for the gapless advance.
+    #[test]
+    fn appended_page_mixes_into_the_tail_but_leaves_the_primed_slot() {
+        let ids = |items: &[innertube::SongItem]| {
+            items.iter().map(|i| i.video_id.clone()).collect::<Vec<_>>()
+        };
+        let page = || (0..100).map(|i| song(&format!("p{i}"), None)).collect::<Vec<_>>();
+        let mut tail_positions = Vec::new();
+
+        for _ in 0..20 {
+            let items = vec![song("a", None), song("b", None), song("c", None)];
+            let mut q = QueueState {
+                shuffle_orig: Some(items.clone()),
+                items,
+                current: 0,
+                lookahead_loaded: Some(1), // "b" is already loaded into mpv
+                ..QueueState::default()
+            };
+            append_page(&mut q, page());
+
+            assert_eq!(q.items.len(), 103);
+            assert_eq!(q.items[0].video_id, "a"); // playing
+            assert_eq!(q.items[1].video_id, "b"); // primed gapless slot, pinned
+            // Un-shuffle restores the whole playlist, including pages that arrived after playback
+            // started.
+            assert_eq!(ids(q.shuffle_orig.as_ref().unwrap()).len(), 103);
+            assert_eq!(ids(q.shuffle_orig.as_ref().unwrap())[..3], ["a", "b", "c"]);
+            let mut sorted = ids(&q.items);
+            sorted.sort();
+            let mut expected = ids(q.shuffle_orig.as_ref().unwrap());
+            expected.sort();
+            assert_eq!(sorted, expected); // nothing lost, nothing duplicated
+
+            tail_positions.push(q.items.iter().position(|i| i.video_id == "c").unwrap());
+        }
+        // Without the re-shuffle the page would sit behind "c" and it would land at index 2 every
+        // time. (Staying at 2 in all 20 runs by chance is (1/101)^20.)
+        assert!(tail_positions.iter().any(|&p| p != 2), "page was appended, not mixed in");
+    }
+
+    #[test]
+    fn appended_page_keeps_order_when_shuffle_is_off() {
+        let mut q = QueueState {
+            items: vec![song("a", None), song("b", None)],
+            current: 0,
+            ..QueueState::default()
+        };
+        append_page(&mut q, vec![song("c", None), song("d", None)]);
+        let ids: Vec<_> = q.items.iter().map(|i| i.video_id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c", "d"]);
+        assert!(q.shuffle_orig.is_none());
+    }
+
+    #[test]
+    fn mixes_are_not_walked() {
+        assert!(is_mix(Some("VLRDCLAK5uy_abc"))); // a mix as the playlist page sees it
+        assert!(is_mix(Some("RDAMVMxyz")));
+        assert!(!is_mix(Some("VLPL123")));
+        assert!(!is_mix(Some("VLOLAK5uy_abc")));
+        assert!(!is_mix(None));
     }
 
     #[test]
@@ -2035,6 +2207,8 @@ mod tests {
     #[test]
     fn radio_seed_from_source() {
         // Playlist browseIds are VL-prefixed — stripped before building the radio id.
+        // A mix is already a radio playlist — it seeds autoplay as itself, not wrapped again.
+        assert_eq!(radio_seed_for(Some("VLRDCLAK5uy_x".into())).as_deref(), Some("RDCLAK5uy_x"));
         assert_eq!(radio_seed_for(Some("VLPL123".into())).as_deref(), Some("RDAMPLPL123"));
         // Album audio playlist ids come bare.
         assert_eq!(radio_seed_for(Some("OLAK5uy_x".into())).as_deref(), Some("RDAMPLOLAK5uy_x"));

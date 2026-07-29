@@ -49,8 +49,16 @@ export async function playItem(item: BrowseItem): Promise<void> {
 		} else {
 			const pl = await api.getPlaylist(item.id);
 			// `sourceId` seeds autoplay off that playlist's radio. On Repeat is local, so there is
-			// no radio for it. Pass none and let autoplay seed off the last video instead.
-			await playFrom(item, pl.items, null, item.id === api.ON_REPEAT_ID ? undefined : item.id);
+			// no radio for it. Pass none and let autoplay seed off the last video instead. The
+			// continuation hands the rest of the playlist (past this first page) to the backend.
+			await playFrom(
+				item,
+				pl.items,
+				null,
+				item.id === api.ON_REPEAT_ID ? undefined : item.id,
+				undefined,
+				pl.continuation
+			);
 		}
 	} catch {
 		toast('Could not play — try opening it instead');
