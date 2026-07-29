@@ -162,7 +162,8 @@
 		</div>
 		{#if playback.now}
 			<div class="flex items-center">
-				<!-- Nothing to like on a local file: it has no YouTube identity (see api.isLocalId). -->
+				<!-- A local file has no YouTube identity (see api.isLocalId): nothing to like, and no
+				     YTM playlist to add it to. -->
 				{#if !api.isLocalId(playback.now.videoId)}
 					<Button variant="ghost" size="icon-sm" onclick={toggleLike} aria-label="Like">
 						<span
@@ -176,25 +177,25 @@
 							/>
 						</span>
 					</Button>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						onclick={() => {
+							const now = playback.now!;
+							openAddToPlaylist({
+								video_id: now.videoId,
+								title: now.title,
+								artists: now.artists,
+								artist_id: now.artistId,
+								thumbnail: now.thumbnail,
+								duration: now.duration
+							});
+						}}
+						aria-label="Add to playlist"
+					>
+						<HugeiconsIcon icon={Add01Icon} class="h-4 w-4 text-muted-foreground" />
+					</Button>
 				{/if}
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					onclick={() => {
-						const now = playback.now!;
-						openAddToPlaylist({
-							video_id: now.videoId,
-							title: now.title,
-							artists: now.artists,
-							artist_id: now.artistId,
-							thumbnail: now.thumbnail,
-							duration: now.duration
-						});
-					}}
-					aria-label="Add to playlist"
-				>
-					<HugeiconsIcon icon={Add01Icon} class="h-4 w-4 text-muted-foreground" />
-				</Button>
 			</div>
 		{/if}
 	</div>
