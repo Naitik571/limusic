@@ -170,30 +170,26 @@ impl AppState {
 
     // --- auth (context/15) ------------------------------------------------------------------
 
-    /// Sign in with a pasted Cookie header (context/15 Path B). Validates SAPISID presence, sets
-    /// the cookie on the transport, fetches `account_menu` (→ dataSyncId + display info + a fresh
-    /// visitorData), and persists it all to `settings`. Returns the account JSON for the UI.
+    /// Sign in with the Cookie header captured from the login webview (context/15 Path A).
+    /// Validates SAPISID presence, sets the cookie on the transport, fetches `account_menu`
+    /// (→ dataSyncId + display info + a fresh visitorData), and persists it all to `settings`.
+    /// Returns the account JSON for the UI.
     pub async fn sign_in(&self, cookie: String) -> Result<serde_json::Value, String> {
         let cookie = cookie.trim().to_owned();
         if innertube::cookie_sapisid(&cookie).is_none() {
-            return Err("That cookie has no SAPISID — copy the full Cookie header from a \
-                        logged-in music.youtube.com tab."
-                .into());
+            return Err("Sign-in didn't complete — try signing in again.".into());
         }
         self.it.set_cookie(Some(cookie.clone()));
         let client =
             self.clients.get(innertube::METADATA_CLIENT).ok_or("metadata client missing")?;
         let info = match self.it.account_menu(client).await {
             // A valid, authenticating cookie returns the account header (name). No name means the
-            // cookie didn't actually authenticate (stale/incomplete paste) — reject it up front so
-            // we don't "succeed" into a silently-empty library.
+            // session didn't actually authenticate — reject it up front so we don't "succeed" into
+            // a silently-empty library.
             Ok(i) if i.name.is_some() => i,
             Ok(_) => {
                 self.it.set_cookie(None);
-                return Err("That cookie didn't authenticate — copy a fresh Cookie header from a \
-                            logged-in music.youtube.com tab (its session cookies rotate, so grab a \
-                            current one) and try again."
-                    .into());
+                return Err("That session didn't authenticate — sign in again.".into());
             }
             // Auth didn't take (network) — roll back so we're not half-logged-in.
             Err(e) => {

@@ -219,7 +219,6 @@ export const getStreamClients = () => invoke<string[]>('get_stream_clients');
 export const clearCaches = () => invoke<void>('clear_caches');
 
 // --- auth (context/15) ---------------------------------------------------------------------
-export const setCookie = (cookie: string) => invoke<Account>('set_cookie', { cookie });
 export const getAccount = () => invoke<Account>('get_account');
 export const signOut = () => invoke<void>('sign_out');
 /** Open the in-app Google sign-in webview (context/15 Path A). Result arrives via onAuthChanged. */

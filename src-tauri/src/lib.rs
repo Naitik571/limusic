@@ -262,7 +262,6 @@ pub fn run() {
             commands::set_setting,
             commands::get_stream_clients,
             commands::clear_caches,
-            commands::set_cookie,
             commands::get_account,
             commands::sign_out,
             commands::login_webview,

@@ -217,13 +217,6 @@ pub async fn clear_caches(state: St<'_>) -> Result<(), String> {
 
 // --- auth (context/15) ---------------------------------------------------------------------
 
-/// Sign in by pasting a Cookie header (context/15 Path B). Returns the account for the UI.
-#[tauri::command]
-pub async fn set_cookie(state: St<'_>, cookie: String) -> Result<serde_json::Value, String> {
-    let state = state.inner().clone();
-    state.sign_in(cookie).await
-}
-
 #[tauri::command]
 pub async fn get_account(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(state.account_snapshot())
@@ -327,7 +320,18 @@ fn on_repeat_songs(state: &Arc<AppState>) -> Vec<SongItem> {
         .top_plays(since, ON_REPEAT_LIMIT)
         .into_iter()
         .filter_map(|(json, _plays)| serde_json::from_str(&json).ok())
+        .map(shed_queue_context)
         .collect()
+}
+
+/// A play record is the whole `SongItem` as it sat in the queue, so it carries that slot's queue
+/// metadata: `queued`/`queued_by` when the track was "added to queue" (in a Listen Together session,
+/// stamped with who added it), `autoplay` when radio appended it, `set_video_id` from whatever
+/// playlist it was played from. None of that describes the song, so On Repeat sheds it: otherwise
+/// the row wears a session member's name forever, and playing On Repeat drops it into "Next in
+/// queue" instead of the playlist. Strips on read so rows already stored this way are fixed too.
+fn shed_queue_context(s: SongItem) -> SongItem {
+    SongItem { queued: false, queued_by: None, autoplay: false, set_video_id: None, ..s }
 }
 
 fn now_secs() -> i64 {
@@ -661,4 +665,25 @@ pub async fn lastfm_disconnect(state: St<'_>) -> Result<(), String> {
 #[tauri::command]
 pub async fn lastfm_status(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(crate::lastfm::status(&state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn on_repeat_rows_shed_the_queue_slot_they_were_played_from() {
+        let played = SongItem {
+            video_id: "abc".into(),
+            title: "Grace".into(),
+            queued: true,
+            queued_by: Some("simohypers".into()),
+            autoplay: true,
+            set_video_id: Some("SVI".into()),
+            ..Default::default()
+        };
+        let row = shed_queue_context(played.clone());
+        assert_eq!(row, SongItem { video_id: "abc".into(), title: "Grace".into(), ..Default::default() });
+        assert_eq!(row.title, played.title, "the song itself survives");
+    }
 }

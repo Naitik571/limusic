@@ -24,15 +24,24 @@ importers:
         specifier: ^1.1.0
         version: 1.1.0(svelte@5.56.4)
     devDependencies:
+      '@fontsource-variable/dm-sans':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource-variable/ibm-plex-sans':
         specifier: ^5.2.8
         version: 5.2.8
+      '@fontsource-variable/montserrat':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/outfit':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource-variable/oxanium':
         specifier: ^5.2.8
         version: 5.2.8
       '@hugeicons/core-free-icons':
-        specifier: ^4.2.2
-        version: 4.2.2
+        specifier: ^4.2.3
+        version: 4.2.3
       '@hugeicons/svelte':
         specifier: ^1.1.4
         version: 1.1.4(svelte@5.56.4)
@@ -105,14 +114,23 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
+  '@fontsource-variable/dm-sans@5.3.0':
+    resolution: {integrity: sha512-BpUG5bqePiDFMBM4ZtLSlPdAIOM990uB1dlXzIf4aw21yQR7BmykedLXXXMqGWsR18aMLOsbWccwJNh3ztTQaA==}
+
   '@fontsource-variable/ibm-plex-sans@5.2.8':
     resolution: {integrity: sha512-n5PF2iFa0CZT0QYTPzxvZ39opC9LnU0zdoRccoADbs+Dtsd+lbXOZF7RNuIPHcQX1dKjF63sxnRImQIB5eD0Ag==}
+
+  '@fontsource-variable/montserrat@5.3.0':
+    resolution: {integrity: sha512-7PaZoxaxrWLAyrhO46v65An9LhUhfkTExWLhfbywYZCnZEgg/W1rEHnlNmZKjNZ3nJTVYyicqxlJt10z/26yTA==}
+
+  '@fontsource-variable/outfit@5.3.0':
+    resolution: {integrity: sha512-fPb5XnYK0k7SbR++HEmm4+ZqDszmLKQ+sPRUr8oQ/KNC0vy6r6hazJFe8iYozv4cqlHbvJ/JECkJWrfDodUMVQ==}
 
   '@fontsource-variable/oxanium@5.2.8':
     resolution: {integrity: sha512-W3HWxRLXVB6yox3dgm1DIGOp98pz8KglwiM6/2BsMopvZrg98mXI9citFWz2pUX0FOOLwf8fmHxX+KrIn+6BoA==}
 
-  '@hugeicons/core-free-icons@4.2.2':
-    resolution: {integrity: sha512-fjQW3p6cwoJmwK3oCnV8Z3PC5sHihDvr2jkAHax8cxqp62GaV/D7B/Rnao+JwicW8fmLZUQ6QrzWfoyMFOEQlQ==}
+  '@hugeicons/core-free-icons@4.2.3':
+    resolution: {integrity: sha512-fpiU0qFZkv4ABi23xJ2m4qNr0BBfuIaYjPboN8WDA6aj9D+OzXa7eykxKOpACZRuGbDz1U9S5DsNx1d5KNnsgA==}
 
   '@hugeicons/svelte@1.1.4':
     resolution: {integrity: sha512-G/oYlqhJ6DTN64/BuOPiFBz6zfAvocUHiewA7x/ktOElwKPl0NM3TAnZcvTy+DsYRH6CD03JdNYrQTu/mPFMBw==}
@@ -827,11 +845,17 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
+  '@fontsource-variable/dm-sans@5.3.0': {}
+
   '@fontsource-variable/ibm-plex-sans@5.2.8': {}
+
+  '@fontsource-variable/montserrat@5.3.0': {}
+
+  '@fontsource-variable/outfit@5.3.0': {}
 
   '@fontsource-variable/oxanium@5.2.8': {}
 
-  '@hugeicons/core-free-icons@4.2.2': {}
+  '@hugeicons/core-free-icons@4.2.3': {}
 
   '@hugeicons/svelte@1.1.4(svelte@5.56.4)':
     dependencies:

@@ -5,7 +5,6 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { UserCircleIcon, Logout01Icon, ArrowDown01Icon } from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import * as api from '$lib/api';
 	import { auth } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
@@ -13,9 +12,6 @@
 	let menuOpen = $state(false);
 	let mx = $state(0);
 	let my = $state(0);
-	let cookieInput = $state('');
-	let authError = $state<string | null>(null);
-	let signingIn = $state(false);
 
 	// Right-anchored under the trigger, like the Last.fm menu next to it.
 	function openMenu(e: MouseEvent) {
@@ -27,21 +23,6 @@
 
 	// Sign-in/out state arrives via the `auth-changed` event (player.svelte.ts), which also reloads
 	// the library and remounts the page — nothing to assign here.
-	async function submitCookie() {
-		if (!cookieInput.trim()) return;
-		signingIn = true;
-		authError = null;
-		try {
-			await api.setCookie(cookieInput);
-			cookieInput = '';
-			menuOpen = false;
-		} catch (e) {
-			authError = String(e);
-		} finally {
-			signingIn = false;
-		}
-	}
-
 	async function doSignOut() {
 		menuOpen = false;
 		await api.signOut();
@@ -106,28 +87,10 @@
 			</Button>
 		{:else}
 			<p class="text-sm font-medium">Sign in</p>
-			<Button class="mt-3 w-full" onclick={signInGoogle}>Sign in with Google</Button>
-			<div class="my-3 flex items-center gap-2 text-xs text-muted-foreground">
-				<span class="h-px flex-1 bg-border"></span> or paste a cookie
-				<span class="h-px flex-1 bg-border"></span>
-			</div>
-			<p class="text-xs text-muted-foreground">
-				music.youtube.com → DevTools → Network → any request → copy the
-				<span class="font-mono">Cookie</span> header.
+			<p class="mt-1 text-xs text-muted-foreground">
+				Sign in with your Google account to reach your YouTube Music library and playlists.
 			</p>
-			<form
-				class="mt-2 flex flex-col gap-2"
-				onsubmit={(e) => {
-					e.preventDefault();
-					submitCookie();
-				}}
-			>
-				<Input bind:value={cookieInput} placeholder="VISITOR_INFO1_LIVE=…; SAPISID=…; …" />
-				<Button type="submit" variant="outline" disabled={signingIn}>
-					{signingIn ? 'Signing in…' : 'Use cookie'}
-				</Button>
-			</form>
-			{#if authError}<p class="mt-2 text-xs text-destructive">{authError}</p>{/if}
+			<Button class="mt-3 w-full" onclick={signInGoogle}>Sign in with Google</Button>
 		{/if}
 	</div>
 {/if}

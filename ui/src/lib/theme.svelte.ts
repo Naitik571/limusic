@@ -5,7 +5,7 @@
 //   - 'palette' — a full token set (background, card, sidebar, radius, …) for light AND dark, defined
 //                 as a `.theme-<id>` class in layout.css. Applied by toggling that class on <html>.
 
-export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin' | 'caffeine' | 'bubblegum';
+export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin' | 'caffeine' | 'neon' | 'breeze';
 
 // `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (lime,
 // teal) need a dark foreground; dark accents keep the light one. `color` is just the picker swatch.
@@ -21,7 +21,8 @@ export const THEMES: Theme[] = [
 	{ id: 'teal', label: 'Teal', kind: 'accent', color: 'oklch(0.85 0.13 181)', fg: 'oklch(0.205 0 0)' },
 	{ id: 'catppuccin', label: 'Catppuccin', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' },
 	{ id: 'caffeine', label: 'Caffeine', kind: 'palette', color: 'oklch(0.4341 0.0392 41.9938)' },
-	{ id: 'bubblegum', label: 'Bubblegum', kind: 'palette', color: 'oklch(0.6209 0.1801 348.1385)' }
+	{ id: 'neon', label: 'Neon', kind: 'palette', color: 'oklch(0.6726 0.2904 341.4084)' },
+	{ id: 'breeze', label: 'Breeze', kind: 'palette', color: 'oklch(0.7227 0.1920 149.5793)' }
 ];
 
 const KEY = 'primary-theme';

@@ -4,9 +4,10 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
 	import { ui, toast } from '$lib/player.svelte';
-	import { THEMES, theme, applyTheme } from '$lib/theme.svelte';
+	import { THEMES, theme, applyTheme, type ThemeId } from '$lib/theme.svelte';
 	import { updateState, checkForUpdatesInteractive, installUpdate } from '$lib/updater.svelte';
 	import { getVersion } from '@tauri-apps/api/app';
 
@@ -17,6 +18,10 @@
 		{ id: 'data', label: 'Data & storage' },
 		{ id: 'about', label: 'About' }
 	];
+
+	const ACCENT_THEMES = THEMES.filter((t) => t.kind === 'accent');
+	const PALETTE_THEMES = THEMES.filter((t) => t.kind === 'palette');
+	const currentTheme = $derived(THEMES.find((t) => t.id === theme.id) ?? THEMES[0]);
 
 	let tab = $state<TabId>('general');
 	let settings = $state<Record<string, string>>({});
@@ -166,45 +171,43 @@
 				{#if !loaded}
 					<p class="text-sm text-muted-foreground">Loading…</p>
 				{:else if tab === 'general'}
-					<div class="border-b py-3">
-						<div class="font-medium">Theme</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							Accent colors tint the default look; presets swap the whole palette.
-						</p>
-						<div role="radiogroup" aria-label="Theme" class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-							{#each THEMES as t (t.id)}
-								<label
-									class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/10 focus-within:ring-2 focus-within:ring-ring {theme.id ===
-									t.id
-										? 'border-primary'
-										: 'border-border'}"
-								>
-									<input
-										type="radio"
-										name="accent-theme"
-										value={t.id}
-										checked={theme.id === t.id}
-										onchange={() => applyTheme(t.id)}
-										class="sr-only"
-									/>
-									<span
-										class="h-6 w-6 shrink-0 rounded-full ring-1 ring-black/10"
-										style="background:{t.color}"
-									></span>
-									<span class="flex-1 text-sm font-medium">{t.label}</span>
-									<span
-										class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border {theme.id ===
-										t.id
-											? 'border-primary'
-											: 'border-muted-foreground/50'}"
-									>
-										{#if theme.id === t.id}
-											<span class="h-2 w-2 rounded-full bg-primary"></span>
-										{/if}
-									</span>
-								</label>
-							{/each}
+					<div class="flex items-center justify-between gap-8 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Theme</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Accent colors tint the default look; presets swap the whole palette.
+							</p>
 						</div>
+						<Select.Root
+							type="single"
+							value={theme.id}
+							onValueChange={(v) => applyTheme(v as ThemeId)}
+						>
+							<Select.Trigger class="w-44 shrink-0" aria-label="Theme">
+								<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{currentTheme.color}"></span>
+								<span class="flex-1 text-left">{currentTheme.label}</span>
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Group>
+									<Select.GroupHeading>Accent colors</Select.GroupHeading>
+									{#each ACCENT_THEMES as t (t.id)}
+										<Select.Item value={t.id} label={t.label}>
+											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
+											{t.label}
+										</Select.Item>
+									{/each}
+								</Select.Group>
+								<Select.Group>
+									<Select.GroupHeading>Palettes</Select.GroupHeading>
+									{#each PALETTE_THEMES as t (t.id)}
+										<Select.Item value={t.id} label={t.label}>
+											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
+											{t.label}
+										</Select.Item>
+									{/each}
+								</Select.Group>
+							</Select.Content>
+						</Select.Root>
 					</div>
 					<div class="flex items-start justify-between gap-4 border-b py-3">
 						<div class="min-w-0">
