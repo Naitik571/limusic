@@ -38,8 +38,19 @@
 	let view = $state('albums');
 	// A local collection can be thousands of files, and WebKitGTK does not enjoy thousands of rows.
 	// Render a page at a time — Play all and Shuffle still take the whole list.
-	const PAGE = 300;
+	const PAGE = 100;
 	let shown = $state(PAGE);
+
+	// Same shape as the playlist page and home: one page per approach to the bottom. Nothing is
+	// fetched here (the whole library is already in memory), so this only grows how much of it is
+	// rendered — no loading state, nothing that can fail.
+	function sentinel(node: HTMLElement) {
+		const io = new IntersectionObserver(([e]) => e.isIntersecting && (shown += PAGE), {
+			rootMargin: '600px 0px'
+		});
+		io.observe(node);
+		return () => io.disconnect();
+	}
 	const nowId = $derived(playback.now?.videoId);
 	// The whole local collection as one queue — what the Play/Shuffle buttons above the song list
 	// do, and what the queue panel calls it. Not a `playFrom`: there's no page behind "everything on
@@ -126,6 +137,7 @@
 		<Tabs.Root bind:value={view}>
 			<Tabs.List class="mb-4">
 				<Tabs.Trigger value="albums">Albums ({local.albums.length})</Tabs.Trigger>
+				<Tabs.Trigger value="artists">Artists ({local.artists.length})</Tabs.Trigger>
 				<Tabs.Trigger value="songs">Songs ({local.songs.length})</Tabs.Trigger>
 			</Tabs.List>
 			<Tabs.Content value="albums">
@@ -134,11 +146,13 @@
 						<MediaCard item={album} />
 					{/each}
 				</div>
-				{#if local.songs.length > shown}
-					<Button variant="ghost" class="mt-2 w-full" onclick={() => (shown += PAGE)}>
-						Show more ({local.songs.length - shown} left)
-					</Button>
-				{/if}
+			</Tabs.Content>
+			<Tabs.Content value="artists">
+				<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+					{#each local.artists as artist (artist.id)}
+						<MediaCard item={artist} />
+					{/each}
+				</div>
 			</Tabs.Content>
 			<Tabs.Content value="songs">
 				<div class="mb-3 flex gap-2">
@@ -158,12 +172,15 @@
 					{#each local.songs.slice(0, shown) as song, i (song.video_id)}
 						<TrackRow
 							{song}
-							index={i + 1}
+							index={i}
 							active={song.video_id === nowId}
 							onplay={() => api.playPlaylist(local.songs, i, undefined, SOURCE)}
 						/>
 					{/each}
 				</div>
+				{#if local.songs.length > shown}
+					<div {@attach sentinel}></div>
+				{/if}
 			</Tabs.Content>
 		</Tabs.Root>
 	{:else if local.folders.length}

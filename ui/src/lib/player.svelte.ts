@@ -82,6 +82,7 @@ export function bumpLibraryTrackCount(playlistId: string, delta: number) {
 export const local = $state({
 	folders: [] as string[],
 	albums: [] as BrowseItem[],
+	artists: [] as BrowseItem[],
 	songs: [] as SongItem[],
 	loading: false,
 	scanned: false,
@@ -98,6 +99,7 @@ export function forgetLocal(removed: string[]) {
 	const gone = new Set(removed);
 	local.songs = local.songs.filter((s) => !gone.has(s.video_id));
 	local.albums = local.albums.filter((a) => !gone.has(a.id));
+	local.artists = local.artists.filter((a) => !gone.has(a.id));
 	const dropped = pl.forgetIds(personal, removed);
 	savePersonal();
 	if (dropped) toast(`Removed ${dropped} shortcut${dropped === 1 ? '' : 's'} for deleted music`);
@@ -107,6 +109,7 @@ export function forgetLocal(removed: string[]) {
 function applyLocal(lib: api.LocalLibrary) {
 	local.folders = lib.folders;
 	local.albums = lib.albums;
+	local.artists = lib.artists;
 	local.songs = lib.songs;
 	local.scanned = true;
 	local.error = null;

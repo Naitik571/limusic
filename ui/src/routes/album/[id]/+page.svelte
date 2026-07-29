@@ -106,7 +106,9 @@
 
     // This album as a card, for the sidebar's last-played sort and the Shortcuts grid.
     const asItem = (): BrowseItem => ({
-        kind: "album",
+        // A local artist opens this route too — it stays an artist on the Shortcuts grid, so the
+        // tile keeps its circle (see browse.ts `hrefFor`).
+        kind: id.startsWith(api.LOCAL_ARTIST_PREFIX) ? "artist" : "album",
         id,
         title: album?.title ?? "Album",
         subtitle: album?.artist,

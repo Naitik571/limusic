@@ -16,11 +16,15 @@ export const asSong = (i: BrowseItem): SongItem => ({
 
 /** Where a non-song item lives. Songs have no page — they play. */
 export const hrefFor = (i: BrowseItem): string =>
-	i.kind === 'artist'
-		? `/artist/${encodeURIComponent(i.id)}`
-		: i.kind === 'album'
-			? `/album/${encodeURIComponent(i.id)}`
-			: `/playlist/${encodeURIComponent(i.id)}`;
+	// A local artist is drawn as an artist (circle, no play button) but opens the album route:
+	// there is no channel behind files on disk, so the real artist page has nothing to show.
+	i.id.startsWith(api.LOCAL_ARTIST_PREFIX)
+		? `/album/${encodeURIComponent(i.id)}`
+		: i.kind === 'artist'
+			? `/artist/${encodeURIComponent(i.id)}`
+			: i.kind === 'album'
+				? `/album/${encodeURIComponent(i.id)}`
+				: `/playlist/${encodeURIComponent(i.id)}`;
 
 /** Primary click: a song plays, everything else opens its page. */
 export function openItem(item: BrowseItem): void {

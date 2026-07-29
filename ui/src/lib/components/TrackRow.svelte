@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { FavouriteIcon, PlayIcon, PlayListAddIcon } from '@hugeicons/core-free-icons';
+	import {
+		FavouriteIcon,
+		MusicNote01Icon,
+		PlayIcon,
+		PlayListAddIcon
+	} from '@hugeicons/core-free-icons';
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
@@ -80,8 +85,18 @@
 					/>
 				</span>
 			{/if}
-			{#if song.thumbnail && !hideThumb}
-				<img src={thumb(song.thumbnail, 96)} alt="" class="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />
+			{#if !hideThumb}
+				{#if song.thumbnail}
+					<img src={thumb(song.thumbnail, 96)} alt="" class="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />
+				{:else}
+					<!-- An untagged file has no artwork of its own. A music note keeps the row aligned
+					     with its neighbours and says so plainly. -->
+					<div
+						class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground/50"
+					>
+						<HugeiconsIcon icon={MusicNote01Icon} class="h-4 w-4" />
+					</div>
+				{/if}
 			{/if}
 		</div>
 		<div class="min-w-0 flex-1">

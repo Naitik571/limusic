@@ -249,12 +249,6 @@ impl Db {
         let _ = tx.commit();
     }
 
-    pub fn local_album_key(&self, path: &str) -> Option<String> {
-        let conn = self.0.lock().unwrap();
-        conn.query_row("SELECT album_key FROM local_tracks WHERE path = ?1", [path], |r| r.get(0))
-            .ok()
-    }
-
     /// Forget files that are no longer on disk (the user deleted or moved them).
     pub fn delete_local_tracks(&self, paths: &[String]) {
         if paths.is_empty() {

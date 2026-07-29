@@ -14,7 +14,8 @@
 		VolumeMute02Icon,
 		FavouriteIcon,
 		Add01Icon,
-		InfinityIcon
+		InfinityIcon,
+		MusicNote01Icon
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
@@ -138,7 +139,11 @@
 					in:fade={{ duration: 250 }}
 				/>
 			{:else}
-				<div class="h-12 w-12 shrink-0 rounded-lg bg-muted"></div>
+				<div
+					class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+				>
+					<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
+				</div>
 			{/if}
 		{/key}
 		<div class="min-w-0">

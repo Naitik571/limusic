@@ -353,6 +353,11 @@ pub async fn get_album(state: St<'_>, id: String) -> Result<AlbumPage, String> {
     if let Some(key) = id.strip_prefix(crate::local::ALBUM_PREFIX) {
         return Ok(crate::local::album_page(&state.db, key));
     }
+    // A local artist rides this route too: same page shape, and none of the artist route's
+    // YouTube furniture applies to files on disk (see `local::artist_page`).
+    if let Some(name) = id.strip_prefix(crate::local::ARTIST_PREFIX) {
+        return Ok(crate::local::artist_page(&state.db, name));
+    }
     let client = metadata_client(&state)?;
     state.it.album(client, &id).await.map_err(|e| e.to_string())
 }

@@ -20,12 +20,15 @@ use crate::db::{Db, LocalTrack};
 pub const SONG_PREFIX: &str = "LOCAL:";
 /// A local album's synthetic browseId: this prefix + `LocalTrack::album_key`.
 pub const ALBUM_PREFIX: &str = "LOCALALBUM:";
+/// A local artist's synthetic browseId: this prefix + the artist name exactly as tagged. No key or
+/// digest — the name is the id, so the page finds its tracks by matching it back.
+pub const ARTIST_PREFIX: &str = "LOCALARTIST:";
 /// Where the folder list lives (JSON array of absolute paths).
 const FOLDERS_SETTING: &str = "local_folders";
 /// Bumped whenever `read_track` starts producing different titles, artists or album keys. The scan
 /// normally trusts stored rows whose file hasn't changed; after a bump it re-reads everything once,
 /// so a library isn't left half-parsed by the old rules and half by the new ones.
-const SCAN_VERSION: &str = "2";
+const SCAN_VERSION: &str = "4";
 const SCAN_VERSION_SETTING: &str = "local_scan_version";
 
 /// Extensions we pick up. Playback itself is mpv, which decodes far more than this — the list is
@@ -62,6 +65,7 @@ pub fn song_path(video_id: &str) -> Option<&str> {
 pub struct LocalLibrary {
     pub folders: Vec<String>,
     pub albums: Vec<BrowseItem>,
+    pub artists: Vec<BrowseItem>,
     pub songs: Vec<SongItem>,
     pub removed: Vec<String>,
 }
@@ -106,7 +110,7 @@ pub fn remove_folder(db: &Db, path: &str) {
 ///
 /// Blocking (disk IO + tag parsing) — call it from `spawn_blocking`.
 pub fn scan(db: &Db, covers_dir: &Path) -> LocalLibrary {
-    let before: HashSet<String> = db.local_tracks(None).iter().map(album_id_of).collect();
+    let before: HashSet<String> = card_ids_of(&db.local_tracks(None));
     let known = db.local_mtimes();
     let reparse = db.get_setting(SCAN_VERSION_SETTING).as_deref() != Some(SCAN_VERSION);
     let mut found: HashSet<String> = HashSet::new();
@@ -138,12 +142,19 @@ pub fn scan(db: &Db, covers_dir: &Path) -> LocalLibrary {
     }
 
     let tracks = db.local_tracks(None);
-    let after: HashSet<String> = tracks.iter().map(album_id_of).collect();
-    // Ids the UI may still be showing: the deleted songs, plus albums that lost their last track.
+    let after: HashSet<String> = card_ids_of(&tracks);
+    // Ids the UI may still be showing: the deleted songs, plus the albums and artists that lost
+    // their last track.
     let mut removed: Vec<String> = gone.into_iter().map(|p| format!("{SONG_PREFIX}{p}")).collect();
     removed.extend(before.difference(&after).cloned());
 
-    LocalLibrary { folders: folders(db), albums: albums_of(&tracks), songs: songs_of(&tracks), removed }
+    LocalLibrary {
+        folders: folders(db),
+        albums: albums_of(&tracks),
+        artists: artists_of(&tracks),
+        songs: songs_of(&tracks),
+        removed,
+    }
 }
 
 /// Recurse into `dir`, calling `on_file` for every audio file. Errors (permissions, a folder that
@@ -219,6 +230,7 @@ fn read_track(file: &Path, path: &str, mtime: i64, covers_dir: &Path) -> LocalTr
     // With no album tag the folder is the album: loose files in one directory belong together
     // whoever performs them, so the key is the folder, not the folder *plus* the artist (which
     // would split "Downloads" into one album per artist).
+    let tagged_album = album.is_some();
     let (album, album_key) = match album {
         Some(a) => {
             let key = album_key(album_artist.as_ref().unwrap_or(&artist), &a);
@@ -233,7 +245,15 @@ fn read_track(file: &Path, path: &str, mtime: i64, covers_dir: &Path) -> LocalTr
             (name, key)
         }
     };
-    let cover = cover_for(&album_key, tag, dir, covers_dir);
+    // Artwork comes from the file itself, or from a real album it belongs to. A file with no album
+    // tag has neither: it sits in a folder next to unrelated downloads, so neither the folder's
+    // picture nor a neighbour's embedded art is its cover. Its own picture (cached per file, not
+    // per pseudo-album) or nothing, and the UI draws a music note for nothing.
+    let cover = if tagged_album {
+        cover_for(&album_key, tag, dir, covers_dir)
+    } else {
+        embedded_cover(&format!("file-{}", short_digest(path)), tag, covers_dir)
+    };
 
     LocalTrack {
         path: path.to_owned(),
@@ -266,13 +286,16 @@ fn split_filename(stem: &str) -> (Option<String>, String) {
 /// Returns the ids the UI might still be showing: the song, plus its album when that was the last
 /// track left in it. Same shape as a scan's `removed`, so both feed one prune on the UI side.
 pub fn forget_missing(db: &Db, path: &str) -> Vec<String> {
-    let key = db.local_album_key(path);
+    let all = db.local_tracks(None);
     db.delete_local_tracks(&[path.to_owned()]);
     let mut ids = vec![format!("{SONG_PREFIX}{path}")];
-    if let Some(k) = key {
-        if db.local_tracks(Some(&k)).is_empty() {
-            ids.push(format!("{ALBUM_PREFIX}{k}"));
-        }
+    let Some(gone) = all.iter().find(|t| t.path == path) else { return ids };
+    let others: Vec<&LocalTrack> = all.iter().filter(|t| t.path != path).collect();
+    if !others.iter().any(|t| t.album_key == gone.album_key) {
+        ids.push(album_id_of(gone));
+    }
+    if !others.iter().any(|t| t.artist == gone.artist) {
+        ids.push(artist_id_of(gone));
     }
     ids
 }
@@ -335,37 +358,51 @@ fn cover_for(
     dir: Option<&Path>,
     covers_dir: &Path,
 ) -> Option<String> {
+    embedded_cover(album_key, tag, covers_dir).or_else(|| {
+        let dir = dir?;
+        COVER_FILES
+            .iter()
+            .map(|name| dir.join(name))
+            .find(|p| p.exists())
+            .map(|p| p.to_string_lossy().to_string())
+    })
+}
+
+/// The picture inside the file, written once into `covers_dir` under `key` and reused after that.
+/// `key` is the album for real albums (one extraction per album) and the file for everything else.
+fn embedded_cover(key: &str, tag: Option<&lofty::tag::Tag>, covers_dir: &Path) -> Option<String> {
     // The extension matters: the webview gets these over Tauri's asset protocol, which types the
     // response from the file name.
     for ext in ["jpg", "png"] {
-        let cached = covers_dir.join(format!("{album_key}.{ext}"));
+        let cached = covers_dir.join(format!("{key}.{ext}"));
         if cached.exists() {
             return Some(cached.to_string_lossy().to_string());
         }
     }
-    if let Some(pic) = tag.and_then(|t| t.pictures().first()) {
-        let ext = match pic.mime_type() {
-            Some(lofty::picture::MimeType::Png) => "png",
-            _ => "jpg",
-        };
-        let out = covers_dir.join(format!("{album_key}.{ext}"));
-        std::fs::create_dir_all(covers_dir).ok();
-        if std::fs::write(&out, pic.data()).is_ok() {
-            return Some(out.to_string_lossy().to_string());
-        }
-    }
-    let dir = dir?;
-    COVER_FILES
-        .iter()
-        .map(|name| dir.join(name))
-        .find(|p| p.exists())
-        .map(|p| p.to_string_lossy().to_string())
+    let pic = tag.and_then(|t| t.pictures().first())?;
+    let ext = match pic.mime_type() {
+        Some(lofty::picture::MimeType::Png) => "png",
+        _ => "jpg",
+    };
+    let out = covers_dir.join(format!("{key}.{ext}"));
+    std::fs::create_dir_all(covers_dir).ok();
+    std::fs::write(&out, pic.data()).ok().map(|_| out.to_string_lossy().to_string())
 }
 
 // --- shaping into the app's models ----------------------------------------------------------
 
 fn album_id_of(t: &LocalTrack) -> String {
     format!("{ALBUM_PREFIX}{}", t.album_key)
+}
+
+fn artist_id_of(t: &LocalTrack) -> String {
+    format!("{ARTIST_PREFIX}{}", primary_artist(&t.artist))
+}
+
+/// Every browseId a set of tracks puts on screen. A scan diffs this before and after to find the
+/// cards that lost their last file, so Shortcuts tiles pointing at them go at the same moment.
+fn card_ids_of(tracks: &[LocalTrack]) -> HashSet<String> {
+    tracks.iter().flat_map(|t| [album_id_of(t), artist_id_of(t)]).collect()
 }
 
 pub fn to_song(t: &LocalTrack) -> SongItem {
@@ -420,6 +457,52 @@ fn albums_of(tracks: &[LocalTrack]) -> Vec<BrowseItem> {
     albums
 }
 
+/// Who a track counts under. A tag naming a collaboration ("Drake; 21 Savage", "Drake feat.
+/// Future") belongs to whoever it names first: a circle per guest list is one-song noise, and the
+/// track's row still shows the whole line.
+///
+/// ponytail: splits on ";" and the feat. markers only. "," and "&" are left alone on purpose —
+/// they sit inside real names ("Tyler, The Creator", "Earth, Wind & Fire") often enough that
+/// splitting on them invents worse artists than it merges.
+fn primary_artist(artist: &str) -> &str {
+    let mut cut = artist.find(';').unwrap_or(artist.len());
+    let lower = artist.to_lowercase();
+    for marker in [" feat.", " feat ", " ft.", " ft ", " featuring "] {
+        if let Some(i) = lower.find(marker) {
+            cut = cut.min(i);
+        }
+    }
+    // `get`, not a slice: lowercasing can shift byte offsets (İ and friends), and the safe way to
+    // be wrong is to leave the name whole.
+    artist.get(..cut).unwrap_or(artist).trim()
+}
+
+/// One circle per artist, sorted by name.
+fn artists_of(tracks: &[LocalTrack]) -> Vec<BrowseItem> {
+    let mut groups: HashMap<&str, Vec<&LocalTrack>> = HashMap::new();
+    for t in tracks {
+        groups.entry(primary_artist(&t.artist)).or_default().push(t);
+    }
+    let mut artists: Vec<BrowseItem> = groups
+        .iter()
+        .map(|(name, ts)| {
+            let n = ts.len();
+            BrowseItem {
+                kind: "artist",
+                id: format!("{ARTIST_PREFIX}{name}"),
+                title: (*name).to_string(),
+                subtitle: Some(format!("{} song{}", n, if n == 1 { "" } else { "s" })),
+                // The face is the first track that has artwork — an artist has no portrait of
+                // their own on disk, so a cover from their music is the closest thing.
+                thumbnail: ts.iter().find_map(|t| t.cover.clone()),
+                duration: None,
+            }
+        })
+        .collect();
+    artists.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+    artists
+}
+
 /// Who an album is by: the one artist on it, or "Various artists". A folder of loose downloads is
 /// grouped as one album (see `read_track`), and claiming it belongs to whichever track happened to
 /// be first would be wrong on most of its rows.
@@ -435,11 +518,26 @@ fn album_artist(tracks: &[&LocalTrack]) -> String {
 /// The album page for a local album, in the same shape the YouTube one uses so the route is shared.
 pub fn album_page(db: &Db, album_key: &str) -> AlbumPage {
     let tracks = db.local_tracks(Some(album_key));
+    let title = tracks.first().map(|t| t.album.clone());
+    let artist = (!tracks.is_empty()).then(|| album_artist(&tracks.iter().collect::<Vec<_>>()));
+    page_of(title, artist, &tracks)
+}
+
+/// One local artist's page: everything of theirs on this disk, grouped by album (the query's own
+/// order). It renders through the *album* route, because a file on disk has no YouTube channel
+/// behind it — nothing the real artist page offers (subscribe, radio, related) applies.
+pub fn artist_page(db: &Db, name: &str) -> AlbumPage {
+    let tracks: Vec<LocalTrack> =
+        db.local_tracks(None).into_iter().filter(|t| primary_artist(&t.artist) == name).collect();
+    page_of(Some(name.to_owned()), None, &tracks)
+}
+
+/// The shared body of both: a title, a track list, and nothing YouTube-shaped.
+fn page_of(title: Option<String>, artist: Option<String>, tracks: &[LocalTrack]) -> AlbumPage {
     let total: i64 = tracks.iter().map(|t| t.duration_secs).sum();
-    let first = tracks.first();
     AlbumPage {
-        title: first.map(|t| t.album.clone()),
-        artist: (!tracks.is_empty()).then(|| album_artist(&tracks.iter().collect::<Vec<_>>())),
+        title,
+        artist,
         artist_id: None,
         artist_runs: Vec::new(),
         artist_thumbnail: None,
@@ -606,6 +704,33 @@ mod tests {
     }
 
     #[test]
+    fn a_collaboration_counts_under_the_first_artist() {
+        // A guest list is not an artist: all four of these are Drake's, and the featured names get
+        // no circle of their own. Commas stay put, so "Tyler, The Creator" survives whole.
+        let tracks = vec![
+            track("/m/a.mp3", "Drake", "Views", "drake--views"),
+            track("/m/b.mp3", "Drake", "Views", "drake--views"),
+            track("/m/c.mp3", "Drake; 21 Savage", "Views", "drake--views"),
+            track("/m/d.mp3", "Drake Feat. Future", "Views", "drake--views"),
+            track("/m/e.mp3", "Tyler, The Creator", "Igor", "tyler--igor"),
+        ];
+        let artists = artists_of(&tracks);
+        assert_eq!(artists.len(), 2, "Drake and Tyler — no 21 Savage, no Future");
+        assert_eq!(artists[0].kind, "artist", "which is what draws it as a circle");
+        assert_eq!(artists[0].title, "Drake");
+        assert_eq!(artists[0].subtitle.as_deref(), Some("4 songs"));
+        assert_eq!(artists[1].title, "Tyler, The Creator");
+
+        // The id is the name, and it has to find its way back to exactly those files.
+        let db = Db::open(Path::new(":memory:")).unwrap();
+        db.put_local_tracks(&tracks);
+        let page = artist_page(&db, artists[0].id.strip_prefix(ARTIST_PREFIX).unwrap());
+        assert_eq!(page.title.as_deref(), Some("Drake"));
+        assert_eq!(page.items.len(), 4, "the page picks up the collaborations too");
+        assert_eq!(page.playlist_id, None, "nothing YouTube-shaped on a page built from disk");
+    }
+
+    #[test]
     fn untagged_filenames_give_up_an_artist_and_title() {
         assert_eq!(
             split_filename("PARTYNEXTDOOR, Drake - CN TOWER"),
@@ -618,6 +743,21 @@ mod tests {
         assert_eq!(split_filename(" - CN TOWER"), (None, " - CN TOWER".into()));
         // A hyphen that isn't a separator stays put.
         assert_eq!(split_filename("Jay-Z"), (None, "Jay-Z".into()));
+    }
+
+    #[test]
+    fn a_file_with_no_album_never_borrows_artwork() {
+        let dir = std::env::temp_dir().join("limusic-cover-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("cover.jpg"), b"not really a jpeg").unwrap();
+        let covers = dir.join("covers");
+
+        // A real album takes the picture sitting next to its tracks.
+        assert!(cover_for("band--album", None, Some(dir.as_path()), &covers).is_some());
+        // A file with no album tag and no picture of its own gets nothing — not the folder's
+        // cover.jpg, and not whatever a neighbouring download extracted earlier.
+        assert_eq!(embedded_cover("file-deadbeef", None, &covers), None);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -654,7 +794,8 @@ mod tests {
 
         let lib = scan(&db, &dir.join("covers"));
         assert!(lib.songs.is_empty() && lib.albums.is_empty(), "the rows are gone from the library");
-        assert_eq!(lib.removed.len(), 4, "two songs and two albums are reported as removed");
+        assert_eq!(lib.removed.len(), 5, "two songs, two albums and the one artist are removed");
+        assert!(lib.removed.contains(&format!("{ARTIST_PREFIX}Band")), "the artist's circle too");
         assert!(lib.removed.iter().any(|id| id.ends_with("a.mp3")), "the song id the UI knows");
         assert!(
             lib.removed.contains(&format!("{ALBUM_PREFIX}band--one")),
@@ -679,8 +820,12 @@ mod tests {
         );
         assert_eq!(
             forget_missing(&db, "/m/b.mp3"),
-            vec!["LOCAL:/m/b.mp3".to_string(), "LOCALALBUM:band--album".to_string()],
-            "the last track takes the album with it"
+            vec![
+                "LOCAL:/m/b.mp3".to_string(),
+                "LOCALALBUM:band--album".to_string(),
+                "LOCALARTIST:Band".to_string()
+            ],
+            "the last track takes the album and the artist with it"
         );
         assert!(db.local_tracks(None).is_empty(), "and both rows are gone");
         assert!(forget_missing(&db, "/m/a.mp3").len() == 1, "forgetting twice is harmless");

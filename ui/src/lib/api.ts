@@ -109,15 +109,21 @@ export const ON_REPEAT_ID = 'LIMUSIC_ON_REPEAT';
  */
 export const LOCAL_SONG_PREFIX = 'LOCAL:';
 export const LOCAL_ALBUM_PREFIX = 'LOCALALBUM:';
+/** An artist on this disk. Renders through the album route: same page, no YouTube channel. */
+export const LOCAL_ARTIST_PREFIX = 'LOCALARTIST:';
 export const isLocalId = (id: string | undefined | null): boolean =>
-	!!id && (id.startsWith(LOCAL_SONG_PREFIX) || id.startsWith(LOCAL_ALBUM_PREFIX));
+	!!id &&
+	(id.startsWith(LOCAL_SONG_PREFIX) ||
+		id.startsWith(LOCAL_ALBUM_PREFIX) ||
+		id.startsWith(LOCAL_ARTIST_PREFIX));
 
 export interface LocalLibrary {
 	/** Watched folders, as absolute paths. */
 	folders: string[];
 	albums: BrowseItem[];
+	artists: BrowseItem[];
 	songs: SongItem[];
-	/** Song/album ids that were in the library but are gone from disk since the last scan. */
+	/** Song/album/artist ids that were in the library but are gone from disk since the last scan. */
 	removed: string[];
 }
 
