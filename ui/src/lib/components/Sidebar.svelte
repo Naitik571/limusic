@@ -10,13 +10,16 @@
 		Sun01Icon,
 		Moon02Icon,
 		Add01Icon,
-		PinIcon
+		PinIcon,
+		MusicNote01Icon,
+		ListRestartIcon
 	} from '@hugeicons/core-free-icons';
 	import { toggleMode } from 'mode-watcher';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import type { BrowseItem } from '$lib/api';
+	import { ON_REPEAT_ID, type BrowseItem } from '$lib/api';
+	import { thumb } from '$lib/thumb';
 	import PlaylistMenu from './PlaylistMenu.svelte';
 	import { auth, library, personal, ui, createLibraryPlaylist, toast } from '$lib/player.svelte';
 	import { orderLibrary } from '$lib/personal';
@@ -34,6 +37,15 @@
 	const playlists = $derived(orderLibrary(library.items, personal));
 	// How many of the leading rows are pinned — a rule under the last one explains the split.
 	const pinnedCount = $derived(playlists.filter((p) => personal.pins.includes(p.id)).length);
+
+	// YTM's library subtitle is "Owner • 20 tracks" and the rail is too narrow for both, so keep the
+	// count and drop the rest. Subtitles without a number (albums: "Album • Artist") stay whole.
+	const rowSubtitle = (s?: string) =>
+		s
+			?.split('•')
+			.map((p) => p.trim())
+			.filter((p) => /\d/.test(p))
+			.at(-1) ?? s;
 
 	const playlistHref = (item: BrowseItem) =>
 		item.kind === 'album'
@@ -133,17 +145,50 @@
 						<a
 							href={playlistHref(pl)}
 							title={pl.title}
-							class="block rounded-lg py-1.5 pl-3 pr-9 transition-colors hover:bg-sidebar-accent/50"
+							class="flex items-center gap-2.5 rounded-lg py-1.5 pl-2 pr-9 transition-colors hover:bg-sidebar-accent/50"
 						>
-							<div class="flex items-center gap-1.5">
-								{#if personal.pins.includes(pl.id)}
-									<HugeiconsIcon icon={PinIcon} class="h-3 w-3 shrink-0 text-primary" />
+							<div
+								class="relative h-10 w-10 shrink-0 overflow-hidden bg-muted {pl.kind === 'artist'
+									? 'rounded-full'
+									: 'rounded-md'}"
+							>
+								{#if pl.thumbnail && pl.id !== ON_REPEAT_ID}
+									<img
+										src={thumb(pl.thumbnail, 96)}
+										alt=""
+										class="h-full w-full object-cover"
+										loading="lazy"
+									/>
+								{:else}
+									<!-- On Repeat has no artwork by nature: icon tile, same as its card. -->
+									<div
+										class="flex h-full w-full items-center justify-center {pl.id === ON_REPEAT_ID
+											? 'bg-primary/10 text-primary'
+											: 'text-muted-foreground/50'}"
+									>
+										<!-- altIcon/showAlt, not a ternary: `icon` is read once at mount. -->
+										<HugeiconsIcon
+											icon={MusicNote01Icon}
+											altIcon={ListRestartIcon}
+											showAlt={pl.id === ON_REPEAT_ID}
+											class={pl.id === ON_REPEAT_ID ? 'h-5 w-5' : 'h-4 w-4'}
+										/>
+									</div>
 								{/if}
-								<span class="truncate text-sm font-medium">{pl.title}</span>
 							</div>
-							{#if pl.subtitle}
-								<div class="truncate text-xs text-muted-foreground">{pl.subtitle}</div>
+							{#if personal.pins.includes(pl.id)}
+								<span
+									class="absolute left-9 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground shadow"
+								>
+									<HugeiconsIcon icon={PinIcon} class="h-2.5 w-2.5" />
+								</span>
 							{/if}
+							<div class="min-w-0 flex-1">
+								<div class="truncate text-[13px] font-medium">{pl.title}</div>
+								{#if pl.subtitle}
+									<div class="truncate text-xs text-muted-foreground">{rowSubtitle(pl.subtitle)}</div>
+								{/if}
+							</div>
 						</a>
 						<PlaylistMenu item={pl} />
 					</div>
