@@ -546,8 +546,11 @@ impl LtSession {
             }
             ServerMessage::Error { code, message } => {
                 self.emit_notice(&message).await;
-                // A failed join/reconnect can't recover — close.
-                if code == "room_not_found" || code == "room_full" || code == "session_expired" {
+                // Any error that arrives before we're actually in a room means create/join failed:
+                // close instead of leaving the UI spinning on "waiting for the host". Once in a
+                // room, only a dead session is fatal (`not_host` etc. are just refusals).
+                let in_room = self.inner.lock().await.role != Role::None;
+                if !in_room || code == "session_expired" {
                     self.close_locally("").await;
                     return true;
                 }

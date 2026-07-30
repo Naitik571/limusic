@@ -1472,7 +1472,9 @@ impl AppState {
     /// Host: seed a freshly-created room with whatever we're currently playing.
     async fn lt_host_seed(&self) {
         let position_ms = (self.current_position() * 1000.0) as i64;
-        let playing = !self.player.is_idle();
+        // `is_idle` only says whether a file is loaded — it's still false while paused, so seeding
+        // from it would tell guests to play a song the host has paused.
+        let playing = self.is_playing.load(Ordering::Relaxed);
         self.lt_broadcast_current_track(position_ms, playing).await;
     }
 

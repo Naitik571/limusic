@@ -23,8 +23,6 @@ use tokio_tungstenite::tungstenite::Message;
 
 /// How long a dropped participant's slot (and session token) survives for reconnection.
 const RECONNECT_GRACE: Duration = Duration::from_secs(120);
-/// How long a fully-empty room lingers before deletion.
-const EMPTY_ROOM_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_USERS_PER_ROOM: usize = 50;
 /// Room code alphabet — no `I`/`O` to avoid confusion (context/19 §2.2).
 const CODE_ALPHABET: &[u8] = b"1234567890QWERTYUPASDFGHJKLZXCVBNM";
@@ -56,8 +54,6 @@ struct Room {
     last_update_ms: i64,
     volume: f64,
     queue: Vec<Track>,
-    /// When the room last had zero peers — drives cleanup.
-    empty_since: Option<Instant>,
 }
 
 impl Room {
@@ -113,6 +109,11 @@ impl Room {
             .iter()
             .find(|(id, p)| p.connected && id.as_str() != besides)
             .map(|(id, _)| id.clone())
+    }
+
+    /// Is there a host who can actually answer a join request right now?
+    fn host_is_reachable(&self) -> bool {
+        self.peers.get(&self.host_id).map(|p| p.connected).unwrap_or(false)
     }
 }
 
@@ -192,7 +193,6 @@ impl Server {
                     last_update_ms: 0,
                     volume: 1.0,
                     queue: Vec::new(),
-                    empty_since: None,
                 };
                 let state = room.wire_state(&code);
                 rooms.insert(code.clone(), room);
@@ -213,6 +213,12 @@ impl Server {
                     let _ = tx.send(err("room_not_found", "No room with that code."));
                     return;
                 };
+                // No reachable host means nobody can ever approve this request — say so instead of
+                // parking the joiner on "waiting for the host" forever.
+                if !room.host_is_reachable() {
+                    let _ = tx.send(err("host_unavailable", "The host isn't in that room right now."));
+                    return;
+                }
                 if room.peers.len() + room.pending.len() >= MAX_USERS_PER_ROOM {
                     let _ = tx.send(err("room_full", "That room is full."));
                     return;
@@ -336,9 +342,12 @@ impl Server {
             }
 
             ClientMessage::RequestSync => {
-                let (Some(_me), Some(code)) = (uid.clone(), room_code.clone()) else { return };
+                let (Some(me), Some(code)) = (uid.clone(), room_code.clone()) else { return };
                 let rooms = self.rooms.lock().await;
                 let Some(room) = rooms.get(&code) else { return };
+                if !room.peers.contains_key(&me) {
+                    return; // a joiner still awaiting approval doesn't get the room's state
+                }
                 // Normalize to the live position so the requester seeks to the right spot.
                 let now = now_ms();
                 let mut state = room.wire_state(&code);
@@ -445,7 +454,6 @@ impl Server {
                     peer.connected = true;
                     peer.disconnected_at = None;
                 }
-                room.empty_since = None;
                 let is_host = room.is_host(&user_id);
                 let now = now_ms();
                 let mut state = room.wire_state(&code);
@@ -495,8 +503,16 @@ impl Server {
                 room.broadcast(&ServerMessage::HostChanged { host_id: next }, None);
             }
         }
+        // Last member gone: nobody holds a session token for this room anymore, so it can never be
+        // re-entered — only trap joiners. Close it, and turn away anyone still knocking.
         if room.peers.is_empty() {
-            room.empty_since = Some(Instant::now());
+            for (_, p) in room.pending.drain() {
+                let _ = p.tx.send(ServerMessage::JoinRejected {
+                    reason: "The host closed the session.".into(),
+                });
+            }
+            rooms.remove(code);
+            tracing::info!(room = %code, "room closed (last member left)");
         }
     }
 
@@ -520,9 +536,6 @@ impl Server {
                 room.broadcast(&ServerMessage::HostChanged { host_id: next }, None);
             }
         }
-        if room.peers.values().all(|p| !p.connected) {
-            room.empty_since = Some(Instant::now());
-        }
     }
 
     /// Sweep expired reconnection slots and empty rooms.
@@ -544,18 +557,8 @@ impl Server {
                     .collect()
             };
             for id in expired {
+                // Drops the room too once the last slot expires (see `remove_member`).
                 self.remove_member(&mut rooms, &code, &id, /*graceful=*/ false);
-            }
-            let drop_room = rooms
-                .get(&code)
-                .map(|r| {
-                    r.peers.is_empty()
-                        && r.empty_since.map(|t| now - t > EMPTY_ROOM_TIMEOUT).unwrap_or(true)
-                })
-                .unwrap_or(false);
-            if drop_room {
-                rooms.remove(&code);
-                tracing::info!(room = %code, "cleaned up empty room");
             }
         }
     }
@@ -814,5 +817,87 @@ mod tests {
             .await;
         let msg = grx.try_recv().expect("guest gets a reply");
         assert!(matches!(msg, ServerMessage::Error { code, .. } if code == "not_host"));
+    }
+
+    /// The host makes a room, copies the code and leaves: the room must be gone, and anyone
+    /// joining with that code must be told so rather than parked on "waiting for the host".
+    #[tokio::test]
+    async fn room_closes_when_the_last_member_leaves() {
+        let server = Server::default();
+        let (htx, _hrx) = dummy_tx();
+        let (mut huid, mut hcode) = (None, None);
+        server
+            .dispatch(ClientMessage::CreateRoom { username: "host".into() }, &htx, &mut huid, &mut hcode)
+            .await;
+        let code = hcode.clone().unwrap();
+        server.dispatch(ClientMessage::LeaveRoom, &htx, &mut huid, &mut hcode).await;
+        assert!(!server.rooms.lock().await.contains_key(&code), "room outlived its last member");
+
+        let (jtx, mut jrx) = dummy_tx();
+        let (mut juid, mut jcode) = (None, None);
+        server
+            .dispatch(
+                ClientMessage::JoinRoom { room_code: code, username: "joiner".into() },
+                &jtx,
+                &mut juid,
+                &mut jcode,
+            )
+            .await;
+        let msg = jrx.try_recv().expect("joiner must get an answer, not silence");
+        assert!(matches!(msg, ServerMessage::Error { code, .. } if code == "room_not_found"));
+    }
+
+    /// Same symptom, other route: the host's socket dropped and their slot is still in its
+    /// reconnect grace window, so the room exists but nobody can approve a join.
+    #[tokio::test]
+    async fn join_is_refused_while_the_host_is_offline() {
+        let server = Server::default();
+        let (htx, _hrx) = dummy_tx();
+        let (mut huid, mut hcode) = (None, None);
+        server
+            .dispatch(ClientMessage::CreateRoom { username: "host".into() }, &htx, &mut huid, &mut hcode)
+            .await;
+        let code = hcode.clone().unwrap();
+        server.handle_disconnect(huid.clone(), hcode.clone()).await;
+
+        let (jtx, mut jrx) = dummy_tx();
+        let (mut juid, mut jcode) = (None, None);
+        server
+            .dispatch(
+                ClientMessage::JoinRoom { room_code: code, username: "joiner".into() },
+                &jtx,
+                &mut juid,
+                &mut jcode,
+            )
+            .await;
+        let msg = jrx.try_recv().expect("joiner must get an answer, not silence");
+        assert!(matches!(msg, ServerMessage::Error { code, .. } if code == "host_unavailable"));
+    }
+
+    /// A joiner still knocking when the host closes the room gets turned away, not stranded.
+    #[tokio::test]
+    async fn pending_joiner_is_told_when_the_host_closes_the_room() {
+        let server = Server::default();
+        let (htx, _hrx) = dummy_tx();
+        let (mut huid, mut hcode) = (None, None);
+        server
+            .dispatch(ClientMessage::CreateRoom { username: "host".into() }, &htx, &mut huid, &mut hcode)
+            .await;
+        let code = hcode.clone().unwrap();
+
+        let (jtx, mut jrx) = dummy_tx();
+        let (mut juid, mut jcode) = (None, None);
+        server
+            .dispatch(
+                ClientMessage::JoinRoom { room_code: code.clone(), username: "joiner".into() },
+                &jtx,
+                &mut juid,
+                &mut jcode,
+            )
+            .await;
+        server.dispatch(ClientMessage::LeaveRoom, &htx, &mut huid, &mut hcode).await;
+        let msg = jrx.try_recv().expect("pending joiner must be told the room is gone");
+        assert!(matches!(msg, ServerMessage::JoinRejected { .. }));
+        assert!(!server.rooms.lock().await.contains_key(&code));
     }
 }
