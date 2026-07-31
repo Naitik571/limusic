@@ -35,6 +35,7 @@ YouTube Music client, and grew from there.
 - **Gapless playback** with loudness normalization, powered by libmpv
 - **Queue** with radio/automix continuation, restored across restarts
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
+- **Local Music** — ability to play your own local music, with all metadata still intact
 - **Last.fm scrobbling** — connect once from the title bar, every play is scrobbled
 - **Discord Rich Presence** — artwork, live progress bar, one click to toggle
 - **OS media keys** and now-playing integration (MPRIS on Linux, SMTC on Windows)
