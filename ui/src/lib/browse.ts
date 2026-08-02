@@ -6,11 +6,17 @@ import * as api from './api';
 import type { BrowseItem, SongItem } from './api';
 import { playFrom, toast, touchPick } from './player.svelte';
 
-/** A song card carries everything a queue entry needs; the ⋯ menus take this shape. */
+/**
+ * A song card carries everything a queue entry needs; the ⋯ menus take this shape. The one mapping
+ * for every card surface (search rows, home shelves, carousels): a card's `subtitle` is already the
+ * artist alone for songs, and that string is what the player bar shows and what gets scrobbled, so
+ * a second copy of this that drifts is a wrong scrobble.
+ */
 export const asSong = (i: BrowseItem): SongItem => ({
 	video_id: i.id,
 	title: i.title,
 	artists: i.subtitle ?? '',
+	duration: i.duration,
 	thumbnail: i.thumbnail
 });
 

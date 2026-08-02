@@ -7,6 +7,7 @@
 	import * as api from '$lib/api';
 	import type { HomeSection, SongItem } from '$lib/api';
 	import { openAddToPlaylist, playback } from '$lib/player.svelte';
+	import { asSong } from '$lib/browse';
 
 	let { section, onMore }: { section: HomeSection; onMore?: () => void } = $props();
 
@@ -16,13 +17,7 @@
 		section.items
 			.filter((i) => i.kind === 'song')
 			.slice(0, 15)
-			.map((i) => ({
-				video_id: i.id,
-				title: i.title,
-				artists: i.subtitle ?? '',
-				duration: i.duration,
-				thumbnail: i.thumbnail
-			}))
+			.map(asSong)
 	);
 
 	// Clicking a row starts there and queues the rest of the shelf, so the section plays as a set.

@@ -15,6 +15,7 @@
 	import type { SearchResults } from '$lib/api';
 	import { getCached, putCached } from '$lib/pagecache';
 	import { openAddToPlaylist } from '$lib/player.svelte';
+	import { asSong } from '$lib/browse';
 
 	let query = $state('');
 	let res = $state<SearchResults | null>(null);
@@ -75,14 +76,6 @@
 			: []
 	);
 
-	// A song search result is a flat BrowseItem (kind=song); map it to the SongItem shape TrackRow
-	// wants. `artists` = the full "Song • Artist • plays" subtitle YouTube gives the row.
-	const asSong = (item: SearchResults['songs'][number]) => ({
-		video_id: item.id,
-		title: item.title,
-		artists: item.subtitle ?? '',
-		thumbnail: item.thumbnail
-	});
 </script>
 
 <div class="flex h-full flex-col">

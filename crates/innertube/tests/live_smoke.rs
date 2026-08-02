@@ -100,6 +100,89 @@ async fn owned_continuation_not_doubled() {
     eprintln!("verified {checked} track continuations, no doubling");
 }
 
+/// Every surface has to hand the queue an artist that is a *name*. That string is the player bar,
+/// the OS media widget, Discord, and the Last.fm scrobble, so the two bad shapes are: nothing at all
+/// (YouTube ships the per-track artist column empty on single-artist albums, `"text": {}`, because
+/// the header names the artist) and a whole display subtitle ("Aqua • 1.7B views" off a song card).
+/// The unit tests pin how we parse a fixture; this pins the shape YouTube actually sends, which is
+/// the half that moves under us.
+///   cargo test -p innertube --features integration-tests every_surface -- --nocapture
+#[tokio::test]
+async fn every_surface_yields_a_scrobbleable_artist() {
+    /// Mirrors `lastfm::scrobbleable` plus the "•" tell: a real artist line separates collabs with
+    /// "&" or ",", never a bullet, so a bullet means a display string leaked into the field.
+    fn bad(artist: &str) -> Option<&'static str> {
+        match artist {
+            a if a.trim().is_empty() => Some("no artist (would never scrobble)"),
+            a if a.contains('•') => Some("display subtitle, not an artist (would scrobble wrong)"),
+            _ => None,
+        }
+    }
+
+    let it = InnerTube::new(Session::default(), None).unwrap();
+    let vd = it.fetch_visitor_data().await.ok();
+    let it = InnerTube::new(Session { visitor_data: vd, ..Session::default() }, None).unwrap();
+    let clients = Clients::bundled();
+    let c = clients.get(innertube::METADATA_CLIENT).expect("metadata client");
+
+    let mut problems: Vec<String> = Vec::new();
+    let mut checked = 0usize;
+    let note = |problems: &mut Vec<String>, surface: &str, title: &str, artist: &str| {
+        if let Some(why) = bad(artist) {
+            problems.push(format!("{surface}: {title:?} → {artist:?} ({why})"));
+        }
+    };
+
+    // Single-artist albums: the case that shipped broken. Compilations keep a per-row artist, so
+    // these are deliberately all one-artist records.
+    for q in ["Rumours Fleetwood Mac", "Midnights Taylor Swift", "IGOR Tyler The Creator"] {
+        let cards = it.search_cards(c, q, "albums").await.expect("album search");
+        let Some(card) = cards.iter().find(|b| b.kind == "album") else {
+            problems.push(format!("album search {q:?} returned no album card"));
+            continue;
+        };
+        let album = it.album(c, &card.id).await.expect("album page");
+        assert!(!album.items.is_empty(), "album {q:?} parsed with no tracks");
+        for t in &album.items {
+            checked += 1;
+            note(&mut problems, &format!("album {:?}", card.title), &t.title, &t.artists);
+        }
+    }
+
+    // Search rows, the up-next queue, and an artist page (top songs + every song card in its
+    // carousels, which is where the "• 1.7B views" strings came from).
+    let songs = it.search_songs(c, "Barbie Girl Aqua").await.expect("search");
+    for t in songs.items.iter().take(5) {
+        checked += 1;
+        note(&mut problems, "search", &t.title, &t.artists);
+    }
+    if let Some(first) = songs.items.first() {
+        for t in it.next(c, &first.video_id, None).await.expect("next").items.iter().take(5) {
+            checked += 1;
+            note(&mut problems, "queue", &t.title, &t.artists);
+        }
+    }
+    let found = it.search_all(c, "Aqua").await.expect("search_all");
+    if let Some(artist) = found.artists.first() {
+        let page = it.artist(c, &artist.id).await.expect("artist page");
+        for t in &page.top_songs {
+            checked += 1;
+            note(&mut problems, "artist top songs", &t.title, &t.artists);
+        }
+        for carousel in &page.sections {
+            for card in carousel.items.iter().filter(|i| i.kind == "song") {
+                checked += 1;
+                let sub = card.subtitle.clone().unwrap_or_default();
+                note(&mut problems, &format!("card {:?}", carousel.title), &card.title, &sub);
+            }
+        }
+    }
+
+    assert!(checked > 40, "only {checked} tracks reached the check, so the surfaces came back empty");
+    assert!(problems.is_empty(), "{checked} tracks checked, {} unscrobbleable:\n  {}", problems.len(), problems.join("\n  "));
+    eprintln!("{checked} tracks across album / search / queue / artist surfaces, all with a usable artist");
+}
+
 #[tokio::test]
 async fn rustypipe_url_is_fetchable() {
     let c = innertube::rustypipe_fallback::resolve(VIDEO_ID, true)

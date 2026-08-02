@@ -358,6 +358,7 @@ pub fn parse_album(root: &Value) -> AlbumPage {
     let artist = strapline.and_then(runs_text_opt);
     let strapline_runs = strapline.and_then(|s| s.get("runs")).and_then(Value::as_array);
     let artist_id = strapline_runs.and_then(|r| first_artist_id(r));
+    let runs = strapline_runs.map(|r| artist_runs(r)).unwrap_or_default();
     let artist_thumbnail = header.and_then(|h| h.get("straplineThumbnail")).and_then(last_thumbnail);
 
     // Target the header's own thumbnail subtree so we get the cover, not the artist avatar.
@@ -367,12 +368,25 @@ pub fn parse_album(root: &Value) -> AlbumPage {
     // Album track rows carry no per-track thumbnail (every track shares the cover shown once in
     // the header), so parse_list_item leaves them None. Fill missing ones with the album cover so
     // the player bar + queue show it when a track plays.
+    //
+    // Same for the artist and the album name: on a single-artist album YouTube ships the artist
+    // column empty (`"text": {}`) because the header already says it, so every track would arrive
+    // with no artist at all, which is what the player bar shows and what Last.fm refuses to
+    // scrobble. A compilation fills the column per row; keep those, they differ per track.
     let items = find_all(root, "musicResponsiveListItemRenderer")
         .into_iter()
         .filter_map(parse_list_item)
         .map(|mut it| {
             if it.thumbnail.is_none() {
                 it.thumbnail = thumbnail.clone();
+            }
+            if it.artists.is_empty() {
+                it.artists = artist.clone().unwrap_or_default();
+                it.artist_id = it.artist_id.take().or_else(|| artist_id.clone());
+                it.artist_runs = runs.clone();
+            }
+            if it.album.is_none() {
+                it.album = title.clone();
             }
             it
         })
@@ -382,7 +396,7 @@ pub fn parse_album(root: &Value) -> AlbumPage {
         title,
         artist,
         artist_id,
-        artist_runs: strapline_runs.map(|r| artist_runs(r)).unwrap_or_default(),
+        artist_runs: runs,
         artist_thumbnail,
         subtitle,
         second_subtitle,
@@ -566,6 +580,14 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
     if let Some(vid) =
         nav.and_then(|n| n.get("watchEndpoint")).and_then(|w| w.get("videoId")).and_then(Value::as_str)
     {
+        // Same rule as a search row: a song card's subtitle becomes its artist once it plays (and
+        // scrobbles), so keep the artist field alone, never the whole "Aqua • 1.7B views" or
+        // "Miley Cyrus • Plastic Hearts • 2020" descriptor the card displays. Cards that navigate
+        // keep the full subtitle below: there it is only ever text on screen.
+        let subtitle = artists_from_runs(
+            node.get("subtitle").and_then(|s| s.get("runs")).and_then(Value::as_array),
+        )
+        .or(subtitle);
         return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail, duration: None });
     }
     // Playlist via watchPlaylistEndpoint (some carousels expose the raw playlistId).
@@ -751,6 +773,52 @@ mod tests {
         assert_eq!(song.subtitle.as_deref(), Some("The Artist"));
         assert_eq!(song.duration.as_deref(), Some("3:47"));
         assert_eq!(home.continuation.as_deref(), Some("HOME_MORE"));
+    }
+
+    /// A song *card* (`musicTwoRowItemRenderer`, used by home shelves and the artist page's
+    /// "Videos"/"Live performances" carousels) puts its whole display subtitle where the artist
+    /// goes. Playing it scrobbled "Aqua • 1.7B views" as the artist. Cards that navigate keep the
+    /// full subtitle: there it is only ever text under a cover.
+    #[test]
+    fn song_card_subtitle_is_the_artist_alone() {
+        let card = |sub_runs: Value, nav: Value| {
+            json!({ "musicCarouselShelfRenderer": {
+                "header": { "musicCarouselShelfBasicHeaderRenderer": { "title": { "runs": [{ "text": "Videos" }] } } },
+                "contents": [{ "musicTwoRowItemRenderer": {
+                    "title": { "runs": [{ "text": "Barbie Girl" }] },
+                    "subtitle": { "runs": sub_runs },
+                    "navigationEndpoint": nav
+                } }]
+            } })
+        };
+        let song_nav = json!({ "watchEndpoint": { "videoId": "vidbarbie" } });
+        let items = |root: &Value| parse_home(root).sections[0].items.clone();
+
+        // "Artist • 1.7B views" (an artist page's Videos carousel).
+        let root = card(
+            json!([{ "text": "Aqua" }, { "text": " • " }, { "text": "1.7B views" }]),
+            song_nav.clone(),
+        );
+        assert_eq!(items(&root)[0].subtitle.as_deref(), Some("Aqua"));
+
+        // "Artist • Album • Year" (a home shelf card).
+        let root = card(
+            json!([
+                { "text": "Miley Cyrus", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCmiley" } } },
+                { "text": " • " }, { "text": "Plastic Hearts" }, { "text": " • " }, { "text": "2020" }
+            ]),
+            song_nav,
+        );
+        assert_eq!(items(&root)[0].subtitle.as_deref(), Some("Miley Cyrus"));
+
+        // An album card is not a queue entry, so its subtitle stays whole.
+        let root = card(
+            json!([{ "text": "Album" }, { "text": " • " }, { "text": "Miley Cyrus" }]),
+            json!({ "browseEndpoint": { "browseId": "MPREb_hearts" } }),
+        );
+        let card = &items(&root)[0];
+        assert_eq!(card.kind, "album");
+        assert_eq!(card.subtitle.as_deref(), Some("Album • Miley Cyrus"));
     }
 
     #[test]
@@ -1087,6 +1155,60 @@ mod tests {
         // The album's own OLAK id from the track rows — never the carousel's other-album id.
         assert_eq!(a.playlist_id.as_deref(), Some("OLAK5uy_iceman"));
         assert!(!a.in_library); // no save button in this fixture
+    }
+
+    /// On a single-artist album YouTube ships the per-track artist column *empty* (`"text": {}`,
+    /// live-verified 2026-08 on Rumours / SOS / Nevermind / IGOR / Midnights / RENAISSANCE), because
+    /// the header already names the artist. Left as-is those tracks play with no artist at all: the
+    /// player bar shows a bare title and Last.fm drops the scrobble. A compilation fills the column
+    /// per row, and those differ from the header, so they must survive untouched.
+    #[test]
+    fn album_tracks_inherit_the_header_artist_only_when_they_have_none() {
+        let row = |id: &str, title: &str, artist: Option<&str>| {
+            let col = match artist {
+                Some(a) => json!({ "text": { "runs": [{ "text": a }] } }),
+                None => json!({ "text": {} }), // YouTube's empty artist column, verbatim
+            };
+            json!({ "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": id },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": title }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": col },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "11K plays" }] } } }
+                ]
+            } })
+        };
+        let root = json!({
+            "header": { "musicResponsiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Sjelen" }] },
+                "straplineTextOne": { "runs": [
+                    { "text": "Delara", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCdelara" } } },
+                    { "text": " & " },
+                    { "text": "Guest", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCguest" } } }
+                ] },
+                "thumbnail": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [{ "url": "cover.jpg" }] } } }
+            } },
+            "contents": { "musicShelfRenderer": { "contents": [
+                row("t1", "Hele uka", None),
+                row("t2", "Feature Track", Some("Someone Else"))
+            ] } }
+        });
+
+        let a = parse_album(&root);
+        assert_eq!(a.items.len(), 2);
+        // Empty column → the header's artist, links and all, so the row behaves like a search row.
+        assert_eq!(a.items[0].artists, "Delara & Guest");
+        assert_eq!(a.items[0].artist_id.as_deref(), Some("UCdelara"));
+        assert_eq!(
+            a.items[0].artist_runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["Delara", " & ", "Guest"]
+        );
+        // A row that names its own artist keeps it (compilations, features).
+        assert_eq!(a.items[1].artists, "Someone Else");
+        assert!(a.items[1].artist_runs.is_empty(), "an unlinked row artist must not borrow the header's links");
+        // Every track on an album page is on *this* album; Last.fm takes the album too.
+        assert_eq!(a.items[0].album.as_deref(), Some("Sjelen"));
+        assert_eq!(a.items[1].album.as_deref(), Some("Sjelen"));
     }
 
     /// The header's save-to-library toggle: `isToggled` is the state, and its like target carries

@@ -767,7 +767,7 @@ impl AppState {
         // Items played from cards/radio can arrive without a duration; the player response knows
         // the exact length of the cut we stream. Backfill before emitting — lyrics matching keys
         // on it (a wrong-cut LRCLIB match plays lyrics seconds off the audio).
-        backfill_duration(&mut item, data.duration.as_deref());
+        backfill_metadata(&mut item, data.duration.as_deref(), data.artists.as_deref());
         {
             let mut q = self.queue.lock().await;
             q.current_client = Some(data.stream_client.clone());
@@ -778,8 +778,10 @@ impl AppState {
             q.duration = 0.0;
             let cur = q.current;
             if let Some(qi) = q.items.get_mut(cur) {
-                if qi.video_id == item.video_id && qi.duration.is_none() {
-                    qi.duration = item.duration.clone();
+                // Same repair on the queue's own copy: it's what the queue panel renders, what
+                // `persist_queue` saves, and what `record_play` writes into On Repeat.
+                if qi.video_id == item.video_id {
+                    backfill_metadata(qi, data.duration.as_deref(), data.artists.as_deref());
                 }
             }
         }
@@ -885,9 +887,10 @@ impl AppState {
         q.lookahead_loaded = Some(next_idx);
         q.lookahead_client = Some(data.stream_client.clone());
         q.lookahead_playback_url = data.playback_url.clone();
-        // Same duration backfill as start_current — a gapless advance emits this item directly.
+        // Same backfill as start_current: a gapless advance emits this item straight from the
+        // queue, so the repair has to land before it becomes the current track.
         if let Some(qi) = q.items.get_mut(next_idx) {
-            backfill_duration(qi, data.duration.as_deref());
+            backfill_metadata(qi, data.duration.as_deref(), data.artists.as_deref());
         }
         tracing::debug!(index = next_idx, "gapless lookahead primed");
     }
@@ -1943,10 +1946,29 @@ fn format_duration(ms: i64) -> String {
 
 /// Fill a missing item duration from the player response's `lengthSeconds` (e.g. "167") — the
 /// exact length of the cut we stream. Never overwrites an existing duration.
-fn backfill_duration(item: &mut SongItem, length_seconds: Option<&str>) {
+/// Repair a queue item from the `/player` response, which is the one thing every entry path (search,
+/// album, card, radio, a restored queue, a row replayed out of On Repeat) goes through.
+///
+/// `length_seconds` fills a duration items from cards/radio arrive without. `author` is
+/// `videoDetails.author` from the MAIN client, i.e. YouTube's own artist for the track: it repairs
+/// an artist string that is missing (album rows ship the artist column empty) or that is a whole
+/// display subtitle rather than a name ("Miley Cyrus • Plastic Hearts • 2020"). A "•" never appears
+/// in a real artist line, collabs use "&" and ",". Both shapes reach the player bar, the OS widget
+/// and Last.fm, and a wrong artist there is worse than a missing one: it scrobbles as another
+/// artist entirely. Rows persisted before this existed are healed the next time they play, because
+/// the caller writes the repaired item back into the queue.
+fn backfill_metadata(item: &mut SongItem, length_seconds: Option<&str>, author: Option<&str>) {
     if item.duration.is_none() {
         if let Some(secs) = length_seconds.and_then(|s| s.trim().parse::<i64>().ok()) {
             item.duration = Some(format_duration(secs * 1000));
+        }
+    }
+    if let Some(author) = author.map(str::trim).filter(|a| !a.is_empty()) {
+        if item.artists.trim().is_empty() || item.artists.contains('•') {
+            item.artists = author.to_owned();
+            // The per-artist links belong to the string we just replaced; the UI renders them in
+            // place of `artists` when they're there, so a stale set would put the bad line back.
+            item.artist_runs.clear();
         }
     }
 }
@@ -1970,9 +1992,9 @@ fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_page, format_duration, guest_insert_index, is_mix, loudness_gain, merge_radio,
-        next_index, parse_duration_ms, radio_seed_for, shuffle_new_queue, shuffle_upcoming,
-        unshuffled, upcoming_queued, QueueState, RepeatMode,
+        append_page, backfill_metadata, format_duration, guest_insert_index, is_mix, loudness_gain,
+        merge_radio, next_index, parse_duration_ms, radio_seed_for, shuffle_new_queue,
+        shuffle_upcoming, unshuffled, upcoming_queued, QueueState, RepeatMode,
     };
 
     #[test]
@@ -2004,6 +2026,63 @@ mod tests {
             queued_by: by.map(Into::into),
             autoplay: false,
         }
+    }
+
+    /// The repair every entry path goes through. Covers the two shapes that reached Last.fm as an
+    /// artist name: nothing at all (album rows), and a whole display subtitle (song cards, and rows
+    /// replayed out of On Repeat that were recorded back when the card parser leaked one).
+    #[test]
+    fn player_response_repairs_a_missing_or_bogus_artist() {
+        let with = |artists: &str, runs: Vec<&str>| innertube::SongItem {
+            artists: artists.into(),
+            artist_runs: runs
+                .into_iter()
+                .map(|t| innertube::models::metadata::ArtistRun { text: t.into(), id: Some("UCstale".into()) })
+                .collect(),
+            ..song("v", None)
+        };
+
+        // No artist (an album track) → YouTube's own author.
+        let mut it = with("", vec![]);
+        backfill_metadata(&mut it, None, Some("Delara"));
+        assert_eq!(it.artists, "Delara");
+
+        // A display subtitle that was parsed as the artist → replaced, and the links that pointed
+        // at the old text go with it (the UI renders runs instead of `artists` when they exist).
+        for bogus in ["Miley Cyrus • Plastic Hearts • 2020", "late night slow • 29M views", "Song • Dua Lipa"] {
+            let mut it = with(bogus, vec![bogus]);
+            backfill_metadata(&mut it, None, Some("Dua Lipa"));
+            assert_eq!(it.artists, "Dua Lipa", "{bogus} should have been replaced");
+            assert!(it.artist_runs.is_empty(), "{bogus}: stale links must not survive the swap");
+        }
+
+        // A real artist line is never second-guessed, links included. Collabs use "&" and ",".
+        let mut it = with("Nicki Minaj, Ice Spice & Aqua", vec!["Nicki Minaj", " & ", "Aqua"]);
+        backfill_metadata(&mut it, None, Some("Nicki Minaj"));
+        assert_eq!(it.artists, "Nicki Minaj, Ice Spice & Aqua");
+        assert_eq!(it.artist_runs.len(), 3);
+
+        // Nothing to repair with (rustypipe served the stream, or /player had no author) → as-is.
+        for author in [None, Some(""), Some("   ")] {
+            let mut it = with("", vec![]);
+            backfill_metadata(&mut it, None, author);
+            assert_eq!(it.artists, "");
+        }
+    }
+
+    #[test]
+    fn player_response_fills_only_a_missing_duration() {
+        let mut it = song("v", None);
+        backfill_metadata(&mut it, Some("191"), None);
+        assert_eq!(it.duration.as_deref(), Some("3:11"));
+        // A duration the row already carried wins: it's the length of the cut YouTube listed.
+        let mut it = innertube::SongItem { duration: Some("3:02".into()), ..song("v", None) };
+        backfill_metadata(&mut it, Some("191"), None);
+        assert_eq!(it.duration.as_deref(), Some("3:02"));
+        // Junk from the player response can't blank an existing one.
+        let mut it = song("v", None);
+        backfill_metadata(&mut it, Some("not-a-number"), None);
+        assert_eq!(it.duration, None);
     }
 
     #[test]
