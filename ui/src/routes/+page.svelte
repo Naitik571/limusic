@@ -12,11 +12,18 @@
 	import RecentRail from '$lib/components/RecentRail.svelte';
 	import Shelf from '$lib/components/Shelf.svelte';
 	import ForgottenFavourites from '$lib/components/ForgottenFavourites.svelte';
+	import HomeLayoutDialog from '$lib/components/HomeLayoutDialog.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import * as api from '$lib/api';
 	import type { BrowseItem, HomeChip, HomePage, HomeSection } from '$lib/api';
 	import { auth, personal, playback, seedOnRepeatPick, toast } from '$lib/player.svelte';
-	import { interleave, recentItems, topArtists } from '$lib/personal';
+	import {
+		arrangeSections,
+		hiddenSections,
+		interleave,
+		recentItems,
+		topArtists
+	} from '$lib/personal';
 	import { getCached, putCached } from '$lib/pagecache';
 
 	const FORGOTTEN_KEY = 'home:forgotten';
@@ -58,6 +65,38 @@
 	let seeking = $state(false); // walking continuations to find it — the slot shows a skeleton
 	const feed = $derived(home?.sections.filter((s) => !isForgotten(s)) ?? []);
 
+	// --- the arrangement the user set in the Edit modal (personal.ts) ---------------------------
+	// The two sections the app builds itself get reserved keys — a YouTube shelf title can't start
+	// with "@" — so they keep their slot even before (or without) any content to show.
+	const RECENT = '@recent';
+	const FORGOTTEN = '@forgotten';
+	type Block =
+		| { id: string; key: string; title: string; shelf?: undefined }
+		| { id: string; key: string; title: string; shelf: HomeSection };
+	let editing = $state(false);
+	const hidden = $derived(hiddenSections(personal));
+	/**
+	 * Every section home can show, in the user's order, hidden ones included — the modal lists those
+	 * to offer them back. Shelves are keyed on their title (all YouTube gives us that survives a
+	 * restart) but rendered under a positional id, because a feed walked far enough does repeat one.
+	 */
+	const blocks = $derived.by(() => {
+		const local: Block[] = selected
+			? [] // a mood feed is the chip's: neither of ours belongs in it
+			: [
+					{ id: RECENT, key: RECENT, title: 'Jump back in' },
+					{ id: FORGOTTEN, key: FORGOTTEN, title: 'Forgotten favourites' }
+				];
+		const shelves = feed.map((s, i) => ({
+			id: `${i}:${s.title}`,
+			key: s.title,
+			title: s.title,
+			shelf: s
+		}));
+		return arrangeSections([...local, ...shelves], personal);
+	});
+	const visible = $derived(blocks.filter((b) => !hidden.has(b.key)));
+
 	/** Latch the shelf whenever a page turns out to carry it. Called after every `home` change. */
 	function noteForgotten() {
 		const found = home?.sections.find(isForgotten);
@@ -75,6 +114,7 @@
 	 */
 	async function seekForgotten(params: string | null) {
 		if (params || forgotten) return; // a mood feed is the chip's; a cached shelf needs no crawl
+		if (hidden.has(FORGOTTEN)) return; // four round-trips for a shelf that won't be rendered
 		seeking = true;
 		try {
 			for (let i = 0; i < 4; i++) {
@@ -239,36 +279,12 @@
 		</div>
 	{/if}
 	<div class="px-6 pb-6 pt-6">
-		<!-- Zone one: what's yours. Tiles you arranged, then what you were last inside. Both run the
-		     full width as rows of readable names — deliberately *not* the horizontally-scrolling card
-		     shelf the feed below is made of, because the same shape would mean the things you chose
-		     read as more of YouTube's suggestions. It steps aside entirely while a mood filter is
-		     active: none of it is filterable. -->
+		<!-- Zone one: what's yours. The grid you arranged, above the rule that separates it from
+		     everything the app or YouTube chose. It steps aside entirely while a mood filter is
+		     active: none of it is filterable, and neither is the arrangement it edits. -->
 		{#if !selected}
-			<div class="mb-10 flex flex-col gap-8 border-b pb-8">
-				<Shortcuts />
-				{#if recent.length}<RecentRail items={recent} />{/if}
-			</div>
-		{/if}
-		<!-- Hoisted out of the feed on purpose: it belongs at the top, above "Listen again", wherever
-		     YouTube happened to put it in the response. -->
-		{#if forgotten}
-			<div class="mb-10">
-				<ForgottenFavourites
-					section={forgotten}
-					onMore={forgotten.moreBrowseId ? () => showMore(forgotten!) : undefined}
-				/>
-			</div>
-		{:else if seeking}
-			<!-- Hold the slot open while the crawl runs, so landing the shelf doesn't shove the feed down
-			     under the reader's cursor. -->
-			<div class="mb-10" aria-hidden="true">
-				<Skeleton class="mb-3 h-5 w-48 rounded" />
-				<div class="columns-1 gap-x-6 md:columns-2 xl:columns-3">
-					{#each Array(15) as _, i (i)}
-						<div class="break-inside-avoid"><TrackRowSkeleton /></div>
-					{/each}
-				</div>
+			<div class="mb-10 border-b pb-8">
+				<Shortcuts onEdit={() => (editing = true)} />
 			</div>
 		{/if}
 		{#snippet shelfSkeletons(n: number)}
@@ -283,55 +299,77 @@
 				</section>
 			{/each}
 		{/snippet}
-		{#if loading}
-			<div class="flex flex-col gap-10">{@render shelfSkeletons(3)}</div>
-		{:else if error}
-			<ErrorState message={error} onRetry={() => load(selected)} />
-		{:else if home && home.sections.length}
-			<!-- gap-10, not gap-8: with a heading, a row of cards and no rule between them, shelves any
-			     closer than this stop reading as separate sections. -->
-			<div class="content-in flex flex-col gap-10">
-				{#each feed as section, i (i + ':' + section.title)}
+		<!-- One ordered column, so the two sections the app builds itself sit among YouTube's shelves
+		     instead of above them, and a drag in the Edit modal can put any of them anywhere.
+		     gap-10, not gap-8: with a heading, a row of cards and no rule between them, shelves any
+		     closer than this stop reading as separate sections. -->
+		<div class="content-in flex flex-col gap-10">
+			{#each visible as block (block.id)}
+				{#if block.shelf}
 					<Shelf
-						title={section.title}
-						items={section.items}
-						community={/community/i.test(section.title)}
-						onMore={section.moreBrowseId ? () => showMore(section) : undefined}
+						title={block.shelf.title}
+						items={block.shelf.items}
+						community={/community/i.test(block.shelf.title)}
+						onMore={block.shelf.moreBrowseId ? () => showMore(block.shelf!) : undefined}
 					/>
-				{/each}
-				{#if home.continuation}
-					{#if moreError}
-						<div class="p-3 text-center">
-							<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
-								{loadingMore ? 'Loading…' : 'Try again'}
-							</Button>
+				{:else if block.key === RECENT}
+					{#if recent.length}<RecentRail items={recent} />{/if}
+				{:else if forgotten}
+					<ForgottenFavourites
+						section={forgotten}
+						onMore={forgotten.moreBrowseId ? () => showMore(forgotten!) : undefined}
+					/>
+				{:else if seeking}
+					<!-- Hold the slot open while the crawl runs, so landing the shelf doesn't shove the feed
+					     down under the reader's cursor. -->
+					<div aria-hidden="true">
+						<Skeleton class="mb-3 h-5 w-48 rounded" />
+						<div class="columns-1 gap-x-6 md:columns-2 xl:columns-3">
+							{#each Array(15) as _, i (i)}
+								<div class="break-inside-avoid"><TrackRowSkeleton /></div>
+							{/each}
 						</div>
+					</div>
+				{/if}
+			{/each}
+			{#if loading}
+				{@render shelfSkeletons(3)}
+			{:else if error}
+				<ErrorState message={error} onRetry={() => load(selected)} />
+			{:else if !home?.sections.length}
+				<!-- A dead end needs a way out, not a sentence. Signed out, that's the sign-in that fills
+				     this page; signed in, an empty feed is a bad response and retrying usually fixes it. -->
+				<div class="flex flex-col items-center gap-3 py-20 text-center">
+					<HugeiconsIcon icon={MusicNote01Icon} class="h-8 w-8 text-muted-foreground/40" />
+					<p class="max-w-sm text-sm text-muted-foreground">
+						{auth.account?.signedIn
+							? 'Your home feed came back empty this time.'
+							: 'Sign in and home fills up with mixes and playlists built from what you listen to.'}
+					</p>
+					{#if auth.account?.signedIn}
+						<Button variant="outline" size="sm" onclick={() => load(selected)}>Try again</Button>
 					{:else}
-						<!-- Skeletons only while a page is actually in flight; the sentinel above them is what
-						     triggers the fetch when it scrolls into range. -->
-						<div class="flex flex-col gap-10" aria-busy={loadingMore}>
-							<div {@attach sentinel}></div>
-							{#if loadingMore}{@render shelfSkeletons(2)}{/if}
-						</div>
+						<Button size="sm" onclick={() => api.loginWebview()}>Sign in with Google</Button>
 					{/if}
-				{/if}
-			</div>
-		{:else}
-			<!-- A dead end needs a way out, not a sentence. Signed out, that's the sign-in that fills
-			     this page; signed in, an empty feed is a bad response and retrying usually fixes it. -->
-			<div class="flex flex-col items-center gap-3 py-20 text-center">
-				<HugeiconsIcon icon={MusicNote01Icon} class="h-8 w-8 text-muted-foreground/40" />
-				<p class="max-w-sm text-sm text-muted-foreground">
-					{auth.account?.signedIn
-						? 'Your home feed came back empty this time.'
-						: 'Sign in and home fills up with mixes and playlists built from what you listen to.'}
-				</p>
-				{#if auth.account?.signedIn}
-					<Button variant="outline" size="sm" onclick={() => load(selected)}>Try again</Button>
+				</div>
+			{:else if home.continuation}
+				{#if moreError}
+					<div class="p-3 text-center">
+						<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
+							{loadingMore ? 'Loading…' : 'Try again'}
+						</Button>
+					</div>
 				{:else}
-					<Button size="sm" onclick={() => api.loginWebview()}>Sign in with Google</Button>
+					<!-- Skeletons only while a page is actually in flight; the sentinel above them is what
+					     triggers the fetch when it scrolls into range. -->
+					<div class="flex flex-col gap-10" aria-busy={loadingMore}>
+						<div {@attach sentinel}></div>
+						{#if loadingMore}{@render shelfSkeletons(2)}{/if}
+					</div>
 				{/if}
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 </div>
+
+<HomeLayoutDialog bind:open={editing} sections={blocks} />

@@ -12,8 +12,7 @@ the base for the current OS.
 
 ## Common prerequisites (all platforms)
 
-- **Rust** (stable, via rustup) and the Tauri CLI: `cargo install tauri-cli --version "^2"` (or use
-  `pnpm tauri`).
+- **Rust** (stable, via rustup) and the Tauri CLI: `cargo install tauri-cli --version "^2"`.
 - **Node + pnpm**, then install the UI deps once: `cd ui && pnpm install`.
 - Build command everywhere: `cd ui && pnpm build` then `cargo tauri build` (the config's
   `beforeBuildCommand` also runs `pnpm build`, but running it first makes failures obvious).

@@ -18,6 +18,7 @@
 	import {
 		Cancel01Icon,
 		Add01Icon,
+		Edit01Icon,
 		PlayIcon,
 		MusicNote01Icon,
 		UserIcon,
@@ -31,6 +32,11 @@
 	import { personal, placePick, removePick } from '$lib/player.svelte';
 	import { MAX_PICKS } from '$lib/personal';
 	import { getDragItem, isDragItem, setDragItem } from '$lib/dnd';
+
+	// The page owns the Edit-home modal; this section only lends it a place to be opened from. Its
+	// header is the first thing on home and the one row that's always there, so the button that
+	// rearranges the rest of the page lives here rather than following a section that can be hidden.
+	let { onEdit }: { onEdit?: () => void } = $props();
 
 	const picks = $derived(personal.picks);
 	let picking = $state(false);
@@ -87,7 +93,22 @@
 
 <section>
 	<div class="mb-3 flex items-baseline justify-between gap-3">
-		<h2 class="font-heading text-lg font-semibold">Shortcuts</h2>
+		<div class="flex min-w-0 items-center gap-2">
+			<h2 class="font-heading text-lg font-semibold">Shortcuts</h2>
+			{#if onEdit}
+				<!-- Labelled and outlined, not a bare glyph: this is the only entry point to rearranging
+				     home, and as an icon on its own nobody found it. The tooltip carries the scope the
+				     one-word label can't, sitting as it does under the Shortcuts heading. -->
+				<button
+					onclick={onEdit}
+					title="Edit home"
+					class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted hover:text-foreground"
+				>
+					<HugeiconsIcon icon={Edit01Icon} class="h-4 w-4" />
+					Edit Home
+				</button>
+			{/if}
+		</div>
 		{#if picks.length && picks.length < MAX_PICKS}
 			<!-- Adding is an action, not a tile: as a trailing "+" square it left a dashed hole at the
 			     end of the grid forever, and a ragged one whenever the last row was short. -->

@@ -207,6 +207,15 @@ export async function seedOnRepeatPick() {
 	}
 }
 
+/**
+ * Home's arrangement, as set in the Edit modal. `order` is every section key the modal listed, in
+ * display order, hidden ones included — a hidden section that keeps its slot comes back where it was.
+ */
+export function saveHomeLayout(order: string[], hidden: string[]) {
+	personal.home = { order, hidden };
+	savePersonal();
+}
+
 /** Called from every card click app-wide, so only persist when the id was actually on the grid. */
 export function touchPick(id: string) {
 	if (pl.touchPick(personal, id)) savePersonal();

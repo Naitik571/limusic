@@ -9,9 +9,11 @@ import type { BrowseItem } from './api';
 import {
 	MAX_PICKS,
 	addPick,
+	arrangeSections,
 	empty,
 	firstArtist,
 	forgetIds,
+	hiddenSections,
 	hydrate,
 	interleave,
 	noteRecent,
@@ -245,6 +247,34 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 	// Not a dismissal: the user refused nothing, so re-adding it later behaves normally.
 	ok(seedPick(p, item('LOCALALBUM:gone')), 'a forgotten id can be suggested again if it returns');
 	ok(forgetIds(p, []) === 0, 'nothing to forget is a no-op');
+}
+
+// --- home arrangement: saved order wins, new sections keep the feed's order at the end -----------
+{
+	const p = empty();
+	const secs = (...keys: string[]) => keys.map((key) => ({ key }));
+	const keys = (list: { key: string }[]) => list.map((x) => x.key).join();
+
+	ok(keys(arrangeSections(secs('a', 'b', 'c'), p)) === 'a,b,c', 'no saved order leaves the feed alone');
+
+	p.home = { order: ['c', 'a'], hidden: ['a'] };
+	// Hidden sections still come back: the Edit modal lists them so they can be offered again.
+	ok(keys(arrangeSections(secs('a', 'b', 'c'), p)) === 'c,a,b', 'saved order first, the rest after');
+	ok(hiddenSections(p).has('a') && !hiddenSections(p).has('c'), 'hidden is read back as a set');
+	// Two unranked neighbours must not compare as NaN, or the sort silently keeps its input order.
+	ok(keys(arrangeSections(secs('z', 'y', 'c'), p)) === 'c,z,y', 'unranked sections hold their order');
+	ok(keys(arrangeSections([], p)) === '', 'an empty feed is fine');
+}
+
+// --- the arrangement survives a round trip, and a corrupt one degrades instead of throwing --------
+{
+	const p = empty();
+	p.home = { order: ['@recent', 'Listen again'], hidden: ['@forgotten'] };
+	const back = hydrate(JSON.parse(JSON.stringify(p)));
+	ok(back.home.order.join() === '@recent,Listen again', 'order survives persistence');
+	ok(back.home.hidden.join() === '@forgotten', 'hidden survives persistence');
+	ok(hydrate({}).home.order.length === 0, 'a blob from before the feature reads as unarranged');
+	ok(hydrate({ home: { order: [1, 'a'], hidden: 'nope' } }).home.order.join() === 'a', 'junk is dropped');
 }
 
 console.log('ok');

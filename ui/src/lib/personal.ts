@@ -38,10 +38,19 @@ export type Personal = {
 	 * suggest this again": a hand-added tile is unaffected, since `addPick` ignores the list.
 	 */
 	dismissedSeeds: string[];
+	/** How home is arranged: see `arrangeSections`. Both lists hold section keys. */
+	home: { order: string[]; hidden: string[] };
 };
 
 export function empty(): Personal {
-	return { picks: [], pins: [], recent: {}, artists: {}, dismissedSeeds: [] };
+	return {
+		picks: [],
+		pins: [],
+		recent: {},
+		artists: {},
+		dismissedSeeds: [],
+		home: { order: [], hidden: [] }
+	};
 }
 
 /** Tolerant parse of a persisted blob — a corrupt or older shape degrades to empty, never throws. */
@@ -64,6 +73,12 @@ export function hydrate(raw: unknown): Personal {
 	if (o.artists && typeof o.artists === 'object') base.artists = o.artists;
 	if (Array.isArray(o.dismissedSeeds)) {
 		base.dismissedSeeds = o.dismissedSeeds.filter((id) => typeof id === 'string');
+	}
+	if (o.home && typeof o.home === 'object') {
+		const h = o.home as Partial<Personal['home']>;
+		const keys = (v: unknown) =>
+			Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : [];
+		base.home = { order: keys(h.order), hidden: keys(h.hidden) };
 	}
 	return base;
 }
@@ -191,6 +206,30 @@ export function orderLibrary(items: BrowseItem[], p: Personal): BrowseItem[] {
 		.map(({ item }) => item);
 	return [...pinned, ...rest];
 }
+
+// --- Home arrangement ---------------------------------------------------------------------------
+
+/**
+ * Home's sections in the order the user put them, hidden ones included (the Edit modal has to list
+ * those to offer them back). A section YouTube only started sending after the last save has no rank
+ * and sorts to the end, keeping the feed's own order among its peers.
+ *
+ * Sorting only, never filtering: `hiddenSections` is the other half, and the two callers need the
+ * unfiltered list and the visible one respectively.
+ *
+ * ponytail: sections are keyed by shelf title, which is what the user sees and all YouTube gives us
+ * that's stable across sessions. Two shelves sharing a title share one setting — key on
+ * `moreBrowseId` if that ever shows up in the wild.
+ */
+export function arrangeSections<T extends { key: string }>(sections: T[], p: Personal): T[] {
+	const ranks = new Map(p.home.order.map((key, i) => [key, i]));
+	// A finite sentinel, not Infinity: two unranked sections would subtract to NaN and the comparator
+	// would stop being a comparator. Stable sort, so equal ranks keep the order they arrived in.
+	const rank = (key: string) => ranks.get(key) ?? Number.MAX_SAFE_INTEGER;
+	return sections.slice().sort((a, b) => rank(a.key) - rank(b.key));
+}
+
+export const hiddenSections = (p: Personal): Set<string> => new Set(p.home.hidden);
 
 // --- Recency + artist counts -------------------------------------------------------------------
 
