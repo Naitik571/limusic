@@ -6,6 +6,7 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		MoreHorizontalIcon,
+		MoreVerticalIcon,
 		PlayListAddIcon,
 		PlayListRemoveIcon,
 		AddToListIcon,
@@ -25,7 +26,8 @@
 		triggerClass = '',
 		onAdd,
 		onRemove,
-		removeLabel = 'Remove from playlist'
+		removeLabel = 'Remove from playlist',
+		linksOnly = false
 	}: {
 		song: SongItem;
 		/** Classes for the ⋯ trigger button (positioning differs per host: inline vs overlay). */
@@ -35,6 +37,9 @@
 		/** Adds a remove menu item (label via `removeLabel`). */
 		onRemove?: () => void;
 		removeLabel?: string;
+		/** Player-bar variant: ⋮ trigger, and only artist/album/shortcuts (queue and like already
+		    have their own buttons there). */
+		linksOnly?: boolean;
 	} = $props();
 
 	let menuOpen = $state(false);
@@ -74,7 +79,13 @@
 </script>
 
 <button class="{triggerClass} {menuOpen ? 'opacity-100' : ''}" onclick={openMenu} aria-label="Track options">
-	<HugeiconsIcon icon={MoreHorizontalIcon} class="h-4 w-4" />
+	<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount -->
+	<HugeiconsIcon
+		icon={MoreHorizontalIcon}
+		altIcon={MoreVerticalIcon}
+		showAlt={linksOnly}
+		class="h-4 w-4"
+	/>
 </button>
 
 {#if menuOpen}
@@ -86,13 +97,15 @@
 			: 'origin-top-right'}"
 		style="right:{mx}px; {openUp ? 'bottom' : 'top'}:{my}px;"
 	>
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={(e) => run(e, addToQueue)}
-		>
-			<HugeiconsIcon icon={AddToListIcon} class="h-4 w-4" /> Add to queue
-		</button>
-		{#if !isLocal}
+		{#if !linksOnly}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => run(e, addToQueue)}
+			>
+				<HugeiconsIcon icon={AddToListIcon} class="h-4 w-4" /> Add to queue
+			</button>
+		{/if}
+		{#if !isLocal && !linksOnly}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={(e) => run(e, () => toggleLike(song))}

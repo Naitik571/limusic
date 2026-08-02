@@ -23,6 +23,7 @@
 	import { playback, toast, openAddToPlaylist } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
+	import TrackMenu from './TrackMenu.svelte';
 
 	let {
 		onToggleQueue,
@@ -73,6 +74,13 @@
 	const autoplayTrack = $derived.by(() => {
 		const cur = playback.queue.items[playback.queue.currentIndex];
 		return !!cur?.autoplay && cur.video_id === playback.now?.videoId;
+	});
+
+	// The ⋮ menu needs the full SongItem — NowPlaying carries no album_id. Take it from the queue
+	// row, matched on videoId so a mid-advance mismatch can't point the menu at the wrong song.
+	const currentSong = $derived.by(() => {
+		const cur = playback.queue.items[playback.queue.currentIndex];
+		return cur?.video_id === playback.now?.videoId ? cur : null;
 	});
 
 	function cycleRepeat() {
@@ -200,6 +208,13 @@
 					>
 						<HugeiconsIcon icon={Add01Icon} class="h-4 w-4 text-muted-foreground" />
 					</Button>
+				{/if}
+				{#if currentSong}
+					<TrackMenu
+						song={currentSong}
+						linksOnly
+						triggerClass="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+					/>
 				{/if}
 			</div>
 		{/if}
