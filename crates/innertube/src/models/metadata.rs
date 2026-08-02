@@ -213,25 +213,33 @@ fn album_id(node: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The artist portion of a run list (everything before the first "•" separator), kept run by run so
-/// each linked artist of a collab navigates to its own page. Empty when nothing links a channel.
-/// context/08.
+/// The artist field of a run list, kept run by run so each linked artist of a collab navigates to
+/// its own page. Empty when nothing links a channel. Cut at the "•" separators and dropping a
+/// leading type label exactly like `split_subtitle`, so these runs describe the same field as the
+/// `artists` string beside them: a search row reads "Song • Delara • 3:02", and taking everything
+/// before the first "•" would hand back the unlinked word "Song". context/08.
 pub(crate) fn artist_runs(runs: &[Value]) -> Vec<ArtistRun> {
-    let out: Vec<ArtistRun> = runs
-        .iter()
-        .take_while(|r| r.get("text").and_then(Value::as_str).is_none_or(|t| t.trim() != "•"))
-        .map(|r| ArtistRun {
-            text: r.get("text").and_then(Value::as_str).unwrap_or_default().to_owned(),
-            id: r
-                .get("navigationEndpoint")
-                .and_then(|n| n.get("browseEndpoint"))
-                .and_then(|b| b.get("browseId"))
-                .and_then(Value::as_str)
-                .filter(|id| id.starts_with("UC"))
-                .map(str::to_owned),
-        })
-        .collect();
-    if out.iter().all(|r| r.id.is_none()) {
+    let mut fields: Vec<Vec<ArtistRun>> = vec![Vec::new()];
+    for run in runs {
+        let text = run.get("text").and_then(Value::as_str).unwrap_or_default();
+        if text.trim() == "•" {
+            fields.push(Vec::new());
+        } else {
+            fields.last_mut().expect("never empty").push(ArtistRun {
+                text: text.to_owned(),
+                id: first_artist_id(std::slice::from_ref(run)),
+            });
+        }
+    }
+    let linked = |f: &Vec<ArtistRun>| f.iter().any(|r| r.id.is_some());
+    if fields.len() > 1 && !linked(&fields[0]) {
+        let label: String = fields[0].iter().map(|r| r.text.as_str()).collect();
+        if is_type_label(label.trim()) || fields[1..].iter().any(linked) {
+            fields.remove(0);
+        }
+    }
+    let out = fields.swap_remove(0);
+    if !linked(&out) {
         return Vec::new();
     }
     out
@@ -595,6 +603,11 @@ mod tests {
         assert_eq!(s.artists, "Delara");
         assert_eq!(s.album, None);
         assert_eq!(s.duration.as_deref(), Some("3:02"));
+        // The links describe the same field as `artists` — never the "Song" label in front of it.
+        assert_eq!(
+            s.artist_runs.iter().map(|r| (r.text.as_str(), r.id.as_deref())).collect::<Vec<_>>(),
+            [("Delara", Some("UCdelara"))]
+        );
     }
 
     /// A queue row's byline is a whole descriptor; only its artist field is the artist.

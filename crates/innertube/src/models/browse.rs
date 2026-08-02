@@ -35,6 +35,11 @@ pub struct BrowseItem {
     /// of `subtitle` so the queue and the scrobbler still get a clean artist string.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<String>,
+    /// Song cards only: the `subtitle` artist line run by run, each tagged with its channel id when
+    /// it links one. Carried so a card that gets played (search rows, home shelves) reaches the
+    /// player bar with the same navigable artists a track row has. Empty when nothing links.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub artist_runs: Vec<ArtistRun>,
 }
 
 /// A titled row of cards on the home feed.
@@ -306,13 +311,30 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
         .and_then(Value::as_str)
     {
         let (kind, id) = browse_target(bid);
-        return Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None });
+        return Some(BrowseItem {
+            kind,
+            id,
+            title,
+            subtitle,
+            thumbnail,
+            duration: None,
+            artist_runs: Vec::new(),
+        });
     }
     let vid = list_item_video_id(node)?;
     // A song card's subtitle doubles as its artist string once it's played (and scrobbled), so it
     // carries the artist alone, never the "Song • … • 3:02" descriptor YouTube puts on the row.
-    let subtitle = artists_from_runs(flex_runs(node, 1)).or(subtitle);
-    Some(BrowseItem { kind: "song", id: vid, title, subtitle, thumbnail, duration: None })
+    let runs = flex_runs(node, 1);
+    let subtitle = artists_from_runs(runs).or(subtitle);
+    Some(BrowseItem {
+        kind: "song",
+        id: vid,
+        title,
+        subtitle,
+        thumbnail,
+        duration: None,
+        artist_runs: runs.map(|r| artist_runs(r)).unwrap_or_default(),
+    })
 }
 
 /// The primary match of a top-result card shelf.
@@ -332,18 +354,24 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
         nav.and_then(|n| n.get("watchEndpoint")).and_then(|w| w.get("videoId")).and_then(Value::as_str)
     {
         // Same as a song row: the top-result card's subtitle becomes the artist when it plays.
-        let subtitle = artists_from_runs(
-            card.get("subtitle").and_then(|s| s.get("runs")).and_then(Value::as_array),
-        )
-        .or(subtitle);
-        return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail, duration: None });
+        let runs = card.get("subtitle").and_then(|s| s.get("runs")).and_then(Value::as_array);
+        let subtitle = artists_from_runs(runs).or(subtitle);
+        return Some(BrowseItem {
+            kind: "song",
+            id: vid.to_owned(),
+            title,
+            subtitle,
+            thumbnail,
+            duration: None,
+            artist_runs: runs.map(|r| artist_runs(r)).unwrap_or_default(),
+        });
     }
     let bid = nav
         .and_then(|n| n.get("browseEndpoint"))
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
     let (kind, id) = browse_target(bid);
-    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None })
+    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None, artist_runs: Vec::new() })
 }
 
 /// Parse an album (`MPRE…`) browse response. context/08.
@@ -564,6 +592,7 @@ fn parse_carousel_item(node: &Value) -> Option<BrowseItem> {
             subtitle: Some(song.artists).filter(|s| !s.is_empty()),
             thumbnail: song.thumbnail,
             duration: song.duration,
+            artist_runs: song.artist_runs,
         });
     }
     None
@@ -584,11 +613,17 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
         // scrobbles), so keep the artist field alone, never the whole "Aqua • 1.7B views" or
         // "Miley Cyrus • Plastic Hearts • 2020" descriptor the card displays. Cards that navigate
         // keep the full subtitle below: there it is only ever text on screen.
-        let subtitle = artists_from_runs(
-            node.get("subtitle").and_then(|s| s.get("runs")).and_then(Value::as_array),
-        )
-        .or(subtitle);
-        return Some(BrowseItem { kind: "song", id: vid.to_owned(), title, subtitle, thumbnail, duration: None });
+        let runs = node.get("subtitle").and_then(|s| s.get("runs")).and_then(Value::as_array);
+        let subtitle = artists_from_runs(runs).or(subtitle);
+        return Some(BrowseItem {
+            kind: "song",
+            id: vid.to_owned(),
+            title,
+            subtitle,
+            thumbnail,
+            duration: None,
+            artist_runs: runs.map(|r| artist_runs(r)).unwrap_or_default(),
+        });
     }
     // Playlist via watchPlaylistEndpoint (some carousels expose the raw playlistId).
     if let Some(pid) = nav
@@ -603,6 +638,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
             subtitle,
             thumbnail,
             duration: None,
+            artist_runs: Vec::new(),
         });
     }
     // Otherwise a browseEndpoint → playlist/album/artist by browseId prefix.
@@ -611,7 +647,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
     let (kind, id) = browse_target(browse_id);
-    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None })
+    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None, artist_runs: Vec::new() })
 }
 
 /// Classify a browseId: albums are `MPRE…`, artist/user channels are `UC…`, everything else
@@ -1040,7 +1076,15 @@ mod tests {
             "playlistItemData": { "videoId": "svid" },
             "flexColumns": [
                 { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "A Song" }] } } },
-                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "An Artist" }] } } }
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                    { "text": "Song" },
+                    { "text": " • " },
+                    { "text": "An Artist", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCart" } } },
+                    { "text": " & " },
+                    { "text": "Another", "navigationEndpoint": { "browseEndpoint": { "browseId": "UCtwo" } } },
+                    { "text": " • " },
+                    { "text": "3:02" }
+                ] } } }
             ]
         } });
         let album_row = json!({ "musicResponsiveListItemRenderer": {
@@ -1078,6 +1122,13 @@ mod tests {
         assert_eq!(r.songs.len(), 1);
         assert_eq!(r.songs[0].kind, "song");
         assert_eq!(r.songs[0].id, "svid");
+        // A song card keeps its artist links: played from search, the player bar navigates.
+        assert_eq!(
+            r.songs[0].artist_runs.iter().map(|x| (x.text.as_str(), x.id.as_deref())).collect::<Vec<_>>(),
+            [("An Artist", Some("UCart")), (" & ", None), ("Another", Some("UCtwo"))]
+        );
+        // A card that navigates carries none — its subtitle is a descriptor, not an artist line.
+        assert!(r.albums.is_empty() || r.albums[0].artist_runs.is_empty());
         assert_eq!(r.albums.len(), 1);
         assert_eq!(r.albums[0].kind, "album");
         assert_eq!(r.albums[0].id, "MPREalb");

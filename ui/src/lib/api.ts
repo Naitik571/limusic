@@ -76,6 +76,8 @@ export interface BrowseItem {
 	thumbnail?: string;
 	/** "3:47" — song items from a list-style shelf only (card shelves don't carry one). */
 	duration?: string;
+	/** Song cards only: the artist line run by run, so a card that gets played keeps its links. */
+	artistRuns?: ArtistRun[];
 }
 
 export interface HomeSection {

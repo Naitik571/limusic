@@ -274,6 +274,7 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
                 subtitle: Some(format!("{} songs", songs.len())),
                 thumbnail: None, // the UI draws an icon cover for this one
                 duration: None,
+                artist_runs: Vec::new(),
             },
         );
     }

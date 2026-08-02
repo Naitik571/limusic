@@ -16,6 +16,10 @@ export const asSong = (i: BrowseItem): SongItem => ({
 	video_id: i.id,
 	title: i.title,
 	artists: i.subtitle ?? '',
+	// The links belong to the same line as `artists`; without them a card played from search or a
+	// home shelf reaches the player bar (and the row menu) with an artist you can't click.
+	artist_runs: i.artistRuns,
+	artist_id: i.artistRuns?.find((r) => r.id)?.id,
 	duration: i.duration,
 	thumbnail: i.thumbnail
 });
