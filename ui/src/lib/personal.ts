@@ -79,6 +79,12 @@ export function hydrate(raw: unknown): Personal {
 		const keys = (v: unknown) =>
 			Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : [];
 		base.home = { order: keys(h.order), hidden: keys(h.hidden) };
+		// '@familiar' shipped after some users had already saved an arrangement, and an unranked key
+		// sorts to the bottom of the feed. Slot it where the code puts it, once.
+		if (base.home.order.length && !base.home.order.includes('@familiar')) {
+			const at = base.home.order.indexOf('@recent');
+			base.home.order.splice(at < 0 ? base.home.order.length : at + 1, 0, '@familiar');
+		}
 	}
 	return base;
 }
@@ -277,6 +283,18 @@ export function noteArtist(p: Personal, key: string, name: string): void {
 }
 
 /** The user's most-played artist names — the seed for the community shelf. */
+/**
+ * Top artists by play count that carry a real channel id. Names-only keys (a song whose artist
+ * wasn't linked) are dropped: without an id there is no artist page to look up or open.
+ */
+export function topArtistIds(p: Personal, n = 7): string[] {
+	return Object.entries(p.artists)
+		.filter(([id]) => id.startsWith('UC'))
+		.sort((a, b) => b[1].count - a[1].count)
+		.slice(0, n)
+		.map(([id]) => id);
+}
+
 export function topArtists(p: Personal, n = 3): string[] {
 	return Object.values(p.artists)
 		.filter((a) => a.name)

@@ -12,6 +12,7 @@
 	import RecentRail from '$lib/components/RecentRail.svelte';
 	import Shelf from '$lib/components/Shelf.svelte';
 	import ForgottenFavourites from '$lib/components/ForgottenFavourites.svelte';
+	import FamiliarArtists from '$lib/components/FamiliarArtists.svelte';
 	import HomeLayoutDialog from '$lib/components/HomeLayoutDialog.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import * as api from '$lib/api';
@@ -69,6 +70,7 @@
 	// The two sections the app builds itself get reserved keys — a YouTube shelf title can't start
 	// with "@" — so they keep their slot even before (or without) any content to show.
 	const RECENT = '@recent';
+	const FAMILIAR = '@familiar';
 	const FORGOTTEN = '@forgotten';
 	type Block =
 		| { id: string; key: string; title: string; shelf?: undefined }
@@ -85,6 +87,7 @@
 			? [] // a mood feed is the chip's: neither of ours belongs in it
 			: [
 					{ id: RECENT, key: RECENT, title: 'Jump back in' },
+					{ id: FAMILIAR, key: FAMILIAR, title: 'Familiar Artists' },
 					{ id: FORGOTTEN, key: FORGOTTEN, title: 'Forgotten favourites' }
 				];
 		const shelves = feed.map((s, i) => ({
@@ -314,6 +317,8 @@
 					/>
 				{:else if block.key === RECENT}
 					{#if recent.length}<RecentRail items={recent} />{/if}
+				{:else if block.key === FAMILIAR}
+					<FamiliarArtists />
 				{:else if forgotten}
 					<ForgottenFavourites
 						section={forgotten}

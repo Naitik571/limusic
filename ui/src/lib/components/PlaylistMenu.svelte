@@ -4,6 +4,7 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		MoreHorizontalIcon,
+		MoreVerticalIcon,
 		PinIcon,
 		PinOffIcon,
 		Radio02Icon,
@@ -17,8 +18,18 @@
 	let {
 		item,
 		showPin = true,
-		triggerClass = 'absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100'
-	}: { item: BrowseItem; showPin?: boolean; triggerClass?: string } = $props();
+		vertical = false,
+		iconClass = 'h-4 w-4',
+		// Visibility lives here too: most triggers only appear on hover, but a row that has nothing
+		// else to reveal on hover shows its ⋯ all the time.
+		triggerClass = 'absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100'
+	}: {
+		item: BrowseItem;
+		showPin?: boolean;
+		vertical?: boolean;
+		iconClass?: string;
+		triggerClass?: string;
+	} = $props();
 
 	const pinned = $derived(personal.pins.includes(item.id));
 	// Radio needs a YouTube item behind it: local folders and the locally-built On Repeat have none.
@@ -49,11 +60,17 @@
 </script>
 
 <button
-	class="{triggerClass} {menuOpen ? 'opacity-100' : 'opacity-0'}"
+	class="{triggerClass} {menuOpen ? 'opacity-100' : ''}"
 	onclick={openMenu}
 	aria-label="Playlist options"
 >
-	<HugeiconsIcon icon={MoreHorizontalIcon} class="h-4 w-4" />
+	<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount -->
+	<HugeiconsIcon
+		icon={MoreHorizontalIcon}
+		altIcon={MoreVerticalIcon}
+		showAlt={vertical}
+		class={iconClass}
+	/>
 </button>
 
 {#if menuOpen}

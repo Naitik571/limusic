@@ -23,6 +23,7 @@ import {
 	removePick,
 	seedPick,
 	togglePin,
+	topArtistIds,
 	touchPick
 } from './personal.ts';
 
@@ -271,10 +272,33 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 	const p = empty();
 	p.home = { order: ['@recent', 'Listen again'], hidden: ['@forgotten'] };
 	const back = hydrate(JSON.parse(JSON.stringify(p)));
-	ok(back.home.order.join() === '@recent,Listen again', 'order survives persistence');
+	// '@familiar' is slotted into an order saved before it existed, so it doesn't sink to the bottom.
+	ok(back.home.order.join() === '@recent,@familiar,Listen again', 'order survives persistence');
 	ok(back.home.hidden.join() === '@forgotten', 'hidden survives persistence');
+	ok(
+		hydrate({ home: { order: ['Listen again'], hidden: [] } }).home.order.join() ===
+			'Listen again,@familiar',
+		'no @recent to sit under: the new section goes last'
+	);
+	ok(
+		hydrate(JSON.parse(JSON.stringify(back))).home.order.join() === back.home.order.join(),
+		'the slotting happens once, not on every load'
+	);
 	ok(hydrate({}).home.order.length === 0, 'a blob from before the feature reads as unarranged');
-	ok(hydrate({ home: { order: [1, 'a'], hidden: 'nope' } }).home.order.join() === 'a', 'junk is dropped');
+	ok(hydrate({ home: { order: [1, 'a'], hidden: 'nope' } }).home.order.join() === 'a,@familiar', 'junk is dropped');
+}
+
+// --- familiar artists: play counts, but only the ones with a channel to open --------------------
+{
+	const p = empty();
+	p.artists = {
+		UCa: { name: 'A', count: 3 },
+		UCb: { name: 'B', count: 9 },
+		'Some Band': { name: 'Some Band', count: 99 }
+	};
+	ok(topArtistIds(p).join() === 'UCb,UCa', 'ordered by plays, name-keyed entries dropped');
+	ok(topArtistIds(p, 1).join() === 'UCb', 'capped at n');
+	ok(topArtistIds(empty()).length === 0, 'no listening history is not an error');
 }
 
 console.log('ok');
