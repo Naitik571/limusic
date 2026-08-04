@@ -72,8 +72,10 @@
 	{/each}
 {/snippet}
 
-<!-- Below lg the panel floats over the content (see the `relative` wrapper in +layout); a scrim
-     lets you dismiss it by clicking outside. At lg+ it's an in-flow column and the scrim is hidden. -->
+<!-- The panel always floats over the content (see the `relative` wrapper in +layout) rather than
+     squeezing it into a column: two docked panels left the page too narrow to read, and a page you
+     can't use behind a panel you opened on purpose is the better trade. Below lg a scrim dismisses
+     it; at lg+ the content stays visible underneath and the player bar's button closes it. -->
 <button
 	class="absolute inset-0 z-20 cursor-default bg-black/40 lg:hidden"
 	onclick={onClose}
@@ -82,7 +84,7 @@
 ></button>
 <aside
 	transition:fly={{ x: 32, duration: 220, easing: cubicOut }}
-	class="absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] shrink-0 flex-col border-l bg-card shadow-2xl lg:static lg:z-auto lg:max-w-none lg:bg-card/40 lg:shadow-none"
+	class="absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] flex-col border-l bg-card shadow-2xl"
 >
 	<h2 class="border-b px-4 py-3 font-heading text-sm font-semibold">Queue</h2>
 	<div class="min-h-0 flex-1 overflow-y-auto p-2">

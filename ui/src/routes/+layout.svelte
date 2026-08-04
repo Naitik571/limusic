@@ -29,8 +29,9 @@
 	import { updateState, installUpdate, checkForUpdatesQuiet } from '$lib/updater.svelte';
 
 	let { children } = $props();
-	// Queue and lyrics toggle independently — at lg+ they dock as two side-by-side columns, and
-	// expanded lyrics leaves room for the queue column (see LyricsPanel).
+	// Queue and lyrics toggle independently and both float over the page rather than docking into
+	// it — two docked columns squeezed the content down to an unusable strip. At lg+ they sit side
+	// by side over the content; narrower, they stack (see QueuePanel / LyricsPanel).
 	let queueOpen = $state(false);
 	let lyricsOpen = $state(false);
 
@@ -62,7 +63,7 @@
 >
 	<ResizeBorders />
 	<Titlebar />
-	<!-- relative: lets QueuePanel overlay the content on narrow windows (see QueuePanel). -->
+	<!-- relative: the queue and lyrics panels are absolute overlays inside it (see QueuePanel). -->
 	<div class="relative flex min-h-0 flex-1">
 		<Sidebar />
 		<!-- dragScroll: dragging a card up to home's Shortcuts grid has to be possible from anywhere in
@@ -73,7 +74,7 @@
 				{@render children()}
 			{/key}
 		</main>
-		<!-- Lyrics before queue: docked side by side, lyrics takes the left column, queue the right. -->
+		<!-- Lyrics before queue: side by side over the page, lyrics on the left, queue on the right. -->
 		{#if lyricsOpen}<LyricsPanel onClose={() => (lyricsOpen = false)} {queueOpen} />{/if}
 		{#if queueOpen}<QueuePanel onClose={() => (queueOpen = false)} />{/if}
 	</div>

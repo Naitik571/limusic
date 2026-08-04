@@ -111,8 +111,8 @@
 	}
 </script>
 
-<!-- Same overlay pattern as QueuePanel: floating over content below lg (with a dismiss scrim),
-     in-flow column at lg+. -->
+<!-- Same overlay pattern as QueuePanel: always over the content, with a dismiss scrim below lg. When
+     the queue is open too, this one steps left of it at lg+; narrower than that they stack. -->
 <button
 	class="absolute inset-0 z-20 cursor-default bg-black/40 lg:hidden"
 	onclick={onClose}
@@ -125,7 +125,7 @@
 		? // ponytail: left offsets mirror Sidebar's w-16/lg:w-60, right offset mirrors QueuePanel's
 			// w-80 — keep in sync if those change.
 			`absolute inset-y-0 left-16 right-0 z-30 flex h-full flex-col border-l bg-card shadow-2xl lg:left-60 ${queueOpen ? 'lg:right-80' : ''}`
-		: 'absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] shrink-0 flex-col border-l bg-card shadow-2xl lg:static lg:z-auto lg:max-w-none lg:bg-card/40 lg:shadow-none'}
+		: `absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] flex-col border-l bg-card shadow-2xl ${queueOpen ? 'lg:right-80' : ''}`}
 >
 	<div class="flex items-center justify-between border-b px-4 py-3">
 		<h2 class="font-heading text-sm font-semibold">Lyrics</h2>
