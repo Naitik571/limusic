@@ -10,6 +10,7 @@
 		MoreVerticalIcon,
 		Tick02Icon,
 		Cancel01Icon,
+		Radio02Icon,
 		DashboardSquare02Icon,
 		ListRestartIcon
 	} from '@hugeicons/core-free-icons';
@@ -27,6 +28,7 @@
 		playback,
 		openAddToPlaylist,
 		playFrom,
+		startRadio,
 		toast,
 		bumpLibraryTrackCount,
 		lastPlaylistAdd
@@ -475,6 +477,16 @@
 		>
 			<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle play
 		</button>
+		<!-- On Repeat is built from local play counts — there is no YouTube playlist to seed a
+		     radio from. -->
+		{#if !isOnRepeat}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={() => run(() => startRadio('playlist', id, pl?.title))}
+			>
+				<HugeiconsIcon icon={Radio02Icon} class="h-4 w-4" /> Start radio
+			</button>
+		{/if}
 		<button
 			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 			onclick={() => run(() => addPick(asItem()))}

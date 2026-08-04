@@ -157,7 +157,7 @@ async fn every_surface_yields_a_scrobbleable_artist() {
         note(&mut problems, "search", &t.title, &t.artists);
     }
     if let Some(first) = songs.items.first() {
-        for t in it.next(c, &first.video_id, None).await.expect("next").items.iter().take(5) {
+        for t in it.next(c, Some(&first.video_id), None).await.expect("next").items.iter().take(5) {
             checked += 1;
             note(&mut problems, "queue", &t.title, &t.artists);
         }
@@ -197,4 +197,43 @@ async fn rustypipe_url_is_fetchable() {
         bare.is_success() || browser.is_success(),
         "rustypipe URL not fetchable (Raw(-13) root cause)"
     );
+}
+
+/// Radio (context/08) is a prefix convention plus one `/next` call, and every part of that is an
+/// assumption about YouTube's wire behaviour rather than something a fixture can prove. This
+/// checks the three the feature stands on:
+///   1. `RDAMVM<videoId>` returns a real queue, not just the seed song.
+///   2. `/next` accepts a radio playlist with **no** videoId (how artist radio has to be asked for).
+///   3. An artist page still carries a start-radio button to get that playlist id from.
+#[tokio::test]
+async fn radio_seeds_resolve() {
+    let it = InnerTube::new(Session::default(), None).unwrap();
+    let vd = it.fetch_visitor_data().await.ok();
+    let it = InnerTube::new(Session { visitor_data: vd, ..Session::default() }, None).unwrap();
+    let client = Clients::bundled().get(innertube::METADATA_CLIENT).unwrap().clone();
+
+    // 1. Song radio.
+    let song = it
+        .next(&client, Some(VIDEO_ID), Some(&format!("RDAMVM{VIDEO_ID}")))
+        .await
+        .expect("song radio /next");
+    eprintln!("RDAMVM{VIDEO_ID}: {} tracks", song.items.len());
+    assert!(song.items.len() > 1, "song radio came back with only the seed");
+
+    // 2. + 3. Artist radio: the id off the page, then a videoId-less /next with it.
+    let artist_id = song.items[0].artist_id.clone().expect("radio rows link their artist");
+    let page = it.artist(&client, &artist_id).await.expect("artist page");
+    let radio = page.radio_playlist_id.expect("artist header has no start-radio button");
+    eprintln!("artist {:?} radio: {radio}", page.name);
+    let artist_radio = it.next(&client, None, Some(&radio)).await.expect("artist radio /next");
+    eprintln!("{radio}: {} tracks", artist_radio.items.len());
+    assert!(artist_radio.items.len() > 1, "playlist-only /next returned nothing");
+
+    // 4. Album radio: `RDAMPL` over the album's *audio* playlist, again with no videoId.
+    let album_id = song.items.iter().find_map(|i| i.album_id.clone()).expect("a radio row with an album");
+    let album = it.album(&client, &album_id).await.expect("album page");
+    let pl = album.playlist_id.expect("album has no audio playlist");
+    let album_radio = it.next(&client, None, Some(&format!("RDAMPL{pl}"))).await.expect("album radio /next");
+    eprintln!("RDAMPL{pl}: {} tracks", album_radio.items.len());
+    assert!(album_radio.items.len() > 1, "album radio came back empty");
 }

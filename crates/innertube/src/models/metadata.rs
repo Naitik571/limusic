@@ -78,6 +78,11 @@ pub struct NextResult {
     /// The lyrics tab's browseId (`MPLYt…`) — feed it to a lyrics `browse` (models::lyrics).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_browse_id: Option<String>,
+    /// The mix the panel says it continues into (`automixPreviewVideoRenderer`, context/08): a
+    /// radio playlist id to re-request `next` with. Present on a bare `next(videoId)`, which is
+    /// otherwise just the seed song — that's how a dead `RDAMVM` radio finds a live one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automix_playlist_id: Option<String>,
 }
 
 /// Logged-in account summary from `account/account_menu`. context/01, context/04A, context/15.
@@ -115,7 +120,15 @@ pub fn parse_next(root: &Value) -> NextResult {
     // The automix/radio continuation (context/08): the panel ends with a continuation token
     // used to fetch the endless mix. Take the first continuation token we find.
     let continuation = find_first_str(root, "continuation");
-    NextResult { items, continuation, lyrics_browse_id: lyrics_browse_id(root) }
+    let automix_playlist_id = find_all(root, "automixPreviewVideoRenderer")
+        .into_iter()
+        .find_map(|n| find_first_str(n, "playlistId"));
+    NextResult {
+        items,
+        continuation,
+        lyrics_browse_id: lyrics_browse_id(root),
+        automix_playlist_id,
+    }
 }
 
 /// The lyrics tab's browseId from a `next` response: the browseEndpoint whose pageType is
@@ -514,6 +527,42 @@ pub(crate) fn find_first_str(root: &Value, key: &str) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // A dead `RDAMVM` radio answers with the seed song plus this marker, which names the mix the
+    // song really belongs to. It's the escalation the "start radio did nothing" case runs on.
+    #[test]
+    fn parses_the_automix_the_panel_continues_into() {
+        let root = json!({
+            "contents": { "playlistPanelRenderer": { "contents": [
+                { "playlistPanelVideoRenderer": {
+                    "videoId": "seed1",
+                    "title": { "runs": [{ "text": "Only Song" }] },
+                    "longBylineText": { "runs": [{ "text": "An Artist" }] },
+                    "lengthText": { "runs": [{ "text": "3:00" }] },
+                    "thumbnail": { "thumbnails": [{ "url": "https://t/1" }] }
+                } },
+                { "automixPreviewVideoRenderer": { "content": { "automixPlaylistVideoRenderer": {
+                    "navigationEndpoint": { "watchPlaylistEndpoint": { "playlistId": "RDAMVMseed1" } }
+                } } } }
+            ] } }
+        });
+        let out = parse_next(&root);
+        assert_eq!(out.items.len(), 1);
+        assert_eq!(out.automix_playlist_id.as_deref(), Some("RDAMVMseed1"));
+    }
+
+    // A real radio page has no automix marker — nothing to escalate to, and nothing to mistake a
+    // regular playlist id for.
+    #[test]
+    fn no_automix_on_a_live_radio_page() {
+        let root = json!({
+            "contents": { "playlistPanelRenderer": {
+                "playlistId": "RDAMVMseed1",
+                "contents": []
+            } }
+        });
+        assert_eq!(parse_next(&root).automix_playlist_id, None);
+    }
 
     #[test]
     fn parses_search_item() {

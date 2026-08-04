@@ -276,6 +276,24 @@ export function playFrom(
 	return api.playPlaylist(items, start, sourceId, source.title, shuffle, continuation);
 }
 
+/**
+ * Start a radio from any surface (song menus, card menus, page headers). One implementation so the
+ * feedback is the same everywhere: radio is a network round trip before anything audibly happens,
+ * so it says so up front rather than looking like the click was swallowed.
+ */
+export async function startRadio(
+	kind: 'song' | 'artist' | 'album' | 'playlist',
+	id: string,
+	name?: string
+) {
+	toast('Starting radio…');
+	try {
+		await api.startRadio(kind, id, name);
+	} catch (e) {
+		toast.error(String(e));
+	}
+}
+
 // Transient UI state for write actions.
 export const ui = $state({
 	addSongs: null as SongItem[] | null, // add-to-playlist picker target(s), full items for optimistic appends

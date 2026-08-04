@@ -6,11 +6,13 @@
 		MoreHorizontalIcon,
 		PinIcon,
 		PinOffIcon,
+		Radio02Icon,
 		DashboardSquare02Icon
 	} from '@hugeicons/core-free-icons';
+	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
 	import { anchorMenu } from '$lib/menu';
-	import { addPick, personal, togglePin } from '$lib/player.svelte';
+	import { addPick, personal, startRadio, togglePin } from '$lib/player.svelte';
 
 	let {
 		item,
@@ -19,6 +21,8 @@
 	}: { item: BrowseItem; showPin?: boolean; triggerClass?: string } = $props();
 
 	const pinned = $derived(personal.pins.includes(item.id));
+	// Radio needs a YouTube item behind it: local folders and the locally-built On Repeat have none.
+	const hasRadio = $derived(!api.isLocalId(item.id) && item.id !== api.ON_REPEAT_ID);
 
 	let menuOpen = $state(false);
 	let mx = $state(0);
@@ -27,7 +31,7 @@
 
 	function openMenu(e: MouseEvent) {
 		e.stopPropagation();
-		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement, 100));
+		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement, 130));
 		menuOpen = true;
 	}
 	// stopPropagation everywhere: the trigger can sit over a clickable host (a card's whole surface
@@ -68,6 +72,14 @@
 			>
 				<HugeiconsIcon icon={pinned ? PinOffIcon : PinIcon} class="h-4 w-4" />
 				{pinned ? 'Unpin' : 'Pin to top'}
+			</button>
+		{/if}
+		{#if hasRadio}
+			<button
+				class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => run(e, () => startRadio(item.kind as 'artist' | 'album' | 'playlist', item.id, item.title))}
+			>
+				<HugeiconsIcon icon={Radio02Icon} class="h-4 w-4" /> Start radio
 			</button>
 		{/if}
 		<button

@@ -279,6 +279,7 @@ pub fn run() {
             commands::get_artist,
             commands::get_browse_grid,
             commands::play_playlist,
+            commands::start_radio,
             commands::like,
             commands::set_album_saved,
             commands::add_to_playlist,

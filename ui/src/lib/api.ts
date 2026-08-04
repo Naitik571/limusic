@@ -251,6 +251,16 @@ export const playPlaylist = (
 	shuffle?: boolean,
 	continuation?: string
 ) => invoke<void>('play_playlist', { items, start, sourceId, sourceName, shuffle, continuation });
+/**
+ * Start a radio: an endless YouTube-generated queue seeded on this item. `id` is the videoId
+ * (song) or browseId/playlistId (everything else) — Rust resolves it to a radio playlist, so the
+ * UI never builds one. `name` titles the queue ("<name> Radio").
+ *
+ * A song radio on the track that's already playing splices in behind it (no re-buffer); every
+ * other case replaces the queue. Rejects when YouTube has no radio for the item.
+ */
+export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: string, name?: string) =>
+	invoke<void>('start_radio', { kind, id, name });
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>

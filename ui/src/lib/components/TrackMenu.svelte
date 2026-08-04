@@ -10,6 +10,7 @@
 		PlayListAddIcon,
 		PlayListRemoveIcon,
 		AddToListIcon,
+		Radio02Icon,
 		FavouriteIcon,
 		UserListIcon,
 		Vynil02Icon,
@@ -19,7 +20,7 @@
 	import type { SongItem } from '$lib/api';
 	import { lt } from '$lib/lt.svelte';
 	import { anchorMenu } from '$lib/menu';
-	import { addPick, isLiked, toast, toggleLike } from '$lib/player.svelte';
+	import { addPick, isLiked, startRadio, toast, toggleLike } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -103,6 +104,16 @@
 				onclick={(e) => run(e, addToQueue)}
 			>
 				<HugeiconsIcon icon={AddToListIcon} class="h-4 w-4" /> Add to queue
+			</button>
+		{/if}
+		<!-- Radio is the one action worth having in the player bar too (`linksOnly`): it's how you
+		     say "keep going with more like this" about the song that's playing. -->
+		{#if !isLocal}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => run(e, () => startRadio('song', song.video_id, song.title))}
+			>
+				<HugeiconsIcon icon={Radio02Icon} class="h-4 w-4" /> Start radio
 			</button>
 		{/if}
 		{#if !isLocal && !linksOnly}

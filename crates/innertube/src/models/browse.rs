@@ -106,6 +106,10 @@ pub struct ArtistPage {
     /// Subscribe target — the channelId (falls back to the browseId, which is the same `UC…`).
     pub channel_id: String,
     pub subscribed: bool,
+    /// This artist's radio (`RDEM…` / `RDAO…`), from the header's "start radio" button. Server-
+    /// supplied: unlike a song or a playlist, an artist radio id can't be built client-side.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radio_playlist_id: Option<String>,
     /// Top songs shelf (usually 5).
     pub top_songs: Vec<SongItem>,
     /// Card carousels (Albums / Singles / Videos / …), each with an optional "More" browse target.
@@ -541,7 +545,31 @@ pub fn parse_artist(root: &Value, browse_id: &str) -> ArtistPage {
         }
     }
 
-    ArtistPage { name, thumbnail, description, subscribers, channel_id, subscribed, top_songs, sections }
+    let radio_playlist_id = header.and_then(radio_playlist_id);
+
+    ArtistPage {
+        name,
+        thumbnail,
+        description,
+        subscribers,
+        channel_id,
+        subscribed,
+        radio_playlist_id,
+        top_songs,
+        sections,
+    }
+}
+
+/// The radio playlist behind a header or menu: the first watch endpoint pointing at an `RD…`
+/// playlist. Metrolist reads two different spots for this (the immersive header's
+/// `startRadioButton`, or a menu item whose icon is `MIX`); both are just a `watchEndpoint`
+/// carrying a playlist id no other endpoint uses, so one prefix check covers them.
+pub(crate) fn radio_playlist_id(node: &Value) -> Option<String> {
+    find_all(node, "playlistId")
+        .into_iter()
+        .filter_map(Value::as_str)
+        .find(|id| id.starts_with("RD"))
+        .map(str::to_owned)
 }
 
 fn parse_artist_carousel(node: &Value) -> Option<ArtistCarousel> {
@@ -712,6 +740,29 @@ fn continuation_token(root: &Value) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // An artist radio id can't be built client-side (no `RD…` prefix trick) — it only exists in
+    // the header's start-radio button, next to a pile of other playlist ids that aren't radios.
+    #[test]
+    fn parses_the_artist_radio_off_the_header() {
+        let root = json!({
+            "header": { "musicImmersiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "An Artist" }] },
+                "playButton": { "buttonRenderer": {
+                    "navigationEndpoint": { "watchEndpoint": { "playlistId": "OLAK5uy_notaradio" } }
+                } },
+                "startRadioButton": { "buttonRenderer": {
+                    "navigationEndpoint": { "watchEndpoint": { "playlistId": "RDEMabc123" } }
+                } }
+            } }
+        });
+        assert_eq!(parse_artist(&root, "UCx").radio_playlist_id.as_deref(), Some("RDEMabc123"));
+        // No radio button (some channels have none) → the caller falls back to a top-song radio.
+        let bare = json!({ "header": { "musicImmersiveHeaderRenderer": {
+            "title": { "runs": [{ "text": "An Artist" }] }
+        } } });
+        assert_eq!(parse_artist(&bare, "UCx").radio_playlist_id, None);
+    }
 
     #[test]
     fn parses_home_carousel() {

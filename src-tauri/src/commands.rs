@@ -410,6 +410,23 @@ pub async fn play_playlist(
     Ok(())
 }
 
+/// Start a radio seeded on a song, artist, album or playlist (context/08). `kind` is
+/// `song` | `artist` | `album` | `playlist`; `id` is the videoId (song) or browseId/playlistId
+/// (everything else) — the backend resolves it to a radio playlist. `name` titles the queue.
+///
+/// Starting a song radio on the track that's already playing keeps it playing and replaces only
+/// what comes after it; every other case replaces the queue.
+#[tauri::command]
+pub async fn start_radio(
+    state: St<'_>,
+    kind: String,
+    id: String,
+    name: Option<String>,
+) -> Result<(), String> {
+    let state = state.inner().clone();
+    state.start_radio(&kind, &id, name).await
+}
+
 // --- write actions (context/01 ✎, context/15) ----------------------------------------------
 
 fn require_login(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, String> {

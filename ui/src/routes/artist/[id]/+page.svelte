@@ -4,6 +4,7 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		ShuffleIcon,
+		Radio02Icon,
 		Add01Icon,
 		Tick02Icon,
 		MoreVerticalIcon,
@@ -17,7 +18,14 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as api from '$lib/api';
 	import type { ArtistPage, BrowseItem } from '$lib/api';
-	import { addPick, playback, openAddToPlaylist, playFrom, toast } from '$lib/player.svelte';
+	import {
+		addPick,
+		playback,
+		openAddToPlaylist,
+		playFrom,
+		startRadio,
+		toast
+	} from '$lib/player.svelte';
 	import { getCached, putCached } from '$lib/pagecache';
 
 	let artist = $state<ArtistPage | null>(null);
@@ -175,6 +183,14 @@
 					disabled={!artist.topSongs.length}
 				>
 					<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle
+				</button>
+				<!-- The deep counterpart to Shuffle above: that one only reaches the ~5 top songs on
+				     this page, this one asks YouTube for the artist's own endless mix. -->
+				<button
+					class="flex cursor-pointer items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition hover:bg-accent/10"
+					onclick={() => startRadio('artist', id, artist?.name)}
+				>
+					<HugeiconsIcon icon={Radio02Icon} class="h-4 w-4" /> Radio
 				</button>
 				<button
 					class="flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition hover:bg-accent/10 disabled:opacity-60 {subscribed

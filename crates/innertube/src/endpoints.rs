@@ -119,24 +119,28 @@ impl InnerTube {
     }
 
     /// Up-next queue / radio for a video. context/08. Uses the metadata client.
+    ///
+    /// `video_id` is optional: an artist/mood radio is a playlist id with no seed track
+    /// (`playlistId` alone), which is how YouTube itself opens one.
     pub async fn next(
         &self,
         metadata_client: &YouTubeClient,
-        video_id: &str,
+        video_id: Option<&str>,
         playlist_id: Option<&str>,
     ) -> Result<NextResult, Error> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct NextBody {
             context: Context,
-            video_id: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            video_id: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
             playlist_id: Option<String>,
             is_audio_only: bool,
         }
         let body = NextBody {
             context: self.context_for(metadata_client),
-            video_id: video_id.to_owned(),
+            video_id: video_id.map(str::to_owned),
             playlist_id: playlist_id.map(str::to_owned),
             is_audio_only: true,
         };

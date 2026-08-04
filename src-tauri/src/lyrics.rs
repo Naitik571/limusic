@@ -85,7 +85,7 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     } else {
         match state
             .it
-            .next(state.clients.get(innertube::METADATA_CLIENT).unwrap(), &req.video_id, None)
+            .next(state.clients.get(innertube::METADATA_CLIENT).unwrap(), Some(&req.video_id), None)
             .await
         {
             Ok(n) => Some(n),
