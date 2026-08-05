@@ -241,8 +241,9 @@
 				{/each}
 			</nav>
 
-			<!-- Content pane -->
-			<div class="flex-1 overflow-y-auto px-6 py-4">
+			<!-- Content pane. min-w-0: a flex child's min-width is auto, so without it one wide row
+			     (a long font name, a long path) widens the pane and pushes every tab off the modal. -->
+			<div class="min-w-0 flex-1 overflow-y-auto px-6 py-4">
 				{#if !loaded}
 					<p class="text-sm text-muted-foreground">Loading…</p>
 				{:else if tab === 'general'}
@@ -409,14 +410,19 @@
 									onValueChange={(v) => chooseFont(row.key, v)}
 								>
 									<Select.Trigger class="w-44 shrink-0" aria-label={row.label}>
-										<span class="flex-1 truncate text-left" style="font-family:{effective[row.key]}">
+										<span
+											class="min-w-0 flex-1 truncate text-left"
+											style="font-family:{effective[row.key]}"
+										>
 											{isCustomFont[row.key] ? 'Custom' : familyName(effective[row.key])}
 										</span>
 									</Select.Trigger>
-									<Select.Content>
+									<!-- max-w: a loaded font's name is whatever the file was called, and the
+									     dropdown grows to its widest item. -->
+									<Select.Content class="max-w-64">
 										{#each FONTS as f (f.value)}
 											<Select.Item value={f.value} label={f.label}>
-												<span style="font-family:{f.value}">{f.label}</span>
+												<span class="block truncate" style="font-family:{f.value}">{f.label}</span>
 											</Select.Item>
 										{/each}
 										{#if custom.fontFiles.length}
@@ -424,7 +430,9 @@
 												<Select.GroupHeading>Your fonts</Select.GroupHeading>
 												{#each fileFonts() as f (f.value)}
 													<Select.Item value={f.value} label={f.label}>
-														<span style="font-family:{f.value}">{f.label}</span>
+														<span class="block truncate" style="font-family:{f.value}">
+															{f.label}
+														</span>
 													</Select.Item>
 												{/each}
 											</Select.Group>
@@ -470,10 +478,15 @@
 							<div class="mt-3 flex flex-col gap-1.5">
 								{#each custom.fontFiles as path (path)}
 									<div class="flex items-center gap-3 rounded-md bg-secondary/50 py-1.5 pr-1.5 pl-3">
-										<span class="flex-1 truncate" style="font-family:'{fileFamily(path)}'">
+										<!-- The name is the identity; the path only earns a tooltip. A font called
+										     BigBlueTerm437NerdFontMono-Regular is wider than the modal. -->
+										<span
+											class="min-w-0 flex-1 truncate"
+											style="font-family:'{fileFamily(path)}'"
+											title={path}
+										>
 											{fileFamily(path)}
 										</span>
-										<span class="shrink-0 truncate text-xs text-muted-foreground">{path}</span>
 										<button
 											type="button"
 											onclick={() => removeFontFile(path)}
