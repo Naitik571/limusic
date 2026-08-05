@@ -42,6 +42,7 @@ YouTube Music client, and grew from there.
 - **System tray** — close the window, keep the music; play/pause and skip from the tray, optional start-on-login
 - **Listen Together** — synced listening rooms over a small self-hosted relay
 - **Self-updating builds** (AppImage on Linux, setup.exe on Windows)
+- **Customization via Themes and Fonts** — Customize your music player to your hearts content
 
 ---
 
