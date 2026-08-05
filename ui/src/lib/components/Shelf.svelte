@@ -35,6 +35,11 @@
 		canRight = row.scrollLeft + row.clientWidth < row.scrollWidth - 4;
 	}
 
+	const measureOnEnter = (el: HTMLElement) => {
+		el.addEventListener('pointerenter', update);
+		return () => el.removeEventListener('pointerenter', update);
+	};
+
 	function page(dir: 1 | -1) {
 		row?.scrollBy({ left: dir * Math.round(row.clientWidth * 0.9), behavior: 'smooth' });
 	}
@@ -47,7 +52,12 @@
 
 <svelte:window onresize={update} />
 
-<section>
+<!-- content-visibility: a home feed grows to hundreds of cards and WebKit keeps every one of them in
+     style, layout and paint. Because it rasterizes in tiles, one card's hover repaint re-rasterizes
+     the images around it, so hovering gets slower the further you scroll. Skipping off-screen
+     shelves caps that at a screenful. `auto 17.5rem` is a shelf's height (heading + w-40 row); the
+     `auto` keyword swaps in the real size once measured, so the scrollbar stays put. -->
+<section class="[content-visibility:auto] [contain-intrinsic-size:auto_17.5rem]">
 	{#if title || onMore}
 		<div class="mb-3 flex items-baseline justify-between gap-3">
 			<!-- The title is the same navigation as "See all": a shelf header is a big, obvious click
@@ -75,7 +85,11 @@
 			{/if}
 		</div>
 	{/if}
-	<div class="group/shelf relative">
+	<!-- Measure on pointer enter, because a shelf skipped by content-visibility has no layout at
+	     mount: scrollWidth reads 0 and the arrows never appear. They only show on hover, so measuring
+	     as the pointer arrives is both correct and later than the mount-time forced layout.
+	     An attachment rather than onpointerenter: the handler doesn't make this div interactive. -->
+	<div class="group/shelf relative" {@attach measureOnEnter}>
 		<div
 			class="flex snap-x overflow-x-auto pb-2 {community ? 'gap-3' : 'gap-2'}"
 			bind:this={row}
