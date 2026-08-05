@@ -2,18 +2,35 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
+	import { Slider } from '$lib/components/ui/slider';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
 	import { ui, toast } from '$lib/player.svelte';
-	import { THEMES, theme, applyTheme, type ThemeId } from '$lib/theme.svelte';
+	import ColorPicker from '$lib/components/ColorPicker.svelte';
+	import {
+		THEMES,
+		FONTS,
+		theme,
+		effective,
+		applyTheme,
+		setCustom,
+		resetCustom,
+		isDefaultCustom,
+		readBack,
+		familyName,
+		fontAvailable,
+		type Custom,
+		type ThemeId
+	} from '$lib/theme.svelte';
 	import { updateState, checkForUpdatesInteractive, installUpdate } from '$lib/updater.svelte';
 	import { getVersion } from '@tauri-apps/api/app';
 
-	type TabId = 'general' | 'playback' | 'data' | 'about';
+	type TabId = 'general' | 'themes' | 'playback' | 'data' | 'about';
 	const TABS: { id: TabId; label: string }[] = [
 		{ id: 'general', label: 'General' },
+		{ id: 'themes', label: 'Themes' },
 		{ id: 'playback', label: 'Playback' },
 		{ id: 'data', label: 'Data & storage' },
 		{ id: 'about', label: 'About' }
@@ -22,6 +39,34 @@
 	const ACCENT_THEMES = THEMES.filter((t) => t.kind === 'accent');
 	const PALETTE_THEMES = THEMES.filter((t) => t.kind === 'palette');
 	const currentTheme = $derived(THEMES.find((t) => t.id === theme.id) ?? THEMES[0]);
+
+	// --- Themes tab ---
+	type FontKey = 'fontSans' | 'fontHeading';
+	const FONT_ROWS: { key: FontKey; label: string; hint: string }[] = [
+		{ key: 'fontSans', label: 'Interface font', hint: 'Everything except headings.' },
+		{ key: 'fontHeading', label: 'Heading font', hint: 'Page and section titles.' }
+	];
+	let pickerOpen = $state(false);
+	// Whether each font row is on "Custom", and the family name typed into it. Kept locally because
+	// the select can sit on Custom before anything has been typed.
+	let isCustomFont = $state<Record<FontKey, boolean>>({ fontSans: false, fontHeading: false });
+	let fontName = $state<Record<FontKey, string>>({ fontSans: '', fontHeading: '' });
+
+	/** Which entry in the font dropdown a resolved stack corresponds to. */
+	const matchFont = (stack: string) =>
+		FONTS.find((f) => familyName(f.value) === familyName(stack))?.value ?? 'custom';
+
+	function chooseFont(key: FontKey, value: string) {
+		isCustomFont[key] = value === 'custom';
+		if (value === 'custom') fontName[key] = familyName(effective[key]);
+		else setCustom({ [key]: value } as Partial<Custom>);
+	}
+
+	function typeFont(key: FontKey, name: string) {
+		fontName[key] = name;
+		// Blank clears the override, so the preset's font comes back.
+		setCustom({ [key]: name.trim() ? `'${name.trim()}', sans-serif` : null } as Partial<Custom>);
+	}
 
 	let tab = $state<TabId>('general');
 	let settings = $state<Record<string, string>>({});
@@ -40,6 +85,12 @@
 		if (ui.settingsOpen) {
 			load();
 			updateResult = null;
+			pickerOpen = false;
+			readBack();
+			for (const key of ['fontSans', 'fontHeading'] as FontKey[]) {
+				isCustomFont[key] = matchFont(effective[key]) === 'custom';
+				fontName[key] = isCustomFont[key] ? familyName(effective[key]) : '';
+			}
 		}
 	});
 
@@ -171,44 +222,6 @@
 				{#if !loaded}
 					<p class="text-sm text-muted-foreground">Loading…</p>
 				{:else if tab === 'general'}
-					<div class="flex items-center justify-between gap-8 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Theme</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Accent colors tint the default look; presets swap the whole palette.
-							</p>
-						</div>
-						<Select.Root
-							type="single"
-							value={theme.id}
-							onValueChange={(v) => applyTheme(v as ThemeId)}
-						>
-							<Select.Trigger class="w-44 shrink-0" aria-label="Theme">
-								<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{currentTheme.color}"></span>
-								<span class="flex-1 text-left">{currentTheme.label}</span>
-							</Select.Trigger>
-							<Select.Content>
-								<Select.Group>
-									<Select.GroupHeading>Accent colors</Select.GroupHeading>
-									{#each ACCENT_THEMES as t (t.id)}
-										<Select.Item value={t.id} label={t.label}>
-											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
-											{t.label}
-										</Select.Item>
-									{/each}
-								</Select.Group>
-								<Select.Group>
-									<Select.GroupHeading>Palettes</Select.GroupHeading>
-									{#each PALETTE_THEMES as t (t.id)}
-										<Select.Item value={t.id} label={t.label}>
-											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
-											{t.label}
-										</Select.Item>
-									{/each}
-								</Select.Group>
-							</Select.Content>
-						</Select.Root>
-					</div>
 					<div class="flex items-start justify-between gap-4 border-b py-3">
 						<div class="min-w-0">
 							<div class="font-medium">Watch history</div>
@@ -246,6 +259,185 @@
 							</p>
 						</div>
 						<Switch checked={autostartOn} onCheckedChange={setAutostart} />
+					</div>
+				{:else if tab === 'themes'}
+					<div class="flex items-center justify-between gap-8 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Preset</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Accent colors tint the default look; palettes swap every color.
+							</p>
+						</div>
+						<Select.Root
+							type="single"
+							value={theme.id}
+							onValueChange={(v) => applyTheme(v as ThemeId)}
+						>
+							<Select.Trigger class="w-44 shrink-0" aria-label="Theme">
+								<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{currentTheme.color}"></span>
+								<span class="flex-1 text-left">{currentTheme.label}</span>
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Group>
+									<Select.GroupHeading>Accent colors</Select.GroupHeading>
+									{#each ACCENT_THEMES as t (t.id)}
+										<Select.Item value={t.id} label={t.label}>
+											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
+											{t.label}
+										</Select.Item>
+									{/each}
+								</Select.Group>
+								<Select.Group>
+									<Select.GroupHeading>Palettes</Select.GroupHeading>
+									{#each PALETTE_THEMES as t (t.id)}
+										<Select.Item value={t.id} label={t.label}>
+											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
+											{t.label}
+										</Select.Item>
+									{/each}
+								</Select.Group>
+							</Select.Content>
+						</Select.Root>
+					</div>
+
+					<div class="border-b py-3">
+						<div class="flex items-center justify-between gap-8">
+							<div class="min-w-0">
+								<div class="font-medium">Accent color</div>
+								<p class="mt-0.5 text-sm text-muted-foreground">
+									Buttons, highlights and the progress bar. Applies over any preset.
+								</p>
+							</div>
+							<button
+								type="button"
+								onclick={() => (pickerOpen = !pickerOpen)}
+								aria-label="Choose accent color"
+								aria-expanded={pickerOpen}
+								class="size-8 shrink-0 rounded-md ring-1 ring-black/10 transition-transform hover:scale-105"
+								style="background:{effective.accent}"
+							></button>
+						</div>
+						{#if pickerOpen}
+							<div class="mt-3">
+								<ColorPicker
+									value={effective.accent}
+									onchange={(hex) => setCustom({ accent: hex })}
+								/>
+							</div>
+						{/if}
+					</div>
+
+					<div class="flex items-center justify-between gap-8 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Background tint</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								{#if currentTheme.kind === 'palette'}
+									Only shades the default palette — {currentTheme.label} brings its own colors.
+								{:else}
+									Shades the greys: surfaces, borders and secondary text.
+								{/if}
+							</p>
+						</div>
+						<Slider
+							type="single"
+							aria-label="Background tint"
+							max={360}
+							step={1}
+							disabled={currentTheme.kind === 'palette'}
+							value={effective.hue}
+							onValueChange={(hue) => setCustom({ hue })}
+							class="w-44 shrink-0 [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(to_right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)]"
+						/>
+					</div>
+
+					<div class="flex items-center justify-between gap-8 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Roundness</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Corner radius of cards, buttons and artwork.
+							</p>
+						</div>
+						<div class="flex w-44 shrink-0 items-center gap-3">
+							<Slider
+								type="single"
+								aria-label="Roundness"
+								max={1.5}
+								step={0.05}
+								value={effective.radius}
+								onValueChange={(radius) => setCustom({ radius })}
+							/>
+							<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+								{effective.radius.toFixed(2)}
+							</span>
+						</div>
+					</div>
+
+					{#each FONT_ROWS as row (row.key)}
+						<div class="border-b py-3">
+							<div class="flex items-center justify-between gap-8">
+								<div class="min-w-0">
+									<div class="font-medium">{row.label}</div>
+									<p class="mt-0.5 text-sm text-muted-foreground">{row.hint}</p>
+								</div>
+								<Select.Root
+									type="single"
+									value={isCustomFont[row.key] ? 'custom' : matchFont(effective[row.key])}
+									onValueChange={(v) => chooseFont(row.key, v)}
+								>
+									<Select.Trigger class="w-44 shrink-0" aria-label={row.label}>
+										<span class="flex-1 truncate text-left" style="font-family:{effective[row.key]}">
+											{isCustomFont[row.key] ? 'Custom' : familyName(effective[row.key])}
+										</span>
+									</Select.Trigger>
+									<Select.Content>
+										{#each FONTS as f (f.value)}
+											<Select.Item value={f.value} label={f.label}>
+												<span style="font-family:{f.value}">{f.label}</span>
+											</Select.Item>
+										{/each}
+										<Select.Item value="custom" label="Custom">Custom…</Select.Item>
+									</Select.Content>
+								</Select.Root>
+							</div>
+							{#if isCustomFont[row.key]}
+								<div class="mt-3">
+									<Input
+										value={fontName[row.key]}
+										oninput={(e) => typeFont(row.key, e.currentTarget.value)}
+										placeholder="Font installed on this computer, e.g. Inter"
+										aria-label="{row.label} family name"
+										spellcheck={false}
+										style="font-family:{effective[row.key]}"
+									/>
+									{#if fontName[row.key].trim() && !fontAvailable(fontName[row.key])}
+										<p class="mt-1.5 text-sm text-muted-foreground">
+											Not installed — install the font, then reopen settings.
+										</p>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/each}
+
+					<div class="flex items-center justify-between gap-4 py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Reset customization</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Drop the color, roundness and font overrides. Keeps the preset.
+							</p>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={isDefaultCustom()}
+							onclick={() => {
+								resetCustom();
+								isCustomFont = { fontSans: false, fontHeading: false };
+								fontName = { fontSans: '', fontHeading: '' };
+							}}
+						>
+							Reset
+						</Button>
 					</div>
 				{:else if tab === 'playback'}
 					<div class="border-b py-3">
