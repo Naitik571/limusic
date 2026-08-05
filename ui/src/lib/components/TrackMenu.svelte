@@ -1,7 +1,8 @@
 <script lang="ts">
 	// The ⋯ options menu shared by TrackRow (inline trigger) and MediaCard (overlay trigger).
 	// "Add to queue" + like are universal; go-to-artist/album/playlist show when the song carries
-	// them. The popup is `fixed`, anchored at the trigger, so it isn't clipped by a scroll container.
+	// them. The popup is `fixed`, anchored at the trigger and moved to <body> (`toBody`), so no
+	// scroll container clips it and no contained ancestor becomes its containing block.
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -19,7 +20,7 @@
 	import * as api from '$lib/api';
 	import type { SongItem } from '$lib/api';
 	import { lt } from '$lib/lt.svelte';
-	import { anchorMenu } from '$lib/menu';
+	import { anchorMenu, toBody } from '$lib/menu';
 	import { addPick, isLiked, startRadio, toast, toggleLike } from '$lib/player.svelte';
 
 	let {
@@ -53,9 +54,10 @@
 		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement));
 		menuOpen = true;
 	}
-	// stopPropagation everywhere: the menu can live inside a clickable row (TrackRow's whole row is
-	// a play target) — the popup is `fixed` visually but still a DOM child, so any click that
-	// bubbles out would ALSO trigger the row's onplay (e.g. replacing the queue with the playlist).
+	// stopPropagation everywhere: the trigger sits inside a clickable row (TrackRow's whole row is a
+	// play target), so its click must not reach the row's onplay (e.g. replacing the queue with the
+	// playlist). The popup itself now lives at <body> and no longer bubbles into the row, but these
+	// stay: they cost nothing and the trigger still needs them.
 	function run(e: MouseEvent, action?: () => void) {
 		e.stopPropagation();
 		menuOpen = false;
@@ -90,13 +92,18 @@
 </button>
 
 {#if menuOpen}
-	<button class="fixed inset-0 z-40 cursor-default" onclick={close} aria-label="Close menu"
+	<button
+		class="fixed inset-0 z-40 cursor-default"
+		onclick={close}
+		aria-label="Close menu"
+		{@attach toBody}
 	></button>
 	<div
 		class="fixed z-50 min-w-44 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {openUp
 			? 'origin-bottom-right'
 			: 'origin-top-right'}"
 		style="right:{mx}px; {openUp ? 'bottom' : 'top'}:{my}px;"
+		{@attach toBody}
 	>
 		{#if !linksOnly}
 			<button

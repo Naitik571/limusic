@@ -1,6 +1,6 @@
 <script lang="ts">
-	// The ⋯ menu on a sidebar library row. Positioned `fixed` like TrackMenu — the playlist list is a
-	// scroll container, so an absolute popup would be clipped by it.
+	// The ⋯ menu on a sidebar library row. Positioned `fixed` and moved to <body> like TrackMenu:
+	// the playlist list is a scroll container, so an absolute popup would be clipped by it.
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		MoreHorizontalIcon,
@@ -12,7 +12,7 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
-	import { anchorMenu } from '$lib/menu';
+	import { anchorMenu, toBody } from '$lib/menu';
 	import { addPick, personal, startRadio, togglePin } from '$lib/player.svelte';
 
 	let {
@@ -45,9 +45,9 @@
 		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement, 130));
 		menuOpen = true;
 	}
-	// stopPropagation everywhere: the trigger can sit over a clickable host (a card's whole surface
-	// is a play/navigate target) — the popup is `fixed` visually but still a DOM child, so any click
-	// that bubbles out would ALSO trigger the host's handler.
+	// stopPropagation everywhere: the trigger sits over a clickable host (a card's whole surface is a
+	// play/navigate target), so its click must not reach the host's handler. The popup itself now
+	// lives at <body> and no longer bubbles into the host, but these stay: the trigger needs them.
 	function run(e: MouseEvent, action?: () => void) {
 		e.stopPropagation();
 		menuOpen = false;
@@ -74,13 +74,18 @@
 </button>
 
 {#if menuOpen}
-	<button class="fixed inset-0 z-40 cursor-default" onclick={close} aria-label="Close menu"
+	<button
+		class="fixed inset-0 z-40 cursor-default"
+		onclick={close}
+		aria-label="Close menu"
+		{@attach toBody}
 	></button>
 	<div
 		class="fixed z-50 min-w-48 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {openUp
 			? 'origin-bottom-right'
 			: 'origin-top-right'}"
 		style="right:{mx}px; {openUp ? 'bottom' : 'top'}:{my}px;"
+		{@attach toBody}
 	>
 		{#if showPin}
 			<button
