@@ -8,10 +8,13 @@
 		PinIcon,
 		PinOffIcon,
 		Radio02Icon,
+		ArrowUpNarrowWideIcon,
+		ArrowDownWideNarrowIcon,
 		DashboardSquare02Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
+	import { enqueueItem } from '$lib/browse';
 	import { anchorMenu, toBody } from '$lib/menu';
 	import { addPick, personal, startRadio, togglePin } from '$lib/player.svelte';
 
@@ -34,6 +37,23 @@
 	const pinned = $derived(personal.pins.includes(item.id));
 	// Radio needs a YouTube item behind it: local folders and the locally-built On Repeat have none.
 	const hasRadio = $derived(!api.isLocalId(item.id) && item.id !== api.ON_REPEAT_ID);
+	// An artist isn't a track list — there's nothing unambiguous to queue. Songs, albums and
+	// playlists (local ones included) all are.
+	const canQueue = $derived(item.kind === 'song' || item.kind === 'album' || item.kind === 'playlist');
+
+	// The tracks have to be fetched before anything can be queued, so the menu stays open and the
+	// row shows it's working. Guards a second click from queueing the album twice.
+	let queueing = $state(false);
+	async function queue(next: boolean) {
+		if (queueing) return;
+		queueing = true;
+		try {
+			await enqueueItem(item, next);
+			menuOpen = false;
+		} finally {
+			queueing = false;
+		}
+	}
 
 	let menuOpen = $state(false);
 	let mx = $state(0);
@@ -94,6 +114,28 @@
 			>
 				<HugeiconsIcon icon={pinned ? PinOffIcon : PinIcon} class="h-4 w-4" />
 				{pinned ? 'Unpin' : 'Pin to top'}
+			</button>
+		{/if}
+		{#if canQueue}
+			<button
+				class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10 disabled:opacity-50"
+				disabled={queueing}
+				onclick={(e) => {
+					e.stopPropagation();
+					queue(true);
+				}}
+			>
+				<HugeiconsIcon icon={ArrowUpNarrowWideIcon} class="h-4 w-4" /> Play next
+			</button>
+			<button
+				class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10 disabled:opacity-50"
+				disabled={queueing}
+				onclick={(e) => {
+					e.stopPropagation();
+					queue(false);
+				}}
+			>
+				<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
 			</button>
 		{/if}
 		{#if hasRadio}

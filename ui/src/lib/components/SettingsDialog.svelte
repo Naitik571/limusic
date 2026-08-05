@@ -144,6 +144,8 @@
 	const quality = $derived(settings.quality ?? 'HIGH');
 	const historyOn = $derived(settings.enable_history !== 'false');
 	const autoplayOn = $derived(settings.autoplay !== 'false');
+	const hideVideosOn = $derived(settings.hide_videos === 'true');
+	const preventDuplicatesOn = $derived(settings.prevent_duplicates === 'true');
 	const discordOn = $derived(settings.discord_rpc === 'true');
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
@@ -178,6 +180,16 @@
 	async function setAutoplay(on: boolean) {
 		settings.autoplay = on ? 'true' : 'false';
 		await api.setSetting('autoplay', settings.autoplay);
+	}
+
+	async function setHideVideos(on: boolean) {
+		settings.hide_videos = on ? 'true' : 'false';
+		await api.setSetting('hide_videos', settings.hide_videos);
+	}
+
+	async function setPreventDuplicates(on: boolean) {
+		settings.prevent_duplicates = on ? 'true' : 'false';
+		await api.setSetting('prevent_duplicates', settings.prevent_duplicates);
 	}
 
 	async function setDiscord(on: boolean) {
@@ -554,6 +566,26 @@
 							</p>
 						</div>
 						<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />
+					</div>
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Prevent duplicate tracks in queue</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Adding a track that's already in the queue moves it from its old position instead of
+								adding a second copy.
+							</p>
+						</div>
+						<Switch checked={preventDuplicatesOn} onCheckedChange={setPreventDuplicates} />
+					</div>
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Hide music videos</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Keep only the audio version of a track, so the official video doesn't turn up
+								beside it. Applies to newly loaded content.
+							</p>
+						</div>
+						<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />
 					</div>
 					<div class="py-3">
 						<div class="font-medium">Stream clients</div>

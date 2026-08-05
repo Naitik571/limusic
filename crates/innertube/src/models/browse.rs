@@ -12,8 +12,8 @@ use serde_json::Value;
 
 use super::metadata::{
     artist_runs, artists_from_runs, find_all, find_all_shallow, find_first_str, first_artist_id,
-    flex_column_text, flex_runs, last_thumbnail, list_item_video_id, parse_list_item, runs_text,
-    runs_text_opt, ArtistRun, SongItem,
+    flex_column_text, flex_runs, is_video_endpoint, is_video_row, last_thumbnail,
+    list_item_video_id, parse_list_item, runs_text, runs_text_opt, ArtistRun, SongItem,
 };
 
 /// One clickable card in a home carousel or library grid. Flat + `kind`-tagged so the UI can
@@ -40,6 +40,10 @@ pub struct BrowseItem {
     /// player bar with the same navigable artists a track row has. Empty when nothing links.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub artist_runs: Vec<ArtistRun>,
+    /// Song cards only: this card links a music video, not the audio track. Drives the
+    /// "hide music videos" setting.
+    #[serde(default)]
+    pub is_video: bool,
 }
 
 /// A titled row of cards on the home feed.
@@ -323,6 +327,7 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
             thumbnail,
             duration: None,
             artist_runs: Vec::new(),
+            is_video: false,
         });
     }
     let vid = list_item_video_id(node)?;
@@ -338,6 +343,7 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
         thumbnail,
         duration: None,
         artist_runs: runs.map(|r| artist_runs(r)).unwrap_or_default(),
+        is_video: is_video_row(node),
     })
 }
 
@@ -368,6 +374,7 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
             thumbnail,
             duration: None,
             artist_runs: runs.map(|r| artist_runs(r)).unwrap_or_default(),
+            is_video: nav.is_some_and(is_video_endpoint),
         });
     }
     let bid = nav
@@ -375,7 +382,16 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
     let (kind, id) = browse_target(bid);
-    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None, artist_runs: Vec::new() })
+    Some(BrowseItem {
+        kind,
+        id,
+        title,
+        subtitle,
+        thumbnail,
+        duration: None,
+        artist_runs: Vec::new(),
+        is_video: false,
+    })
 }
 
 /// Parse an album (`MPRE…`) browse response. context/08.
@@ -621,6 +637,7 @@ fn parse_carousel_item(node: &Value) -> Option<BrowseItem> {
             thumbnail: song.thumbnail,
             duration: song.duration,
             artist_runs: song.artist_runs,
+            is_video: song.is_video,
         });
     }
     None
@@ -651,6 +668,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
             thumbnail,
             duration: None,
             artist_runs: runs.map(|r| artist_runs(r)).unwrap_or_default(),
+            is_video: is_video_row(node),
         });
     }
     // Playlist via watchPlaylistEndpoint (some carousels expose the raw playlistId).
@@ -667,6 +685,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
             thumbnail,
             duration: None,
             artist_runs: Vec::new(),
+            is_video: false,
         });
     }
     // Otherwise a browseEndpoint → playlist/album/artist by browseId prefix.
@@ -675,7 +694,16 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
         .and_then(|b| b.get("browseId"))
         .and_then(Value::as_str)?;
     let (kind, id) = browse_target(browse_id);
-    Some(BrowseItem { kind, id, title, subtitle, thumbnail, duration: None, artist_runs: Vec::new() })
+    Some(BrowseItem {
+        kind,
+        id,
+        title,
+        subtitle,
+        thumbnail,
+        duration: None,
+        artist_runs: Vec::new(),
+        is_video: false,
+    })
 }
 
 /// Classify a browseId: albums are `MPRE…`, artist/user channels are `UC…`, everything else

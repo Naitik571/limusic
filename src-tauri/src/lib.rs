@@ -184,6 +184,7 @@ pub fn run() {
                 cookie,
             };
             let it = InnerTube::new(session, proxy.as_deref()).expect("build InnerTube");
+            it.set_hide_videos(db.get_setting("hide_videos").as_deref() == Some("true"));
             let clients = Clients::bundled();
 
             let mut player = Player::new(cache_dir.to_str().unwrap()).expect("init libmpv");
@@ -326,6 +327,7 @@ pub fn run() {
             commands::remove_from_queue,
             commands::clear_queued,
             commands::add_to_queue,
+            commands::play_next,
             commands::next_track,
             commands::prev_track,
             commands::toggle_shuffle,

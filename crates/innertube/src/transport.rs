@@ -1,5 +1,6 @@
 //! HTTP transport. context/01. Pure — no Tauri/webview/mpv.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -65,6 +66,10 @@ pub fn cookie_sapisid(cookie: &str) -> Option<&str> {
 pub struct InnerTube {
     http: reqwest::Client,
     session: Arc<RwLock<Session>>,
+    /// "Hide music videos" (off by default): drop non-ATV rows from the surfaces YouTube
+    /// generates. Shared like `session` so a settings toggle reaches every clone, and an atomic
+    /// rather than part of `Session` because the endpoints read it on every parse.
+    hide_videos: Arc<AtomicBool>,
 }
 
 impl InnerTube {
@@ -77,7 +82,20 @@ impl InnerTube {
         if let Some(p) = proxy {
             builder = builder.proxy(reqwest::Proxy::all(p)?);
         }
-        Ok(InnerTube { http: builder.build()?, session: Arc::new(RwLock::new(session)) })
+        Ok(InnerTube {
+            http: builder.build()?,
+            session: Arc::new(RwLock::new(session)),
+            hide_videos: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    /// Turn "hide music videos" on/off (context: the user setting, default off).
+    pub fn set_hide_videos(&self, on: bool) {
+        self.hide_videos.store(on, Ordering::Relaxed);
+    }
+
+    pub(crate) fn hide_videos(&self) -> bool {
+        self.hide_videos.load(Ordering::Relaxed)
     }
 
     // --- session accessors (context/15) -----------------------------------------------------

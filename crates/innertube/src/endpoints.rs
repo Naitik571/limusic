@@ -9,7 +9,7 @@ use crate::models::browse::{
 };
 use crate::models::context::Context;
 use crate::models::lyrics::{self, PlainLyrics, TimedLyricLine};
-use crate::models::metadata::{self, AccountInfo, NextResult, SearchResult};
+use crate::models::metadata::{self, AccountInfo, NextResult, SearchResult, SongItem};
 use crate::models::player::{
     ContentPlaybackContext, PlaybackContext, PlayerBody, PlayerResponse, ServiceIntegrityDimensions,
 };
@@ -81,6 +81,24 @@ impl InnerTube {
         self.post("search", client, &body, true).await
     }
 
+    // --- "hide music videos" (user setting, off by default) ------------------------------------
+    //
+    // Gated at the fetch boundary rather than at each queue/search call site: every consumer
+    // inherits it and there is no second policy to keep in sync. A row is a video when YouTube's
+    // own `musicVideoType` says so (see `metadata::is_video_row`) — never by matching the title.
+
+    fn drop_video_songs(&self, items: &mut Vec<SongItem>) {
+        if self.hide_videos() {
+            items.retain(|i| !i.is_video);
+        }
+    }
+
+    fn drop_video_cards(&self, items: &mut Vec<BrowseItem>) {
+        if self.hide_videos() {
+            items.retain(|i| !i.is_video);
+        }
+    }
+
     /// Search songs only (`FILTER_SONG`). context/08.
     pub async fn search_songs(
         &self,
@@ -88,7 +106,9 @@ impl InnerTube {
         query: &str,
     ) -> Result<SearchResult, Error> {
         let value = self.search_raw(metadata_client, query, Some(FILTER_SONG)).await?;
-        Ok(metadata::parse_search(&value))
+        let mut r = metadata::parse_search(&value);
+        self.drop_video_songs(&mut r.items);
+        Ok(r)
     }
 
     /// Unfiltered search → categorized sections (top / songs / albums / artists / playlists).
@@ -98,7 +118,10 @@ impl InnerTube {
         query: &str,
     ) -> Result<SearchResults, Error> {
         let value = self.search_raw(client, query, None).await?;
-        Ok(browse::parse_search_all(&value))
+        let mut r = browse::parse_search_all(&value);
+        self.drop_video_cards(&mut r.top);
+        self.drop_video_cards(&mut r.songs);
+        Ok(r)
     }
 
     /// Filtered card search for a "Show more" page. `category` ∈ albums / artists / playlists.
@@ -145,7 +168,13 @@ impl InnerTube {
             is_audio_only: true,
         };
         let value = self.post("next", metadata_client, &body, true).await?;
-        Ok(metadata::parse_next(&value))
+        let mut next = metadata::parse_next(&value);
+        // The seed itself survives: "start radio from this video" must still open on that video,
+        // and the track already playing is never yanked out from under the user.
+        if self.hide_videos() {
+            next.items.retain(|i| !i.is_video || Some(i.video_id.as_str()) == video_id);
+        }
+        Ok(next)
     }
 
     /// Logged-in account summary (`account/account_menu`, context/01). Requires a cookie. Also the
@@ -200,7 +229,13 @@ impl InnerTube {
         params: Option<&str>,
     ) -> Result<HomePage, Error> {
         let value = self.browse(client, Some("FEmusic_home"), params).await?;
-        Ok(browse::parse_home(&value))
+        let mut page = browse::parse_home(&value);
+        for s in &mut page.sections {
+            self.drop_video_cards(&mut s.items);
+        }
+        // A shelf the filter emptied (an all-videos row) would render as a bare heading.
+        page.sections.retain(|s| !s.items.is_empty());
+        Ok(page)
     }
 
     /// Next batch of home shelves via a continuation token. Same ctoken carrier as
@@ -220,7 +255,12 @@ impl InnerTube {
         let enc = urlencoding::encode(token);
         let path = format!("browse?ctoken={enc}&continuation={enc}&type=next");
         let value = self.post(&path, client, &body, true).await?;
-        Ok(browse::parse_home(&value))
+        let mut page = browse::parse_home(&value);
+        for s in &mut page.sections {
+            self.drop_video_cards(&mut s.items);
+        }
+        page.sections.retain(|s| !s.items.is_empty());
+        Ok(page)
     }
 
     /// Library playlists grid (`FEmusic_liked_playlists`). context/08. Needs login.
@@ -295,7 +335,13 @@ impl InnerTube {
         browse_id: &str,
     ) -> Result<ArtistPage, Error> {
         let value = self.browse(client, Some(browse_id), None).await?;
-        Ok(browse::parse_artist(&value, browse_id))
+        let mut page = browse::parse_artist(&value, browse_id);
+        self.drop_video_songs(&mut page.top_songs);
+        for c in &mut page.sections {
+            self.drop_video_cards(&mut c.items);
+        }
+        page.sections.retain(|c| !c.items.is_empty()); // e.g. the artist's "Videos" carousel
+        Ok(page)
     }
 
     /// A browse target that returns a grid of cards (e.g. an artist's "all albums" page reached
@@ -307,7 +353,9 @@ impl InnerTube {
         params: Option<&str>,
     ) -> Result<Vec<BrowseItem>, Error> {
         let value = self.browse(client, Some(browse_id), params).await?;
-        Ok(browse::parse_library(&value))
+        let mut items = browse::parse_library(&value);
+        self.drop_video_cards(&mut items);
+        Ok(items)
     }
 
     /// Next page of playlist tracks via a continuation token. context/08.

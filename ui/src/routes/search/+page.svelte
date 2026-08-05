@@ -23,9 +23,13 @@
 	let searching = $state(false);
 	let error = $state<string | null>(null);
 
+	// The query of the most recent runSearch call, so an older in-flight one can't clobber it.
+	let latest = '';
+
 	async function runSearch() {
 		if (!query.trim()) return;
 		const q = query;
+		latest = q;
 		const key = `search:${q}`;
 		const hit = getCached<SearchResults>(key);
 		if (hit) {
@@ -38,15 +42,15 @@
 		error = null;
 		try {
 			const fresh = await api.searchAll(q);
-			if (urlQuery && urlQuery !== q) return; // a newer URL-driven search superseded this one
+			if (latest !== q) return; // a newer search superseded this one
 			res = fresh;
 			searched = q;
 			putCached(key, fresh);
 		} catch (e) {
-			if (urlQuery && urlQuery !== q) return;
+			if (latest !== q) return;
 			if (!hit) error = String(e);
 		} finally {
-			if (!urlQuery || urlQuery === q) searching = false;
+			if (latest === q) searching = false;
 		}
 	}
 
@@ -54,10 +58,13 @@
 		goto(`/search-more?${new URLSearchParams({ q: searched, cat }).toString()}`);
 	}
 
-	// Run the search when arriving with a ?q= (e.g. from the Home search box).
+	// Run the search when arriving with a ?q= (e.g. from the Home search box). Keyed on the URL
+	// alone: typing a new query in the field must not look like a URL change and bounce us back.
 	const urlQuery = $derived(page.url.searchParams.get('q') ?? '');
+	let lastUrlQuery = '';
 	$effect(() => {
-		if (urlQuery && urlQuery !== searched) {
+		if (urlQuery && urlQuery !== lastUrlQuery) {
+			lastUrlQuery = urlQuery;
 			query = urlQuery;
 			runSearch();
 		}

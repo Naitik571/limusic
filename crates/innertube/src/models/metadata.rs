@@ -46,14 +46,68 @@ pub struct SongItem {
     /// tracks). Never parsed from YouTube — pure queue metadata, carried for attribution.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queued_by: Option<String>,
-    /// Manually "added to queue" (vs. a playlist/radio track). Marks the "up next" block so
-    /// successive adds stack FIFO right after the current song. Pure queue metadata, never parsed.
+    /// "Play next" (or a guest's session add): marks the "up next" block so successive adds stack
+    /// FIFO right after the current song. Pure queue metadata, never parsed.
     #[serde(default)]
     pub queued: bool,
+    /// "Add to queue": appended at the tail, after everything the user picked. Its own block in the
+    /// queue panel — without this it would read as part of the playlist that's playing. Pure queue
+    /// metadata, never parsed.
+    #[serde(default)]
+    pub queued_end: bool,
+    /// What either block was added from ("Nightcore Bangers"), when it came from an album/playlist.
+    /// The panel heads the block with it instead of the playing playlist's name. `None` for
+    /// single-song adds. Pure queue metadata, never parsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_from: Option<String>,
     /// Appended by autoplay radio continuation (vs. chosen by the user). Drives the queue's
     /// "Autoplay" divider + player-bar badge. Pure queue metadata, never parsed.
     #[serde(default)]
     pub autoplay: bool,
+    /// This row links a music video, not the audio track ([`is_video_row`]). Drives the
+    /// "hide music videos" setting; computed once here, never re-derived downstream.
+    #[serde(default)]
+    pub is_video: bool,
+}
+
+/// `MUSIC_VIDEO_TYPE_ATV` — the audio track YouTube Music generates for a release. Anything else
+/// (`_OMV`, `_UGC`) is a video upload.
+const AUDIO_TRACK_TYPE: &str = "MUSIC_VIDEO_TYPE_ATV";
+
+/// The `musicVideoType` a watch endpoint carries, if any.
+fn endpoint_video_type(endpoint: &Value) -> Option<&str> {
+    endpoint
+        .get("watchEndpoint")
+        .or_else(|| endpoint.get("watchPlaylistEndpoint"))?
+        .get("watchEndpointMusicSupportedConfigs")?
+        .get("watchEndpointMusicConfig")?
+        .get("musicVideoType")?
+        .as_str()
+}
+
+/// True when a watch endpoint points at a music video rather than the audio track.
+pub(crate) fn is_video_endpoint(endpoint: &Value) -> bool {
+    matches!(endpoint_video_type(endpoint), Some(t) if t != AUDIO_TRACK_TYPE)
+}
+
+/// True when a renderer row (list row, two-row card, or queue panel row) links a music video.
+///
+/// The authoritative tag sits on the thumbnail overlay's play button (`overlay` on list rows,
+/// `thumbnailOverlay` on cards); queue-panel rows have no overlay, so the row's own navigation
+/// endpoint is the fallback. Absent ⇒ we can't tell ⇒ audio, so a parse that misses the tag
+/// degrades to "keep everything" rather than hiding the library.
+pub(crate) fn is_video_row(node: &Value) -> bool {
+    let overlay = node
+        .get("overlay")
+        .or_else(|| node.get("thumbnailOverlay"))
+        .and_then(|o| o.get("musicItemThumbnailOverlayRenderer"))
+        .and_then(|o| o.get("content"))
+        .and_then(|c| c.get("musicPlayButtonRenderer"))
+        .and_then(|p| p.get("playNavigationEndpoint"));
+    match overlay {
+        Some(ep) if endpoint_video_type(ep).is_some() => is_video_endpoint(ep),
+        _ => node.get("navigationEndpoint").is_some_and(is_video_endpoint),
+    }
 }
 
 /// One run of an artist line: the literal text plus its channel browseId when it links one
@@ -212,7 +266,10 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         liked: like_status(node),
         queued_by: None,
         queued: false,
+        queued_end: false,
+        queued_from: None,
         autoplay: false,
+        is_video: is_video_row(node),
     })
 }
 
@@ -296,7 +353,10 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
         liked: like_status(node),
         queued_by: None,
         queued: false,
+        queued_end: false,
+        queued_from: None,
         autoplay: false,
+        is_video: is_video_row(node),
     })
 }
 
@@ -527,6 +587,41 @@ pub(crate) fn find_first_str(root: &Value, key: &str) -> Option<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // The whole "hide music videos" feature is this predicate, and the way it fails is silent: a
+    // wrong JSON path reads `None` everywhere, the filter quietly becomes a no-op, and the setting
+    // just looks broken. So: every shape a row arrives in, plus the fail-open case.
+    #[test]
+    fn video_rows_are_recognised_in_every_renderer_shape() {
+        let cfg = |t: &str| {
+            json!({ "watchEndpoint": { "videoId": "v",
+                "watchEndpointMusicSupportedConfigs": {
+                    "watchEndpointMusicConfig": { "musicVideoType": t } } } })
+        };
+        let overlay = |t: &str| {
+            json!({ "musicItemThumbnailOverlayRenderer": { "content": {
+                "musicPlayButtonRenderer": { "playNavigationEndpoint": cfg(t) } } } })
+        };
+
+        // Queue-panel row (`/next`): no overlay, the tag sits on the row's own endpoint.
+        assert!(is_video_row(&json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_OMV") })));
+        assert!(is_video_row(&json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_UGC") })));
+        assert!(!is_video_row(&json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_ATV") })));
+
+        // List row: `overlay` wins over the row endpoint. Card: same, under `thumbnailOverlay`.
+        assert!(is_video_row(&json!({
+            "overlay": overlay("MUSIC_VIDEO_TYPE_OMV"),
+            "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_ATV"),
+        })));
+        assert!(!is_video_row(&json!({
+            "thumbnailOverlay": overlay("MUSIC_VIDEO_TYPE_ATV"),
+            "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_OMV"),
+        })));
+
+        // Fail open: no tag (or an overlay carrying none) means audio, never hide.
+        assert!(!is_video_row(&json!({ "navigationEndpoint": { "watchEndpoint": { "videoId": "v" } } })));
+        assert!(!is_video_row(&json!({})));
+    }
 
     // A dead `RDAMVM` radio answers with the seed song plus this marker, which names the mix the
     // song really belongs to. It's the escalation the "start radio did nothing" case runs on.

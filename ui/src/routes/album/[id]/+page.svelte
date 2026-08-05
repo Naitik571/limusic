@@ -8,6 +8,8 @@
         ShuffleIcon,
         PlayListAddIcon,
         Radio02Icon,
+        ArrowUpNarrowWideIcon,
+        ArrowDownWideNarrowIcon,
         DashboardSquare02Icon,
         BookmarkAdd02Icon,
         BookmarkCheck02Icon,
@@ -22,6 +24,7 @@
     import {
         addPick,
         auth,
+        enqueue,
         playback,
         openAddManyToPlaylist,
         playFrom,
@@ -150,6 +153,12 @@
         } finally {
             savingLibrary = false;
         }
+    }
+
+    function queue(next: boolean) {
+        if (!album?.items.length) return;
+        menuOpen = false;
+        enqueue(album.items, next, album.title, album.continuation);
     }
 
     function saveToPlaylist() {
@@ -328,6 +337,24 @@
                     <div
                         class="absolute bottom-12 left-40 z-50 min-w-48 origin-bottom-left animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
                     >
+                        <button
+                            class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+                            onclick={() => queue(true)}
+                        >
+                            <HugeiconsIcon
+                                icon={ArrowUpNarrowWideIcon}
+                                class="h-4 w-4"
+                            /> Play next
+                        </button>
+                        <button
+                            class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+                            onclick={() => queue(false)}
+                        >
+                            <HugeiconsIcon
+                                icon={ArrowDownWideNarrowIcon}
+                                class="h-4 w-4"
+                            /> Add to queue
+                        </button>
                         <!-- The album's audio playlist is what a radio seeds from; an album page
                              without one (rare) has nothing to ask YouTube for. -->
                         {#if !isLocal && album.playlistId}

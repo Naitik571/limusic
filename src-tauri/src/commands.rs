@@ -69,11 +69,31 @@ pub async fn remove_from_queue(state: St<'_>, index: usize) -> Result<(), String
     Ok(())
 }
 
-/// "Add to queue" from a track's ⋯ menu. Solo: end of the queue; in a session (host or guest):
-/// the session boundary, right after the current song.
+/// "Play next" from a ⋯ menu: one track or a whole album/playlist, inserted right after the
+/// current song (behind any earlier manual adds). `from` is the album/playlist title, which heads
+/// the block in the queue panel.
 #[tauri::command]
-pub async fn add_to_queue(state: St<'_>, item: SongItem) -> Result<(), String> {
-    state.inner().clone().add_to_queue(item).await;
+pub async fn play_next(
+    state: St<'_>,
+    items: Vec<SongItem>,
+    from: Option<String>,
+) -> Result<(), String> {
+    state.inner().clone().play_next(items, from).await;
+    Ok(())
+}
+
+/// "Add to queue": the tracks go after everything the user picked, and ahead of anything the app
+/// generated behind it (autoplay filler, or a radio's endless feed). `from` heads the block in the
+/// queue panel; `continuation` is the source page's next-page token — the rest of a long playlist
+/// is walked in in the background.
+#[tauri::command]
+pub async fn add_to_queue(
+    state: St<'_>,
+    items: Vec<SongItem>,
+    from: Option<String>,
+    continuation: Option<String>,
+) -> Result<(), String> {
+    state.inner().clone().add_to_queue(items, from, continuation).await;
     Ok(())
 }
 
@@ -142,7 +162,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 8] = [
+const UI_SETTINGS: [&str; 10] = [
     "proxy",
     "quality",
     "enable_history",
@@ -151,6 +171,8 @@ const UI_SETTINGS: [&str; 8] = [
     "close_to_tray",
     "autostart",
     "autoplay",
+    "hide_videos",
+    "prevent_duplicates",
 ];
 
 #[tauri::command]
@@ -180,6 +202,10 @@ pub async fn set_setting(
     // to see it take effect.
     if key == "discord_rpc" {
         state.set_discord_enabled(value == "true");
+    }
+    // Applies to what's fetched from here on: the live queue keeps whatever is already in it.
+    if key == "hide_videos" {
+        state.it.set_hide_videos(value == "true");
     }
     // Registers/removes the login autostart entry on toggle; the OS persists it from there.
     // ponytail: no startup re-sync against the OS state — add reconciliation only if drift is
@@ -306,6 +332,7 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
                 thumbnail: None, // the UI draws an icon cover for this one
                 duration: None,
                 artist_runs: Vec::new(),
+                is_video: false,
             },
         );
     }
@@ -363,7 +390,15 @@ fn on_repeat_songs(state: &Arc<AppState>) -> Vec<SongItem> {
 /// the row wears a session member's name forever, and playing On Repeat drops it into "Next in
 /// queue" instead of the playlist. Strips on read so rows already stored this way are fixed too.
 fn shed_queue_context(s: SongItem) -> SongItem {
-    SongItem { queued: false, queued_by: None, autoplay: false, set_video_id: None, ..s }
+    SongItem {
+        queued: false,
+        queued_end: false,
+        queued_from: None,
+        queued_by: None,
+        autoplay: false,
+        set_video_id: None,
+        ..s
+    }
 }
 
 fn now_secs() -> i64 {

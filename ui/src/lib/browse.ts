@@ -4,7 +4,7 @@
 import { goto } from '$app/navigation';
 import * as api from './api';
 import type { BrowseItem, SongItem } from './api';
-import { playFrom, toast, touchPick } from './player.svelte';
+import { enqueue, playFrom, toast, touchPick } from './player.svelte';
 
 /**
  * A song card carries everything a queue entry needs; the ⋯ menus take this shape. The one mapping
@@ -76,5 +76,31 @@ export async function playItem(item: BrowseItem): Promise<void> {
 		}
 	} catch {
 		toast.error('Could not play — try opening it instead');
+	}
+}
+
+/**
+ * Queue the whole thing without opening it: "Play next" (`next`) or "Add to queue". A song is one
+ * track; an album/playlist is fetched first, so callers own the in-flight state (same contract as
+ * `playItem`). Never throws — a failure toasts.
+ *
+ * The playlist's next-page token rides along: the backend walks the rest of a long playlist into
+ * the queue in the background rather than the UI chaining pages before anything is queued.
+ */
+export async function enqueueItem(item: BrowseItem, next: boolean): Promise<void> {
+	if (item.kind === 'song') {
+		await enqueue([asSong(item)], next);
+		return;
+	}
+	try {
+		if (item.kind === 'album') {
+			const album = await api.getAlbum(item.id);
+			await enqueue(album.items, next, album.title ?? item.title, album.continuation);
+		} else {
+			const pl = await api.getPlaylist(item.id);
+			await enqueue(pl.items, next, pl.title ?? item.title, pl.continuation);
+		}
+	} catch {
+		toast.error('Could not queue that — try opening it instead');
 	}
 }

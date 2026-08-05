@@ -451,6 +451,7 @@ fn albums_of(tracks: &[LocalTrack]) -> Vec<BrowseItem> {
                 thumbnail: face.cover.clone(),
                 duration: None,
                 artist_runs: Vec::new(),
+                is_video: false,
             }
         })
         .collect();
@@ -498,6 +499,7 @@ fn artists_of(tracks: &[LocalTrack]) -> Vec<BrowseItem> {
                 thumbnail: ts.iter().find_map(|t| t.cover.clone()),
                 duration: None,
                 artist_runs: Vec::new(),
+                is_video: false,
             }
         })
         .collect();

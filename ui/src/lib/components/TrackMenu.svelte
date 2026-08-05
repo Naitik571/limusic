@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The ⋯ options menu shared by TrackRow (inline trigger) and MediaCard (overlay trigger).
-	// "Add to queue" + like are universal; go-to-artist/album/playlist show when the song carries
+	// The queue actions + like are universal; go-to-artist/album/playlist show when the song carries
 	// them. The popup is `fixed`, anchored at the trigger and moved to <body> (`toBody`), so no
 	// scroll container clips it and no contained ancestor becomes its containing block.
 	import { goto } from '$app/navigation';
@@ -10,7 +10,8 @@
 		MoreVerticalIcon,
 		PlayListAddIcon,
 		PlayListRemoveIcon,
-		AddToListIcon,
+		ArrowUpNarrowWideIcon,
+		ArrowDownWideNarrowIcon,
 		Radio02Icon,
 		FavouriteIcon,
 		UserListIcon,
@@ -19,9 +20,8 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { SongItem } from '$lib/api';
-	import { lt } from '$lib/lt.svelte';
 	import { anchorMenu, toBody } from '$lib/menu';
-	import { addPick, isLiked, startRadio, toast, toggleLike } from '$lib/player.svelte';
+	import { addPick, enqueue, isLiked, startRadio, toggleLike } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -68,13 +68,6 @@
 		menuOpen = false;
 	}
 
-	// "Add to queue" is universal. Guests get their toast from the session flow ("Added to the
-	// session queue."), so only toast locally for host/solo.
-	function addToQueue() {
-		api.addToQueue(song);
-		if (lt.role !== 'guest') toast.success('Added to queue');
-	}
-
 	const liked = $derived(isLiked(song));
 	// A local file has no YouTube identity: liking it or putting it in a YTM playlist is not a
 	// thing, so those items don't show. Queue, shortcuts and go-to-album work normally.
@@ -108,9 +101,15 @@
 		{#if !linksOnly}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-				onclick={(e) => run(e, addToQueue)}
+				onclick={(e) => run(e, () => enqueue([song], true))}
 			>
-				<HugeiconsIcon icon={AddToListIcon} class="h-4 w-4" /> Add to queue
+				<HugeiconsIcon icon={ArrowUpNarrowWideIcon} class="h-4 w-4" /> Play next
+			</button>
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => run(e, () => enqueue([song], false))}
+			>
+				<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
 			</button>
 		{/if}
 		<!-- Radio is the one action worth having in the player bar too (`linksOnly`): it's how you

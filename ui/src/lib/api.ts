@@ -29,8 +29,12 @@ export interface SongItem {
 	liked?: boolean;
 	/** Listen Together: name of the guest who added this queue item (session adds only). */
 	queued_by?: string;
-	/** Manually added to the queue ("Add to queue") — drives the "Next in queue" section. */
+	/** Queued to play next ("Play next", or a guest's session add) — the "Next in queue" block. */
 	queued?: boolean;
+	/** Appended by "Add to queue" — its own block at the tail of the queue. */
+	queued_end?: boolean;
+	/** The album/playlist either block was added from, for its heading in the queue panel. */
+	queued_from?: string;
 	/** Appended by autoplay radio continuation — drives the queue's "Autoplay" divider + badge. */
 	autoplay?: boolean;
 }
@@ -198,8 +202,20 @@ export const play = (item: SongItem) => invoke<void>('play', { item });
 export const playIndex = (index: number) => invoke<void>('play_index', { index });
 /** Remove an upcoming track from the queue (host/local only — guests are add-only). */
 export const removeFromQueue = (index: number) => invoke<void>('remove_from_queue', { index });
-/** Add a track to the queue: end of it when solo, right after the current song in a session. */
-export const addToQueue = (item: SongItem) => invoke<void>('add_to_queue', { item });
+/**
+ * "Play next": insert tracks right after the current song, behind any earlier manual adds.
+ * `from` is the album/playlist they came from — it heads the block in the queue panel.
+ */
+export const playNext = (items: SongItem[], from?: string) =>
+	invoke<void>('play_next', { items, from });
+/**
+ * "Add to queue": the tracks go after everything the user picked, and ahead of anything the app
+ * generated behind it (autoplay filler; a radio's endless feed makes way entirely).
+ * `continuation` is the source page's next-page token — the backend walks the rest of a long
+ * playlist into the queue in the background.
+ */
+export const addToQueue = (items: SongItem[], from?: string, continuation?: string) =>
+	invoke<void>('add_to_queue', { items, from, continuation });
 /** Clear every upcoming manually-queued track (the "Next in queue" section). */
 export const clearQueued = () => invoke<void>('clear_queued');
 export const nextTrack = () => invoke<void>('next_track');

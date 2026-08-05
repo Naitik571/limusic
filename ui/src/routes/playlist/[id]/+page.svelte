@@ -11,6 +11,8 @@
 		Tick02Icon,
 		Cancel01Icon,
 		Radio02Icon,
+		ArrowUpNarrowWideIcon,
+		ArrowDownWideNarrowIcon,
 		DashboardSquare02Icon,
 		ListRestartIcon
 	} from '@hugeicons/core-free-icons';
@@ -25,6 +27,7 @@
 	import { getCached, putCached, invalidateCached } from '$lib/pagecache';
 	import {
 		addPick,
+		enqueue,
 		playback,
 		openAddToPlaylist,
 		playFrom,
@@ -224,6 +227,13 @@
 	// for a crisp full-width backdrop.
 	function hiRes(url: string): string {
 		return url.replace(/=w\d+-h\d+/, '=w1200-h1200').replace(/=s\d+/, '=s1200');
+	}
+
+	// Same deal as `playAll` for a long playlist: the loaded pages go in now and the token hands
+	// the rest to the backend to walk in behind them.
+	function queue(next: boolean) {
+		if (!pl?.items.length) return;
+		enqueue(pl.items, next, pl.title, pl.continuation);
 	}
 
 	function shufflePlay() {
@@ -476,6 +486,20 @@
 			disabled={!pl?.items.length}
 		>
 			<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle play
+		</button>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+			onclick={() => run(() => queue(true))}
+			disabled={!pl?.items.length}
+		>
+			<HugeiconsIcon icon={ArrowUpNarrowWideIcon} class="h-4 w-4" /> Play next
+		</button>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+			onclick={() => run(() => queue(false))}
+			disabled={!pl?.items.length}
+		>
+			<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
 		</button>
 		<!-- On Repeat is built from local play counts — there is no YouTube playlist to seed a
 		     radio from. -->

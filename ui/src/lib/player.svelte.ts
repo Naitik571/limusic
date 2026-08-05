@@ -4,7 +4,7 @@
 import { browser } from '$app/environment';
 import * as api from './api';
 import type { Account, BrowseItem, NowPlaying, QueueState, SongItem } from './api';
-import { applyLtState } from './lt.svelte';
+import { applyLtState, lt } from './lt.svelte';
 import { clearCached } from './pagecache';
 import * as pl from './personal';
 import type { Personal } from './personal';
@@ -277,6 +277,32 @@ export function playFrom(
 }
 
 /**
+ * "Play next" / "Add to queue" from any surface (song menus, card menus, page headers). One
+ * implementation so the wording is the same everywhere. Guests get their toast from the session
+ * flow instead ("Added to the session queue."), so this one stays quiet for them.
+ */
+export async function enqueue(
+	items: SongItem[],
+	next: boolean,
+	from?: string,
+	continuation?: string
+) {
+	if (!items.length) return;
+	try {
+		// A "Play next" block is capped at the tracks the page has loaded: shoving 5000 in front of
+		// what's playing isn't what anyone means by "next". "Add to queue" walks the rest.
+		await (next ? api.playNext(items, from) : api.addToQueue(items, from, continuation));
+	} catch (e) {
+		toast.error(String(e));
+		return;
+	}
+	if (lt.role === 'guest') return;
+	const n = items.length;
+	if (next) toast.success(n === 1 ? 'Playing next' : `${n} songs play next`);
+	else toast.success(n === 1 ? 'Added to queue' : `Added ${n} songs to the queue`);
+}
+
+/**
  * Start a radio from any surface (song menus, card menus, page headers). One implementation so the
  * feedback is the same everywhere: radio is a network round trip before anything audibly happens,
  * so it says so up front rather than looking like the click was swallowed.
@@ -337,12 +363,15 @@ export const lastPlaylistAdd = $state({ playlistId: '', songs: [] as SongItem[],
 
 export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 	lastPlaylistAdd.playlistId = playlistId;
-	// Strip per-context fields: set_video_id belongs to the source playlist, autoplay/queued_by to
+	// Strip per-context fields: set_video_id belongs to the source playlist, the queue markers to
 	// the queue — none apply to the row's new home.
 	lastPlaylistAdd.songs = songs.map((s) => ({
 		...s,
 		set_video_id: undefined,
 		autoplay: undefined,
+		queued: undefined,
+		queued_end: undefined,
+		queued_from: undefined,
 		queued_by: undefined
 	}));
 	lastPlaylistAdd.epoch++;
