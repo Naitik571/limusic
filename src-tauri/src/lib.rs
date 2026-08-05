@@ -352,6 +352,7 @@ pub fn run() {
             commands::get_local_library,
             commands::add_local_folder,
             commands::remove_local_folder,
+            commands::allow_font_file,
             commands::get_artist,
             commands::get_browse_grid,
             commands::play_playlist,

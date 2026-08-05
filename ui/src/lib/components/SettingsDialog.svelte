@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { open } from '@tauri-apps/plugin-dialog';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import { Cancel01Icon } from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
@@ -13,6 +16,7 @@
 		THEMES,
 		FONTS,
 		theme,
+		custom,
 		effective,
 		applyTheme,
 		setCustom,
@@ -21,6 +25,10 @@
 		readBack,
 		familyName,
 		fontAvailable,
+		fileFonts,
+		fileFamily,
+		addFontFile,
+		removeFontFile,
 		type Custom,
 		type ThemeId
 	} from '$lib/theme.svelte';
@@ -53,8 +61,24 @@
 	let fontName = $state<Record<FontKey, string>>({ fontSans: '', fontHeading: '' });
 
 	/** Which entry in the font dropdown a resolved stack corresponds to. */
+	const fontOptions = $derived([...FONTS, ...fileFonts()]);
 	const matchFont = (stack: string) =>
-		FONTS.find((f) => familyName(f.value) === familyName(stack))?.value ?? 'custom';
+		fontOptions.find((f) => familyName(f.value) === familyName(stack))?.value ?? 'custom';
+
+	async function pickFontFiles() {
+		const picked = await open({
+			multiple: true,
+			title: 'Load a font',
+			filters: [{ name: 'Fonts', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]
+		});
+		for (const path of picked ?? []) {
+			try {
+				toast.success(`${await addFontFile(path)} loaded — pick it above`);
+			} catch (e) {
+				toast.error(String(e));
+			}
+		}
+	}
 
 	function chooseFont(key: FontKey, value: string) {
 		isCustomFont[key] = value === 'custom';
@@ -395,6 +419,16 @@
 												<span style="font-family:{f.value}">{f.label}</span>
 											</Select.Item>
 										{/each}
+										{#if custom.fontFiles.length}
+											<Select.Group>
+												<Select.GroupHeading>Your fonts</Select.GroupHeading>
+												{#each fileFonts() as f (f.value)}
+													<Select.Item value={f.value} label={f.label}>
+														<span style="font-family:{f.value}">{f.label}</span>
+													</Select.Item>
+												{/each}
+											</Select.Group>
+										{/if}
 										<Select.Item value="custom" label="Custom">Custom…</Select.Item>
 									</Select.Content>
 								</Select.Root>
@@ -418,6 +452,41 @@
 							{/if}
 						</div>
 					{/each}
+
+					<div class="border-b py-3">
+						<div class="flex items-center justify-between gap-8">
+							<div class="min-w-0">
+								<div class="font-medium">Font files</div>
+								<p class="mt-0.5 text-sm text-muted-foreground">
+									Load a .ttf, .otf or .woff from anywhere on this computer. It joins both dropdowns
+									above.
+								</p>
+							</div>
+							<Button variant="outline" size="sm" class="shrink-0" onclick={pickFontFiles}>
+								Add font…
+							</Button>
+						</div>
+						{#if custom.fontFiles.length}
+							<div class="mt-3 flex flex-col gap-1.5">
+								{#each custom.fontFiles as path (path)}
+									<div class="flex items-center gap-3 rounded-md bg-secondary/50 py-1.5 pr-1.5 pl-3">
+										<span class="flex-1 truncate" style="font-family:'{fileFamily(path)}'">
+											{fileFamily(path)}
+										</span>
+										<span class="shrink-0 truncate text-xs text-muted-foreground">{path}</span>
+										<button
+											type="button"
+											onclick={() => removeFontFile(path)}
+											aria-label="Remove {fileFamily(path)}"
+											class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+										>
+											<HugeiconsIcon icon={Cancel01Icon} size={14} />
+										</button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
 
 					<div class="flex items-center justify-between gap-4 py-3">
 						<div class="min-w-0">

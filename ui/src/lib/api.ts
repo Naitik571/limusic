@@ -219,6 +219,8 @@ export const setSetting = (key: string, value: string) =>
 export const getStreamClients = () => invoke<string[]>('get_stream_clients');
 /** Wipe both cache tiers (URL cache + mpv on-disk audio cache). */
 export const clearCaches = () => invoke<void>('clear_caches');
+/** Grant the webview a URL for one font file the user picked, so `@font-face` can load it. */
+export const allowFontFile = (path: string) => invoke<void>('allow_font_file', { path });
 
 // --- auth (context/15) ---------------------------------------------------------------------
 export const getAccount = () => invoke<Account>('get_account');

@@ -10,7 +10,9 @@
 // and survives switching presets. Anything the user hasn't touched stays null and the preset shows
 // through — the customization is a set of overrides, not a rival theme to maintain.
 
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { isLight } from './color';
+import { allowFontFile } from './api';
 
 export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin' | 'caffeine' | 'neon' | 'breeze';
 
@@ -49,6 +51,9 @@ export type Custom = {
 	radius: number | null; // rem
 	fontSans: string | null; // a CSS font-family value
 	fontHeading: string | null;
+	// Font files the user loaded from disk, by absolute path. Not an override — a small library that
+	// both font rows can then choose from, which is why `resetCustom` leaves it alone.
+	fontFiles: string[];
 };
 
 const KEY = 'primary-theme';
@@ -67,7 +72,8 @@ export const custom = $state<Custom>({
 	hue: null,
 	radius: null,
 	fontSans: null,
-	fontHeading: null
+	fontHeading: null,
+	fontFiles: []
 });
 
 /**
@@ -146,19 +152,86 @@ export function applyTheme(id: ThemeId): void {
 	localStorage.setItem(KEY, theme.id);
 }
 
+const persist = () => localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom));
+
 export function setCustom(patch: Partial<Custom>): void {
 	Object.assign(custom, patch);
 	apply();
-	localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom));
+	persist();
 }
 
+/** Drops the overrides. Loaded font *files* stay: they're assets, not a setting. */
 export function resetCustom(): void {
 	setCustom({ accent: null, hue: null, radius: null, fontSans: null, fontHeading: null });
 }
 
-/** True when nothing is overridden, so the UI can hide the reset. */
+/** True when nothing is overridden, so the UI can disable the reset. */
 export function isDefaultCustom(): boolean {
-	return Object.values(custom).every((v) => v === null);
+	return !custom.accent && custom.hue === null && custom.radius === null && !custom.fontSans && !custom.fontHeading;
+}
+
+// --- Font files loaded from disk -------------------------------------------------------------
+// Each file becomes an @font-face keyed on its filename, so it shows up in both font dropdowns
+// like a bundled family. Only the path is stored: re-reading the file each launch keeps a 4 MB
+// variable font out of localStorage, at the cost of the entry going dead if the file moves.
+
+const FONT_STYLE_ID = 'custom-font-files';
+
+/** Family name for a loaded file: its base name, minus extension and anything CSS-unsafe. */
+export function fileFamily(path: string): string {
+	const base = path.split(/[\\/]/).pop() ?? path;
+	// ponytail: two files with the same name collide on one family — last one registered wins.
+	return base.replace(/\.[^.]+$/, '').replace(/[^\w \-]/g, '').trim() || 'Custom font';
+}
+
+/** Loaded files as font-dropdown entries, so they sit alongside the bundled ones. */
+export function fileFonts(): { label: string; value: string }[] {
+	return custom.fontFiles.map((p) => ({
+		label: fileFamily(p),
+		value: `'${fileFamily(p)}', sans-serif`
+	}));
+}
+
+async function registerFontFiles(): Promise<void> {
+	const rules: string[] = [];
+	for (const path of custom.fontFiles) {
+		try {
+			// Grant the URL before the rule exists: a font that 403s once is never retried.
+			await allowFontFile(path);
+		} catch {
+			continue; // moved or deleted since it was added — its dropdown entry just falls back
+		}
+		rules.push(
+			`@font-face { font-family: '${fileFamily(path)}'; src: url('${convertFileSrc(path)}'); }`
+		);
+	}
+	let el = document.getElementById(FONT_STYLE_ID);
+	if (!el) {
+		el = document.createElement('style');
+		el.id = FONT_STYLE_ID;
+		document.head.append(el);
+	}
+	el.textContent = rules.join('\n');
+}
+
+/** Load a font file the user picked. Throws (for the caller to report) if it can't be granted. */
+export async function addFontFile(path: string): Promise<string> {
+	await allowFontFile(path);
+	if (!custom.fontFiles.includes(path)) custom.fontFiles.push(path);
+	persist();
+	await registerFontFiles();
+	return fileFamily(path);
+}
+
+export function removeFontFile(path: string): void {
+	custom.fontFiles = custom.fontFiles.filter((p) => p !== path);
+	// A row still pointing at the family that just left falls back to the preset's font.
+	const gone = `'${fileFamily(path)}', sans-serif`;
+	if (custom.fontSans === gone) custom.fontSans = null;
+	if (custom.fontHeading === gone) custom.fontHeading = null;
+	persist();
+	apply();
+	registerFontFiles();
 }
 
 /** First family in a font stack, unquoted — what the UI shows and matches on. */
@@ -189,14 +262,20 @@ export function initTheme(): void {
 		const saved = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '{}');
 		// Only keys we know about, only the shape we expect: a hand-edited or older localStorage
 		// entry must not be able to write arbitrary properties into the inline style.
-		for (const k of Object.keys(custom) as (keyof Custom)[]) {
-			const v = saved?.[k];
-			if (typeof v === (k === 'hue' || k === 'radius' ? 'number' : 'string')) {
-				(custom[k] as string | number) = v;
-			}
+		for (const k of ['accent', 'fontSans', 'fontHeading'] as const) {
+			if (typeof saved?.[k] === 'string') custom[k] = saved[k];
+		}
+		for (const k of ['hue', 'radius'] as const) {
+			if (typeof saved?.[k] === 'number') custom[k] = saved[k];
+		}
+		if (Array.isArray(saved?.fontFiles)) {
+			custom.fontFiles = saved.fontFiles.filter((p: unknown) => typeof p === 'string');
 		}
 	} catch {
 		// unparseable — start clean
 	}
 	apply();
+	// Async (each file needs its URL granted first), so the app paints in the fallback font for a
+	// frame or two before a loaded font swaps in.
+	if (custom.fontFiles.length) registerFontFiles();
 }

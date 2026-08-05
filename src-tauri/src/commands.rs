@@ -208,6 +208,32 @@ pub async fn get_stream_clients() -> Result<Vec<String>, String> {
     Ok(v)
 }
 
+/// Let the webview fetch one font file the user picked in the Themes tab, so a `@font-face` can
+/// point at it.
+///
+/// Same runtime-scope trick as local artwork (`local::allow_covers`): the static asset scope stays
+/// empty, and only the exact file gets a URL. The extension check keeps the command from being a
+/// general "give the page a URL for any path on this machine" — today only the main window holds a
+/// capability to call commands at all, and this stays safe if that ever widens.
+#[tauri::command]
+pub async fn allow_font_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri::Manager;
+    const FONT_EXTS: [&str; 4] = ["ttf", "otf", "woff", "woff2"];
+    let p = std::path::Path::new(&path);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    if !FONT_EXTS.contains(&ext.as_str()) {
+        return Err(format!("not a font file: {path}"));
+    }
+    let scope = app.asset_protocol_scope();
+    scope.allow_file(&path).map_err(|e| e.to_string())?;
+    // The scope check canonicalizes what it is asked about, so a font reached through a symlinked
+    // folder needs the real path allowed too (see local::allow_covers).
+    if let Ok(real) = p.canonicalize() {
+        let _ = scope.allow_file(real);
+    }
+    Ok(())
+}
+
 /// Wipe both cache tiers (URL cache + mpv on-disk audio cache). context/14.
 #[tauri::command]
 pub async fn clear_caches(state: St<'_>) -> Result<(), String> {
