@@ -192,18 +192,39 @@ export function fileFonts(): { label: string; value: string }[] {
 	}));
 }
 
-async function registerFontFiles(): Promise<void> {
+/** Drop a path from the library, and clear any font row still pointing at its family. */
+function forget(path: string): void {
+	custom.fontFiles = custom.fontFiles.filter((p) => p !== path);
+	const gone = `'${fileFamily(path)}', sans-serif`;
+	if (custom.fontSans === gone) custom.fontSans = null;
+	if (custom.fontHeading === gone) custom.fontHeading = null;
+}
+
+/**
+ * (Re)build the `@font-face` rules, and forget any file that has since been deleted or moved —
+ * the grant is what tells us, since it checks the file exists. Without the pruning, a font that is
+ * no longer on disk keeps its dropdown entry and its row keeps *claiming* to use it while the app
+ * silently renders the fallback. Runs at startup and whenever the settings modal opens.
+ */
+export async function registerFontFiles(): Promise<void> {
 	const rules: string[] = [];
+	const missing: string[] = [];
 	for (const path of custom.fontFiles) {
 		try {
 			// Grant the URL before the rule exists: a font that 403s once is never retried.
 			await allowFontFile(path);
 		} catch {
-			continue; // moved or deleted since it was added — its dropdown entry just falls back
+			missing.push(path);
+			continue;
 		}
 		rules.push(
 			`@font-face { font-family: '${fileFamily(path)}'; src: url('${convertFileSrc(path)}'); }`
 		);
+	}
+	if (missing.length) {
+		missing.forEach(forget);
+		persist();
+		apply(); // a row that pointed at a missing font falls back to the preset's, visibly
 	}
 	let el = document.getElementById(FONT_STYLE_ID);
 	if (!el) {
@@ -224,11 +245,7 @@ export async function addFontFile(path: string): Promise<string> {
 }
 
 export function removeFontFile(path: string): void {
-	custom.fontFiles = custom.fontFiles.filter((p) => p !== path);
-	// A row still pointing at the family that just left falls back to the preset's font.
-	const gone = `'${fileFamily(path)}', sans-serif`;
-	if (custom.fontSans === gone) custom.fontSans = null;
-	if (custom.fontHeading === gone) custom.fontHeading = null;
+	forget(path);
 	persist();
 	apply();
 	registerFontFiles();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Cancel01Icon } from '@hugeicons/core-free-icons';
@@ -29,6 +30,7 @@
 		fileFamily,
 		addFontFile,
 		removeFontFile,
+		registerFontFiles,
 		type Custom,
 		type ThemeId
 	} from '$lib/theme.svelte';
@@ -105,17 +107,22 @@
 
 	// (Re)load whenever the modal opens, so it reflects the current persisted values. Also clear the
 	// stale update-check result so re-opening the modal doesn't show it until pressed again.
+	// untrack: this reads and writes theme state, and `registerFontFiles` can rewrite it again when
+	// it prunes a deleted font. Opening the modal is the only thing that should run it.
 	$effect(() => {
-		if (ui.settingsOpen) {
+		if (!ui.settingsOpen) return;
+		untrack(() => {
 			load();
 			updateResult = null;
 			pickerOpen = false;
 			readBack();
+			// Catches a font deleted while the app was running, not just between launches.
+			registerFontFiles();
 			for (const key of ['fontSans', 'fontHeading'] as FontKey[]) {
 				isCustomFont[key] = matchFont(effective[key]) === 'custom';
 				fontName[key] = isCustomFont[key] ? familyName(effective[key]) : '';
 			}
-		}
+		});
 	});
 
 	async function checkUpdates() {

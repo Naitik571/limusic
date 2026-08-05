@@ -224,6 +224,11 @@ pub async fn allow_font_file(app: tauri::AppHandle, path: String) -> Result<(), 
     if !FONT_EXTS.contains(&ext.as_str()) {
         return Err(format!("not a font file: {path}"));
     }
+    // Scope grants succeed for paths that don't exist, so check here: this failing is how the UI
+    // learns a loaded font was deleted or moved, and drops it instead of listing a dead entry.
+    if !p.is_file() {
+        return Err(format!("font file not found: {path}"));
+    }
     let scope = app.asset_protocol_scope();
     scope.allow_file(&path).map_err(|e| e.to_string())?;
     // The scope check canonicalizes what it is asked about, so a font reached through a symlinked
