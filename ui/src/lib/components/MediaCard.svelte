@@ -69,51 +69,72 @@
 		}}
 		title={item.subtitle ? `${item.title} — ${item.subtitle}` : item.title}
 	>
-		<div
-			class="relative aspect-square w-full overflow-hidden bg-muted shadow-sm transition-shadow duration-300 group-hover:shadow-xl {round
-				? 'rounded-full'
-				: 'rounded-lg'}"
-		>
-			{#if item.thumbnail && attempt < 2 && !onRepeat}
-				<img
-					{src}
-					alt=""
-					class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-					loading="lazy"
-					draggable="false"
-					onerror={imgFailed}
-				/>
-			{:else}
-				<div
-					class="flex h-full w-full items-center justify-center {onRepeat
-						? 'bg-primary/10 text-primary'
-						: 'text-muted-foreground/50'}"
-				>
-					<!-- altIcon/showAlt, not a third ternary: `icon` is read once at mount. -->
-					<HugeiconsIcon
-						icon={round ? UserIcon : MusicNote01Icon}
-						altIcon={ListRestartIcon}
-						showAlt={onRepeat}
-						class={onRepeat ? (compact ? 'h-7 w-7' : 'h-10 w-10') : compact ? 'h-5 w-5' : 'h-7 w-7'}
+		<!-- The hover lift fades in a shadow that is already rasterized instead of transitioning
+		     box-shadow. Interpolating shadow-sm to shadow-xl makes WebKit compute a *different*
+		     gaussian blur on every frame for 300ms, over a region half again wider than the cover, and
+		     dragging the pointer across a grid has several cards doing it at once. As an opacity fade
+		     the blur is rasterized once and reused at every step, and opacity is composited.
+		     A wrapper, because the shadow has to paint outside a box that the cover below clips. -->
+		<div class="relative">
+			<div
+				class="pointer-events-none absolute inset-0 opacity-0 shadow-xl transition-opacity duration-300 group-hover:opacity-100 {round
+					? 'rounded-full'
+					: 'rounded-lg'}"
+			></div>
+			<div
+				class="relative aspect-square w-full overflow-hidden bg-muted shadow-sm {round
+					? 'rounded-full'
+					: 'rounded-lg'}"
+			>
+				{#if item.thumbnail && attempt < 2 && !onRepeat}
+					<img
+						{src}
+						alt=""
+						class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
+						loading="lazy"
+						draggable="false"
+						onerror={imgFailed}
 					/>
-				</div>
-			{/if}
-			{#if item.kind !== 'artist'}
-				<button
-					class="absolute flex translate-y-1 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow-lg transition-all duration-200 ease-out group-hover:translate-y-0 group-hover:opacity-100 focus-visible:opacity-100 {compact
-						? 'bottom-1.5 right-1.5 h-7 w-7'
-						: 'bottom-2 right-2 h-9 w-9'}"
-					class:animate-pulse={playing}
-					disabled={playing}
-					aria-label="Play"
-					onclick={(e) => {
-						e.stopPropagation();
-						playNow();
-					}}
-				>
-					<HugeiconsIcon icon={PlayIcon} class={compact ? 'h-3 w-3' : 'h-4 w-4'} />
-				</button>
-			{/if}
+				{:else}
+					<div
+						class="flex h-full w-full items-center justify-center {onRepeat
+							? 'bg-primary/10 text-primary'
+							: 'text-muted-foreground/50'}"
+					>
+						<!-- altIcon/showAlt, not a third ternary: `icon` is read once at mount. -->
+						<HugeiconsIcon
+							icon={round ? UserIcon : MusicNote01Icon}
+							altIcon={ListRestartIcon}
+							showAlt={onRepeat}
+							class={onRepeat
+								? compact
+									? 'h-7 w-7'
+									: 'h-10 w-10'
+								: compact
+									? 'h-5 w-5'
+									: 'h-7 w-7'}
+						/>
+					</div>
+				{/if}
+				{#if item.kind !== 'artist'}
+					<!-- transition-[opacity,transform], not transition-all: opacity and translate are the
+					     only things that change, and both composite. -->
+					<button
+						class="absolute flex translate-y-1 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow-lg transition-[opacity,transform] duration-200 ease-out group-hover:translate-y-0 group-hover:opacity-100 focus-visible:opacity-100 {compact
+							? 'bottom-1.5 right-1.5 h-7 w-7'
+							: 'bottom-2 right-2 h-9 w-9'}"
+						class:animate-pulse={playing}
+						disabled={playing}
+						aria-label="Play"
+						onclick={(e) => {
+							e.stopPropagation();
+							playNow();
+						}}
+					>
+						<HugeiconsIcon icon={PlayIcon} class={compact ? 'h-3 w-3' : 'h-4 w-4'} />
+					</button>
+				{/if}
+			</div>
 		</div>
 		<div class="min-w-0 {round ? 'text-center' : ''}">
 			<div class="truncate font-medium {compact ? 'text-xs' : 'text-sm'}">{item.title}</div>

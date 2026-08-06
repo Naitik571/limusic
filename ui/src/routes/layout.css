@@ -499,6 +499,13 @@
 .card-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, 10rem);
+	/* Pinned, not auto. An auto row is as tall as its tallest card, and a skipped card reports the
+	   contain-intrinsic-size below while a rendered one reports its real height — which is 1rem
+	   shorter when the item has no subtitle. So any row straddling the skip boundary changed height
+	   as you scrolled, and since a hover is what forces the layout pass that reconciles it, hovering
+	   near that boundary reflowed the grid, moved the scroll position, and changed which cards were
+	   skipped. Same number for both and the loop can't start. */
+	grid-auto-rows: 12.75rem;
 	gap: 1rem;
 }
 .card-grid > * {
