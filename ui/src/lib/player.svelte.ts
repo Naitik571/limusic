@@ -36,7 +36,15 @@ export const library = $state({
 	items: [] as BrowseItem[],
 	loaded: false,
 	loading: false,
-	error: null as string | null
+	error: null as string | null,
+	// Saved albums and artists. Only the Library page renders them, but they live here rather than in
+	// that page's local state so leaving and coming back paints the cached grid instead of a skeleton
+	// while three requests go out again.
+	albums: [] as BrowseItem[],
+	artists: [] as BrowseItem[],
+	extrasLoaded: false,
+	extrasLoading: false,
+	extrasError: null as string | null
 });
 
 /** Fetch the library once (or force a refresh). No-op while a load is in flight. */
@@ -51,6 +59,24 @@ export async function loadLibrary(force = false) {
 		library.error = String(e);
 	} finally {
 		library.loading = false;
+	}
+}
+
+/** Saved albums + artists, same caching rules as `loadLibrary`. */
+export async function loadLibraryExtras(force = false) {
+	if (library.extrasLoading || (library.extrasLoaded && !force)) return;
+	library.extrasLoading = true;
+	library.extrasError = null;
+	try {
+		[library.albums, library.artists] = await Promise.all([
+			api.getLibraryAlbums(),
+			api.getLibraryArtists()
+		]);
+		library.extrasLoaded = true;
+	} catch (e) {
+		library.extrasError = String(e);
+	} finally {
+		library.extrasLoading = false;
 	}
 }
 
@@ -407,6 +433,9 @@ export function initApp(): () => void {
 			else {
 				library.items = [];
 				library.loaded = false;
+				library.albums = [];
+				library.artists = [];
+				library.extrasLoaded = false;
 			}
 			clearCached();
 			auth.epoch++;

@@ -487,6 +487,25 @@
 }
 .content-in { animation: content-in 150ms ease-out; }
 
+/* The card grid behind Library, Local music, search results and "See all". Same reasoning as
+   Shelf.svelte: WebKit keeps every card in style, layout and paint, and because it rasterizes in
+   tiles, one card's hover repaint re-rasterizes the images around it — so hovering gets slower the
+   more cards there are, and a full library is hundreds. Skipping off-screen cards caps that at a
+   screenful, and their thumbnails stop being fetched until you scroll near them.
+   12.75rem is a card exactly (8px padding + 144px cover + 8px gap + title + subtitle + 8px); the
+   `auto` keyword swaps in the measured size after a card's first paint, so the scrollbar stays put.
+   Paint containment clips at the card's own box, which the group-hover shadow stays inside: it
+   reaches ~27px below the cover and there are 52px of title, subtitle and padding under it. */
+.card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, 10rem);
+	gap: 1rem;
+}
+.card-grid > * {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 12.75rem;
+}
+
 /* A small "pop" for the like button when a track is favourited. */
 @keyframes heart-pop {
 	0% { transform: scale(1); }

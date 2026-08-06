@@ -128,7 +128,7 @@
 	{#if local.error}
 		<ErrorState message={local.error} onRetry={() => scanLocal()} />
 	{:else if local.loading && !local.scanned}
-		<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+		<div class="card-grid">
 			{#each Array(6) as _, i (i)}
 				<MediaCardSkeleton />
 			{/each}
@@ -140,46 +140,54 @@
 				<Tabs.Trigger value="artists">Artists ({local.artists.length})</Tabs.Trigger>
 				<Tabs.Trigger value="songs">Songs ({local.songs.length})</Tabs.Trigger>
 			</Tabs.List>
+			<!-- Gated on `view`: bits-ui hides an inactive panel rather than unmounting it, so all three
+			     views of the same collection would be built on every visit. -->
 			<Tabs.Content value="albums">
-				<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
-					{#each local.albums as album (album.id)}
-						<MediaCard item={album} />
-					{/each}
-				</div>
+				{#if view === 'albums'}
+					<div class="card-grid content-in">
+						{#each local.albums as album (album.id)}
+							<MediaCard item={album} />
+						{/each}
+					</div>
+				{/if}
 			</Tabs.Content>
 			<Tabs.Content value="artists">
-				<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
-					{#each local.artists as artist (artist.id)}
-						<MediaCard item={artist} />
-					{/each}
-				</div>
+				{#if view === 'artists'}
+					<div class="card-grid content-in">
+						{#each local.artists as artist (artist.id)}
+							<MediaCard item={artist} />
+						{/each}
+					</div>
+				{/if}
 			</Tabs.Content>
 			<Tabs.Content value="songs">
-				<div class="mb-3 flex gap-2">
-					<Button size="sm" class="gap-2 rounded-full" onclick={() => playAll(false)}>
-						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play all
-					</Button>
-					<Button
-						size="sm"
-						variant="outline"
-						class="gap-2 rounded-full"
-						onclick={() => playAll(true)}
-					>
-						<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle
-					</Button>
-				</div>
-				<div class="content-in">
-					{#each local.songs.slice(0, shown) as song, i (song.video_id)}
-						<TrackRow
-							{song}
-							index={i}
-							active={song.video_id === nowId}
-							onplay={() => api.playPlaylist(local.songs, i, undefined, SOURCE)}
-						/>
-					{/each}
-				</div>
-				{#if local.songs.length > shown}
-					<div {@attach sentinel}></div>
+				{#if view === 'songs'}
+					<div class="mb-3 flex gap-2">
+						<Button size="sm" class="gap-2 rounded-full" onclick={() => playAll(false)}>
+							<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play all
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							class="gap-2 rounded-full"
+							onclick={() => playAll(true)}
+						>
+							<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle
+						</Button>
+					</div>
+					<div class="content-in">
+						{#each local.songs.slice(0, shown) as song, i (song.video_id)}
+							<TrackRow
+								{song}
+								index={i}
+								active={song.video_id === nowId}
+								onplay={() => api.playPlaylist(local.songs, i, undefined, SOURCE)}
+							/>
+						{/each}
+					</div>
+					{#if local.songs.length > shown}
+						<div {@attach sentinel}></div>
+					{/if}
 				{/if}
 			</Tabs.Content>
 		</Tabs.Root>

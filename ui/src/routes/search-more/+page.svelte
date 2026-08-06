@@ -71,7 +71,7 @@
 				<TrackRowSkeleton />
 			{/each}
 		{:else}
-			<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+			<div class="card-grid">
 				{#each Array(12) as _, i (i)}
 					<MediaCardSkeleton />
 				{/each}
@@ -88,7 +88,7 @@
 			{/each}
 		</div>
 	{:else if cards.length}
-		<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+		<div class="card-grid content-in">
 			{#each cards as item (item.id + item.title)}
 				<MediaCard {item} />
 			{/each}

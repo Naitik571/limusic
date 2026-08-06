@@ -47,7 +47,7 @@
 <div class="p-6">
 	<h1 class="mb-6 font-heading text-2xl font-bold">{title}</h1>
 	{#if loading}
-		<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+		<div class="card-grid">
 			{#each Array(12) as _, i (i)}
 				<MediaCardSkeleton />
 			{/each}
@@ -55,7 +55,7 @@
 	{:else if error}
 		<ErrorState message={error} onRetry={() => load(id, params)} />
 	{:else if items.length}
-		<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+		<div class="card-grid content-in">
 			{#each items as item (item.id + item.title)}
 				<MediaCard {item} />
 			{/each}

@@ -124,17 +124,20 @@
 			{/if}
 		</div>
 	</div>
+	<!-- bg-background/90, not /80 with a backdrop-blur: a backdrop-filter makes WebKit snapshot and
+	     blur everything under the button, on every card in the grid, whether or not the card is
+	     hovered. At 90% over artwork there is nothing left to blur that you can see. -->
 	{#if item.kind === 'song'}
 		<TrackMenu
 			song={asSong(item)}
 			onAdd={() => openAddToPlaylist(asSong(item))}
-			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground opacity-0 shadow-md backdrop-blur-sm transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 cursor-pointer"
+			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-md transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 cursor-pointer"
 		/>
 	{:else}
 		<PlaylistMenu
 			{item}
 			showPin={item.kind === 'playlist'}
-			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground opacity-0 shadow-md backdrop-blur-sm transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 cursor-pointer"
+			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-md transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 cursor-pointer"
 		/>
 	{/if}
 </div>

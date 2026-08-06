@@ -60,6 +60,11 @@
 	}
 </script>
 
+<!-- content-visibility: a liked-songs playlist runs to thousands of rows and WebKit keeps every one
+     in style, layout and paint. 3.5rem is a row (8px padding, 40px thumbnail, 8px); `auto` swaps in
+     the measured size after first paint. Not on the compact variant: that one is laid out in CSS
+     columns (ForgottenFavourites), where an unsized fragment would upset column balancing, and it
+     never has more than 15 rows to skip. -->
 <div
 	role="button"
 	tabindex="0"
@@ -68,7 +73,7 @@
 	aria-label={guestAdd ? `Add ${song.title} to the session queue` : `Play ${song.title}`}
 	class="group flex w-full cursor-pointer items-center gap-3 rounded-lg p-2 transition-colors hover:bg-accent/10 {active
 		? 'bg-accent/10'
-		: ''}"
+		: ''} {compact ? '' : '[content-visibility:auto] [contain-intrinsic-size:auto_3.5rem]'}"
 >
 	<div class="flex min-w-0 flex-1 items-center gap-3">
 		<div class="flex min-w-0 shrink-0 items-center gap-3">

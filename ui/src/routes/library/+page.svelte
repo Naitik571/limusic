@@ -18,9 +18,15 @@
 	import MediaCard from '$lib/components/MediaCard.svelte';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
-	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
-	import { auth, toast, library, loadLibrary, createLibraryPlaylist } from '$lib/player.svelte';
+	import {
+		auth,
+		toast,
+		library,
+		loadLibrary,
+		loadLibraryExtras,
+		createLibraryPlaylist
+	} from '$lib/player.svelte';
 
 	let dialogOpen = $state(false);
 	let newTitle = $state('');
@@ -29,16 +35,11 @@
 	// on the tab you came from instead of a sign-in prompt.
 	let tab = $state(page.url.searchParams.get('tab') ?? 'all');
 
-	// Playlists live in the shared `library` store (the sidebar renders them too). Albums and
-	// artists have this page as their only consumer, so they stay local and refresh on each visit.
-	let albums = $state<BrowseItem[]>([]);
-	let artists = $state<BrowseItem[]>([]);
-	let extraLoading = $state(false);
-	let extraError = $state<string | null>(null);
-
-	const all = $derived([...library.items, ...albums, ...artists]);
-	const loading = $derived((library.loading || extraLoading) && !all.length);
-	const error = $derived(library.error ?? extraError);
+	// Everything here lives in the shared `library` store, so a revisit renders the cached grid
+	// immediately and the forced refresh below swaps in fresh data behind it.
+	const all = $derived([...library.items, ...library.albums, ...library.artists]);
+	const loading = $derived((library.loading || library.extrasLoading) && !all.length);
+	const error = $derived(library.error ?? library.extrasError);
 
 	onMount(() => {
 		if (auth.account?.signedIn) load();
@@ -46,19 +47,7 @@
 
 	function load() {
 		loadLibrary(true);
-		loadExtras();
-	}
-
-	async function loadExtras() {
-		extraLoading = true;
-		extraError = null;
-		try {
-			[albums, artists] = await Promise.all([api.getLibraryAlbums(), api.getLibraryArtists()]);
-		} catch (e) {
-			extraError = String(e);
-		} finally {
-			extraLoading = false;
-		}
+		loadLibraryExtras(true);
 	}
 
 	async function createNew() {
@@ -80,7 +69,7 @@
 
 {#snippet grid(items: BrowseItem[], empty: string)}
 	{#if items.length}
-		<div class="content-in grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+		<div class="card-grid content-in">
 			{#each items as item (item.kind + item.id)}
 				<MediaCard {item} />
 			{/each}
@@ -145,8 +134,12 @@
 				<HugeiconsIcon icon={DriveIcon} class="h-4 w-4" /> Local
 			</Tabs.Trigger>
 		</Tabs.List>
+		<!-- Every branch below is gated on `tab`, because bits-ui never unmounts an inactive panel: it
+		     renders all five and hides the others. Left alone, opening Library builds each card twice
+		     (once for All, once for its own tab) and mounts the whole Local tab, disk scan included,
+		     for a panel you cannot see. -->
 		<!-- Local stands alone: no account, no connection, and none of the states below apply. -->
-		<Tabs.Content value="local"><LocalMusic /></Tabs.Content>
+		<Tabs.Content value="local">{#if tab === 'local'}<LocalMusic />{/if}</Tabs.Content>
 		{#if tab === 'local'}
 			<!-- nothing else: the YouTube states below have no bearing on files on this disk -->
 		{:else if !auth.account?.signedIn}
@@ -155,23 +148,37 @@
 				device.
 			</p>
 		{:else if loading}
-			<div class="grid grid-cols-[repeat(auto-fill,10rem)] gap-4">
+			<div class="card-grid">
 				{#each Array(12) as _, i (i)}
 					<MediaCardSkeleton />
 				{/each}
 			</div>
-		{:else if error}
+		{:else if error && !all.length}
+			<!-- Only when there is nothing to fall back on. Now that the grid is cached across visits, a
+			     refresh that fails should leave the library you were looking at on screen. -->
 			<ErrorState message={error} onRetry={load} />
 		{:else}
-			<Tabs.Content value="all">{@render grid(all, 'Your library is empty.')}</Tabs.Content>
+			<Tabs.Content value="all">
+				{#if tab === 'all'}{@render grid(all, 'Your library is empty.')}{/if}
+			</Tabs.Content>
 			<Tabs.Content value="playlists">
-				{@render grid(library.items, 'No playlists yet.')}
+				{#if tab === 'playlists'}{@render grid(library.items, 'No playlists yet.')}{/if}
 			</Tabs.Content>
 			<Tabs.Content value="albums">
-				{@render grid(albums, 'No saved albums yet. Open an album and hit Save to library.')}
+				{#if tab === 'albums'}
+					{@render grid(
+						library.albums,
+						'No saved albums yet. Open an album and hit Save to library.'
+					)}
+				{/if}
 			</Tabs.Content>
 			<Tabs.Content value="artists">
-				{@render grid(artists, 'No artists yet. They show up once you save their songs or albums.')}
+				{#if tab === 'artists'}
+					{@render grid(
+						library.artists,
+						'No artists yet. They show up once you save their songs or albums.'
+					)}
+				{/if}
 			</Tabs.Content>
 		{/if}
 	</Tabs.Root>
