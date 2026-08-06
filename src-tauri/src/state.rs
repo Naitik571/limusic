@@ -861,7 +861,15 @@ impl AppState {
                 return false; // user moved on
             }
             let Some(item) = self.current_item().await else { return false };
-            match self.resolve(&item.video_id).await {
+            let resolved = self.resolve(&item.video_id).await;
+            // A resolve takes seconds; a skip during it bumps the generation. Re-check before
+            // acting on the result: an abandoned failure would otherwise move `current` under the
+            // track that's already playing and leave a stale error banner (nothing clears it, the
+            // new track's now-playing fired before the banner appeared).
+            if self.generation.load(Ordering::SeqCst) != gen {
+                return false;
+            }
+            match resolved {
                 Ok(d) => break (item, d),
                 // A deleted local file is gone for good, so it leaves the queue outright rather
                 // than being skipped over — a row that can only ever fail again is noise. Every
