@@ -81,8 +81,14 @@
 					? 'rounded-full'
 					: 'rounded-lg'}"
 			></div>
+			<!-- No resting shadow. Measured (perf/hover.mjs, 300 cards, scrolled): it was three quarters
+			     of the hover cost, and not because of the hovered card. WebKit rasterizes in tiles, so
+			     repainting one card re-rasterizes its whole tile, and that means re-blurring the shadow
+			     of every card in the tile. One blurred shadow per cover, nine covers a tile, on every
+			     card the pointer crosses. Dropping it took p90 frame time from ~105ms to ~33ms; the
+			     hover lift below is nearly free by comparison because only one card ever has it. -->
 			<div
-				class="relative aspect-square w-full overflow-hidden bg-muted shadow-sm {round
+				class="relative aspect-square w-full overflow-hidden bg-muted {round
 					? 'rounded-full'
 					: 'rounded-lg'}"
 			>

@@ -14,6 +14,7 @@ rustypipe_reports/
 # Local design notes & tooling — kept out of the public repo
 /context/
 /progress/
+/ui/perf/
 /spikes/
 /.agents/
 /.claude/
