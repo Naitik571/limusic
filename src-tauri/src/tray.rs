@@ -20,9 +20,11 @@ use crate::state::AppState;
 
 pub use imp::{init, set_playing};
 
-/// Bring the main window back from close-to-tray or minimize. Every "come back" path — tray
-/// menu, tray click, second launch — goes through here so they can't drift apart.
+/// Bring the main window back from close-to-tray, minimize, or the mini player. Every "come back"
+/// path — tray menu, tray click, second launch, the widget's restore button — goes through here so
+/// they can't drift apart.
 pub fn show_main(app: &AppHandle) {
+    crate::mini::close(app);
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
@@ -39,6 +41,8 @@ fn handle_menu(app: &AppHandle, id: &str) {
             if let Some(state) = app.try_state::<Arc<AppState>>() {
                 state.flush_position();
             }
+            // Same for the widget's own position, if that's what they were quitting from.
+            crate::mini::save_position(app);
             app.exit(0);
         }
         other => {

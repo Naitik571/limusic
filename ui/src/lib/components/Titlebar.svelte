@@ -11,6 +11,7 @@
 		MinusSignIcon,
 		SquareIcon,
 		Cancel01Icon,
+		MinimizeScreenIcon,
 		CheckmarkCircle01Icon,
 		Loading03Icon,
 		HotspotOfflineIcon
@@ -20,7 +21,7 @@
 	import AccountMenu from './AccountMenu.svelte';
 	import logo from '$lib/assets/favicon.svg';
 	import * as api from '$lib/api';
-	import { toast } from '$lib/player.svelte';
+	import { openMiniPlayer, toast } from '$lib/player.svelte';
 
 	const win = getCurrentWindow();
 
@@ -178,6 +179,18 @@
 					/>
 				{/if}
 			</span>
+		</button>
+
+		<!-- Mini player: hides the app to the tray and hands over to the floating widget (mini.rs).
+		     It sits with the integrations rather than the window controls because it swaps what
+		     you're using, not the size of this window. -->
+		<button
+			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+			onclick={openMiniPlayer}
+			title="Mini player"
+			aria-label="Mini player"
+		>
+			<HugeiconsIcon icon={MinimizeScreenIcon} class="h-4 w-4" />
 		</button>
 
 		<div class="mx-1.5 h-4 w-px bg-border"></div>

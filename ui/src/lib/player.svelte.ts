@@ -265,6 +265,62 @@ export function isLiked(song: SongItem): boolean {
 	return likedSongs[song.video_id] ?? song.liked ?? false;
 }
 
+/** Like/unlike whatever is playing. Thin wrapper so the player bar and the mini player share one
+ *  implementation (and one optimistic path) with every list row. */
+export function toggleNowPlayingLike(): Promise<void> {
+	const n = playback.now;
+	if (!n) return Promise.resolve();
+	return toggleLike({ video_id: n.videoId, title: n.title, artists: n.artists });
+}
+
+// --- Volume ------------------------------------------------------------------------------------
+// Shared by the player bar and the mini player, which means there is one behaviour to get right
+// instead of two to keep in step.
+
+// Live while dragging (the user hears it), but trailing-throttled so a drag doesn't flood IPC.
+let volTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function dragVolume(v: number) {
+	playback.volume = v;
+	if (volTimer) return;
+	volTimer = setTimeout(() => {
+		volTimer = null;
+		api.setVolume(playback.volume);
+	}, 100);
+}
+
+/** Pointer released: always send the final value, throttle window or not. */
+export function commitVolume(v: number) {
+	if (volTimer) {
+		clearTimeout(volTimer);
+		volTimer = null;
+	}
+	playback.volume = v;
+	api.setVolume(v);
+}
+
+// Mute *is* volume 0 — no separate flag, so dragging the slider off zero un-mutes for free and the
+// icon can't disagree with what you hear. Remembers the level to come back to; falls back to 100
+// when the user dragged to zero themselves (nothing was remembered).
+let preMute = 100;
+
+export function toggleMute() {
+	const muted = playback.volume === 0;
+	if (!muted) preMute = playback.volume;
+	commitVolume(muted ? preMute || 100 : 0);
+}
+
+/** Hand over to the floating widget (Rust `mini.rs`); the app hides to the tray behind it. */
+export function openMiniPlayer() {
+	api.openMini().catch((e) => toast.error(String(e)));
+}
+
+/** Advance the repeat mode: off → all → one → off. */
+export function cycleRepeat(): Promise<void> {
+	const r = playback.queue.repeat ?? 'off';
+	return api.setRepeat(r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
+}
+
 /** Optimistic like toggle, reverted if YouTube rejects it. */
 export async function toggleLike(song: SongItem) {
 	const next = !isLiked(song);
@@ -405,8 +461,14 @@ export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 
 let started = false;
 
-/** Wire the Tauri event listeners once and seed initial state. Returns a teardown fn. */
-export function initApp(): () => void {
+/**
+ * Wire the Tauri event listeners once and seed initial state. Returns a teardown fn.
+ *
+ * `mini` is the floating-widget window (mini.rs): it runs this same module, and the events are
+ * emitted app-wide so it gets playback for free — but it has no library, no local tab, no account
+ * menu and no Listen Together UI, so it skips those fetches rather than duplicating the app's.
+ */
+export function initApp(mini = false): () => void {
 	if (started) return () => {};
 	started = true;
 	const subs = [
@@ -424,13 +486,19 @@ export function initApp(): () => void {
 		api.onPosition((p) => (playback.position = p)),
 		api.onDuration((d) => (playback.duration = d)),
 		api.onPlaybackState((s) => (playback.paused = s === 'paused')),
+		api.onVolume((v) => {
+			// Not while our own drag is in flight: the echo is a value the pointer has already
+			// moved past, and applying it would yank the thumb backwards mid-drag.
+			if (!volTimer) playback.volume = v;
+		}),
 		api.onPlaybackError((msg) => (playback.error = msg)),
 		api.onPlaybackNotice((msg) => toast(msg)), // auto-skipped an unplayable track
 		api.onLocalChanged(forgetLocal), // a local file turned out to be gone — drop it everywhere
 		api.onAuthChanged((a) => {
 			auth.account = a;
-			if (a.signedIn) loadLibrary(true);
-			else {
+			if (a.signedIn) {
+				if (!mini) loadLibrary(true);
+			} else {
 				library.items = [];
 				library.loaded = false;
 				library.albums = [];
@@ -446,30 +514,24 @@ export function initApp(): () => void {
 		api.onLtState((s) => applyLtState(s)),
 		api.onLtNotice((msg) => toast(msg))
 	];
+	const teardown = () => subs.forEach((u) => u.then((f) => f()));
 	api.getQueue()
-		.then((q) => {
-			playback.queue = q;
-			// On a cold start the backend restores the queue (paused) before the UI subscribes, so
-			// the now-playing event is missed. Seed the player-bar card from the restored current
-			// item; hitting play resolves it for real and re-emits now-playing.
-			if (!playback.now) {
-				const cur = q.items[q.currentIndex];
-				if (cur) {
-					playback.now = {
-						videoId: cur.video_id,
-						title: cur.title,
-						artists: cur.artists,
-						artistId: cur.artist_id,
-						thumbnail: cur.thumbnail,
-						duration: cur.duration,
-						streamClient: 'restored',
-						liked: null
-					};
-					playback.paused = true;
-				}
-			}
+		.then((q) => (playback.queue = q))
+		.catch(() => {});
+	// The events above are fire-and-forget, and this window missed every one that already fired:
+	// on a cold start the backend restores the queue before the UI subscribes, and the mini player
+	// is created mid-song. Ask for the current state once rather than guessing at it.
+	api.getPlayback()
+		.then((s) => {
+			if (playback.now) return; // a real now-playing event beat us to it
+			playback.now = s.now;
+			playback.liked = s.now?.liked ?? false;
+			playback.paused = s.paused;
+			playback.position = s.position;
+			playback.duration = s.duration;
 		})
 		.catch(() => {});
+	if (mini) return teardown;
 	api.getAccount()
 		.then((a) => {
 			auth.account = a;
@@ -481,5 +543,5 @@ export function initApp(): () => void {
 	scanLocal();
 	// Seed the Listen Together state (server URL, any active room after a UI reload).
 	api.ltGetState().then(applyLtState).catch(() => {});
-	return () => subs.forEach((u) => u.then((f) => f()));
+	return teardown;
 }

@@ -9,6 +9,7 @@ mod listentogether;
 mod local;
 mod lyrics;
 mod media;
+mod mini;
 mod orchestrator;
 mod potoken;
 mod session;
@@ -336,6 +337,7 @@ pub fn run() {
             commands::seek,
             commands::set_volume,
             commands::get_queue,
+            commands::get_playback,
             commands::get_settings,
             commands::set_setting,
             commands::get_stream_clients,
@@ -343,6 +345,8 @@ pub fn run() {
             commands::get_account,
             commands::sign_out,
             commands::login_webview,
+            commands::open_mini,
+            commands::close_mini,
             commands::get_home,
             commands::get_home_more,
             commands::get_library,
@@ -390,16 +394,26 @@ pub fn run() {
             // the tray's Quit item (or the "close_to_tray=false" setting). Label-gated: the
             // hidden cipher/PoToken webviews are windows too and must close normally.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
-                    let hide = window
-                        .app_handle()
-                        .try_state::<Arc<AppState>>()
-                        .map(|s| close_hides(s.db.get_setting("close_to_tray").as_deref()))
-                        .unwrap_or(true);
-                    if hide {
-                        api.prevent_close();
-                        let _ = window.hide();
+                match window.label() {
+                    "main" => {
+                        let hide = window
+                            .app_handle()
+                            .try_state::<Arc<AppState>>()
+                            .map(|s| close_hides(s.db.get_setting("close_to_tray").as_deref()))
+                            .unwrap_or(true);
+                        if hide {
+                            api.prevent_close();
+                            let _ = window.hide();
+                        }
                     }
+                    // Nothing in the widget closes it, but a WM shortcut still can. Turn that into
+                    // the ordinary "back to the app" path — closing it on its own would leave the
+                    // app running with no window at all.
+                    mini::LABEL => {
+                        api.prevent_close();
+                        tray::show_main(window.app_handle());
+                    }
+                    _ => {}
                 }
             }
         })

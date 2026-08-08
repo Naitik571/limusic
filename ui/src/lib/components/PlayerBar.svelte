@@ -15,12 +15,22 @@
 		FavouriteIcon,
 		Add01Icon,
 		InfinityIcon,
+		MinimizeScreenIcon,
 		MusicNote01Icon
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import * as api from '$lib/api';
-	import { playback, toast, openAddToPlaylist } from '$lib/player.svelte';
+	import {
+		playback,
+		commitVolume,
+		cycleRepeat,
+		dragVolume,
+		openAddToPlaylist,
+		openMiniPlayer,
+		toggleMute,
+		toggleNowPlayingLike
+	} from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
@@ -41,18 +51,9 @@
 	// so the next like can replay it.
 	let justLiked = $state(false);
 
-	async function toggleLike() {
-		if (!playback.now) return;
-		const next = !playback.liked;
-		playback.liked = next; // optimistic
-		if (next) justLiked = true;
-		try {
-			await api.like(playback.now.videoId, next);
-			toast.success(next ? 'Added to liked songs' : 'Removed from liked songs');
-		} catch (e) {
-			playback.liked = !next; // revert on failure
-			toast.error(String(e));
-		}
+	function toggleLike() {
+		if (!playback.liked) justLiked = true;
+		toggleNowPlayingLike();
 	}
 
 	const fmt = (secs: number) => {
@@ -83,10 +84,6 @@
 		return cur?.video_id === playback.now?.videoId ? cur : null;
 	});
 
-	function cycleRepeat() {
-		api.setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off');
-	}
-
 	// Seek: while dragging, hold a local value so incoming mpv position ticks can't yank the thumb
 	// back under the pointer; only invoke the (expensive) seek on release.
 	let seekDrag = $state<number | null>(null);
@@ -102,36 +99,8 @@
 		api.seek(v);
 	}
 
-	// Volume: keep it live while dragging (the user hears it), but trailing-throttle the invoke so a
-	// drag doesn't flood IPC; always send the final value on release.
-	let volTimer: ReturnType<typeof setTimeout> | null = null;
-	function onVolume(e: Event) {
-		const v = Number((e.target as HTMLInputElement).value);
-		playback.volume = v;
-		if (volTimer) return;
-		volTimer = setTimeout(() => {
-			volTimer = null;
-			api.setVolume(playback.volume);
-		}, 100);
-	}
-	function onVolumeCommit(e: Event) {
-		if (volTimer) {
-			clearTimeout(volTimer);
-			volTimer = null;
-		}
-		api.setVolume(Number((e.target as HTMLInputElement).value));
-	}
-
-	// Mute *is* volume 0 — no separate flag, so dragging the slider off zero un-mutes for free and
-	// the icon can't disagree with what you hear. Remembers the level to come back to; falls back
-	// to 100 when the user dragged to zero themselves (nothing was remembered).
-	let preMute = 100;
-	function toggleMute() {
-		const muted = playback.volume === 0;
-		if (!muted) preMute = playback.volume;
-		playback.volume = muted ? preMute || 100 : 0;
-		api.setVolume(playback.volume);
-	}
+	const onVolume = (e: Event) => dragVolume(Number((e.target as HTMLInputElement).value));
+	const onVolumeCommit = (e: Event) => commitVolume(Number((e.target as HTMLInputElement).value));
 </script>
 
 <footer class="flex items-center gap-2 border-t bg-card px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3">
@@ -321,21 +290,27 @@
 				aria-label="Volume"
 			/>
 		</div>
-		<Button
-			variant={lyricsOpen ? 'secondary' : 'ghost'}
-			size="icon-sm"
-			onclick={onToggleLyrics}
-			aria-label="Toggle lyrics"
-		>
-			<HugeiconsIcon icon={Mic01Icon} class="h-5 w-5" />
-		</Button>
-		<Button
-			variant={queueOpen ? 'secondary' : 'ghost'}
-			size="icon-sm"
-			onclick={onToggleQueue}
-			aria-label="Toggle queue"
-		>
-			<HugeiconsIcon icon={Queue01Icon} class="h-5 w-5" />
-		</Button>
+		<!-- One cluster, so they sit tighter to each other than to the volume slider. -->
+		<div class="flex items-center gap-0.5">
+			<Button variant="ghost" size="icon-sm" onclick={openMiniPlayer} aria-label="Mini player">
+				<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
+			</Button>
+			<Button
+				variant={lyricsOpen ? 'secondary' : 'ghost'}
+				size="icon-sm"
+				onclick={onToggleLyrics}
+				aria-label="Toggle lyrics"
+			>
+				<HugeiconsIcon icon={Mic01Icon} class="h-5 w-5" />
+			</Button>
+			<Button
+				variant={queueOpen ? 'secondary' : 'ghost'}
+				size="icon-sm"
+				onclick={onToggleQueue}
+				aria-label="Toggle queue"
+			>
+				<HugeiconsIcon icon={Queue01Icon} class="h-5 w-5" />
+			</Button>
+		</div>
 	</div>
 </footer>

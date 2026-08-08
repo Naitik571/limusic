@@ -547,6 +547,10 @@ input[type='range'].range::-webkit-slider-thumb {
 	opacity: 0;
 	transition: opacity 0.15s ease, transform 0.15s ease;
 }
+/* The mini player's seek bar sits on cover art, where --muted has nothing to contrast with. */
+input[type='range'].range.on-art::-webkit-slider-runnable-track {
+	background: linear-gradient(to right, var(--primary) var(--pct, 0%), rgb(255 255 255 / 0.35) var(--pct, 0%));
+}
 input[type='range'].range:hover::-webkit-slider-thumb,
 input[type='range'].range:focus-visible::-webkit-slider-thumb {
 	opacity: 1;

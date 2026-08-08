@@ -227,6 +227,15 @@ export const seek = (position: number) => invoke<void>('seek', { position });
 export const setVolume = (volume: number) => invoke<void>('set_volume', { volume });
 export const getQueue = () => invoke<QueueState>('get_queue');
 
+/** What the event stream already reported, for a webview that started after it did. */
+export interface PlaybackSnapshot {
+	now: NowPlaying | null;
+	paused: boolean;
+	position: number;
+	duration: number;
+}
+export const getPlayback = () => invoke<PlaybackSnapshot>('get_playback');
+
 // --- settings (context/11) -----------------------------------------------------------------
 export const getSettings = () => invoke<Record<string, string>>('get_settings');
 export const setSetting = (key: string, value: string) =>
@@ -243,6 +252,12 @@ export const getAccount = () => invoke<Account>('get_account');
 export const signOut = () => invoke<void>('sign_out');
 /** Open the in-app Google sign-in webview (context/15 Path A). Result arrives via onAuthChanged. */
 export const loginWebview = () => invoke<void>('login_webview');
+
+// --- mini player (Rust mini.rs) ---------------------------------------------------------------
+/** Hide the app to the tray and open the floating widget (a second window running this same SPA). */
+export const openMini = () => invoke<void>('open_mini');
+/** Close the widget and bring the app back. */
+export const closeMini = () => invoke<void>('close_mini');
 
 // --- browse / library (context/08) ---------------------------------------------------------
 /** `params` is a `HomeChip.params` token — omit for the unfiltered feed. */
@@ -317,6 +332,9 @@ export const onPosition = (cb: (p: number) => void): Promise<UnlistenFn> =>
 	listen<{ position: number }>('position', (e) => cb(e.payload.position));
 export const onDuration = (cb: (d: number) => void): Promise<UnlistenFn> =>
 	listen<{ duration: number }>('duration', (e) => cb(e.payload.duration));
+/** Echo of every `set_volume`, so a second window's slider can't drift from what you hear. */
+export const onVolume = (cb: (v: number) => void): Promise<UnlistenFn> =>
+	listen<number>('volume', (e) => cb(e.payload));
 export const onPlaybackState = (cb: (s: 'playing' | 'paused') => void): Promise<UnlistenFn> =>
 	listen<'playing' | 'paused'>('playback-state', (e) => cb(e.payload));
 export const onPlaybackError = (cb: (msg: string) => void): Promise<UnlistenFn> =>

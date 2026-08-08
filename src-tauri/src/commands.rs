@@ -7,7 +7,7 @@ use innertube::{
     AlbumPage, ArtistPage, BrowseItem, HomePage, PlaylistContinuation, PlaylistPage, SearchResults,
     SongItem,
 };
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::state::{AppState, ON_REPEAT_ID, ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS};
 
@@ -150,7 +150,11 @@ pub async fn seek(state: St<'_>, position: f64) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
-    state.player.set_volume(volume).map_err(|e| e.to_string())
+    state.player.set_volume(volume).map_err(|e| e.to_string())?;
+    // There is one volume and there can be two windows (the mini player). Without this the one
+    // that didn't move the slider keeps showing the old level and lies about what you're hearing.
+    let _ = state.app.emit("volume", volume);
+    Ok(())
 }
 
 #[tauri::command]
@@ -293,6 +297,38 @@ pub async fn login_webview(state: St<'_>) -> Result<(), String> {
     let state = state.inner().clone();
     let app = state.app.clone();
     crate::session::open_login(app, state);
+    Ok(())
+}
+
+/// The current track, play state, position and duration in one shot. Events are the normal
+/// channel; this is for a webview that started after them (the mini player, or the main window
+/// on a cold start, where the queue is restored before the UI subscribes).
+#[tauri::command]
+pub async fn get_playback(state: St<'_>) -> Result<serde_json::Value, String> {
+    Ok(state.playback_snapshot().await)
+}
+
+// --- mini player (mini.rs) ------------------------------------------------------------------
+
+/// Swap the app for the floating widget: the main window hides to the tray behind it.
+#[tauri::command]
+pub async fn open_mini(app: tauri::AppHandle) -> Result<(), String> {
+    // GTK wants window creation on the main thread, so hop and post the result back rather than
+    // logging a failure the user would only see as a click that did nothing.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(crate::mini::open(&handle));
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|_| "the mini player never answered".to_string())?
+}
+
+/// Swap back. Same path as the tray, so the widget and the tray can't disagree about what
+/// "show Limusic" means.
+#[tauri::command]
+pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
+    crate::tray::show_main(&app);
     Ok(())
 }
 

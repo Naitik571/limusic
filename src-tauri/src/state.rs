@@ -1078,22 +1078,42 @@ impl AppState {
 
     // --- events (context/11 UI contract) ----------------------------------------------------
 
+    /// Everything the `now-playing` event carries. Shared with [`Self::playback_snapshot`] so a
+    /// window that asks for the current track can't be told a different shape than one that
+    /// listened for it.
+    fn now_playing_json(item: &SongItem, stream_client: &str) -> serde_json::Value {
+        serde_json::json!({
+            "videoId": item.video_id,
+            "title": item.title,
+            "artists": item.artists,
+            "artistId": item.artist_id,
+            // Per-artist links, so a collab in the player bar navigates like it does in a row.
+            "artistRuns": item.artist_runs,
+            "thumbnail": item.thumbnail,
+            "duration": item.duration,
+            "streamClient": stream_client,
+            "liked": item.liked,
+        })
+    }
+
+    /// What a window that opened mid-playback missed. Events are fire-and-forget, so the mini
+    /// player (a second webview, created long after the track started) and the main window on a
+    /// cold start both have to ask once instead of guessing.
+    pub async fn playback_snapshot(&self) -> serde_json::Value {
+        let (duration, item) = {
+            let q = self.queue.lock().await;
+            (q.duration, q.items.get(q.current).cloned())
+        };
+        serde_json::json!({
+            "now": item.as_ref().map(|i| Self::now_playing_json(i, "current")),
+            "paused": !self.is_playing.load(Ordering::Relaxed),
+            "position": self.current_position(),
+            "duration": duration,
+        })
+    }
+
     fn emit_now_playing(&self, item: &SongItem, stream_client: &str) {
-        let _ = self.app.emit(
-            "now-playing",
-            serde_json::json!({
-                "videoId": item.video_id,
-                "title": item.title,
-                "artists": item.artists,
-                "artistId": item.artist_id,
-                // Per-artist links, so a collab in the player bar navigates like it does in a row.
-                "artistRuns": item.artist_runs,
-                "thumbnail": item.thumbnail,
-                "duration": item.duration,
-                "streamClient": stream_client,
-                "liked": item.liked,
-            }),
-        );
+        let _ = self.app.emit("now-playing", Self::now_playing_json(item, stream_client));
         let _ = self.app.emit("playback-state", "playing");
         // Push the same metadata to the OS media widget (context/16) and Discord.
         if let Some(m) = &self.media {
