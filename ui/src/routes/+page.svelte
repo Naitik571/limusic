@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { MusicNote01Icon } from '@hugeicons/core-free-icons';
+	import { ArrowUpBigIcon, MusicNote01Icon } from '@hugeicons/core-free-icons';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Button } from '$lib/components/ui/button';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
@@ -191,6 +192,19 @@
 		}
 	}
 
+	// Home doesn't scroll itself — <main> in the layout is the scroller, so the back-to-top button
+	// has to watch the ancestor rather than the window.
+	let scroller = $state<HTMLElement | null>(null);
+	let scrolled = $state(false);
+	function watchScroll(node: HTMLElement) {
+		const el = node.closest('main');
+		if (!el) return;
+		scroller = el;
+		const onScroll = () => (scrolled = el.scrollTop > 400);
+		el.addEventListener('scroll', onScroll, { passive: true });
+		return () => el.removeEventListener('scroll', onScroll);
+	}
+
 	// One page per approach to the bottom: the observer only fires when the sentinel *enters* view, so
 	// an appended page that pushes it back out is required before the next fetch. rootMargin starts
 	// the fetch early enough that the content is usually there by the time you scroll to it.
@@ -248,7 +262,7 @@
 	});
 </script>
 
-<div>
+<div {@attach watchScroll}>
 	<HomeHero />
 	<!-- Mood chips filter the whole feed, so they're page-level controls: sticky, they stay reachable
 	     while the feed scrolls under them instead of leaving with the header they were pinned to.
@@ -376,5 +390,19 @@
 		</div>
 	</div>
 </div>
+
+{#if scrolled}
+	<!-- Clears the player bar when there is one. z-10 keeps it under the queue/lyrics overlays. -->
+	<button
+		transition:fade={{ duration: 150 }}
+		onclick={() => scroller?.scrollTo({ top: 0, behavior: 'smooth' })}
+		aria-label="Back to top"
+		class="fixed right-6 z-10 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-110 {playback.now
+			? 'bottom-24'
+			: 'bottom-6'}"
+	>
+		<HugeiconsIcon icon={ArrowUpBigIcon} class="h-5 w-5" />
+	</button>
+{/if}
 
 <HomeLayoutDialog bind:open={editing} sections={blocks} />
