@@ -58,6 +58,7 @@ export type Custom = {
 
 const KEY = 'primary-theme';
 const CUSTOM_KEY = 'custom-theme';
+const APPEARANCE_KEY = 'appearance';
 const PALETTE_CLASSES = THEMES.filter((t) => t.kind === 'palette').map((t) => `theme-${t.id}`);
 const ACCENT_VARS = ['--primary', '--primary-foreground', '--accent', '--accent-foreground'];
 const CUSTOM_VARS = ['--hue', '--radius', '--font-sans', '--font-heading'];
@@ -75,6 +76,21 @@ export const custom = $state<Custom>({
 	fontHeading: null,
 	fontFiles: []
 });
+
+/**
+ * Looks the UI reads directly rather than through a CSS token. Same store and same reasoning as
+ * the theme above (a pure UI preference, no backend round-trip), which also means a component can
+ * read it during its first render instead of flashing the default while a command round-trips.
+ */
+export const appearance = $state({
+	/** Blur the playing track's artwork behind the now-playing view. */
+	artworkBackground: true
+});
+
+export function setAppearance(patch: Partial<typeof appearance>): void {
+	Object.assign(appearance, patch);
+	localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+}
 
 /**
  * What the tokens resolve to *after* the preset and the overrides are applied. The controls read
@@ -290,6 +306,13 @@ export function initTheme(): void {
 		}
 	} catch {
 		// unparseable — start clean
+	}
+	try {
+		const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) ?? '{}');
+		if (typeof saved?.artworkBackground === 'boolean')
+			appearance.artworkBackground = saved.artworkBackground;
+	} catch {
+		// unparseable — keep the defaults
 	}
 	apply();
 	// Async (each file needs its URL granted first), so the app paints in the fallback font for a

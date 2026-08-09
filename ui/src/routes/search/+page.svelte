@@ -14,7 +14,7 @@
 	import * as api from '$lib/api';
 	import type { SearchResults } from '$lib/api';
 	import { getCached, putCached } from '$lib/pagecache';
-	import { openAddToPlaylist } from '$lib/player.svelte';
+	import { openAddToPlaylist, playSong } from '$lib/player.svelte';
 	import { asSong } from '$lib/browse';
 
 	let query = $state('');
@@ -144,7 +144,7 @@
 						{#if sec.list}
 							{#each sec.items.slice(0, sec.max) as item (item.id)}
 								{@const song = asSong(item)}
-								<TrackRow {song} onplay={() => api.play(song)} onAdd={() => openAddToPlaylist(song)} />
+								<TrackRow {song} onplay={() => playSong(song)} onAdd={() => openAddToPlaylist(song)} />
 							{/each}
 						{:else}
 							<Shelf items={sec.items.slice(0, sec.max)} />

@@ -25,8 +25,9 @@
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import MiniPlayer from '$lib/components/MiniPlayer.svelte';
+	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { auth, initApp, playback, ui } from '$lib/player.svelte';
+	import { auth, initApp, np, playback, ui } from '$lib/player.svelte';
 	import { win, initWin } from '$lib/win.svelte';
 	import { updateState, installUpdate, checkForUpdatesQuiet } from '$lib/updater.svelte';
 
@@ -36,6 +37,11 @@
 	// by side over the content; narrower, they stack (see QueuePanel / LyricsPanel).
 	let queueOpen = $state(false);
 	let lyricsOpen = $state(false);
+	// The now-playing view carries its own queue and lyrics, so the side panels step aside for it
+	// and the bar's two buttons switch its tabs instead of opening a panel on top of it.
+	$effect(() => {
+		if (np.open) queueOpen = lyricsOpen = false;
+	});
 
 	// The mini player runs this same SPA in a second window (Rust `mini.rs`), so the window label is
 	// what tells the two apart: `mini` gets the widget instead of the app chrome, and none of the
@@ -87,18 +93,22 @@
 					{@render children()}
 				{/key}
 			</main>
+			{#if np.open && playback.now}<NowPlaying />{/if}
 			<!-- Lyrics before queue: side by side over the page, lyrics on the left, queue on the right. -->
 			{#if lyricsOpen}<LyricsPanel onClose={() => (lyricsOpen = false)} {queueOpen} />{/if}
 			{#if queueOpen}<QueuePanel onClose={() => (queueOpen = false)} />{/if}
 		</div>
 		{#if playback.now}
-			<!-- Slides up from its own height on first play; leaves instantly (bar removal is rare). -->
-			<div in:fly={{ y: 64, duration: 250, easing: cubicOut }}>
+			<!-- Slides up from its own height on first play; leaves instantly (bar removal is rare).
+			     z-20 on the wrapper, not the bar: the intro's transform makes this a stacking context,
+			     so a z on the footer inside would be trapped under it. The now-playing view is z-20 and
+			     earlier in the DOM, which is what puts it behind the bar as it slides in and out. -->
+			<div class="relative z-20" in:fly={{ y: 64, duration: 250, easing: cubicOut }}>
 				<PlayerBar
-					onToggleQueue={() => (queueOpen = !queueOpen)}
-					{queueOpen}
-					onToggleLyrics={() => (lyricsOpen = !lyricsOpen)}
-					{lyricsOpen}
+					onToggleQueue={() => (np.open ? (np.tab = 'queue') : (queueOpen = !queueOpen))}
+					queueOpen={np.open ? np.tab === 'queue' : queueOpen}
+					onToggleLyrics={() => (np.open ? (np.tab = 'lyrics') : (lyricsOpen = !lyricsOpen))}
+					lyricsOpen={np.open ? np.tab === 'lyrics' : lyricsOpen}
 				/>
 			</div>
 		{/if}

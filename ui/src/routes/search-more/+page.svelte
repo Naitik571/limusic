@@ -7,7 +7,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
-	import { openAddToPlaylist } from '$lib/player.svelte';
+	import { openAddToPlaylist, playSong } from '$lib/player.svelte';
 	import { getCached, putCached } from '$lib/pagecache';
 
 	type MoreResult = { songs: SongItem[]; cards: BrowseItem[] };
@@ -82,7 +82,7 @@
 	{:else if cat === 'songs'}
 		<div class="content-in">
 			{#each songs as song (song.video_id)}
-				<TrackRow {song} onplay={() => api.play(song)} onAdd={() => openAddToPlaylist(song)} />
+				<TrackRow {song} onplay={() => playSong(song)} onAdd={() => openAddToPlaylist(song)} />
 			{:else}
 				<p class="text-sm text-muted-foreground">Nothing found.</p>
 			{/each}

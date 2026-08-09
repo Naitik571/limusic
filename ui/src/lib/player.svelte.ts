@@ -22,6 +22,22 @@ export const playback = $state({
 	liked: false
 });
 
+/**
+ * The full-window now-playing view (NowPlaying.svelte): big artwork, plus the Queue/Lyrics tabs.
+ * It lives here rather than in the layout because starting something playing opens it, and every
+ * "play this" path already goes through this module. The open has to happen at the click: a
+ * gapless advance looks exactly like a user play from the `now-playing` event alone.
+ */
+export const np = $state({ open: false, tab: 'queue' as 'queue' | 'lyrics' });
+
+export const openPlayer = () => (np.open = true);
+
+/** Play one track (a search row, a song card, a shelf), and show it. */
+export function playSong(song: SongItem) {
+	openPlayer();
+	return api.play(song);
+}
+
 export const auth = $state({
 	account: null as Account | null,
 	// Bumped on every sign-in/out. The root layout keys the page on it, so the current route
@@ -355,6 +371,7 @@ export function playFrom(
 	pl.noteRecent(personal, source);
 	pl.touchPick(personal, source.id);
 	savePersonal();
+	openPlayer();
 	return api.playPlaylist(items, start, sourceId, source.title, shuffle, continuation);
 }
 
@@ -395,6 +412,7 @@ export async function startRadio(
 	name?: string
 ) {
 	toast('Starting radio…');
+	openPlayer();
 	try {
 		await api.startRadio(kind, id, name);
 	} catch (e) {

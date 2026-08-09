@@ -16,12 +16,15 @@
 		Add01Icon,
 		InfinityIcon,
 		MinimizeScreenIcon,
-		MusicNote01Icon
+		MusicNote01Icon,
+		ArrowUp01Icon,
+		ArrowDown01Icon
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import * as api from '$lib/api';
 	import {
+		np,
 		playback,
 		commitVolume,
 		cycleRepeat,
@@ -101,9 +104,23 @@
 
 	const onVolume = (e: Event) => dragVolume(Number((e.target as HTMLInputElement).value));
 	const onVolumeCommit = (e: Event) => commitVolume(Number((e.target as HTMLInputElement).value));
+
+	// Anywhere on the bar that isn't a control opens (or closes) the now-playing view: the bar is
+	// what's left of it once it's minimised, so it's the way back in. Deliberately no pointer
+	// cursor, because this is the whole bar, not a button, and every real button keeps its own click.
+	function onBarClick(e: MouseEvent) {
+		if ((e.target as HTMLElement).closest('button, a, input, [role="button"]')) return;
+		np.open = !np.open;
+	}
 </script>
 
-<footer class="flex items-center gap-2 border-t bg-card px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3">
+<!-- The chevron button below is the keyboard equivalent of clicking the bar, so the bar itself
+     stays a plain region rather than becoming a focusable control wrapping every other control. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
+<footer
+	onclick={onBarClick}
+	class="flex items-center gap-2 border-t bg-card px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3"
+>
 	<!-- Now playing -->
 	<div class="flex min-w-0 flex-1 items-center gap-3">
 		{#key playback.now?.videoId}
@@ -310,6 +327,23 @@
 				aria-label="Toggle queue"
 			>
 				<HugeiconsIcon icon={Queue01Icon} class="h-5 w-5" />
+			</Button>
+			<!-- The keyboard (and discoverable) way in and out of the now-playing view; clicking the
+			     bar's empty space does the same thing. -->
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				onclick={() => (np.open = !np.open)}
+				aria-label={np.open ? 'Minimise player' : 'Open player'}
+				aria-expanded={np.open}
+			>
+				<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount (see play/pause above) -->
+				<HugeiconsIcon
+					icon={ArrowUp01Icon}
+					altIcon={ArrowDown01Icon}
+					showAlt={np.open}
+					class="h-5 w-5"
+				/>
 			</Button>
 		</div>
 	</div>

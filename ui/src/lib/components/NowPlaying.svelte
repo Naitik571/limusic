@@ -1,0 +1,151 @@
+<script lang="ts">
+	import { fly } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import { beforeNavigate } from '$app/navigation';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import {
+		Maximize01Icon,
+		Minimize01Icon,
+		Mic01Icon,
+		MusicNote01Icon,
+		Queue01Icon
+	} from '@hugeicons/core-free-icons';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { np, playback } from '$lib/player.svelte';
+	import { appearance } from '$lib/theme.svelte';
+	import { thumb } from '$lib/thumb';
+	import QueueList from './QueueList.svelte';
+	import LyricsView from './LyricsView.svelte';
+
+	// Going somewhere means the user wants that page, not this one: minimise. The player bar brings
+	// it back. beforeNavigate (not a pathname effect) so clicking the tab you're already on counts.
+	beforeNavigate(() => (np.open = false));
+
+	// Enlarged lyrics take the whole view, artwork column and tab strip included. A class swap
+	// rather than unmounting the tabs: LyricsView must survive it or it refetches and loses its
+	// scroll position.
+	let big = $state(false);
+	$effect(() => {
+		if (np.tab !== 'lyrics') big = false; // nothing to enlarge on the queue tab
+	});
+
+	// Google's CDN doesn't serve every rewritten size for every image (see MediaCard), and at this
+	// size a broken-image glyph *is* the page. So step down until one loads: crisp, then the size
+	// proven everywhere else in the app, then the 120 the player bar is already showing for this
+	// very track, and only then a music note.
+	let attempt = $state(0);
+	let bgFailed = $state(false);
+	$effect(() => {
+		playback.now?.thumbnail; // re-arm on every track change
+		attempt = 0;
+		bgFailed = false;
+	});
+	const srcs = $derived([720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px)));
+	const src = $derived(srcs[attempt]);
+	const imgFailed = () => attempt++;
+</script>
+
+<!-- Covers the page but not the sidebar (you navigate away to minimise) and not the player bar,
+     which stays in charge of transport and paints above this on the way in and out.
+     z-20 matches the highest a page uses for its own chrome (home's sticky mood chips) and wins the
+     tie on DOM order, since <main> is static and its z-indexes land in the same stacking context.
+     The player bar and the queue/lyrics panels come later/higher, so they still paint above.
+     ponytail: left offsets mirror Sidebar's w-16/lg:w-60 — keep in sync if those change. -->
+<div
+	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
+	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10"
+>
+	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
+	     needs no colour extraction (which a remote image would taint the canvas for anyway). The
+	     120px variant is the one the player bar has already loaded for this track, so this costs
+	     no request and nothing new to decode.
+	     Two opacities because the wash sits on opposite grounds: over white it has to stay pale
+	     enough for dark text, over near-black it can carry more colour before muted-foreground
+	     stops reading. Turn them up together if it's too subtle. -->
+	{#if appearance.artworkBackground && srcs[2] && !bgFailed}
+		<img
+			src={srcs[2]}
+			alt=""
+			onerror={() => (bgFailed = true)}
+			class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl dark:opacity-40"
+		/>
+	{/if}
+
+	<!-- Capped and centred, so a wide window doesn't park the artwork in the middle of an empty half
+	     with the tabs glued to the right edge. --art is the artwork's side: whichever is smaller of
+	     the column's width and the height left over once the titlebar, the player bar and this
+	     padding have had theirs, at 75% so the square doesn't dominate the view.
+	     ponytail: 11rem is those three measured, not computed. The 0.75 leaves it plenty of slack
+	     now, so only a much taller player bar would need it raised. -->
+	<div
+		class="relative flex w-full max-w-[80rem] gap-6 xl:gap-10"
+		style="--art:calc(min(100%,100vh - 11rem) * 0.75)"
+	>
+		{#if !big}
+			<!-- Centred against the full height of the column on the right. Below md there isn't room
+			     for both columns, and the queue wins. -->
+			<div class="hidden min-w-0 flex-1 items-center justify-center md:flex">
+				{#if src && attempt < srcs.length}
+					<img
+						{src}
+						alt=""
+						onerror={imgFailed}
+						class="aspect-square w-full max-w-[var(--art)] rounded-2xl object-cover shadow-2xl"
+					/>
+				{:else}
+					<div
+						class="flex aspect-square w-full max-w-[var(--art)] items-center justify-center rounded-2xl bg-muted text-muted-foreground/40"
+					>
+						<HugeiconsIcon icon={MusicNote01Icon} class="h-16 w-16" />
+					</div>
+				{/if}
+			</div>
+		{/if}
+
+		<div class="flex min-h-0 flex-col {big ? 'flex-1' : 'w-full md:w-[22rem] xl:w-[26rem]'}">
+			<Tabs.Root
+				value={np.tab}
+				onValueChange={(v) => (np.tab = v as typeof np.tab)}
+				class="min-h-0 flex-1"
+			>
+				<div class="flex items-center gap-2 {big ? 'justify-end' : ''}">
+					<!-- Same two glyphs the player bar uses for the queue and lyrics buttons. -->
+					<Tabs.List class={big ? 'hidden' : 'flex-1'}>
+						<Tabs.Trigger value="queue" class="gap-2.5">
+							<HugeiconsIcon icon={Queue01Icon} class="h-4 w-4" /> Queue
+						</Tabs.Trigger>
+						<Tabs.Trigger value="lyrics" class="gap-2.5">
+							<HugeiconsIcon icon={Mic01Icon} class="h-4 w-4" /> Lyrics
+						</Tabs.Trigger>
+					</Tabs.List>
+					{#if np.tab === 'lyrics'}
+						<button
+							onclick={() => (big = !big)}
+							class="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+							aria-label={big ? 'Shrink lyrics' : 'Enlarge lyrics'}
+						>
+							<!-- icon swap via altIcon/showAlt: `icon` is frozen at mount -->
+							<HugeiconsIcon
+								icon={Maximize01Icon}
+								altIcon={Minimize01Icon}
+								showAlt={big}
+								class="h-4 w-4"
+							/>
+						</button>
+					{/if}
+				</div>
+				<!-- Only the open tab is mounted: bits-ui keeps inactive content in the DOM, which would
+				     leave LyricsView fetching lyrics for every track you never asked to see. -->
+				{#if np.tab === 'queue'}
+					<Tabs.Content value="queue" class="flex min-h-0 flex-col">
+						<QueueList />
+					</Tabs.Content>
+				{:else}
+					<Tabs.Content value="lyrics" class="flex min-h-0 flex-col">
+						<LyricsView expanded={big} />
+					</Tabs.Content>
+				{/if}
+			</Tabs.Root>
+		</div>
+	</div>
+</div>

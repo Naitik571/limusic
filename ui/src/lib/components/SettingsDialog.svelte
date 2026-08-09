@@ -17,6 +17,8 @@
 		THEMES,
 		FONTS,
 		theme,
+		appearance,
+		setAppearance,
 		custom,
 		effective,
 		applyTheme,
@@ -518,6 +520,19 @@
 								{/each}
 							</div>
 						{/if}
+					</div>
+
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Artwork background</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Tint the player view with the playing track's cover, blurred. Off leaves it plain.
+							</p>
+						</div>
+						<Switch
+							checked={appearance.artworkBackground}
+							onCheckedChange={(on) => setAppearance({ artworkBackground: on })}
+						/>
 					</div>
 
 					<div class="flex items-center justify-between gap-4 py-3">

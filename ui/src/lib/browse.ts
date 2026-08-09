@@ -4,7 +4,7 @@
 import { goto } from '$app/navigation';
 import * as api from './api';
 import type { BrowseItem, SongItem } from './api';
-import { enqueue, playFrom, toast, touchPick } from './player.svelte';
+import { enqueue, playFrom, playSong, toast, touchPick } from './player.svelte';
 
 /**
  * A song card carries everything a queue entry needs; the ⋯ menus take this shape. The one mapping
@@ -41,7 +41,7 @@ export function openItem(item: BrowseItem): void {
 	// A click counts as "used" for Shortcuts eviction wherever the item was rendered. No-op unless
 	// this item is actually on the grid.
 	touchPick(item.id);
-	if (item.kind === 'song') api.play(asSong(item));
+	if (item.kind === 'song') playSong(asSong(item));
 	else goto(hrefFor(item));
 }
 
@@ -53,7 +53,7 @@ export function openItem(item: BrowseItem): void {
 export async function playItem(item: BrowseItem): Promise<void> {
 	touchPick(item.id);
 	if (item.kind === 'song') {
-		api.play(asSong(item));
+		playSong(asSong(item));
 		return;
 	}
 	try {

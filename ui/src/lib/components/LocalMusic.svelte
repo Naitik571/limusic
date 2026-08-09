@@ -23,6 +23,7 @@
 	import {
 		addLocalFolder,
 		local,
+		openPlayer,
 		playback,
 		removeLocalFolder,
 		scanLocal,
@@ -64,6 +65,7 @@
 
 	function playAll(shuffle: boolean) {
 		if (!local.songs.length) return;
+		openPlayer();
 		api.playPlaylist(local.songs, null, undefined, SOURCE, shuffle);
 	}
 
@@ -181,7 +183,10 @@
 								{song}
 								index={i}
 								active={song.video_id === nowId}
-								onplay={() => api.playPlaylist(local.songs, i, undefined, SOURCE)}
+								onplay={() => {
+									openPlayer();
+									api.playPlaylist(local.songs, i, undefined, SOURCE);
+								}}
 							/>
 						{/each}
 					</div>
