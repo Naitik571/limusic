@@ -18,7 +18,8 @@
 		MinimizeScreenIcon,
 		MusicNote01Icon,
 		ArrowUp01Icon,
-		ArrowDown01Icon
+		ArrowDown01Icon,
+		Moon01Icon
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
@@ -31,9 +32,13 @@
 		dragVolume,
 		openAddToPlaylist,
 		openMiniPlayer,
+		setSleepTimer,
+		sleepTimer,
 		toggleMute,
-		toggleNowPlayingLike
+		toggleNowPlayingLike,
+		type SleepTimerMode
 	} from '$lib/player.svelte';
+	import { anchorMenu, toBody } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
@@ -71,6 +76,27 @@
 
 	const shuffleOn = $derived(playback.queue.shuffle ?? false);
 	const repeat = $derived(playback.queue.repeat ?? 'off');
+
+	// Sleep timer chip menu (same anchored-popup pattern as TrackMenu).
+	let sleepMenuOpen = $state(false);
+	let mx = $state(0);
+	let my = $state(0);
+	let openUp = $state(false);
+
+	function openSleepMenu(e: MouseEvent) {
+		e.stopPropagation();
+		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement));
+		sleepMenuOpen = true;
+	}
+	function closeSleepMenu(e: MouseEvent) {
+		e.stopPropagation();
+		sleepMenuOpen = false;
+	}
+	function pickSleep(e: MouseEvent, mode: SleepTimerMode, minutes = 30) {
+		e.stopPropagation();
+		sleepMenuOpen = false;
+		setSleepTimer(mode, minutes);
+	}
 
 	// The current track was appended by autoplay → show the subtle ∞ badge next to the title.
 	// Matched against the now-playing videoId so a transient queue/now-playing mismatch (mid
@@ -309,6 +335,71 @@
 		</div>
 		<!-- One cluster, so they sit tighter to each other than to the volume slider. -->
 		<div class="flex items-center gap-0.5">
+			<!-- Sleep timer chip: moon icon + countdown while armed; the menu offers presets,
+			     end-of-song and cancel. Rust enforces the pause even if this window closes. -->
+			<Button
+				variant={sleepTimer.mode !== 'off' ? 'secondary' : 'ghost'}
+				size="icon-sm"
+				onclick={openSleepMenu}
+				aria-label="Sleep timer"
+				aria-expanded={sleepMenuOpen}
+			>
+				<HugeiconsIcon icon={Moon01Icon} class="h-5 w-5" />
+				{#if sleepTimer.mode !== 'off'}
+					<span class="ml-0.5 text-[10px] font-medium tabular-nums">
+						{sleepTimer.mode === 'minutes' ? fmt(sleepTimer.remaining) : '♪'}
+					</span>
+				{/if}
+			</Button>
+			{#if sleepMenuOpen}
+				<button
+					class="fixed inset-0 z-40 cursor-default"
+					onclick={closeSleepMenu}
+					aria-label="Close sleep timer menu"
+					{@attach toBody}
+				></button>
+				<div
+					class="fixed z-50 min-w-44 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {openUp
+						? 'origin-bottom-right'
+						: 'origin-top-right'}"
+					style="right:{mx}px; {openUp ? 'bottom' : 'top'}:{my}px;"
+					{@attach toBody}
+				>
+					<button
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+						onclick={(e) => pickSleep(e, 'minutes', 15)}
+					>
+						15 minutes
+					</button>
+					<button
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+						onclick={(e) => pickSleep(e, 'minutes', 30)}
+					>
+						30 minutes
+					</button>
+					<button
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+						onclick={(e) => pickSleep(e, 'minutes', 60)}
+					>
+						60 minutes
+					</button>
+					<button
+						class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+						onclick={(e) => pickSleep(e, 'end_of_song')}
+					>
+						End of song
+					</button>
+					{#if sleepTimer.mode !== 'off'}
+						<div class="my-1 h-px bg-border"></div>
+						<button
+							class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+							onclick={(e) => pickSleep(e, 'off')}
+						>
+							Cancel timer
+						</button>
+					{/if}
+				</div>
+			{/if}
 			<Button variant="ghost" size="icon-sm" onclick={openMiniPlayer} aria-label="Mini player">
 				<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
 			</Button>

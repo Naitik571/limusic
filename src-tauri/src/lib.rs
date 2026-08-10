@@ -51,6 +51,30 @@ fn spawn_heap_trimmer() {
     });
 }
 
+/// 1 Hz sleep-timer tick. When the countdown deadline passes: pause playback, emit
+/// `sleep-timer-fired` so open windows clear their chip, and disarm. `EndOfSong` is handled in
+/// `AppState::on_track_ended`, not here. The thread outlives any window (tray/mini-player
+/// playback keeps counting), which is the point of enforcing it in Rust rather than the UI.
+fn spawn_sleep_timer(state: Arc<crate::state::AppState>) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let fire = {
+            let mut timer = state.sleep_timer.lock().unwrap();
+            match *timer {
+                crate::state::SleepTimer::At(end) if std::time::Instant::now() >= end => {
+                    *timer = crate::state::SleepTimer::Off;
+                    true
+                }
+                _ => false,
+            }
+        };
+        if fire {
+            let _ = state.player.pause();
+            let _ = state.app.emit("sleep-timer-fired", ());
+        }
+    });
+}
+
 /// Pull WebKitGTK off its full-browser cache defaults, which wry never touches.
 ///
 /// WebKitGTK defaults to `WEBKIT_CACHE_MODEL_WEB_BROWSER` ("cache a very large number of resources
@@ -282,6 +306,11 @@ pub fn run() {
                 });
             }
 
+            // 1 Hz sleep-timer tick: pause + notify when the countdown expires. A plain thread —
+            // the check is a few ns, `Player::pause` is sync, and the app already has several
+            // std threads (media, discord, lastfm) for the same reason.
+            spawn_sleep_timer(app_state.clone());
+
             // Pump mpv events → UI events + queue advance. context/11 events, context/14 §TrackEnded.
             spawn_event_pump(app_state, handle, events);
 
@@ -336,6 +365,8 @@ pub fn run() {
             commands::toggle_pause,
             commands::seek,
             commands::set_volume,
+            commands::set_sleep_timer,
+            commands::get_sleep_timer,
             commands::get_queue,
             commands::get_playback,
             commands::get_settings,

@@ -390,6 +390,67 @@ function onShortcut(e: KeyboardEvent) {
 	}
 }
 
+// --- Sleep timer -------------------------------------------------------------------------------
+// Rust enforces the actual pause (a 1 Hz tick thread in lib.rs, so it keeps counting with the
+// window closed — tray/mini-player playback included). This side only mirrors it for the chip:
+// the mode, the countdown, and clearing when the `sleep-timer-fired` event lands.
+export type SleepTimerMode = 'off' | 'end_of_song' | 'minutes';
+// `remaining` (seconds) lives on the object so it can be exported: Svelte 5 forbids exporting
+// reassigned module state, but property mutation of an exported $state object is fine — the
+// same shape as `playback`.
+export const sleepTimer = $state<{ mode: SleepTimerMode; endAt: number; remaining: number }>({
+	mode: 'off',
+	endAt: 0,
+	remaining: 0
+});
+let sleepTick: ReturnType<typeof setInterval> | undefined;
+
+function stopSleepTick() {
+	if (sleepTick) {
+		clearInterval(sleepTick);
+		sleepTick = undefined;
+	}
+}
+function startSleepTick() {
+	if (sleepTick) return;
+	sleepTick = setInterval(() => {
+		sleepTimer.remaining = Math.max(0, sleepTimer.remaining - 1);
+		// Local countdown hit zero a moment before the Rust tick (they fire within ~1s of each
+		// other). Clear the chip; the fired event still lands for the toast.
+		if (sleepTimer.remaining === 0) {
+			sleepTimer.mode = 'off';
+			stopSleepTick();
+		}
+	}, 1000);
+}
+
+/** Arm the sleep timer: `'off'`, `'end_of_song'`, or `'minutes'` with a length. Rust enforces it. */
+export function setSleepTimer(mode: SleepTimerMode, minutes = 30) {
+	if (mode === 'off') {
+		sleepTimer.mode = 'off';
+		stopSleepTick();
+		api.setSleepTimer('off').catch((e) => toast.error(String(e)));
+		return;
+	}
+	if (mode === 'end_of_song') {
+		sleepTimer.mode = 'end_of_song';
+		stopSleepTick();
+		api.setSleepTimer('end_of_song').catch((e) => toast.error(String(e)));
+		return;
+	}
+	sleepTimer.mode = 'minutes';
+	sleepTimer.endAt = Date.now() + minutes * 60_000;
+	sleepTimer.remaining = minutes * 60;
+	startSleepTick();
+	api.setSleepTimer(String(minutes)).catch((e) => toast.error(String(e)));
+}
+
+function clearSleepTimer() {
+	sleepTimer.mode = 'off';
+	sleepTimer.remaining = 0;
+	stopSleepTick();
+}
+
 /** Hand over to the floating widget (Rust `mini.rs`); the app hides to the tray behind it. */
 export function openMiniPlayer() {
 	api.openMini().catch((e) => toast.error(String(e)));
@@ -575,6 +636,10 @@ export function initApp(mini = false): () => void {
 		}),
 		api.onPlaybackError((msg) => (playback.error = msg)),
 		api.onPlaybackNotice((msg) => toast(msg)), // auto-skipped an unplayable track
+		api.onSleepTimerFired(() => {
+			clearSleepTimer();
+			toast('Sleep timer ended playback');
+		}),
 		api.onLocalChanged(forgetLocal), // a local file turned out to be gone — drop it everywhere
 		api.onAuthChanged((a) => {
 			auth.account = a;
@@ -604,6 +669,19 @@ export function initApp(mini = false): () => void {
 	const teardown = () => subs.forEach((u) => u.then((f) => f()));
 	api.getQueue()
 		.then((q) => (playback.queue = q))
+		.catch(() => {});
+	// The Rust sleep timer may be running from before this window opened (it survives window
+	// close). Restore the chip so the countdown isn't silently missing from the bar.
+	api.getSleepTimer()
+		.then((s) => {
+			if (s === 'end_of_song') sleepTimer.mode = 'end_of_song';
+			else if (s !== 'off') {
+				sleepTimer.mode = 'minutes';
+				sleepTimer.endAt = Date.now() + Number(s) * 1000;
+				sleepTimer.remaining = Number(s);
+				startSleepTick();
+			}
+		})
 		.catch(() => {});
 	// The events above are fire-and-forget, and this window missed every one that already fired:
 	// on a cold start the backend restores the queue before the UI subscribes, and the mini player

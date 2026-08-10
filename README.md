@@ -36,6 +36,7 @@ YouTube Music client, and grew from there.
 - **Queue** with radio/automix continuation, restored across restarts
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
 - **Mini Player** — Minimize the player and keep enjoying your music
+- **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed
 - **Local Music** — ability to play your own local music, with all metadata still intact
 - **Last.fm scrobbling** — connect once from the title bar, every play is scrobbled
 - **Discord Rich Presence** — artwork, live progress bar, one click to toggle
