@@ -32,7 +32,7 @@ YouTube Music client, and grew from there.
 - **Search & browse** — songs, albums, artists, playlists, and the YTM home feed
 - **Sign in** with your YouTube Music account: in-app Google login or cookie-paste
 - **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
-- **Gapless playback** with loudness normalization, powered by libmpv
+- **Gapless playback**, powered by libmpv
 - **Queue** with radio/automix continuation, restored across restarts
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
 - **Mini Player** — Minimize the player and keep enjoying your music
@@ -148,8 +148,7 @@ Windows and macOS instructions live in [docs/BUILD-PLATFORMS.md](docs/BUILD-PLAT
   cipher and the `n` parameter) and by BotGuard attestation. Limusic runs that
   JavaScript where it expects to run, in a real webview, hidden, and never lets
   any of it touch the UI process.
-- Audio goes through libmpv: gapless transitions, an on-disk cache, and
-  loudness normalization from YouTube's own metadata.
+- Audio goes through libmpv: gapless transitions and an on-disk cache.
 - The UI is a SvelteKit SPA that only ever talks to the Rust core. It never
   contacts YouTube itself.
 

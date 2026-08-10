@@ -920,7 +920,12 @@ impl AppState {
         if self.generation.load(Ordering::SeqCst) != gen {
             return false; // user moved on
         }
-        if let Err(e) = self.player.load(&data.stream_url, &data.headers, loudness_gain(data.loudness_db)) {
+        // No per-track gain filter (removed `loudness_gain`): YTM's `loudnessDb` is a deviation
+        // from a loudness reference that averages ~+4 dB across real tracks, so the old
+        // attenuate-only normalization cut typical playback by 2–8 dB below master level — the
+        // "volume is low" bug. Playing at full master level; a corrected normalization can slot
+        // back in via this parameter once its reference is verified against YTM's catalog.
+        if let Err(e) = self.player.load(&data.stream_url, &data.headers, None) {
             self.emit_error(&item.video_id, &e.to_string());
             return false;
         }
@@ -1596,7 +1601,8 @@ impl AppState {
         if self.generation.load(Ordering::SeqCst) != gen {
             return; // superseded by a newer sync
         }
-        if let Err(e) = self.player.load(&data.stream_url, &data.headers, loudness_gain(data.loudness_db)) {
+        // No gain filter — see the comment at the other `player.load` call site.
+        if let Err(e) = self.player.load(&data.stream_url, &data.headers, None) {
             self.emit_error(&track.id, &e.to_string());
             return;
         }
@@ -2397,23 +2403,24 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-/// Per-track loudness gain (dB) from YouTube's `loudnessDb` (context/03, context/14). Attenuate
-/// only toward reference loudness: loud masters (`loudnessDb > 0`) get `-loudnessDb`; quieter
-/// tracks aren't boosted, so there's no clipping and no limiter to add.
-// ponytail: attenuate-only, clamped to -24 dB. If quiet tracks feel too soft, allow positive gain
-// plus an `alimiter` af to catch the resulting peaks.
-fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
-    loudness_db.map(|l| (-l).clamp(-24.0, 0.0))
-}
+// Per-track loudness gain is REMOVED. The old `loudness_gain` was an attenuate-only filter keyed
+// off YTM's `loudnessDb` (context/03, context/14): `(-l).clamp(-24.0, 0.0)`. Real `loudnessDb`
+// values (observed across 111 cached tracks: mean +4.2 dB, mode +2..+7 dB) are a deviation from
+// a loudness reference, not an absolute level, so it cut nearly every track by 2–8 dB and could
+// never boost — playback sat ~4 dB below master volume and other apps. Restoring full-volume
+// playback by not applying
+// any per-track gain (both `player.load` call sites pass `None`). The `gain_db` parameter on
+// `Player::load` is kept so a corrected normalization can be reintroduced once its reference is
+// verified; it also means `Player::apply_gain(None)` clears any stale `af` filter left by an
+// older build, which was the source of the gapless "gets worse the longer a queue plays" effect.
 
 #[cfg(test)]
 mod tests {
     use super::{
         append_page, backfill_metadata, drop_duplicates, enqueue_at, format_duration,
-        guest_insert_index, is_mix,
-        loudness_gain, merge_radio, next_index, parse_duration_ms, radio_seed_for,
-        shuffle_new_queue, shuffle_upcoming, splice_radio_into, unshuffled, upcoming_queued,
-        QueueState, RepeatMode,
+        guest_insert_index, is_mix, merge_radio, next_index, parse_duration_ms,
+        radio_seed_for, shuffle_new_queue, shuffle_upcoming, splice_radio_into, unshuffled,
+        upcoming_queued, QueueState, RepeatMode,
     };
 
     #[test]
@@ -2924,17 +2931,5 @@ mod tests {
         assert!(!items[0].autoplay && !items[1].autoplay);
         // Nothing new in the radio result → 0, queue untouched (playback then stops as before).
         assert_eq!(merge_radio(&mut items.clone(), vec![song("a", None)], existing, 20), 0);
-    }
-
-    #[test]
-    fn loudness_gain_attenuates_loud_only() {
-        // Loud master (+7 dB over reference) → attenuate 7 dB.
-        assert_eq!(loudness_gain(Some(7.0)), Some(-7.0));
-        // Quiet track (−5 dB) → no boost (clamped to 0).
-        assert_eq!(loudness_gain(Some(-5.0)), Some(0.0));
-        // Extreme loudness clamps at −24 dB.
-        assert_eq!(loudness_gain(Some(40.0)), Some(-24.0));
-        // No metadata → no filter.
-        assert_eq!(loudness_gain(None), None);
     }
 }
