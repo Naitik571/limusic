@@ -326,6 +326,70 @@ export function toggleMute() {
 	commitVolume(muted ? preMute || 100 : 0);
 }
 
+// --- Keyboard shortcuts ------------------------------------------------------------------------
+// One global handler, registered by `initApp` so the main window *and* the mini-player window
+// (which runs this same module) behave identically. Keymap follows YT Music's web conventions,
+// which are what desktop music players (and users migrating from the YTM web app) expect:
+//
+//   Space / K        play/pause
+//   Shift+N / Shift+P next / previous track
+//   M                mute (remembered level restored)
+//   ArrowUp/Down     volume +5 / −5
+//   ArrowLeft/Right  seek −5s / +5s
+//   J / L            seek −10s / +10s
+//
+// OS media keys (SMTC on Windows, MPRIS on Linux) are handled natively in Rust (`media.rs`)
+// and keep working while the window is unfocused — these keys cover the in-app case.
+//
+// Native widgets keep their own keyboard behaviour: typing in a field, Space activating a
+// focused button, arrows on a focused slider. The guard below yields to them — without it,
+// Space would toggle playback *instead of* activating whichever button has focus.
+
+const SHORTCUT_STEP = 5; // volume percent / seek seconds for the arrow keys
+
+function onShortcut(e: KeyboardEvent) {
+	const target = e.target as HTMLElement | null;
+	if (
+		target?.closest(
+			'input, textarea, select, button, [contenteditable="true"], [role="button"]'
+		)
+	)
+		return;
+	const key = e.key;
+	const pos = playback.position;
+	if (key === ' ' || key.toLowerCase() === 'k') {
+		e.preventDefault();
+		api.togglePause();
+	} else if (e.shiftKey && key.toLowerCase() === 'n') {
+		e.preventDefault();
+		api.nextTrack();
+	} else if (e.shiftKey && key.toLowerCase() === 'p') {
+		e.preventDefault();
+		api.prevTrack();
+	} else if (key.toLowerCase() === 'm') {
+		e.preventDefault();
+		toggleMute();
+	} else if (key === 'ArrowUp') {
+		e.preventDefault();
+		commitVolume(Math.min(100, playback.volume + SHORTCUT_STEP));
+	} else if (key === 'ArrowDown') {
+		e.preventDefault();
+		commitVolume(Math.max(0, playback.volume - SHORTCUT_STEP));
+	} else if (key === 'ArrowLeft') {
+		e.preventDefault();
+		api.seek(Math.max(0, pos - 5));
+	} else if (key === 'ArrowRight') {
+		e.preventDefault();
+		api.seek(pos + 5);
+	} else if (key.toLowerCase() === 'j') {
+		e.preventDefault();
+		api.seek(Math.max(0, pos - 10));
+	} else if (key.toLowerCase() === 'l') {
+		e.preventDefault();
+		api.seek(pos + 10);
+	}
+}
+
 /** Hand over to the floating widget (Rust `mini.rs`); the app hides to the tray behind it. */
 export function openMiniPlayer() {
 	api.openMini().catch((e) => toast.error(String(e)));
@@ -532,6 +596,11 @@ export function initApp(mini = false): () => void {
 		api.onLtState((s) => applyLtState(s)),
 		api.onLtNotice((msg) => toast(msg))
 	];
+	// Keyboard shortcuts: a plain listener (not a Tauri event) — the handler above lives in this
+	// module, so registering it here gives both the app window and the mini player the same keys.
+	const onKey = (e: KeyboardEvent) => onShortcut(e);
+	window.addEventListener('keydown', onKey);
+	subs.push(Promise.resolve(() => window.removeEventListener('keydown', onKey)));
 	const teardown = () => subs.forEach((u) => u.then((f) => f()));
 	api.getQueue()
 		.then((q) => (playback.queue = q))

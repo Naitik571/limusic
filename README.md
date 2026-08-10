@@ -65,6 +65,25 @@ YouTube Music client, and grew from there.
 
 ---
 
+## Keyboard Shortcuts
+
+OS media keys (SMTC on Windows, MPRIS on Linux) work even while the window is
+unfocused. Inside the app, the standard set follows YT Music's web conventions:
+
+| Key | Action |
+|---|---|
+| `Space` / `K` | Play / pause |
+| `Shift` + `N` / `Shift` + `P` | Next / previous track |
+| `M` | Mute (restores the previous level) |
+| `↑` / `↓` | Volume +5 / −5 |
+| `←` / `→` | Seek −5s / +5s |
+| `J` / `L` | Seek −10s / +10s |
+
+Shortcuts yield to whatever is focused: typing in a search box, or Space on a
+focused button, still do the native thing.
+
+---
+
 ## Scrobbling & Discord
 
 Both live in the title bar, next to the window controls.
