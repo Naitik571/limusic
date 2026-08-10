@@ -32,13 +32,8 @@ YouTube Music client, and grew from there.
 - **Search & browse** — songs, albums, artists, playlists, and the YTM home feed
 - **Sign in** with your YouTube Music account: in-app Google login or cookie-paste
 - **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
-<<<<<<< HEAD
 - **Gapless playback**, powered by libmpv
-- **Queue** with radio/automix continuation, restored across restarts
-=======
-- **Gapless playback** with loudness normalization, powered by libmpv
 - **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
->>>>>>> feat/queue-reorder
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
 - **Mini Player** — Minimize the player and keep enjoying your music
 - **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed
@@ -50,6 +45,30 @@ YouTube Music client, and grew from there.
 - **Listen Together** — synced listening rooms over a small self-hosted relay
 - **Self-updating builds** (AppImage on Linux, setup.exe on Windows)
 - **Customization via Themes and Fonts** — Customize your music player to your hearts content
+
+---
+
+## What's different in this fork
+
+Four changes on top of upstream `v0.3.12`, all merged into `master`:
+
+- **No more quiet playback** — the per-track loudness filter is gone. Upstream
+  applied an attenuate-only gain derived from YouTube's `loudnessDb` field
+  (typically +2…+7 dB on real libraries), so tracks were cut by up to 7 dB.
+  Playback is now unmodified, and any stale filter left by an older build is
+  cleared as soon as a track loads.
+- **Keyboard shortcuts** — see the table in the next section: `Space`/`K`
+  play-pause, `Shift`+`N`/`P` next-previous, `M` mute, arrows for volume and
+  seek, `J`/`L` for ±10 s seeks. They work in both the main window and the
+  mini player.
+- **Sleep timer** — the moon button in the player bar pauses playback after
+  15/30/60 minutes or at the end of the song. The countdown is enforced by the
+  Rust core, so it keeps running (and pausing) even with the window closed.
+- **Drag to reorder the queue** — grab any upcoming track and drop it on
+  another row to move it into that slot. The playing track stays put, and
+  guests in a Listen Together room can't reorder.
+- **Test-stability fix** — the Discord presence backoff test no longer flakes
+  on an exact-boundary timing race that randomly failed CI.
 
 ---
 
