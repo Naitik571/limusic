@@ -157,6 +157,28 @@ pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
     Ok(())
 }
 
+/// Arm or disarm the sleep timer. `mode` is `"off"`, `"end_of_song"`, or `"<minutes>"` (1–1440).
+/// Enforced in Rust (see `spawn_sleep_timer`), so it keeps counting even with the window closed.
+#[tauri::command]
+pub fn set_sleep_timer(state: St<'_>, mode: String) -> Result<(), String> {
+    let timer = crate::state::parse_sleep_mode(&mode)?;
+    *state.sleep_timer.lock().unwrap() = timer;
+    Ok(())
+}
+
+/// Current sleep timer for window restore: `"off"`, `"end_of_song"`, or remaining seconds.
+#[tauri::command]
+pub fn get_sleep_timer(state: St<'_>) -> String {
+    match *state.sleep_timer.lock().unwrap() {
+        crate::state::SleepTimer::Off => "off".to_string(),
+        crate::state::SleepTimer::EndOfSong => "end_of_song".to_string(),
+        crate::state::SleepTimer::At(end) => end
+            .saturating_duration_since(std::time::Instant::now())
+            .as_secs()
+            .to_string(),
+    }
+}
+
 #[tauri::command]
 pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(state.queue_snapshot().await)

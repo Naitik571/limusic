@@ -225,6 +225,8 @@ export const setRepeat = (mode: RepeatMode) => invoke<void>('set_repeat', { mode
 export const togglePause = () => invoke<void>('toggle_pause');
 export const seek = (position: number) => invoke<void>('seek', { position });
 export const setVolume = (volume: number) => invoke<void>('set_volume', { volume });
+export const setSleepTimer = (mode: string) => invoke<void>('set_sleep_timer', { mode });
+export const getSleepTimer = () => invoke<string>('get_sleep_timer');
 export const getQueue = () => invoke<QueueState>('get_queue');
 
 /** What the event stream already reported, for a webview that started after it did. */
@@ -335,6 +337,9 @@ export const onDuration = (cb: (d: number) => void): Promise<UnlistenFn> =>
 /** Echo of every `set_volume`, so a second window's slider can't drift from what you hear. */
 export const onVolume = (cb: (v: number) => void): Promise<UnlistenFn> =>
 	listen<number>('volume', (e) => cb(e.payload));
+/** The Rust-side sleep timer hit zero (or the current song ended) — playback was paused. */
+export const onSleepTimerFired = (cb: () => void): Promise<UnlistenFn> =>
+	listen('sleep-timer-fired', (e) => cb());
 export const onPlaybackState = (cb: (s: 'playing' | 'paused') => void): Promise<UnlistenFn> =>
 	listen<'playing' | 'paused'>('playback-state', (e) => cb(e.payload));
 export const onPlaybackError = (cb: (msg: string) => void): Promise<UnlistenFn> =>

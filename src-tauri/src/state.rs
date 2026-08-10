@@ -34,6 +34,10 @@ pub struct AppState {
     pub db: Db,
     pub app: AppHandle,
     pub orchestrator: Arc<Orchestrator>,
+    /// Sleep timer: pauses playback after a countdown or at the end of the current song. The
+    /// countdown is enforced by a 1 Hz tick thread; end-of-song is checked inside
+    /// `on_track_ended`. Ephemeral — never persisted (context/03 feature list).
+    pub sleep_timer: std::sync::Mutex<SleepTimer>,
     /// Listen Together session (context/19). Drives host broadcasts + guest gating.
     pub lt: Arc<LtSession>,
     /// mpv's on-disk audio cache dir (context/14) — wiped by the settings "Clear caches" action.
@@ -72,6 +76,42 @@ pub enum RepeatMode {
     Off,
     All,
     One,
+}
+
+/// Sleep timer modes. `At` holds the wall-clock deadline for the countdown; a 1 Hz tick thread
+/// (see `spawn_sleep_timer` in lib.rs) pauses playback and emits `sleep-timer-fired` when it
+/// passes. `EndOfSong` is consumed by `on_track_ended` at the next track boundary.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SleepTimer {
+    Off,
+    EndOfSong,
+    At(std::time::Instant),
+}
+
+impl Default for SleepTimer {
+    fn default() -> Self {
+        SleepTimer::Off
+    }
+}
+
+/// Parse the `set_sleep_timer` command's mode string: `"off"`, `"end_of_song"`, or `"<minutes>"`.
+/// Minutes are capped to a sane upper bound so a fat-fingered `999999` can't arm a timer that
+/// outlives the session.
+pub fn parse_sleep_mode(mode: &str) -> Result<SleepTimer, String> {
+    match mode {
+        "off" => Ok(SleepTimer::Off),
+        "end_of_song" => Ok(SleepTimer::EndOfSong),
+        _ => {
+            let mins: u64 = mode
+                .parse()
+                .map_err(|_| format!("unknown sleep timer mode: {mode}"))?;
+            if mins == 0 || mins > 24 * 60 {
+                return Err(format!("sleep timer minutes must be 1–1440, got {mins}"));
+            }
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(mins * 60);
+            Ok(SleepTimer::At(end))
+        }
+    }
 }
 
 /// Which queue a background playlist walk ([`AppState::fill_playlist`]) is filling: the one that's
@@ -148,6 +188,7 @@ impl AppState {
             discord,
             lastfm,
             queue: Mutex::new(QueueState::default()),
+            sleep_timer: std::sync::Mutex::new(SleepTimer::Off),
             is_playing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             pending_seek: std::sync::Mutex::new(None),
@@ -717,6 +758,16 @@ impl AppState {
     pub async fn on_track_ended(self: &std::sync::Arc<Self>) {
         if self.lt.is_guest().await {
             return; // the host drives track changes for guests; don't auto-advance locally
+        }
+        // Sleep timer "end of song": stop here instead of advancing. Only reachable after a
+        // track really ended — `on_track_failed` retries before calling this, so a successful
+        // retry never lands here. mpv's pause flips a flag, so the event pump (not this fn)
+        // pushes the paused state to the OS media controls and Discord.
+        if *self.sleep_timer.lock().unwrap() == SleepTimer::EndOfSong {
+            *self.sleep_timer.lock().unwrap() = SleepTimer::Off;
+            let _ = self.player.pause();
+            let _ = self.app.emit("sleep-timer-fired", ());
+            return;
         }
         let (has_next, primed) = {
             let mut q = self.queue.lock().await;
@@ -2411,10 +2462,28 @@ mod tests {
     use super::{
         append_page, backfill_metadata, drop_duplicates, enqueue_at, format_duration,
         guest_insert_index, is_mix,
-        loudness_gain, merge_radio, next_index, parse_duration_ms, radio_seed_for,
-        shuffle_new_queue, shuffle_upcoming, splice_radio_into, unshuffled, upcoming_queued,
-        QueueState, RepeatMode,
+        loudness_gain, merge_radio, next_index, parse_duration_ms, parse_sleep_mode,
+        radio_seed_for, shuffle_new_queue, shuffle_upcoming, splice_radio_into, unshuffled,
+        upcoming_queued, QueueState, RepeatMode, SleepTimer,
     };
+
+    #[test]
+    fn sleep_mode_parses_all_shapes() {
+        assert_eq!(parse_sleep_mode("off").unwrap(), SleepTimer::Off);
+        assert_eq!(parse_sleep_mode("end_of_song").unwrap(), SleepTimer::EndOfSong);
+        // Countdown deadline ≈ now + minutes, not exact (wall clock ticks between parse and check).
+        match parse_sleep_mode("15").unwrap() {
+            SleepTimer::At(end) => {
+                let left = end.saturating_duration_since(std::time::Instant::now());
+                assert!((890..=900).contains(&left.as_secs()), "left {left:?}");
+            }
+            other => panic!("expected At, got {other:?}"),
+        }
+        // Rejects: non-numeric, zero, beyond the 24 h cap.
+        assert!(parse_sleep_mode("soon").is_err());
+        assert!(parse_sleep_mode("0").is_err());
+        assert!(parse_sleep_mode("1441").is_err());
+    }
 
     #[test]
     fn durations_round_trip_past_an_hour() {
