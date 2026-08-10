@@ -770,7 +770,9 @@ mod tests {
         assert!(rem <= CONNECT_RETRY_MIN, "first retry within {CONNECT_RETRY_MIN:?}, got {rem:?}");
 
         p.connect_backoff = CONNECT_RETRY_MAX; // after repeated failures
-        p.last_connect_try = Some(Instant::now() - CONNECT_RETRY_MAX);
+        // Margin past the max: at exactly `elapsed == backoff`, `checked_sub` yields Some(0),
+        // which this test would misread as "still throttled". The +50ms makes it deterministic.
+        p.last_connect_try = Some(Instant::now() - CONNECT_RETRY_MAX - Duration::from_millis(50));
         assert!(p.connect_backoff_remaining().is_none(), "the backoff still lets retries through");
     }
 
