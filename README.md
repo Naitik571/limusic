@@ -33,7 +33,7 @@ YouTube Music client, and grew from there.
 - **Sign in** with your YouTube Music account: in-app Google login or cookie-paste
 - **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
 - **Gapless playback** with loudness normalization, powered by libmpv
-- **Queue** with radio/automix continuation, restored across restarts
+- **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
 - **Mini Player** — Minimize the player and keep enjoying your music
 - **Local Music** — ability to play your own local music, with all metadata still intact

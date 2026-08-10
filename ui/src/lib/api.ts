@@ -202,6 +202,7 @@ export const play = (item: SongItem) => invoke<void>('play', { item });
 export const playIndex = (index: number) => invoke<void>('play_index', { index });
 /** Remove an upcoming track from the queue (host/local only — guests are add-only). */
 export const removeFromQueue = (index: number) => invoke<void>('remove_from_queue', { index });
+export const moveQueueItem = (from: number, to: number) => invoke<void>('move_queue_item', { from, to });
 /**
  * "Play next": insert tracks right after the current song, behind any earlier manual adds.
  * `from` is the album/playlist they came from — it heads the block in the queue panel.

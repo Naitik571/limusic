@@ -1992,6 +1992,41 @@ impl AppState {
         self.lt_broadcast_queue().await;
     }
 
+    /// Move an upcoming track to a new slot (queue drag-to-reorder). Both indices must be in
+    /// bounds and after `current` — the playing track stays put, and nothing can be dragged
+    /// into the played/playing region. When the move crosses the primed gapless lookahead, mpv's
+    /// playlist no longer matches the queue, so it's dropped and re-primed (same strategy as
+    /// `clear_queued`); moves fully beyond the primed slot never touch mpv, since it only holds
+    /// entries up to `lookahead_loaded`.
+    pub async fn move_from_queue(self: &std::sync::Arc<Self>, from: usize, to: usize) {
+        if self.lt.is_guest().await {
+            return; // guests are add-only in a session
+        }
+        if from == to {
+            return;
+        }
+        let stale_lookahead = {
+            let mut q = self.queue.lock().await;
+            if from >= q.items.len() || to >= q.items.len() || from <= q.current || to <= q.current {
+                return;
+            }
+            // `current` is untouched: both ends of the move are strictly after it.
+            let la = q.lookahead_loaded; // Copy; read before the mutable borrow
+            let stale = apply_queue_move(&mut q.items, from, to, la);
+            if stale {
+                q.lookahead_loaded = None;
+                let _ = self.player.clear_playlist();
+            }
+            stale
+        };
+        self.emit_queue().await;
+        self.persist_queue().await;
+        if stale_lookahead {
+            self.prime_lookahead(self.generation.load(Ordering::SeqCst)).await;
+        }
+        self.lt_broadcast_queue().await;
+    }
+
     /// Remove every upcoming track the user queued by hand — both blocks, "Play next" and
     /// "Add to queue" (the panel's Clear queue). Played/playing items and the playlist context
     /// stay. Guests: add-only, no clearing.
@@ -2210,6 +2245,21 @@ fn merge_radio(
     added
 }
 
+/// Pure core of [`AppState::move_from_queue`]: reorder `items` and report whether mpv's
+/// playlist went stale — the move crossed the primed gapless lookahead (`la`), so the entry
+/// mpv is about to play next is no longer the queue's next. A move fully beyond the primed
+/// index leaves mpv untouched (it only holds entries up to `la`). Caller validates bounds.
+fn apply_queue_move(
+    items: &mut Vec<SongItem>,
+    from: usize,
+    to: usize,
+    lookahead_loaded: Option<usize>,
+) -> bool {
+    let item = items.remove(from);
+    items.insert(to, item);
+    matches!(lookahead_loaded, Some(la) if la >= from.min(to))
+}
+
 /// The queue index that plays after `current`, honoring repeat-all wrap. `None` at the tail
 /// when repeat is off (exhausted) or one (mpv loops the file itself — the queue never advances).
 fn next_index(len: usize, current: usize, repeat: RepeatMode) -> Option<usize> {
@@ -2409,11 +2459,10 @@ fn loudness_gain(loudness_db: Option<f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_page, backfill_metadata, drop_duplicates, enqueue_at, format_duration,
-        guest_insert_index, is_mix,
-        loudness_gain, merge_radio, next_index, parse_duration_ms, radio_seed_for,
-        shuffle_new_queue, shuffle_upcoming, splice_radio_into, unshuffled, upcoming_queued,
-        QueueState, RepeatMode,
+        append_page, apply_queue_move, backfill_metadata, drop_duplicates, enqueue_at,
+        format_duration, guest_insert_index, is_mix, loudness_gain, merge_radio, next_index,
+        parse_duration_ms, radio_seed_for, shuffle_new_queue, shuffle_upcoming, splice_radio_into,
+        unshuffled, upcoming_queued, QueueState, RepeatMode,
     };
 
     #[test]
@@ -2448,6 +2497,48 @@ mod tests {
             autoplay: false,
             is_video: false,
         }
+    }
+
+    /// "Drop on row i" semantics: the moved track takes the target row's slot in both
+    /// directions — dragging down must land *at* the target, not one row off (remove shifts
+    /// the target left, so `to` is the pre-move index and stays correct).
+    #[test]
+    fn queue_move_takes_the_target_slot() {
+        let mut items = vec![song("a", None), song("b", None), song("c", None), song("d", None)];
+        // Downward drag: c onto a → c takes a's slot (adjacent case reads as a swap).
+        apply_queue_move(&mut items, 2, 0, None);
+        assert_eq!(items.iter().map(|s| s.video_id.as_str()).collect::<Vec<_>>(), ["c", "a", "b", "d"]);
+        // Upward drag: b onto c → b takes c's slot.
+        apply_queue_move(&mut items, 1, 2, None);
+        assert_eq!(items.iter().map(|s| s.video_id.as_str()).collect::<Vec<_>>(), ["c", "b", "a", "d"]);
+        // Far drop to the tail.
+        apply_queue_move(&mut items, 1, 3, None);
+        assert_eq!(items.iter().map(|s| s.video_id.as_str()).collect::<Vec<_>>(), ["c", "a", "d", "b"]);
+    }
+
+    /// The lookahead goes stale exactly when the move crosses the primed index: mpv's playlist
+    /// mirrors items up to `la`, so only moves with `min(from, to) <= la` need a rebuild.
+    #[test]
+    fn queue_move_staleness_tracks_the_primed_lookahead() {
+        let ids = |items: &[innertube::SongItem]| {
+            items.iter().map(|s| s.video_id.clone()).collect::<Vec<String>>()
+        };
+        // la = 2 primed; moving 1 → 3 crosses it → stale.
+        let mut items = vec![song("a", None), song("b", None), song("c", None), song("d", None)];
+        assert!(apply_queue_move(&mut items, 1, 3, Some(2)));
+        assert_eq!(ids(&items), ["a", "c", "d", "b"]);
+        // Moving 3 → 1 (same range, reversed) also crosses → stale.
+        let mut items = vec![song("a", None), song("b", None), song("c", None), song("d", None)];
+        assert!(apply_queue_move(&mut items, 3, 1, Some(2)));
+        assert_eq!(ids(&items), ["a", "d", "b", "c"]);
+        // la = 1 primed; moving 2 → 3 stays beyond it → mpv untouched, not stale.
+        let mut items = vec![song("a", None), song("b", None), song("c", None), song("d", None)];
+        assert!(!apply_queue_move(&mut items, 2, 3, Some(1)));
+        assert_eq!(ids(&items), ["a", "b", "d", "c"]);
+        // Moving the primed entry itself (la = 2, from = 2) → stale.
+        let mut items = vec![song("a", None), song("b", None), song("c", None), song("d", None)];
+        assert!(apply_queue_move(&mut items, 2, 0, Some(2)));
+        assert_eq!(ids(&items), ["c", "a", "b", "d"]);
     }
 
     /// The repair every entry path goes through. Covers the two shapes that reached Last.fm as an

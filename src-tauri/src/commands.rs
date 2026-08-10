@@ -69,6 +69,14 @@ pub async fn remove_from_queue(state: St<'_>, index: usize) -> Result<(), String
     Ok(())
 }
 
+/// Reorder an upcoming queue slot (drag-to-reorder in the queue panel). Both indices are
+/// absolute queue positions, strictly after the playing track.
+#[tauri::command]
+pub async fn move_queue_item(state: St<'_>, from: usize, to: usize) -> Result<(), String> {
+    state.inner().clone().move_from_queue(from, to).await;
+    Ok(())
+}
+
 /// "Play next" from a ⋯ menu: one track or a whole album/playlist, inserted right after the
 /// current song (behind any earlier manual adds). `from` is the album/playlist title, which heads
 /// the block in the queue panel.

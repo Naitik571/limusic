@@ -326,6 +326,7 @@ pub fn run() {
             commands::play,
             commands::play_index,
             commands::remove_from_queue,
+            commands::move_queue_item,
             commands::clear_queued,
             commands::add_to_queue,
             commands::play_next,
