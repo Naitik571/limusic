@@ -56,6 +56,7 @@
 	{#each list as { item, key, i, n } (key)}
 		<div
 			animate:flip={{ duration: 200, easing: cubicOut }}
+			role="listitem"
 			draggable={canReorder && i !== playback.queue.currentIndex}
 			ondragstart={(e) => dragStart(e, i)}
 			ondragover={(e) => dragOverRow(e, i)}
