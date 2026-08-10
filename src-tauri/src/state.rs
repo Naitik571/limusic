@@ -11,7 +11,7 @@ use player::Player;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 
-use crate::db::Db;
+use crate::db::{now_secs, Db};
 use crate::discord::DiscordHandle;
 use crate::listentogether::{LtSession, SyncCommand};
 use crate::media::MediaHandle;
@@ -31,7 +31,7 @@ pub struct AppState {
     pub it: InnerTube,
     pub clients: Clients,
     pub player: Player,
-    pub db: Db,
+    pub db: Arc<Db>,
     pub app: AppHandle,
     pub orchestrator: Arc<Orchestrator>,
     /// Sleep timer: pauses playback after a countdown or at the end of the current song. The
@@ -166,7 +166,7 @@ impl AppState {
         it: InnerTube,
         clients: Clients,
         player: Player,
-        db: Db,
+        db: Arc<Db>,
         app: AppHandle,
         orchestrator: Arc<Orchestrator>,
         lt: Arc<LtSession>,
@@ -1584,6 +1584,9 @@ impl AppState {
     /// audio bytes. Best-effort on the files — the current track may re-buffer. context/14.
     pub fn clear_caches(&self) {
         self.db.clear_stream_cache();
+        // The stored PoToken is a cache too, and "clear caches" is where someone goes when
+        // playback has started behaving oddly. Dropping it costs one BotGuard bootstrap.
+        self.db.delete_setting("potoken_session");
         if let Ok(entries) = std::fs::read_dir(&self.cache_dir) {
             for e in entries.flatten() {
                 let _ = std::fs::remove_file(e.path());
@@ -2526,12 +2529,6 @@ fn backfill_metadata(item: &mut SongItem, length_seconds: Option<&str>, author: 
     }
 }
 
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
 
 // Per-track loudness gain is REMOVED. The old `loudness_gain` was an attenuate-only filter keyed
 // off YTM's `loudnessDb` (context/03, context/14): `(-l).clamp(-24.0, 0.0)`. Real `loudnessDb`

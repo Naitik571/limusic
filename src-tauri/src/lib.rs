@@ -184,7 +184,9 @@ pub fn run() {
             let cache_dir = data_dir.join("audio-cache");
             std::fs::create_dir_all(&cache_dir).ok();
 
-            let db = Db::open(&data_dir.join("limusic.sqlite")).expect("open sqlite");
+            // Shared: the PoToken generator persists its session token through the same file,
+            // and it is built before AppState takes ownership of everything else.
+            let db = Arc::new(Db::open(&data_dir.join("limusic.sqlite")).expect("open sqlite"));
 
             // Session bootstrap (context/15 startup ordering): load the persisted login session
             // (cookie/dataSyncId/visitorData) from settings; fetch visitorData anonymously
@@ -218,7 +220,7 @@ pub fn run() {
             // Phase 2 extraction stack: cipher + PoToken hidden webviews behind the orchestrator.
             let config = Arc::new(PlayerConfigStore::new(&data_dir));
             let cipher = Arc::new(CipherDeobfuscator::new(handle.clone(), &data_dir, config));
-            let potoken = Arc::new(PoTokenGenerator::new(handle.clone()));
+            let potoken = Arc::new(PoTokenGenerator::new(handle.clone(), db.clone()));
             let orchestrator = Arc::new(Orchestrator::new(
                 it.clone(),
                 clients.clone(),
