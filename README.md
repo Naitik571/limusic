@@ -32,8 +32,13 @@ YouTube Music client, and grew from there.
 - **Search & browse** — songs, albums, artists, playlists, and the YTM home feed
 - **Sign in** with your YouTube Music account: in-app Google login or cookie-paste
 - **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
+<<<<<<< HEAD
 - **Gapless playback**, powered by libmpv
 - **Queue** with radio/automix continuation, restored across restarts
+=======
+- **Gapless playback** with loudness normalization, powered by libmpv
+- **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
+>>>>>>> feat/queue-reorder
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
 - **Mini Player** — Minimize the player and keep enjoying your music
 - **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed

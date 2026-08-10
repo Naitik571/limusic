@@ -9,9 +9,44 @@
 	import { playback, openAddToPlaylist } from '$lib/player.svelte';
 	import { lt } from '$lib/lt.svelte';
 
-	// Guests are add-only in a session — no removing (theirs or anyone's). The playing row can't
-	// be removed either (backend guards it too).
+	// Guests are add-only in a session — no removing or reordering (theirs or anyone's). The
+	// playing row can't be removed either (backend guards it too).
 	const canRemove = $derived(lt.role !== 'guest');
+	const canReorder = $derived(lt.role !== 'guest');
+
+	// Drag-to-reorder state (absolute queue indices). Upcoming rows only: the playing row is
+	// neither draggable nor a drop target (the backend enforces the same rule).
+	let dragFrom: number | null = $state(null);
+	let dragOver: number | null = $state(null);
+
+	function dragStart(e: DragEvent, i: number) {
+		dragFrom = i;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			// Firefox needs payload set before the drag actually starts.
+			e.dataTransfer.setData('text/plain', String(i));
+		}
+	}
+	function dragOverRow(e: DragEvent, i: number) {
+		if (i === playback.queue.currentIndex) return; // not a target — no preventDefault, no drop
+		e.preventDefault(); // allow the drop on this row
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		if (dragOver !== i) dragOver = i;
+	}
+	function dropRow(e: DragEvent, i: number) {
+		e.preventDefault();
+		const from = dragFrom;
+		dragFrom = null;
+		dragOver = null;
+		if (from === null || from === i) return;
+		// Backend semantics are remove(from) + insert(to) — "take the target row's slot" in
+		// both directions (adjacent drops read as a swap, which is what users expect).
+		api.moveQueueItem(from, i);
+	}
+	function dragEnd() {
+		dragFrom = null;
+		dragOver = null;
+	}
 
 	// Blocks in play order, cut wherever the upcoming tracks change origin (`queue.ts`).
 	const view = $derived(queueBlocks(playback.queue));
@@ -19,7 +54,19 @@
 
 {#snippet rows(list: QueueRow[])}
 	{#each list as { item, key, i, n } (key)}
-		<div animate:flip={{ duration: 200, easing: cubicOut }}>
+		<div
+			animate:flip={{ duration: 200, easing: cubicOut }}
+			role="listitem"
+			draggable={canReorder && i !== playback.queue.currentIndex}
+			ondragstart={(e) => dragStart(e, i)}
+			ondragover={(e) => dragOverRow(e, i)}
+			ondrop={(e) => dropRow(e, i)}
+			ondragend={dragEnd}
+			class={[
+				dragFrom === i ? 'opacity-60' : '',
+				dragOver === i && dragFrom !== i ? 'rounded-md bg-muted/40 ring-1 ring-primary/60' : ''
+			].join(' ')}
+		>
 			<TrackRow
 				song={item}
 				index={n - 1}
