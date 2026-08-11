@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Search01Icon, UserMultiple02Icon } from '@hugeicons/core-free-icons';
-	import { Input } from '$lib/components/ui/input';
+	import { UserMultiple02Icon } from '@hugeicons/core-free-icons';
+	import SearchSuggest from '$lib/components/SearchSuggest.svelte';
 	import { auth, playback, ui } from '$lib/player.svelte';
 	import { lt } from '$lib/lt.svelte';
 	import { thumb } from '$lib/thumb';
@@ -90,11 +90,14 @@
 					{/if}
 				</button>
 				<form class="relative w-full max-w-xs" onsubmit={(e) => { e.preventDefault(); goSearch(); }}>
-					<HugeiconsIcon
-						icon={Search01Icon}
-						class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+					<SearchSuggest
+						query={searchQuery}
+						onchange={(q) => (searchQuery = q)}
+						onsubmit={goSearch}
+						icon
+						placeholder="Search"
+						inputClass="rounded-full"
 					/>
-					<Input bind:value={searchQuery} placeholder="Search" class="rounded-full pl-9" />
 				</form>
 			</div>
 		</div>

@@ -45,8 +45,8 @@
 	const src = $derived(srcs[attempt]);
 	const imgFailed = () => attempt++;
 
-	// Wheel anywhere in the maximized view steps the volume (same 5%/notch as the player bar)
-	// and pops a % badge over the artwork. The badge clears ~1s after the last notch.
+	// Wheel over the cover art in the maximized view steps the volume (same 5%/notch as the
+	// player bar) and pops a % badge over the artwork. The badge clears ~1s after the last notch.
 	const VOLUME_STEP = 5;
 	let volBadge = $state<number | null>(null);
 	let volBadgeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -70,7 +70,6 @@
      ponytail: left offsets mirror Sidebar's w-16/lg:w-60 — keep in sync if those change. -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
-	onwheel={onMaxWheel}
 	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10"
 >
 	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
@@ -110,6 +109,7 @@
 						e.stopPropagation();
 						api.togglePause();
 					}}
+					onwheel={onMaxWheel}
 					aria-label={playback.paused ? 'Play' : 'Pause'}
 					title={playback.paused ? 'Play' : 'Pause'}
 				>

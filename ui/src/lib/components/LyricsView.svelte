@@ -81,8 +81,8 @@
 	}
 
 	// Auto-scroll glides with a hand-tweened ease (native smooth scroll's duration isn't
-	// controllable and its clamp at the container edges feels like a snap). EaseInOutCubic,
-	// ~550ms: long enough to read the motion, short enough to stay in sync with the song.
+	// controllable and its clamp at the container edges feels like a snap). EaseInOutQuint,
+	// ~650ms: a long, soft start and finish so a line change reads as a glide, not a jump.
 	let scrollRaf = 0;
 	function tweenScrollTo(el: HTMLElement, to: number, dur: number) {
 		cancelAnimationFrame(scrollRaf);
@@ -92,7 +92,7 @@
 			return;
 		}
 		const t0 = performance.now();
-		const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+		const ease = (t: number) => (t < 0.5 ? 16 * t * t * t * t * t : 1 - Math.pow(-2 * t + 2, 5) / 2);
 		const step = (now: number) => {
 			const p = Math.min(1, (now - t0) / dur);
 			el.scrollTop = from + (to - from) * ease(p);
@@ -122,7 +122,7 @@
 			scroller.scrollTop -
 			(scroller.clientHeight - line.offsetHeight) / 2;
 		// Opening mid-song jumps straight to the line; after that, glide.
-		tweenScrollTo(scroller, target, hasScrolled ? 550 : 0);
+		tweenScrollTo(scroller, target, hasScrolled ? 650 : 0);
 		hasScrolled = true;
 	});
 

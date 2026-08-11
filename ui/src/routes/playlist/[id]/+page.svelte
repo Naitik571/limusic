@@ -17,7 +17,8 @@
 		ListRestartIcon,
 		Playlist02Icon,
 		Move01Icon,
-		PlusSignIcon
+		PlusSignIcon,
+		RefreshIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -40,7 +41,8 @@
 		lastPlaylistAdd,
 		lastPlaylistMove,
 		openAddManyToPlaylist,
-		openMoveToPlaylist
+		openMoveToPlaylist,
+		playSong
 	} from '$lib/player.svelte';
 
 	let pl = $state<PlaylistPage | null>(null);
@@ -112,32 +114,69 @@
 	// only makes sense where adding works: playlists the user owns, plus Liked Music. Cached per
 	// (playlist, seed) so revisits don't refetch.
 	let recs = $state<SongItem[] | null>(null);
+	let recPool = $state<SongItem[]>([]); // fetched backlog — tops the shelf up after an add
 	let recsCache = new Map<string, SongItem[]>();
+	let recSeedIdx = $state(0); // which playlist track seeded the current batch
+	let recRefreshKey = $state(0); // bump to fetch a fresh batch (the shelf's refresh button)
+	let recRefreshing = $state(false);
+	let recsLoadedFor = ''; // `${id}:${recRefreshKey}` — set once a batch has been applied
+
+	// Dedupe against what's already in the playlist at apply time, so a song that just landed
+	// (optimistic add, backfill, picker) never shows up here as a suggestion.
+	function applyRecs(batch: SongItem[]) {
+		const known = new Set((pl?.items ?? []).map((t) => t.video_id));
+		const fresh = batch.filter((s) => !known.has(s.video_id));
+		recs = fresh.slice(0, 8); // 8 on the shelf, the rest wait in the pool for top-ups
+		recPool = fresh.slice(8);
+	}
+
+	// Loads on playlist change or refresh. The marker guards against the effect re-firing when
+	// the playlist items grow (every add re-runs it) — loaded once per (playlist, refresh).
 	$effect(() => {
 		id; // navigation to another playlist resets the shelf before its fetch effect runs
-		recs = null;
-	});
-	$effect(() => {
-		const first = pl?.items[0];
-		if (!pl || isOnRepeat || recs !== null || !(editable || isLiked)) return;
-		if (!first?.video_id || pl.items.length < 2) return;
-		const key = `${id}:${first.video_id}`;
-		const hit = recsCache.get(key);
-		if (hit) {
-			recs = hit;
+		recRefreshKey;
+		const marker = `${id}:${recRefreshKey}`;
+		if (recsLoadedFor === marker) return;
+		const seed = pl?.items[recSeedIdx] ?? pl?.items[0];
+		if (!pl || isOnRepeat || !(editable || isLiked)) {
+			recs = null;
 			return;
 		}
+		if (!seed?.video_id || pl.items.length < 2) return; // wait for "a couple of songs"
+		const key = `${id}:${seed.video_id}`;
+		const hit = recsCache.get(key);
+		if (hit) {
+			recsLoadedFor = marker;
+			applyRecs(hit);
+			return;
+		}
+		recRefreshing = true;
 		api
-			.getSimilarSongs(first.video_id, 8)
+			.getSimilarSongs(seed.video_id, 16) // 16: 8 on the shelf, 8 in the pool for top-ups
 			.then((r) => {
 				recsCache.set(key, r);
-				recs = r;
+				recsLoadedFor = marker;
+				applyRecs(r);
 			})
-			.catch(() => (recs = [])); // quiet: the shelf just doesn't show
+			.catch(() => (recs = [])) // quiet: the shelf just doesn't show
+			.finally(() => (recRefreshing = false));
 	});
+
+	// Fresh batch seeded from the next playlist track, so "Find more like this" actually finds
+	// different music (and never the same batch twice in a row).
+	function refreshRecs() {
+		const n = pl?.items.length ?? 1;
+		if (!pl || n < 2) return;
+		recSeedIdx = (recSeedIdx + 1) % n;
+		recRefreshKey++;
+	}
 
 	// One-tap add. Optimistic append, reverted on failure — same contract as the picker, except
 	// rows land without set_video_id and the 0/2/4s backfill in `load` patches them in.
+	// One-tap add. Optimistic append, reverted on failure — same contract as the picker, except
+	// rows land without set_video_id and the 0/2/4s backfill in `load` patches them in. On
+	// success the added song leaves the shelf and a fresh one takes its place (from the pool,
+	// or a radio seeded on the song just added), so the shelf never repeats and stays full.
 	async function addRec(rec: SongItem) {
 		if (!pl) return;
 		if (isLiked) {
@@ -164,6 +203,30 @@
 			bumpLibraryTrackCount(id, -1);
 			cacheCurrent();
 			toast.error(String(e));
+		}
+		topUpRecs(rec);
+	}
+
+	async function topUpRecs(added: SongItem) {
+		if (!recs) return;
+		const known = new Set((pl?.items ?? []).map((t) => t.video_id));
+		const rest = recs.filter((s) => s.video_id !== added.video_id);
+		const next = recPool.find((s) => !known.has(s.video_id));
+		if (next) {
+			recs = [...rest, next];
+			recPool = recPool.filter((s) => s.video_id !== next.video_id);
+			return;
+		}
+		try {
+			// Pool exhausted — seed a radio on the song that was just added: "more like the one
+			// you liked", which is what a shelf should lean toward.
+			const batch = await api.getSimilarSongs(added.video_id, 16);
+			recsCache.set(`${id}:${added.video_id}`, batch);
+			const fresh = batch.filter((s) => !known.has(s.video_id));
+			recs = fresh.length ? [...rest, fresh[0]] : rest;
+			recPool = fresh.slice(1);
+		} catch {
+			recs = rest; // keep the shelf as it is, minus the added song
 		}
 	}
 
@@ -744,6 +807,15 @@
 								variant="ghost"
 								size="icon"
 								class="opacity-0 transition-opacity group-hover:opacity-100"
+								aria-label={`Play ${rec.title}`}
+								onclick={() => playSong(rec)}
+							>
+								<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								class="opacity-0 transition-opacity group-hover:opacity-100"
 								aria-label={`Add ${rec.title} to this playlist`}
 								onclick={() => addRec(rec)}
 							>
@@ -751,6 +823,18 @@
 							</Button>
 						</div>
 					{/each}
+				</div>
+				<div class="flex justify-center pt-1">
+					<Button
+						variant="ghost"
+						size="sm"
+						class="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+						onclick={refreshRecs}
+						disabled={recRefreshing}
+					>
+						<HugeiconsIcon icon={RefreshIcon} class="h-4 w-4" />
+						{recRefreshing ? 'Finding more…' : 'Find more like this'}
+					</Button>
 				</div>
 			{/if}
 		</div>
