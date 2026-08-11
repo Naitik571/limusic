@@ -150,9 +150,9 @@
 				>
 					{#if i === activeIndex}
 						<span class="flex h-[1.1em] shrink-0 items-end gap-[3px]" aria-hidden="true">
-							<span class="lv-eq w-[3px] rounded-full bg-primary" style="animation-delay:0s"></span>
-							<span class="lv-eq w-[3px] rounded-full bg-primary" style="animation-delay:0.15s"></span>
-							<span class="lv-eq w-[3px] rounded-full bg-primary" style="animation-delay:0.3s"></span>
+							<span class="lv-eq h-full w-[3px] rounded-full bg-primary" style="animation-delay:0s"></span>
+							<span class="lv-eq h-full w-[3px] rounded-full bg-primary" style="animation-delay:0.15s"></span>
+							<span class="lv-eq h-full w-[3px] rounded-full bg-primary" style="animation-delay:0.3s"></span>
 						</span>
 					{/if}
 					<span class="min-w-0 flex-1">{line.text || '♪'}</span>
