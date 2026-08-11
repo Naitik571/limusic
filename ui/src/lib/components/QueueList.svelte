@@ -14,38 +14,86 @@
 	const canRemove = $derived(lt.role !== 'guest');
 	const canReorder = $derived(lt.role !== 'guest');
 
-	// Drag-to-reorder state (absolute queue indices). Upcoming rows only: the playing row is
-	// neither draggable nor a drop target (the backend enforces the same rule).
+	// Pointer-based drag-to-reorder (absolute queue indices). Upcoming rows only: the playing
+	// row is neither draggable nor a drop target (the backend enforces the same rule).
+	//
+	// Deliberately NOT HTML5 drag-and-drop: WebView2 reliably fires `dragstart` (you can pick
+	// a row up) but the `dragover`/`drop` chain frequently never lands, so nothing could ever
+	// be dropped anywhere. A pointer drag has no browser drag session at all — press, move
+	// past a small threshold, release on a row. The source row captures the pointer, the row
+	// under the cursor is found via elementFromPoint, and a click is swallowed after a real
+	// drag so releasing doesn't also play the song.
 	let dragFrom: number | null = $state(null);
 	let dragOver: number | null = $state(null);
+	let dragging = $state(false);
+	let pressIndex: number | null = null;
+	let pressX = 0;
+	let pressY = 0;
+	let swallowClick = false;
 
-	function dragStart(e: DragEvent, i: number) {
-		dragFrom = i;
-		if (e.dataTransfer) {
-			e.dataTransfer.effectAllowed = 'move';
-			// Firefox needs payload set before the drag actually starts.
-			e.dataTransfer.setData('text/plain', String(i));
+	const DRAG_THRESHOLD_PX = 6;
+
+	function onRowPointerDown(e: PointerEvent, i: number) {
+		if (e.button !== 0 || i === playback.queue.currentIndex) return;
+		pressIndex = i;
+		pressX = e.clientX;
+		pressY = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+
+	function onRowPointerMove(e: PointerEvent, i: number) {
+		if (pressIndex === null) return;
+		if (!dragging) {
+			const dx = e.clientX - pressX;
+			const dy = e.clientY - pressY;
+			if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return; // still a click
+			dragging = true;
+			dragFrom = pressIndex;
+			e.preventDefault();
 		}
+		// The source row captured the pointer, so locate the hovered row manually.
+		const row = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest(
+			'[data-queue-row]'
+		) as HTMLElement | null;
+		const idx = row ? Number(row.dataset.queueRow) : null;
+		dragOver =
+			idx !== null && idx !== dragFrom && idx !== playback.queue.currentIndex ? idx : null;
 	}
-	function dragOverRow(e: DragEvent, i: number) {
-		if (i === playback.queue.currentIndex) return; // not a target — no preventDefault, no drop
-		e.preventDefault(); // allow the drop on this row
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		if (dragOver !== i) dragOver = i;
-	}
-	function dropRow(e: DragEvent, i: number) {
-		e.preventDefault();
+
+	function onRowPointerUp(e: PointerEvent, i: number) {
+		if (pressIndex === null) return;
+		const wasDrag = dragging;
 		const from = dragFrom;
-		dragFrom = null;
-		dragOver = null;
-		if (from === null || from === i) return;
+		resetDrag();
+		if (!wasDrag) return; // plain click — TrackRow's onclick plays
+		e.preventDefault();
+		swallowClick = true; // kill the click that follows a real drag
+		setTimeout(() => (swallowClick = false), 300);
+		const row = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest(
+			'[data-queue-row]'
+		) as HTMLElement | null;
+		const idx = row ? Number(row.dataset.queueRow) : null;
+		if (from === null || idx === null || idx === from || idx === playback.queue.currentIndex)
+			return;
 		// Backend semantics are remove(from) + insert(to) — "take the target row's slot" in
 		// both directions (adjacent drops read as a swap, which is what users expect).
-		api.moveQueueItem(from, i);
+		api.moveQueueItem(from, idx);
 	}
-	function dragEnd() {
+
+	function resetDrag() {
+		dragging = false;
 		dragFrom = null;
 		dragOver = null;
+		pressIndex = null;
+	}
+
+	// Runs in the capture phase (before TrackRow's bubble handler), so a release that ended a
+	// drag doesn't also play the song.
+	function swallowPostDragClick(e: MouseEvent) {
+		if (!swallowClick) return;
+		swallowClick = false;
+		e.preventDefault();
+		e.stopPropagation();
 	}
 
 	// Blocks in play order, cut wherever the upcoming tracks change origin (`queue.ts`).
@@ -57,13 +105,16 @@
 		<div
 			animate:flip={{ duration: 200, easing: cubicOut }}
 			role="listitem"
-			draggable={canReorder && i !== playback.queue.currentIndex}
-			ondragstart={(e) => dragStart(e, i)}
-			ondragover={(e) => dragOverRow(e, i)}
-			ondrop={(e) => dropRow(e, i)}
-			ondragend={dragEnd}
+			data-queue-row={i}
+			onpointerdown={(e) => onRowPointerDown(e, i)}
+			onpointermove={(e) => onRowPointerMove(e, i)}
+			onpointerup={(e) => onRowPointerUp(e, i)}
+			onpointercancel={resetDrag}
+			onclickcapture={swallowPostDragClick}
 			class={[
-				dragFrom === i ? 'opacity-60' : '',
+				'select-none touch-pan-y',
+				canReorder && i !== playback.queue.currentIndex ? 'cursor-grab' : '',
+				dragging && dragFrom === i ? 'cursor-grabbing opacity-60' : '',
 				dragOver === i && dragFrom !== i ? 'rounded-md bg-muted/40 ring-1 ring-primary/60' : ''
 			].join(' ')}
 		>
