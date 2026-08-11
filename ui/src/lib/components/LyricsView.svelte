@@ -77,6 +77,28 @@
 	let hasScrolled = false;
 	function onUserScroll() {
 		userScrollUntil = Date.now() + 3000;
+		cancelAnimationFrame(scrollRaf); // the user took over mid-glide
+	}
+
+	// Auto-scroll glides with a hand-tweened ease (native smooth scroll's duration isn't
+	// controllable and its clamp at the container edges feels like a snap). EaseInOutCubic,
+	// ~550ms: long enough to read the motion, short enough to stay in sync with the song.
+	let scrollRaf = 0;
+	function tweenScrollTo(el: HTMLElement, to: number, dur: number) {
+		cancelAnimationFrame(scrollRaf);
+		const from = el.scrollTop;
+		if (dur <= 0 || Math.abs(to - from) < 2) {
+			el.scrollTop = to;
+			return;
+		}
+		const t0 = performance.now();
+		const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+		const step = (now: number) => {
+			const p = Math.min(1, (now - t0) / dur);
+			el.scrollTop = from + (to - from) * ease(p);
+			if (p < 1) scrollRaf = requestAnimationFrame(step);
+		};
+		scrollRaf = requestAnimationFrame(step);
 	}
 
 	let wasExpanded: boolean | undefined;
@@ -91,11 +113,16 @@
 			userScrollUntil = 0;
 		}
 		if (i < 0 || !scroller || Date.now() < userScrollUntil) return;
-		scroller.querySelector(`[data-line="${i}"]`)?.scrollIntoView({
-			// Opening mid-song jumps straight to the line; after that, glide.
-			behavior: hasScrolled ? 'smooth' : 'instant',
-			block: 'center'
-		});
+		const line = scroller.querySelector(`[data-line="${i}"]`) as HTMLElement | null;
+		if (!line) return;
+		// Centre the line in the viewport, in scroller coordinates.
+		const target =
+			line.getBoundingClientRect().top -
+			scroller.getBoundingClientRect().top +
+			scroller.scrollTop -
+			(scroller.clientHeight - line.offsetHeight) / 2;
+		// Opening mid-song jumps straight to the line; after that, glide.
+		tweenScrollTo(scroller, target, hasScrolled ? 550 : 0);
 		hasScrolled = true;
 	});
 

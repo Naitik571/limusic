@@ -550,6 +550,9 @@ export async function startRadio(
 // Transient UI state for write actions.
 export const ui = $state({
 	addSongs: null as SongItem[] | null, // add-to-playlist picker target(s), full items for optimistic appends
+	// When set, the picker also removes each song from this playlist after a successful add —
+	// a true move, not a copy. Cleared on open so it never leaks between sessions.
+	moveFrom: '' as string,
 	toast: null as Toast | null,
 	settingsOpen: false, // the settings modal
 	ltOpen: false // the Listen Together modal
@@ -582,11 +585,27 @@ export function openAddToPlaylist(song: SongItem) {
 
 /** Open the picker to add several tracks at once (e.g. a whole album). */
 export function openAddManyToPlaylist(songs: SongItem[]) {
+	ui.moveFrom = '';
+	ui.addSongs = songs.length ? songs : null;
+}
+
+/** Open the picker to MOVE several tracks: added to the target, then removed from `fromId`. */
+export function openMoveToPlaylist(songs: SongItem[], fromId: string) {
+	ui.moveFrom = fromId;
 	ui.addSongs = songs.length ? songs : null;
 }
 
 // Last successful add-to-playlist — the open playlist page appends these optimistically.
 export const lastPlaylistAdd = $state({ playlistId: '', songs: [] as SongItem[], epoch: 0 });
+
+// Last successful MOVE — the source page drops these rows optimistically.
+export const lastPlaylistMove = $state({ fromId: '', songs: [] as SongItem[], epoch: 0 });
+
+export function notePlaylistMove(fromId: string, songs: SongItem[]) {
+	lastPlaylistMove.fromId = fromId;
+	lastPlaylistMove.songs = songs;
+	lastPlaylistMove.epoch++;
+}
 
 export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 	lastPlaylistAdd.playlistId = playlistId;

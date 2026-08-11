@@ -5,7 +5,7 @@
 	import { Cancel01Icon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
-	import { ui, toast, bumpLibraryTrackCount, notePlaylistAdd } from '$lib/player.svelte';
+	import { ui, toast, bumpLibraryTrackCount, notePlaylistAdd, notePlaylistMove } from '$lib/player.svelte';
 
 	let playlists = $state<BrowseItem[]>([]);
 	let loading = $state(false);
@@ -18,7 +18,9 @@
 			loading = true;
 			api
 				.getLibrary()
-				.then((p) => (playlists = p.filter((i) => i.id !== api.ON_REPEAT_ID)))
+				.then(
+			(p) => (playlists = p.filter((i) => i.id !== api.ON_REPEAT_ID && i.id !== ui.moveFrom))
+		)
 				.catch((e) => toast.error(String(e)))
 				.finally(() => (loading = false));
 		}
@@ -26,20 +28,45 @@
 
 	function close() {
 		ui.addSongs = null;
+		ui.moveFrom = '';
 	}
 
 	async function pick(pl: BrowseItem) {
 		const songs = ui.addSongs;
+		const from = ui.moveFrom;
 		close();
 		if (!songs?.length) return;
 		try {
 			// Sequential — a whole album is a handful of requests; don't hammer the API in parallel.
 			for (const song of songs) await api.addToPlaylist(pl.id, song.video_id);
 			bumpLibraryTrackCount(pl.id, songs.length);
-			notePlaylistAdd(pl.id, songs);
-			toast.success(
-				songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`
-			);
+			// A move: the same songs leave the source playlist. Rows without a set_video_id can't
+			// be removed individually — those stay (they're usually just-optimistic adds).
+			if (from) {
+				let removed = 0;
+				for (const song of songs) {
+					if (!song.set_video_id) continue;
+					await api.removeFromPlaylist(from, song.video_id, song.set_video_id);
+					removed++;
+				}
+				if (removed) {
+					bumpLibraryTrackCount(from, -removed);
+					notePlaylistMove(from, songs);
+					toast.success(
+						removed > 1 ? `Moved ${removed} songs to ${pl.title}` : `Moved to ${pl.title}`
+					);
+				} else {
+					notePlaylistAdd(pl.id, songs);
+					toast.success(
+						songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`
+					);
+				}
+			} else {
+				notePlaylistAdd(pl.id, songs);
+				toast.success(
+					songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`
+				);
+			}
 		} catch (e) {
 			toast.error(String(e));
 		}
@@ -62,7 +89,9 @@
 			class="w-full max-w-sm rounded-xl border bg-card p-4 shadow-xl"
 		>
 			<div class="mb-3 flex items-center justify-between">
-				<h2 class="font-heading text-base font-semibold">Add to playlist</h2>
+				<h2 class="font-heading text-base font-semibold">
+					{ui.moveFrom ? 'Move to playlist' : 'Add to playlist'}
+				</h2>
 				<button
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 					onclick={close}

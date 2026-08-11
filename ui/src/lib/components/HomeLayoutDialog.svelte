@@ -52,6 +52,96 @@
 		dragging = to;
 	}
 
+	// Pointer-based drag, same reasoning as QueueList: WebView2 reliably fires `dragstart`
+	// (you can pick a row up) but the `dragover`/`drop` chain frequently never lands, so the
+	// HTML5 rows could never be dropped anywhere. A press arms window-level move/up/cancel
+	// listeners; the hovered row is found via elementFromPoint and the list reorders live
+	// under the pointer. No setPointerCapture (it would redirect the synthesized click and
+	// kill the hide button), and a click is swallowed only when a real drag ends.
+	let pressIndex: number | null = null;
+	let pressX = 0;
+	let pressY = 0;
+	let isDragging = $state(false);
+	let swallowClick = false;
+	let detachPress: (() => void) | null = null;
+	const DRAG_THRESHOLD_PX = 6;
+
+	function onRowPointerDown(e: PointerEvent, i: number) {
+		if (e.button !== 0) return;
+		if ((e.target as HTMLElement | null)?.closest('button')) return; // the hide toggle owns its press
+		pressIndex = i;
+		pressX = e.clientX;
+		pressY = e.clientY;
+		attachPressListeners();
+	}
+
+	function attachPressListeners() {
+		if (detachPress) return;
+		const move = (e: PointerEvent) => {
+			if (pressIndex === null) return;
+			if (!isDragging) {
+				const dx = e.clientX - pressX;
+				const dy = e.clientY - pressY;
+				if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return; // still a click
+				isDragging = true;
+				dragging = pressIndex;
+				e.preventDefault();
+			}
+			const row = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest(
+				'[data-edit-row]'
+			) as HTMLElement | null;
+			const idx = row ? Number(row.dataset.editRow) : null;
+			if (idx !== null && idx !== dragging) moveTo(idx);
+		};
+		const up = () => {
+			if (pressIndex === null) return;
+			const wasDrag = isDragging;
+			detachPressListeners();
+			resetDrag();
+			if (!wasDrag) return; // plain click — nothing on the row itself to trigger
+			swallowClick = true; // kill the click a release over another row's hide button synthesizes
+			setTimeout(() => (swallowClick = false), 300);
+		};
+		const cancel = () => {
+			detachPressListeners();
+			resetDrag();
+		};
+		// Capture phase: run ahead of anything in the app. Also cancel on leaving the window
+		// or losing focus mid-press, so a release outside the app can't leave a stray drag.
+		window.addEventListener('pointermove', move, true);
+		window.addEventListener('pointerup', up, true);
+		window.addEventListener('pointercancel', cancel, true);
+		window.addEventListener('pointerleave', cancel, true);
+		window.addEventListener('blur', cancel, true);
+		detachPress = () => {
+			window.removeEventListener('pointermove', move, true);
+			window.removeEventListener('pointerup', up, true);
+			window.removeEventListener('pointercancel', cancel, true);
+			window.removeEventListener('pointerleave', cancel, true);
+			window.removeEventListener('blur', cancel, true);
+			detachPress = null;
+		};
+	}
+
+	function detachPressListeners() {
+		detachPress?.();
+	}
+
+	function resetDrag() {
+		isDragging = false;
+		dragging = null;
+		pressIndex = null;
+	}
+
+	// Runs in the capture phase (before the hide button's bubble handler), so a release that
+	// ended a drag doesn't also toggle the row that happens to sit under the cursor now.
+	function swallowPostDragClick(e: MouseEvent) {
+		if (!swallowClick) return;
+		swallowClick = false;
+		e.preventDefault();
+		e.stopPropagation();
+	}
+
 	function save() {
 		saveHomeLayout(
 			rows.map((r) => r.key),
@@ -75,26 +165,17 @@
 				<!-- The whole row is the drag source, not just the grip: aiming at a 1rem handle inside a
 				     scrolling list is a chore, and the grip still says which part of it to grab. -->
 				<div
-					role="listitem"
-					draggable="true"
-					animate:flip={{ duration: 180 }}
-					ondragstart={(e) => {
-						dragging = i;
-						e.dataTransfer?.setData('text/plain', row.key); // some engines refuse a payload-less drag
-						if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-					}}
-					ondragover={(e) => {
-						if (dragging === null) return; // a file or a card from the page behind
-						e.preventDefault();
-						moveTo(i);
-					}}
-					ondragend={() => (dragging = null)}
-					class="flex cursor-grab items-center gap-2 rounded-lg py-2 pl-3 pr-2 transition-colors hover:bg-muted/50 {dragging ===
+				role="listitem"
+				data-edit-row={i}
+				animate:flip={{ duration: 180 }}
+				onpointerdown={(e) => onRowPointerDown(e, i)}
+				onclickcapture={swallowPostDragClick}
+				class="flex cursor-grab touch-pan-y select-none items-center gap-2 rounded-lg py-2 pl-3 pr-2 transition-colors hover:bg-muted/50 active:cursor-grabbing {dragging ===
 					i
-						? 'bg-muted opacity-50'
-						: ''}"
+					? 'bg-muted opacity-50'
+					: ''}"
 				>
-					<span class="min-w-0 flex-1 truncate text-sm {row.shown ? '' : 'text-muted-foreground'}">
+				<span class="min-w-0 flex-1 truncate text-sm {row.shown ? '' : 'text-muted-foreground'}">
 						{row.title}
 					</span>
 					<button

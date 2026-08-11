@@ -14,7 +14,10 @@
 		ArrowUpNarrowWideIcon,
 		ArrowDownWideNarrowIcon,
 		DashboardSquare02Icon,
-		ListRestartIcon
+		ListRestartIcon,
+		Playlist02Icon,
+		Move01Icon,
+		PlusSignIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -34,7 +37,10 @@
 		startRadio,
 		toast,
 		bumpLibraryTrackCount,
-		lastPlaylistAdd
+		lastPlaylistAdd,
+		lastPlaylistMove,
+		openAddManyToPlaylist,
+		openMoveToPlaylist
 	} from '$lib/player.svelte';
 
 	let pl = $state<PlaylistPage | null>(null);
@@ -98,6 +104,79 @@
 	// Reload whenever the route param changes (playlist → playlist navigation).
 	$effect(() => {
 		if (id) load(id);
+	});
+
+	// ——— "More like this" ——————————————————————————————————————————
+	// Once a playlist has a couple of songs, seed a radio on the first one (the same read-only
+	// watch/radio endpoint behind autoplay) and offer its tracks as one-tap additions. The shelf
+	// only makes sense where adding works: playlists the user owns, plus Liked Music. Cached per
+	// (playlist, seed) so revisits don't refetch.
+	let recs = $state<SongItem[] | null>(null);
+	let recsCache = new Map<string, SongItem[]>();
+	$effect(() => {
+		id; // navigation to another playlist resets the shelf before its fetch effect runs
+		recs = null;
+	});
+	$effect(() => {
+		const first = pl?.items[0];
+		if (!pl || isOnRepeat || recs !== null || !(editable || isLiked)) return;
+		if (!first?.video_id || pl.items.length < 2) return;
+		const key = `${id}:${first.video_id}`;
+		const hit = recsCache.get(key);
+		if (hit) {
+			recs = hit;
+			return;
+		}
+		api
+			.getSimilarSongs(first.video_id, 8)
+			.then((r) => {
+				recsCache.set(key, r);
+				recs = r;
+			})
+			.catch(() => (recs = [])); // quiet: the shelf just doesn't show
+	});
+
+	// One-tap add. Optimistic append, reverted on failure — same contract as the picker, except
+	// rows land without set_video_id and the 0/2/4s backfill in `load` patches them in.
+	async function addRec(rec: SongItem) {
+		if (!pl) return;
+		if (isLiked) {
+			pl = { ...pl, items: [...pl.items, rec] };
+			try {
+				await api.like(rec.video_id, true);
+				cacheCurrent();
+				toast.success('Added to Liked Music');
+			} catch (e) {
+				pl = { ...pl, items: pl.items.filter((t) => t.video_id !== rec.video_id) };
+				cacheCurrent();
+				toast.error(String(e));
+			}
+			return;
+		}
+		pl = { ...pl, items: [...pl.items, rec] };
+		bumpLibraryTrackCount(id, 1);
+		try {
+			await api.addToPlaylist(id, rec.video_id);
+			cacheCurrent();
+			toast.success('Added to playlist');
+		} catch (e) {
+			pl = { ...pl, items: pl.items.filter((t) => t.video_id !== rec.video_id) };
+			bumpLibraryTrackCount(id, -1);
+			cacheCurrent();
+			toast.error(String(e));
+		}
+	}
+
+	// Songs MOVED out of this playlist via the picker vanish immediately (the picker did the
+	// server-side removal; the row drop is the mirror of the add-appends below).
+	let seenMoveEpoch = lastPlaylistMove.epoch;
+	$effect(() => {
+		if (lastPlaylistMove.epoch === seenMoveEpoch) return;
+		seenMoveEpoch = lastPlaylistMove.epoch;
+		if (!pl || lastPlaylistMove.fromId !== id) return;
+		const gone = new Set(lastPlaylistMove.songs.map(selKey));
+		pl = { ...pl, items: pl.items.filter((t) => !gone.has(selKey(t))) };
+		cacheCurrent();
 	});
 
 	// Songs added to THIS playlist via the picker (e.g. from the queue) appear immediately.
@@ -309,6 +388,125 @@
 		}
 	}
 
+	// --- Multi-select + right-click actions -------------------------------
+	// Ctrl/Cmd-click toggles a row, Shift-click ranges from the anchor, a plain click plays and
+	// clears the selection, right-click selects exactly the row under the cursor and opens the
+	// action menu. Rows are keyed by set_video_id (unique per playlist row) so duplicates and
+	// just-added optimistic rows don't collide; liked music falls back to video_id.
+	const selKey = (t: SongItem) => t.set_video_id ?? t.video_id;
+	let selected = $state<Set<string>>(new Set());
+	let selAnchor = $state(-1);
+	let selMenuOpen = $state(false);
+	let selX = $state(0);
+	let selY = $state(0);
+
+	const selectedItems = $derived(pl?.items.filter((t) => selected.has(selKey(t))) ?? []);
+	const canRemoveSel = $derived(
+		selectedItems.length > 0 && selectedItems.every((t) => isLiked || (editable && t.set_video_id))
+	);
+	const canMoveSel = $derived(selectedItems.length > 0 && editable);
+
+	function clearSelection() {
+		selected = new Set();
+		selAnchor = -1;
+		selMenuOpen = false;
+	}
+
+	// Capture phase: modifier clicks select instead of playing; anything else plays (and, once
+	// a selection exists, a plain click means "done with that" — clear it).
+	function onRowClickCapture(e: MouseEvent, i: number) {
+		if (!pl) return;
+		const key = selKey(pl.items[i]);
+		if (e.ctrlKey || e.metaKey || e.shiftKey) {
+			e.preventDefault();
+			e.stopPropagation();
+			const next = new Set(selected);
+			if (e.shiftKey && selAnchor >= 0) {
+				const a = Math.min(selAnchor, i);
+				const b = Math.max(selAnchor, i);
+				if (!e.ctrlKey && !e.metaKey) next.clear(); // plain Shift replaces the selection
+				for (let j = a; j <= b; j++) next.add(selKey(pl.items[j]));
+			} else {
+				if (next.has(key)) next.delete(key);
+				else next.add(key);
+				selAnchor = i;
+			}
+			selected = next;
+			return;
+		}
+		if (selected.size) clearSelection();
+	}
+
+	function onRowContextMenu(e: MouseEvent, i: number) {
+		if (!pl) return;
+		e.preventDefault();
+		const key = selKey(pl.items[i]);
+		if (!selected.has(key)) {
+			selected = new Set([key]); // right-click selects exactly this row
+			selAnchor = i;
+		}
+		selX = e.clientX;
+		selY = e.clientY;
+		selMenuOpen = true;
+	}
+
+	function playSelected(items: SongItem[]) {
+		if (!pl || !items.length) return;
+		playFrom(asItem(), items, 0, isOnRepeat ? undefined : id);
+	}
+	function queueSelected(items: SongItem[]) {
+		if (items.length) enqueue(items, false);
+	}
+	async function removeSelected(items: SongItem[]) {
+		if (!pl || !items.length) return;
+		const removable = items.filter((t) => isLiked || t.set_video_id);
+		const keys = new Set(items.map(selKey));
+		const prev = pl.items;
+		pl = { ...pl, items: pl.items.filter((t) => !keys.has(selKey(t))) }; // optimistic
+		clearSelection();
+		try {
+			for (const t of removable) {
+				if (isLiked) await api.like(t.video_id, false);
+				else await api.removeFromPlaylist(id, t.video_id, t.set_video_id!);
+			}
+			if (!isLiked) bumpLibraryTrackCount(id, -removable.length);
+			toast.success(
+				removable.length === 1
+					? 'Removed from ' + (isLiked ? 'Liked Music' : 'playlist')
+					: `Removed ${removable.length} songs`
+			);
+			cacheCurrent();
+		} catch (e) {
+			pl = { ...pl, items: prev }; // revert
+			cacheCurrent();
+			toast.error(String(e));
+		}
+	}
+
+	// Toolbar/menu entry points. Play/Queue snap the selection first (they consume it); Add/Move/
+	// Remove keep rows selected so a follow-up action is one click away.
+	function doPlaySel() {
+		const items = [...selectedItems];
+		clearSelection();
+		playSelected(items);
+	}
+	function doQueueSel() {
+		const items = [...selectedItems];
+		clearSelection();
+		queueSelected(items);
+	}
+	function doAddSel() {
+		openAddManyToPlaylist([...selectedItems]);
+		selMenuOpen = false;
+	}
+	function doMoveSel() {
+		openMoveToPlaylist([...selectedItems], id);
+		selMenuOpen = false;
+	}
+	function doRemoveSel() {
+		removeSelected([...selectedItems]); // clears internally
+	}
+
 	async function deleteThisPlaylist() {
 		try {
 			await api.deletePlaylist(id);
@@ -326,6 +524,15 @@
 		node.select();
 	}
 </script>
+
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape') {
+			clearSelection();
+			menuOpen = false;
+		}
+	}}
+/>
 
 <div class="flex h-full flex-col">
 	{#if loading}
@@ -434,15 +641,66 @@
 			</div>
 		</div>
 		<div class="content-in min-h-0 flex-1 overflow-y-auto p-4">
+			{#if selected.size > 0}
+				<div
+					class="sticky top-0 z-20 -mx-4 mb-1 flex items-center gap-2 border-b bg-background/95 px-4 py-2 backdrop-blur"
+				>
+					<span class="px-1 text-sm font-medium">{selected.size} selected</span>
+					<Button size="sm" class="gap-1.5" onclick={doPlaySel} disabled={!selectedItems.length}>
+						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						class="gap-1.5"
+						onclick={doQueueSel}
+						disabled={!selectedItems.length}
+					>
+						<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						class="gap-1.5"
+						onclick={doAddSel}
+						disabled={!selectedItems.length}
+					>
+						<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlist…
+					</Button>
+					{#if canMoveSel}
+						<Button variant="outline" size="sm" class="gap-1.5" onclick={doMoveSel}>
+							<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlist…
+						</Button>
+					{/if}
+					{#if canRemoveSel}
+						<Button variant="destructive" size="sm" class="gap-1.5" onclick={doRemoveSel}>
+							<HugeiconsIcon icon={Delete02Icon} class="h-4 w-4" /> Remove
+						</Button>
+					{/if}
+					<div class="flex-1"></div>
+					<Button variant="ghost" size="icon" aria-label="Clear selection" onclick={clearSelection}>
+						<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
+					</Button>
+				</div>
+			{/if}
 			{#each pl.items as item, i (item.video_id + i)}
-				<TrackRow
-					song={item}
-					index={i}
-					active={item.video_id === nowId}
-					onplay={() => playAll(i)}
-					onAdd={() => openAddToPlaylist(item)}
-					onRemove={isLiked || (editable && item.set_video_id) ? () => removeTrack(item) : undefined}
-				/>
+				<!-- The row is interactive by design (select/play/right-click); TrackRow inside
+				     provides the keyboard-accessible controls. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="rounded-lg {selected.has(selKey(item)) ? 'bg-accent/20 ring-1 ring-primary/40' : ''}"
+					onclickcapture={(e) => onRowClickCapture(e, i)}
+					oncontextmenu={(e) => onRowContextMenu(e, i)}
+				>
+					<TrackRow
+						song={item}
+						index={i}
+						active={item.video_id === nowId}
+						onplay={() => playAll(i)}
+						onAdd={() => openAddToPlaylist(item)}
+						onRemove={isLiked || (editable && item.set_video_id) ? () => removeTrack(item) : undefined}
+					/>
+				</div>
 			{:else}
 				<p class="p-4 text-sm text-muted-foreground">This playlist is empty.</p>
 			{/each}
@@ -466,11 +724,89 @@
 					</div>
 				{/if}
 			{/if}
+			{#if recs && recs.length > 0}
+				<h3 class="px-1 pt-5 pb-2 text-sm font-semibold">More like this</h3>
+				<div class="space-y-0.5 pb-2">
+					{#each recs as rec}
+						<div class="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50">
+							{#if rec.thumbnail}
+								<img src={rec.thumbnail} alt="" class="h-10 w-10 rounded-md object-cover" />
+							{:else}
+								<div class="h-10 w-10 rounded-md bg-muted"></div>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<div class="truncate text-sm font-medium">{rec.title}</div>
+								<div class="truncate text-xs text-muted-foreground">
+									{rec.artists || 'Unknown artist'}
+								</div>
+							</div>
+							<Button
+								variant="ghost"
+								size="icon"
+								class="opacity-0 transition-opacity group-hover:opacity-100"
+								aria-label={`Add ${rec.title} to this playlist`}
+								onclick={() => addRec(rec)}
+							>
+								<HugeiconsIcon icon={PlusSignIcon} class="h-4 w-4" />
+							</Button>
+						</div>
+					{/each}
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>
 
-{#if menuOpen}
+{#if selMenuOpen}
+	<button
+		class="fixed inset-0 z-40 cursor-default"
+		onclick={() => (selMenuOpen = false)}
+		aria-label="Close menu"
+	></button>
+	<div
+		class="fixed z-50 min-w-52 origin-top-left animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		style="left:{selX}px; top:{selY}px;"
+	>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+			onclick={doPlaySel}
+			disabled={!selectedItems.length}
+		>
+			<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play
+		</button>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+			onclick={doQueueSel}
+			disabled={!selectedItems.length}
+		>
+			<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
+		</button>
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+			onclick={doAddSel}
+			disabled={!selectedItems.length}
+		>
+			<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlist…
+		</button>
+		{#if canMoveSel}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={doMoveSel}
+			>
+				<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlist…
+			</button>
+		{/if}
+		{#if canRemoveSel}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
+				onclick={doRemoveSel}
+			>
+				<HugeiconsIcon icon={Delete02Icon} class="h-4 w-4" /> Remove
+			</button>
+		{/if}
+	</div>
+	{/if}
+	{#if menuOpen}
 	<button
 		class="fixed inset-0 z-40 cursor-default"
 		onclick={() => (menuOpen = false)}

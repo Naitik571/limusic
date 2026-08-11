@@ -559,6 +559,31 @@ pub async fn start_radio(
     state.start_radio(&kind, &id, name).await
 }
 
+/// Similar songs to a track — the same radio endpoint that powers autoplay (context/08),
+/// fetched read-only so a playlist page can show a "More like this" shelf. The radio playlist
+/// is seeded directly (`RDAMVM<videoId>`): a bare next(videoId) returns only the seed plus an
+/// automix preview. The seed itself is dropped; up to `limit` (default 8) tracks come back.
+#[tauri::command]
+pub async fn get_similar_songs(
+    state: St<'_>,
+    video_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<SongItem>, String> {
+    let client = metadata_client(&state)?;
+    let radio_id = format!("RDAMVM{video_id}");
+    let next = state
+        .it
+        .next(client, Some(&video_id), Some(&radio_id))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(next
+        .items
+        .into_iter()
+        .filter(|i| i.video_id != video_id)
+        .take(limit.unwrap_or(8))
+        .collect())
+}
+
 // --- write actions (context/01 ✎, context/15) ----------------------------------------------
 
 fn require_login(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, String> {

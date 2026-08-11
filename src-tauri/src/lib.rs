@@ -395,6 +395,7 @@ pub fn run() {
             commands::get_browse_grid,
             commands::play_playlist,
             commands::start_radio,
+            commands::get_similar_songs,
             commands::like,
             commands::set_album_saved,
             commands::add_to_playlist,

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fly } from 'svelte/transition';
+	import { fade, fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { beforeNavigate } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -11,9 +11,10 @@
 		Queue01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { np, playback } from '$lib/player.svelte';
+	import { dragVolume, np, playback } from '$lib/player.svelte';
 	import { appearance } from '$lib/theme.svelte';
 	import { thumb } from '$lib/thumb';
+	import * as api from '$lib/api';
 	import QueueList from './QueueList.svelte';
 	import LyricsView from './LyricsView.svelte';
 
@@ -43,6 +44,22 @@
 	const srcs = $derived([720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px)));
 	const src = $derived(srcs[attempt]);
 	const imgFailed = () => attempt++;
+
+	// Wheel anywhere in the maximized view steps the volume (same 5%/notch as the player bar)
+	// and pops a % badge over the artwork. The badge clears ~1s after the last notch.
+	const VOLUME_STEP = 5;
+	let volBadge = $state<number | null>(null);
+	let volBadgeTimer: ReturnType<typeof setTimeout> | undefined;
+	function onMaxWheel(e: WheelEvent) {
+		const v = Math.min(
+			100,
+			Math.max(0, playback.volume + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP))
+		);
+		dragVolume(v);
+		volBadge = v;
+		clearTimeout(volBadgeTimer);
+		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
+	}
 </script>
 
 <!-- Covers the page but not the sidebar (you navigate away to minimise) and not the player bar,
@@ -53,6 +70,7 @@
      ponytail: left offsets mirror Sidebar's w-16/lg:w-60 — keep in sync if those change. -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
+	onwheel={onMaxWheel}
 	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10"
 >
 	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
@@ -85,19 +103,39 @@
 			<!-- Centred against the full height of the column on the right. Below md there isn't room
 			     for both columns, and the queue wins. -->
 			<div class="hidden min-w-0 flex-1 items-center justify-center md:flex">
-				{#if src && attempt < srcs.length}
-					<img
-						{src}
-						alt=""
-						onerror={imgFailed}
-						class="aspect-square w-full max-w-[var(--art)] rounded-2xl object-cover shadow-2xl"
-					/>
-				{:else}
-					<div
-						class="flex aspect-square w-full max-w-[var(--art)] items-center justify-center rounded-2xl bg-muted text-muted-foreground/40"
+				<button
+					type="button"
+					class="relative block w-full max-w-[var(--art)] cursor-pointer rounded-2xl bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+					onclick={(e) => {
+						e.stopPropagation();
+						api.togglePause();
+					}}
+					aria-label={playback.paused ? 'Play' : 'Pause'}
+					title={playback.paused ? 'Play' : 'Pause'}
+				>
+					{#if src && attempt < srcs.length}
+						<img
+							{src}
+							alt=""
+							onerror={imgFailed}
+							class="aspect-square w-full rounded-2xl object-cover shadow-2xl"
+						/>
+					{:else}
+						<div
+							class="flex aspect-square w-full items-center justify-center rounded-2xl bg-muted text-muted-foreground/40"
+						>
+							<HugeiconsIcon icon={MusicNote01Icon} class="h-16 w-16" />
+						</div>
+					{/if}
+				</button>
+				{#if volBadge !== null}
+					<span
+						class="pointer-events-none absolute top-2 left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
+						transition:fade={{ duration: 150 }}
+						aria-hidden="true"
 					>
-						<HugeiconsIcon icon={MusicNote01Icon} class="h-16 w-16" />
-					</div>
+						{volBadge}%
+					</span>
 				{/if}
 			</div>
 		{/if}

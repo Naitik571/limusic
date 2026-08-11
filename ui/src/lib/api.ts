@@ -301,6 +301,9 @@ export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>
 	invoke<BrowseItem[]>('get_browse_grid', { id, params });
+/** Similar songs to a track — the playlist page's "More like this" shelf (read-only). */
+export const getSimilarSongs = (videoId: string, limit?: number) =>
+	invoke<SongItem[]>('get_similar_songs', { videoId, limit });
 
 // --- local music (local.rs) ------------------------------------------------------------------
 /** Rescan the watched folders. Cheap when nothing changed (one stat per file). */

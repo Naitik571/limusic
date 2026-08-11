@@ -2,7 +2,13 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Search01Icon } from '@hugeicons/core-free-icons';
+	import {
+	Search01Icon,
+	MusicNote01Icon,
+	UserIcon,
+	Album01Icon,
+	Playlist01Icon
+} from '@hugeicons/core-free-icons';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
@@ -12,7 +18,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import Shelf from '$lib/components/Shelf.svelte';
 	import * as api from '$lib/api';
-	import type { SearchResults } from '$lib/api';
+	import type { BrowseItem, SearchResults, SongItem } from '$lib/api';
 	import { getCached, putCached } from '$lib/pagecache';
 	import { openAddToPlaylist, playSong } from '$lib/player.svelte';
 	import { asSong } from '$lib/browse';
@@ -26,8 +32,99 @@
 	// The query of the most recent runSearch call, so an older in-flight one can't clobber it.
 	let latest = '';
 
+	// ——— Live suggestions while typing ———————————————————————————————
+	// Debounced search as you type; the top hits render in a dropdown under the field, so the
+	// song is usually one click (or one Enter on a highlighted row) away — no full search needed.
+	// ↑/↓ move the highlight, Enter picks it, Esc closes, Enter elsewhere runs the full search.
+	let suggestions = $state<SearchResults | null>(null);
+	let suggOpen = $state(false);
+	let suggIdx = $state(-1);
+	let debounce: ReturnType<typeof setTimeout> | undefined;
+	let box: HTMLElement | undefined = $state();
+
+	function onSearchInput() {
+		const q = query.trim();
+		clearTimeout(debounce);
+		suggIdx = -1;
+		if (q.length < 2) {
+			suggOpen = false;
+			suggestions = null;
+			return;
+		}
+		debounce = setTimeout(() => {
+			const key = `search:${q}`;
+			const hit = getCached<SearchResults>(key);
+			const fetch = hit
+				? Promise.resolve(hit)
+				: api.searchAll(q).then((r) => (putCached(key, r), r)); // feeds the full search too
+			fetch
+				.then((r) => {
+					if (query.trim() !== q) return; // the field moved on — stale
+					suggestions = r;
+					suggOpen = true;
+				})
+				.catch(() => {}); // typing is best-effort; the full search reports errors
+		}, 250);
+	}
+
+	type Sug =
+		| { kind: 'song'; label: string; sub: string; song: SongItem }
+		| { kind: 'artist' | 'album' | 'playlist'; label: string; sub: string; id: string };
+
+	const artistLine = (i: BrowseItem) =>
+		(i.artistRuns ?? []).length ? i.artistRuns!.map((r) => r.text).join(', ') : i.subtitle ?? '';
+
+	const entries = $derived.by((): Sug[] => {
+		if (!suggestions) return [];
+		const out: Sug[] = [];
+		for (const i of suggestions.top.slice(0, 1))
+			out.push({ kind: 'song', label: i.title, sub: `Top result · ${artistLine(i)}`, song: asSong(i) });
+		for (const i of suggestions.songs.slice(0, 4))
+			out.push({ kind: 'song', label: i.title, sub: artistLine(i), song: asSong(i) });
+		for (const i of suggestions.artists.slice(0, 2)) out.push({ kind: 'artist', label: i.title, sub: 'Artist', id: i.id });
+		for (const i of suggestions.albums.slice(0, 2)) out.push({ kind: 'album', label: i.title, sub: 'Album', id: i.id });
+		for (const i of suggestions.playlists.slice(0, 2)) out.push({ kind: 'playlist', label: i.title, sub: 'Playlist', id: i.id });
+		return out;
+	});
+
+	function activateSug(s: Sug) {
+		suggOpen = false;
+		if (s.kind === 'song') {
+			playSong(s.song);
+		} else if (s.kind === 'artist') goto(`/artist/${s.id}`);
+		else if (s.kind === 'album') goto(`/album/${s.id}`);
+		else goto(`/playlist/${s.id}`);
+	}
+
+	function onSugKeydown(e: KeyboardEvent) {
+		if (!suggOpen || !entries.length) return;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			suggIdx = (suggIdx + 1) % entries.length;
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			suggIdx = (suggIdx - 1 + entries.length) % entries.length;
+		} else if (e.key === 'Enter' && suggIdx >= 0) {
+			e.preventDefault();
+			activateSug(entries[suggIdx]);
+		} else if (e.key === 'Escape') {
+			suggOpen = false;
+		}
+	}
+
+	// Outside click closes the dropdown; clicks inside stay so item clicks land.
+	$effect(() => {
+		if (!suggOpen) return;
+		const close = (e: PointerEvent) => {
+			if (!box?.contains(e.target as Node)) suggOpen = false;
+		};
+		window.addEventListener('pointerdown', close);
+		return () => window.removeEventListener('pointerdown', close);
+	});
+
 	async function runSearch() {
 		if (!query.trim()) return;
+		suggOpen = false; // the full results take over
 		const q = query;
 		latest = q;
 		const key = `search:${q}`;
@@ -95,7 +192,45 @@
 				runSearch();
 			}}
 		>
-			<Input bind:value={query} placeholder="Search songs, albums, artists, playlists…" />
+			<div class="relative min-w-0 flex-1" bind:this={box}>
+				<Input
+					bind:value={query}
+					oninput={onSearchInput}
+					onkeydown={onSugKeydown}
+					placeholder="Search songs, albums, artists, playlists…"
+				/>
+				{#if suggOpen && entries.length}
+					<div class="absolute top-full right-0 left-0 z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-xl">
+						<div class="max-h-80 overflow-y-auto p-1">
+							{#each entries as s, j (s.kind + s.label)}
+								<button
+									type="button"
+									onclick={() => activateSug(s)}
+									onpointerenter={() => (suggIdx = j)}
+									class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors {j ===
+									suggIdx
+										? 'bg-muted'
+										: 'hover:bg-muted/50'}"
+								>
+									{#if s.kind === 'song'}
+										<HugeiconsIcon icon={MusicNote01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+									{:else if s.kind === 'artist'}
+										<HugeiconsIcon icon={UserIcon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+									{:else if s.kind === 'album'}
+										<HugeiconsIcon icon={Album01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+									{:else}
+										<HugeiconsIcon icon={Playlist01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+									{/if}
+									<span class="min-w-0 flex-1">
+										<span class="block truncate text-sm font-medium">{s.label}</span>
+										<span class="block truncate text-xs text-muted-foreground">{s.sub}</span>
+									</span>
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			</div>
 			<Button type="submit" class="gap-2" disabled={searching}>
 				<HugeiconsIcon icon={Search01Icon} class="h-4 w-4" />
 				{searching ? 'Searching…' : 'Search'}
