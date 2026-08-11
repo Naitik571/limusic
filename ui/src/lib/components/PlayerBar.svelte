@@ -167,35 +167,44 @@
 	class="flex items-center gap-2 border-t bg-card px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3"
 >
 	<!-- Now playing -->
-	<div class="flex min-w-0 flex-1 items-center gap-3">
-		<div class="relative shrink-0">
-			{#key playback.now?.videoId}
-				{#if playback.now?.thumbnail}
-					<img
-						src={thumb(playback.now.thumbnail, 120)}
-						alt=""
-						style="max-width:none"
-						class="h-12 w-12 rounded-lg object-cover"
-						in:fade={{ duration: 250 }}
-					/>
-				{:else}
-					<div
-						class="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+		<div class="flex min-w-0 flex-1 items-center gap-3">
+			<button
+				type="button"
+				class="group relative block shrink-0 cursor-pointer rounded-lg bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+				onclick={(e) => {
+					e.stopPropagation();
+					api.togglePause();
+				}}
+				aria-label={playback.paused ? 'Play' : 'Pause'}
+				title={playback.paused ? 'Play' : 'Pause'}
+			>
+				{#key playback.now?.videoId}
+					{#if playback.now?.thumbnail}
+						<img
+							src={thumb(playback.now.thumbnail, 120)}
+							alt=""
+							style="max-width:none"
+							class="h-12 w-12 rounded-lg object-cover"
+							in:fade={{ duration: 250 }}
+						/>
+					{:else}
+						<div
+							class="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+						>
+							<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
+						</div>
+					{/if}
+				{/key}
+				{#if volBadge !== null}
+					<span
+						class="pointer-events-none absolute -top-2 -left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
+						transition:fade={{ duration: 150 }}
+						aria-hidden="true"
 					>
-						<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
-					</div>
+						{volBadge}%
+					</span>
 				{/if}
-			{/key}
-			{#if volBadge !== null}
-				<span
-					class="pointer-events-none absolute -top-2 -left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
-					transition:fade={{ duration: 150 }}
-					aria-hidden="true"
-				>
-					{volBadge}%
-				</span>
-			{/if}
-		</div>
+			</button>
 		<div class="min-w-0">
 			<div class="flex items-center gap-1.5">
 				<div class="truncate text-sm font-medium">{playback.now?.title ?? 'Nothing playing'}</div>
