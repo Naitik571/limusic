@@ -131,6 +131,24 @@
 	const onVolume = (e: Event) => dragVolume(Number((e.target as HTMLInputElement).value));
 	const onVolumeCommit = (e: Event) => commitVolume(Number((e.target as HTMLInputElement).value));
 
+	// Scroll-wheel volume: a wheel over the bar steps the volume (5% per notch, matching the
+	// shortcut arrows) and pops a % badge over the cover art while you scroll. The badge
+	// clears ~1s after the last notch.
+	const VOLUME_STEP = 5;
+	let volBadge = $state<number | null>(null);
+	let volBadgeTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function onBarWheel(e: WheelEvent) {
+		const v = Math.min(
+			100,
+			Math.max(0, playback.volume + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP))
+		);
+		dragVolume(v); // same throttled path as the slider's oninput
+		volBadge = v;
+		clearTimeout(volBadgeTimer);
+		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
+	}
+
 	// Anywhere on the bar that isn't a control opens (or closes) the now-playing view: the bar is
 	// what's left of it once it's minimised, so it's the way back in. Deliberately no pointer
 	// cursor, because this is the whole bar, not a button, and every real button keeps its own click.
@@ -145,27 +163,39 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions -->
 <footer
 	onclick={onBarClick}
+	onwheel={onBarWheel}
 	class="flex items-center gap-2 border-t bg-card px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3"
 >
 	<!-- Now playing -->
 	<div class="flex min-w-0 flex-1 items-center gap-3">
-		{#key playback.now?.videoId}
-			{#if playback.now?.thumbnail}
-				<img
-					src={thumb(playback.now.thumbnail, 120)}
-					alt=""
-					style="max-width:none"
-					class="h-12 w-12 shrink-0 rounded-lg object-cover"
-					in:fade={{ duration: 250 }}
-				/>
-			{:else}
-				<div
-					class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+		<div class="relative shrink-0">
+			{#key playback.now?.videoId}
+				{#if playback.now?.thumbnail}
+					<img
+						src={thumb(playback.now.thumbnail, 120)}
+						alt=""
+						style="max-width:none"
+						class="h-12 w-12 rounded-lg object-cover"
+						in:fade={{ duration: 250 }}
+					/>
+				{:else}
+					<div
+						class="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+					>
+						<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
+					</div>
+				{/if}
+			{/key}
+			{#if volBadge !== null}
+				<span
+					class="pointer-events-none absolute -top-2 -left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
+					transition:fade={{ duration: 150 }}
+					aria-hidden="true"
 				>
-					<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
-				</div>
+					{volBadge}%
+				</span>
 			{/if}
-		{/key}
+		</div>
 		<div class="min-w-0">
 			<div class="flex items-center gap-1.5">
 				<div class="truncate text-sm font-medium">{playback.now?.title ?? 'Nothing playing'}</div>

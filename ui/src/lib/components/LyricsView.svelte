@@ -123,7 +123,16 @@
 			{/each}
 		</div>
 	{:else if lyrics?.instrumental}
-		<p class="py-8 text-center text-lg text-muted-foreground">Instrumental ♪</p>
+		<!-- Just the music: a live equalizer + breathing copy instead of a dead text line. -->
+		<div class="flex min-h-full flex-col items-center justify-center gap-4 py-12">
+			{@render eqBars(48, 4)}
+			<div class="text-center">
+				<p class="font-heading text-lg font-semibold">Instrumental</p>
+				<p class="lv-breathe mt-1 text-sm text-muted-foreground">
+					Just the music — nothing to sing along to.
+				</p>
+			</div>
+		</div>
 	{:else if lyrics && lyrics.synced}
 		<!-- Padding lets the first/last lines center-scroll. -->
 		<div class="py-[35vh] {expanded ? 'mx-auto max-w-3xl' : ''}">
@@ -131,30 +140,55 @@
 				<button
 					data-line={i}
 					onclick={() => seekTo(line)}
-					class="block w-full origin-left cursor-pointer text-left font-heading font-semibold leading-snug transition-[color,transform] duration-200 hover:text-foreground
-						{expanded ? 'py-3 text-3xl' : 'py-1.5 text-lg'}
+					class="flex w-full items-center gap-2.5 text-left font-heading font-semibold leading-snug transition-[color,transform,text-shadow,opacity] duration-500 ease-out hover:text-foreground
+						{expanded ? 'py-3.5 text-4xl' : 'py-2 text-xl'}
 						{i === activeIndex
-						? 'scale-[1.03] text-foreground'
-						: i < activeIndex
-							? 'text-muted-foreground/40'
-							: 'text-muted-foreground'}"
+							? 'lv-active scale-[1.04]'
+							: i < activeIndex
+								? 'text-muted-foreground/35'
+								: 'text-muted-foreground'}"
 				>
-					{line.text || '♪'}
+					{#if i === activeIndex}
+						<span class="flex h-[1.1em] shrink-0 items-end gap-[3px]" aria-hidden="true">
+							<span class="lv-eq w-[3px] rounded-full bg-primary" style="animation-delay:0s"></span>
+							<span class="lv-eq w-[3px] rounded-full bg-primary" style="animation-delay:0.15s"></span>
+							<span class="lv-eq w-[3px] rounded-full bg-primary" style="animation-delay:0.3s"></span>
+						</span>
+					{/if}
+					<span class="min-w-0 flex-1">{line.text || '♪'}</span>
 				</button>
 			{/each}
 		</div>
 	{:else if lyrics}
 		<div
 			class="space-y-1 leading-relaxed text-foreground/90 {expanded
-				? 'mx-auto max-w-3xl text-xl'
-				: 'text-[15px]'}"
+				? 'mx-auto max-w-3xl text-2xl'
+				: 'text-base'}"
 		>
 			{#each lyrics.lines as line, i (i)}
 				{#if line.text}<p>{line.text}</p>{:else}<div class="h-4"></div>{/if}
 			{/each}
 		</div>
 	{:else}
-		<p class="py-8 text-center text-sm text-muted-foreground">No lyrics found for this track.</p>
+		<!-- No lyrics (or nothing playing): floating notes + breathing copy so the empty state
+		     feels alive rather than dead-ended. -->
+		<div class="flex min-h-full flex-col items-center justify-center gap-4 py-12">
+			<div class="relative flex h-24 w-24 items-center justify-center">
+				<span class="lv-float absolute text-6xl text-primary/55">♪</span>
+				<span class="lv-float-slow absolute -top-1 left-2 text-2xl text-muted-foreground/40">♫</span>
+				<span class="lv-float-slower absolute -bottom-1 right-1 text-xl text-muted-foreground/30">♩</span>
+			</div>
+			<div class="text-center">
+				<p class="font-heading text-base font-semibold">
+					{playback.now ? 'No lyrics found for this track' : 'Nothing playing'}
+				</p>
+				<p class="lv-breathe mt-1 text-sm text-muted-foreground">
+					{playback.now
+						? 'Enjoy the music — the mood is the message.'
+						: 'Pick a song and the lyrics will appear here.'}
+				</p>
+			</div>
+		</div>
 	{/if}
 </div>
 {#if lyrics && !loading}
@@ -162,3 +196,74 @@
 		{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
 	</p>
 {/if}
+
+{#snippet eqBars(heightPx: number, bars: number)}
+	<span class="flex items-end gap-1" aria-hidden="true">
+		{#each Array(bars) as _, n (n)}
+			<span
+				class="lv-eq w-1 rounded-full bg-primary"
+				style="height:{heightPx}px; animation-delay:{n * 0.12}s"
+			></span>
+		{/each}
+	</span>
+{/snippet}
+
+<style>
+	/* The active line: full-brightness text with a soft primary glow so it reads as "now". */
+	.lv-active {
+		color: var(--foreground);
+		text-shadow: 0 0 26px color-mix(in oklab, var(--primary) 55%, transparent);
+	}
+
+	/* Equalizer bars: scale from the bottom, staggered via inline animation-delay. */
+	.lv-eq {
+		transform-origin: bottom;
+		animation: lv-eq 1.1s ease-in-out infinite;
+	}
+
+	/* Gentle bob for the empty-state notes, staggered durations/delays. */
+	.lv-float {
+		animation: lv-float 3.2s ease-in-out infinite;
+	}
+	.lv-float-slow {
+		animation: lv-float 4.2s ease-in-out 0.7s infinite;
+	}
+	.lv-float-slower {
+		animation: lv-float 5s ease-in-out 1.3s infinite;
+	}
+
+	/* Soft text pulse for the empty/instrumental copy. */
+	.lv-breathe {
+		animation: lv-breathe 2.4s ease-in-out infinite;
+	}
+
+	@keyframes lv-eq {
+		0%,
+		100% {
+			transform: scaleY(0.3);
+		}
+		50% {
+			transform: scaleY(1);
+		}
+	}
+
+	@keyframes lv-float {
+		0%,
+		100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-9px);
+		}
+	}
+
+	@keyframes lv-breathe {
+		0%,
+		100% {
+			opacity: 0.55;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+</style>

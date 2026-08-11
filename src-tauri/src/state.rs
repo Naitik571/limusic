@@ -763,8 +763,37 @@ impl AppState {
         // track really ended — `on_track_failed` retries before calling this, so a successful
         // retry never lands here. mpv's pause flips a flag, so the event pump (not this fn)
         // pushes the paused state to the OS media controls and Discord.
+        //
+        // If a lookahead was primed, mpv already auto-advanced into the next playlist entry
+        // (gapless) before this pause lands. The queue pointer must follow — otherwise a later
+        // resume plays that track while the UI still shows the ended one (the "song plays but
+        // the cover/title stay the same" bug). Mirror the gapless-advance bookkeeping, then
+        // pause with everything consistent.
         if *self.sleep_timer.lock().unwrap() == SleepTimer::EndOfSong {
             *self.sleep_timer.lock().unwrap() = SleepTimer::Off;
+            let advanced = {
+                let mut q = self.queue.lock().await;
+                match next_index(q.items.len(), q.current, q.repeat) {
+                    Some(next) if q.lookahead_loaded == Some(next) => {
+                        q.current = next;
+                        q.lookahead_loaded = None;
+                        q.current_client = q.lookahead_client.take();
+                        q.playback_url = q.lookahead_playback_url.take();
+                        q.cpn = innertube::generate_cpn();
+                        q.history_pinged = false;
+                        q.duration = 0.0;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if advanced {
+                if let Some(item) = self.current_item().await {
+                    self.emit_now_playing(&item, "gapless");
+                }
+                self.emit_queue().await;
+                self.persist_queue().await; // index advanced without an explicit load → persist
+            }
             let _ = self.player.pause();
             let _ = self.app.emit("sleep-timer-fired", ());
             return;

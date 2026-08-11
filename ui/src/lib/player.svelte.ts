@@ -349,12 +349,14 @@ const SHORTCUT_STEP = 5; // volume percent / seek seconds for the arrow keys
 
 function onShortcut(e: KeyboardEvent) {
 	const target = e.target as HTMLElement | null;
-	if (
-		target?.closest(
-			'input, textarea, select, button, [contenteditable="true"], [role="button"]'
-		)
-	)
-		return;
+	// Text-entry contexts always win — typing must never trigger playback.
+	if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+	// Rows and buttons keep focus after a click (TrackRow is role="button" and plays on
+	// Space). They consume Space/Enter themselves; everything else (m, arrows, N/P…) should
+	// still work with focus sitting on one of them — otherwise every shortcut dies after
+	// the first song-row click, which reads as "sometimes buggy".
+	const onButton = !!target?.closest('button, [role="button"]');
+	if (onButton && (e.key === ' ' || e.key === 'Enter')) return;
 	const key = e.key;
 	const pos = playback.position;
 	if (key === ' ' || key.toLowerCase() === 'k') {
