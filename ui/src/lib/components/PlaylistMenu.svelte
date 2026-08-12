@@ -101,7 +101,7 @@
 		{@attach toBody}
 	></button>
 	<div
-		class="fixed z-50 min-w-48 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {openUp
+		class="fixed z-50 min-w-48 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {openUp
 			? 'origin-bottom-right'
 			: 'origin-top-right'}"
 		style="right:{mx}px; {openUp ? 'bottom' : 'top'}:{my}px;"

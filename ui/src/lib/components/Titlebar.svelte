@@ -226,7 +226,7 @@
 		aria-label="Close menu"
 	></button>
 	<div
-		class="fixed z-50 min-w-52 origin-top-right animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		class="fixed z-50 min-w-52 origin-top-right animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style="right:{mx}px; top:{my}px;"
 	>
 		<div class="flex items-center gap-2.5 px-2 py-2">
