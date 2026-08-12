@@ -7,9 +7,9 @@
 **A native desktop YouTube Music client — Rust + Tauri, ad-free, no Electron.**
 
 <p align="center">
-  <a href="https://github.com/SimoHypers/limusic/releases/latest"><img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/SimoHypers/limusic/total?style=for-the-badge&label=DOWNLOADS&color=a4c400"></a>
-  <a href="https://github.com/SimoHypers/limusic/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/SimoHypers/limusic?display_name=release&style=for-the-badge&color=a10935"></a>
-  <img alt="License" src="https://img.shields.io/github/license/SimoHypers/limusic?style=for-the-badge&color=1881cc">
+  <a href="https://github.com/Naitik571/limusic/releases/latest"><img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/Naitik571/limusic/total?style=for-the-badge&label=DOWNLOADS&color=a4c400"></a>
+  <a href="https://github.com/Naitik571/limusic/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Naitik571/limusic?display_name=release&style=for-the-badge&color=a10935"></a>
+  <img alt="License" src="https://img.shields.io/github/license/Naitik571/limusic?style=for-the-badge&color=1881cc">
   <br>
   <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black">
   <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logoColor=white">
@@ -50,7 +50,9 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-Four changes on top of upstream `v0.3.12`, all merged into `master`:
+A growing set of changes on top of upstream, all merged into `master`.
+
+**Earlier rounds (base upstream `v0.3.12`):**
 
 - **No more quiet playback** — the per-track loudness filter is gone. Upstream
   applied an attenuate-only gain derived from YouTube's `loudnessDb` field
@@ -70,12 +72,43 @@ Four changes on top of upstream `v0.3.12`, all merged into `master`:
 - **Test-stability fix** — the Discord presence backoff test no longer flakes
   on an exact-boundary timing race that randomly failed CI.
 
+**The v0.3.16 round** — player ergonomics, lyrics, queue and playlist UX:
+
+- **Maximized-player gestures** — in the expanded player, scrolling over the
+  square cover art adjusts the volume (one notch per wheel tick, with a live
+  volume badge that fades out), and clicking the cover toggles play/pause. The
+  wheel is deliberately ignored anywhere else in the maximized view, so
+  browsing nearby content can never change the volume by accident.
+- **Smooth lyrics** — the lyrics panel glides with a hand-tuned 650 ms
+  ease-in-out-quint tween instead of the browser's native jumpy snap, and
+  yields while you scroll yourself, resuming three seconds after your last
+  input — it never fights your hand.
+- **Queue history peek** — scroll up at the top of the queue to reveal the
+  songs that already played, four at a time, all the way back to the start of
+  the session. The reveal survives track changes (it only resets when the
+  queue itself is rebuilt).
+- **Live search suggestions** — both the home search bar and the /search page
+  suggest songs, artists, albums and playlists as you type (debounced,
+  keyboard-navigable, click-to-play) instead of waiting for Enter.
+- **"More like this" playlist recommendations** — open any editable playlist
+  and a shelf suggests similar songs. Every recommendation has its own play
+  button so you can audition it before committing, songs already in the
+  playlist are never suggested, adding a song immediately swaps in a fresh
+  one, and a "Find more like this" button at the bottom rotates the seed to
+  the next playlist track and fetches a new batch.
+- **Playlist multi-select & bulk actions** — Ctrl/Shift-click to select several
+  tracks at once, then right-click to move them to another playlist or remove
+  them all in one go.
+- **Edit-home drag fix** — drag-to-reorder on the home-page editor is driven
+  by pointer events, which work reliably in the WebView2 runtime where
+  HTML5 drag-and-drop is broken.
+
 ---
 
 <h2 align="center">Download & Install</h2>
 
 <p align="center">
-  <a href="https://github.com/SimoHypers/limusic/releases/latest">
+  <a href="https://github.com/Naitik571/limusic/releases/latest">
     <img src="https://img.shields.io/badge/GitHub_Releases-100000?style=for-the-badge&logo=github&logoColor=white" height="40">
   </a>
 </p>
