@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fade, fly } from 'svelte/transition';
+	import { fade, fly, scale } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { beforeNavigate } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -8,6 +8,8 @@
 		Minimize01Icon,
 		Mic01Icon,
 		MusicNote01Icon,
+		PauseIcon,
+		PlayIcon,
 		Queue01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -44,6 +46,18 @@
 	const srcs = $derived([720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px)));
 	const src = $derived(srcs[attempt]);
 	const imgFailed = () => attempt++;
+
+	// Clicking the artwork toggles playback, and flashes the action just taken over it so the click
+	// visibly did something. Read `paused` before the toggle: the backend event that flips it is a
+	// round trip away, and the icon has to be right on the frame the user clicked.
+	let flash: 'play' | 'pause' | null = $state(null);
+	let flashTimer: ReturnType<typeof setTimeout>;
+	function toggle() {
+		flash = playback.paused ? 'play' : 'pause';
+		clearTimeout(flashTimer);
+		flashTimer = setTimeout(() => (flash = null), 220);
+		api.togglePause();
+	}
 
 	// Wheel over the cover art in the maximized view steps the volume (same 5%/notch as the
 	// player bar) and pops a % badge over the artwork. The badge clears ~1s after the last notch.
@@ -107,12 +121,31 @@
 					class="relative block w-full max-w-[var(--art)] cursor-pointer rounded-2xl bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 					onclick={(e) => {
 						e.stopPropagation();
-						api.togglePause();
+						toggle();
 					}}
 					onwheel={onMaxWheel}
 					aria-label={playback.paused ? 'Play' : 'Pause'}
 					title={playback.paused ? 'Play' : 'Pause'}
 				>
+					{#if flash}
+						<!-- No backdrop-blur: re-blurring the plate on every frame of the scale is what made
+						     this stutter on WebKitGTK. Transform and opacity only. -->
+						<div
+							in:scale={{ start: 0.7, duration: 150, easing: cubicOut }}
+							out:scale={{ start: 1.3, duration: 320, easing: cubicOut }}
+							class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+						>
+							<div class="rounded-full bg-black/55 p-3.5 text-white">
+								<!-- icon is frozen at mount, so swap via showAlt, not a ternary. -->
+								<HugeiconsIcon
+									icon={PauseIcon}
+									altIcon={PlayIcon}
+									showAlt={flash === 'play'}
+									class="h-7 w-7"
+								/>
+							</div>
+						</div>
+					{/if}
 					{#if src && attempt < srcs.length}
 						<img
 							{src}

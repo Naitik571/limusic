@@ -20,7 +20,7 @@ use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use crate::webview::Bridge;
-use fetcher::{Discovery, PlayerJsFetcher};
+use fetcher::PlayerJsFetcher;
 
 const CIPHER_LABEL: &str = "limusic-cipher";
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -247,11 +247,6 @@ impl CipherDeobfuscator {
             bridge.eval_json("window.__sig_ok?true:false".into(), CALL_TIMEOUT).await,
             Ok(Value::Bool(true))
         );
-
-        // Record the verdict before acting on it, so the next launch on this player can skip the
-        // build above entirely.
-        self.fetcher
-            .set_discovery(&player.hash, Discovery { sig: sig_available, n: n_available });
 
         let mut inner = self.inner.lock().await;
         if keep_bridge(sig_available, n_available) {

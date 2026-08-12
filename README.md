@@ -103,6 +103,32 @@ A growing set of changes on top of upstream, all merged into `master`.
   by pointer events, which work reliably in the WebView2 runtime where
   HTML5 drag-and-drop is broken.
 
+**The latest round** — ported from upstream: restricted tracks, faster
+startup, and a play/pause flash:
+
+- **Restricted tracks play again** — YouTube changed its players so the old
+  regex-based signature/n-transform extraction stopped matching everywhere.
+  The cipher tables now come from the same two community registries the other
+  players read (Metrolist's faraday + Zemer's zemer-cipher), polled and merged
+  at runtime with the tracked table kept deliberately empty; every release
+  build bakes in a snapshot so even a first run with no network access to the
+  registries can decipher. Stream URLs are validated with a HEAD before use
+  (WEB_REMIX included — previously only the fallback clients were checked),
+  the broken IOS client was dropped for ANDROID_VR, and a stream that gets
+  rejected mid-playback is retried on another client.
+- **Faster startup (PoToken persistence)** — the BotGuard session token
+  (~12 h validity per Google's own `/GenerateIT`) used to be re-minted on
+  every launch, standing up a hidden web process and running the full
+  bootstrap (~1.6 s of startup) to re-learn a string we were told stays valid
+  until tomorrow. It now round-trips through the settings database (internal
+  key — the webview can neither read nor write it), so a second launch
+  skips the bootstrap entirely. A token Google stops honouring early is
+  dropped the moment a web-client stream is rejected instead of being
+  replayed for the rest of its nominal lifetime.
+- **Play/pause flash over the art** — clicking the cover art in the maximized
+  player toggles playback and flashes the action just taken (play or pause
+  icon) over the artwork, so the click reads as deliberate.
+
 ---
 
 <h2 align="center">Download & Install</h2>
