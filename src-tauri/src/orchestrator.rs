@@ -18,6 +18,7 @@ use tokio::sync::Mutex;
 
 use crate::cipher::CipherDeobfuscator;
 use crate::potoken::PoTokenGenerator;
+use crate::ytdlp::YtDlp;
 
 /// Everything the player + UI + media layer need for one track. context/06 PlaybackData.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -73,6 +74,9 @@ pub struct Orchestrator {
     /// (context/06 §2). Cleared when the cipher self-heals. `Arc` so the off-hot-path self-heal
     /// task can clear it.
     web_remix_failed: Arc<Mutex<HashSet<String>>>,
+    /// Last-ditch net behind rustypipe: the managed yt-dlp binary (2026-08 research round).
+    /// `None` when the fallback is disabled — the cascade just ends at rustypipe as before.
+    ytdlp: Option<Arc<YtDlp>>,
 }
 
 impl Orchestrator {
@@ -81,6 +85,7 @@ impl Orchestrator {
         clients: Clients,
         cipher: Arc<CipherDeobfuscator>,
         potoken: Arc<PoTokenGenerator>,
+        ytdlp: Option<Arc<YtDlp>>,
     ) -> Self {
         Orchestrator {
             it,
@@ -92,6 +97,7 @@ impl Orchestrator {
                 .build()
                 .unwrap_or_default(),
             web_remix_failed: Arc::new(Mutex::new(HashSet::new())),
+            ytdlp,
         }
     }
 
@@ -295,6 +301,28 @@ impl Orchestrator {
             }),
             Err(e) => {
                 tracing::error!(video_id, error = %e, "rustypipe fallback failed");
+                // 8. Net, net: the managed yt-dlp binary. Self-updating extractor logic — the one
+                // path that heals itself when Google breaks a client. Metadata fields stay None:
+                // the queue already carries title/artists/art; only the stream URL is missing.
+                if let Some(yt) = &self.ytdlp {
+                    if let Some(s) = yt.resolve(video_id).await {
+                        tracing::info!(video_id, "yt-dlp fallback resolved stream");
+                        return Ok(PlaybackData {
+                            video_id: video_id.to_owned(),
+                            stream_url: s.url,
+                            itag: 0,
+                            headers: std::collections::HashMap::new(),
+                            expires_in_seconds: 6 * 3600,
+                            loudness_db: None,
+                            playback_url: None,
+                            title: None,
+                            artists: None,
+                            duration: None,
+                            thumbnail: None,
+                            stream_client: "yt-dlp".to_owned(),
+                        });
+                    }
+                }
                 Err(ResolveError::AllClientsFailed(video_id.to_owned()))
             }
         }

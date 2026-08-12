@@ -68,7 +68,7 @@
 						class="shrink-0 rounded-full object-cover ring-2 ring-border"
 					/>
 				{/if}
-				<h1 class="truncate font-heading text-4xl font-bold tracking-tight drop-shadow">
+				<h1 class="text-gradient truncate font-heading text-4xl font-bold tracking-tight">
 					{daypart}{auth.account?.name ? `, ${auth.account.name.split(' ')[0]}` : ''}
 				</h1>
 			</div>

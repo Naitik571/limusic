@@ -4,8 +4,11 @@
 //!    what Metrolist defaults to.
 //! 2. **YouTube Music timed** — `next(videoId)` → lyrics browseId → mobile-client browse
 //!    (`timedLyricsData`). The same real-time lyrics the YTM app shows.
-//! 3. Plain fallbacks: LRCLIB plain (from step 1's response) → YT plain (WEB_REMIX browse) →
-//!    LRCLIB `/api/search` fuzzy.
+//! 3. **Musixmatch** (unofficial `apic-desktop` API): token.get → macro.subtitles.get, LRC
+//!    synced lines with a token-overlap sanity check against the matched track.
+//! 4. Plain fallbacks: LRCLIB plain (from step 1's response) → YT plain (WEB_REMIX browse) →
+//!    LRCLIB `/api/search` fuzzy → **Genius** page scrape (unauthenticated internal search +
+//!    `data-lyrics-container` extraction), last resort.
 //!
 //! Results are cached in SQLite (`lyrics_cache`): hits forever, "no lyrics" verdicts for 24h.
 //! A run where every provider merely *errored* (offline) caches nothing, so lyrics come back
@@ -142,6 +145,15 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     }
 
+    // 2b. Musixmatch synced — unofficial desktop API, same LRC shape, decent coverage. Sits
+    //    between the official sources and the fuzzy tier: a duration-verified LRCLIB fuzzy hit
+    //    still outranks it on *cut* accuracy, which is why fuzzy stays ahead.
+    match musixmatch(req).await {
+        Ok(Some(l)) => return (Some(l), true),
+        Ok(None) => {}
+        Err(e) => tracing::debug!(error = %e, "lyrics: musixmatch failed"),
+    }
+
     // 3. LRCLIB fuzzy search — a synced fuzzy match still beats any plain text, so it outranks
     //    the plain tier below. (YT lyrics are region-licensed and can be entirely absent.)
     let searched = lrclib_search(req).await;
@@ -183,6 +195,14 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         if let Some(l) = lrclib_to_lyrics(hit) {
             return (Some(l), req.duration.is_some());
         }
+    }
+
+    // 4d. Genius plain — the last resort. Heavy (two requests, HTML scrape) and its matching is
+    //    the loosest, so it only runs after every cheaper source has said no.
+    match genius(req).await {
+        Ok(Some(l)) => return (Some(l), true),
+        Ok(None) => {}
+        Err(e) => tracing::debug!(error = %e, "lyrics: genius failed"),
     }
 
     (None, definitive)
@@ -323,6 +343,265 @@ fn plain_from_text(text: Option<&str>, source: &str) -> Option<Lyrics> {
     })
 }
 
+// --- Musixmatch (unofficial desktop API) -----------------------------------------------------
+//
+// Community-documented flow, stable for years: `token.get` hands out a usertoken (cached for
+// the process lifetime), then `macro.subtitles.get` searches AND returns subtitles in one call.
+// The subtitle body is LRC with span markup — reuse `parse_lrc` and strip the tags.
+
+const MXM_ROOT: &str = "https://apic-desktop.musixmatch.com/ws/1.1";
+const MXM_APP_ID: &str = "web-desktop-app-v1.0";
+/// Acceptance floor for title/artist token overlap between our request and the matched track.
+const MXM_MIN_OVERLAP: f64 = 0.35;
+
+/// Browser-ish UA — the desktop endpoint rejects bare clients (curl, reqwest default).
+fn web_http() -> &'static reqwest::Client {
+    static WEB_HTTP: OnceLock<reqwest::Client> = OnceLock::new();
+    WEB_HTTP.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .user_agent(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
+                 Chrome/124.0.0.0 Safari/537.36",
+            )
+            .build()
+            .expect("build web http client")
+    })
+}
+
+fn mxm_token_cell() -> &'static tokio::sync::Mutex<Option<String>> {
+    static TOKEN: OnceLock<tokio::sync::Mutex<Option<String>>> = OnceLock::new();
+    TOKEN.get_or_init(|| tokio::sync::Mutex::new(None))
+}
+
+async fn mxm_usertoken() -> Option<String> {
+    if let Some(t) = mxm_token_cell().lock().await.clone() {
+        return Some(t);
+    }
+    let resp: serde_json::Value = http()
+        .get(format!("{MXM_ROOT}/token.get"))
+        .query(&[("app_id", MXM_APP_ID)])
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    let tok = resp.pointer("/message/body/user_token")?.as_str()?.to_owned();
+    *mxm_token_cell().lock().await = Some(tok.clone());
+    Some(tok)
+}
+
+/// `Ok(None)` = definitive "no Musixmatch result"; `Err` = transport/token trouble.
+async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    // Token unavailable → definitive-ish "skip Musixmatch" (the caller doesn't cache a miss
+    // on this path — only `Ok(Some)` marks the run definitive), never a hard error.
+    let Some(tok) = mxm_usertoken().await else {
+        tracing::debug!("musixmatch: no usertoken");
+        return Ok(None);
+    };
+    let mut q: Vec<(&str, String)> = vec![
+        ("format", "json".into()),
+        ("q_track", req.title.clone()),
+        ("q_artist", req.artists.clone()),
+        ("user_token", tok),
+        ("app_id", MXM_APP_ID.into()),
+    ];
+    if let Some(album) = &req.album {
+        q.push(("q_album", album.clone()));
+    }
+    let resp: serde_json::Value = http()
+        .get(format!("{MXM_ROOT}/macro.subtitles.get"))
+        .query(&q)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    // The matched track, for the sanity check: name/artist from the same macro response.
+    let matched = resp
+        .pointer("/message/body/macro_calls/track.search/message/body/track_list/0/track")
+        .and_then(|t| {
+            Some((
+                t.get("track_name").and_then(|v| v.as_str()).unwrap_or(""),
+                t.get("artist_name").and_then(|v| v.as_str()).unwrap_or(""),
+            ))
+        });
+    if let Some((m_title, m_artist)) = matched {
+        let title_ok = overlap(&req.title, m_title) >= MXM_MIN_OVERLAP;
+        // Artist may be a list ("A, B") — pass if ANY component matches.
+        let artist_ok = req
+            .artists
+            .split(',')
+            .map(str::trim)
+            .any(|a| overlap(a, m_artist) >= MXM_MIN_OVERLAP);
+        if !title_ok || !artist_ok {
+            tracing::debug!(
+                "musixmatch rejected: ours=({}, {}) theirs=({}, {})",
+                req.title,
+                req.artists,
+                m_title,
+                m_artist
+            );
+            return Ok(None);
+        }
+    }
+
+    let body = resp
+        .pointer("/message/body/macro_calls/track.subtitles.get/message/body/subtitle_list/0/subtitle/subtitle_body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if body.trim().is_empty() {
+        return Ok(None);
+    }
+    // Span markup ("<span start=… end=…>text</span>") around LRC timestamps — strip tags so
+    // `parse_lrc` sees clean lines; single-tag lines still carry their [mm:ss.xx] cues.
+    let cleaned = strip_html_tags(body);
+    let lines = parse_lrc(&cleaned);
+    if !lines.is_empty() {
+        return Ok(Some(Lyrics {
+            source: "Musixmatch".into(),
+            synced: true,
+            instrumental: false,
+            lines,
+        }));
+    }
+    Ok(plain_from_text(Some(&cleaned), "Musixmatch"))
+}
+
+// --- Genius (unauthenticated internal API + page scrape) --------------------------------------
+
+/// `Ok(None)` = no hit / no lyrics on the page; `Err` = transport trouble.
+async fn genius(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    // 1. Search via the internal endpoint the site itself uses (no OAuth token needed).
+    let q = format!("{} {}", req.title, req.artists);
+    let resp: serde_json::Value = web_http()
+        .get("https://genius.com/api/search/multi")
+        .query(&[("q", &q)])
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    // Collect song hits, score by token overlap, keep the best that clears the bar.
+    let mut best: Option<(f64, String)> = None;
+    for section in resp
+        .pointer("/response/sections")
+        .and_then(|s| s.as_array())
+        .into_iter()
+        .flatten()
+    {
+        if section.get("type").and_then(|t| t.as_str()) != Some("song") {
+            continue;
+        }
+        for hit in section
+            .get("hits")
+            .and_then(|h| h.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let Some(r) = hit.get("result") else { continue };
+            let (Some(path), Some(g_title)) = (
+                r.get("path").and_then(|v| v.as_str()),
+                r.get("title").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            let g_artist = r
+                .get("primary_artist")
+                .and_then(|a| a.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let title_score = overlap(&req.title, g_title);
+            let artist_score = req
+                .artists
+                .split(',')
+                .map(str::trim)
+                .map(|a| overlap(a, g_artist))
+                .fold(0.0_f64, f64::max);
+            // Both must clear the bar — Genius search can return same-named covers by other
+            // artists, and wrong-artist lyrics are worse than none.
+            if title_score < 0.4 || artist_score < 0.3 {
+                continue;
+            }
+            let score = (title_score + artist_score) / 2.0;
+            if best.as_ref().is_none_or(|(bs, _)| score > *bs) {
+                best = Some((score, path.to_owned()));
+            }
+        }
+    }
+    let Some((_, path)) = best else {
+        return Ok(None);
+    };
+
+    // 2. Scrape the song page: lyrics live in `data-lyrics-container` divs (links, <br>, <i>).
+    let html = web_http()
+        .get(format!("https://genius.com{path}"))
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let mut blocks: Vec<String> = Vec::new();
+    for cap in GENIUS_CONTAINER.captures_iter(&html) {
+        let raw = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+        // <br> and block boundaries become line breaks before the tag strip.
+        let with_breaks = raw.replace("<br>", "\n").replace("</div>", "\n");
+        let text = html_unescape(&strip_html_tags(&with_breaks));
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            blocks.push(trimmed.to_owned());
+        }
+    }
+    if blocks.is_empty() {
+        return Ok(None);
+    }
+    Ok(plain_from_text(Some(&blocks.join("\n\n")), "Genius"))
+}
+
+/// `<div data-lyrics-container="true" …> … </div>` — non-greedy up to the first close tag; the
+/// containers don't nest divs (spans/links only), so a simple match is safe enough.
+static GENIUS_CONTAINER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"data-lyrics-container="true"[^>]*>((?s).*?)</div>"#).unwrap()
+});
+
+/// Strip every tag, keeping the text between them.
+fn strip_html_tags(s: &str) -> String {
+    static TAGS: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"<[^>]*>").unwrap());
+    TAGS.replace_all(s, "").into_owned()
+}
+
+/// Minimal entity decode for what lyric pages actually use.
+fn html_unescape(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&nbsp;", " ")
+}
+
+/// Case-insensitive token-overlap (Dice-ish) between two strings, 0..1.
+fn overlap(a: &str, b: &str) -> f64 {
+    let toks = |s: &str| -> Vec<String> {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let (ta, tb) = (toks(a), toks(b));
+    if ta.is_empty() || tb.is_empty() {
+        return 0.0;
+    }
+    let common = ta.iter().filter(|t| tb.contains(t)).count();
+    2.0 * common as f64 / (ta.len() + tb.len()) as f64
+}
+
 // --- LRC parsing ----------------------------------------------------------------------------
 
 /// Parse LRC text (`[mm:ss.xx] line`) into sorted lines. Handles multiple timestamps per line
@@ -425,6 +704,23 @@ mod tests {
         assert_eq!(lines[1].time_ms, Some(20123));
         assert_eq!(lines[1].text, "");
         assert_eq!(lines[2].time_ms, Some(30000));
+    }
+
+    #[test]
+    fn overlap_scores_similar_strings() {
+        assert!(overlap("Fleetwood Mac", "Fleetwood Mac") > 0.9);
+        assert!(overlap("The Chain", "The Chain (Live)") > 0.5);
+        assert_eq!(overlap("aaa", "bbb"), 0.0);
+        assert!(overlap("A, B", "A") > 0.0);
+    }
+
+    #[test]
+    fn strips_genius_markup() {
+        let html = "Line one<br>Line <a href=\"/x\">two</a> &amp; more";
+        let out = html_unescape(&strip_html_tags(&html.replace("<br>", "\n")));
+        assert!(out.contains("Line one"));
+        assert!(out.contains("Line two & more"));
+        assert!(!out.contains('<'));
     }
 
     #[test]

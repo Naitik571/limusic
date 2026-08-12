@@ -87,7 +87,7 @@
 
 <div class="flex h-full flex-col">
 	<div class="border-b p-6">
-		<h1 class="mb-4 font-heading text-2xl font-bold">Search</h1>
+		<h1 class="text-gradient mb-4 font-heading text-2xl font-bold">Search</h1>
 		<form
 			class="flex max-w-xl gap-2"
 			onsubmit={(e) => {

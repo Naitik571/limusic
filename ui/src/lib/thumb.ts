@@ -15,3 +15,16 @@ export function thumb(url: string | undefined | null, px: number): string | unde
 	if (/=s\d+/.test(url)) return url.replace(/=s\d+/, `=s${px}`);
 	return url;
 }
+
+// Highest practical size for a slot that is *about* the art (now-playing hero, floating card):
+// the 1080 token on googleusercontent URLs, `maxresdefault` on i.ytimg path-variants. The
+// latter is a guess for some videos (no maxres frame exists) — callers pair this with the
+// same onerror step-down the rest of the app uses.
+export function thumbHQ(url: string | undefined | null): string | undefined {
+	if (!url) return undefined;
+	if (url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url)) return convertFileSrc(url);
+	if (/=w\d+-h\d+/.test(url)) return url.replace(/=w\d+-h\d+/, '=w1080-h1080');
+	if (/=s\d+/.test(url)) return url.replace(/=s\d+/, '=s1080');
+	if (url.includes('hqdefault')) return url.replace('hqdefault', 'maxresdefault');
+	return url;
+}

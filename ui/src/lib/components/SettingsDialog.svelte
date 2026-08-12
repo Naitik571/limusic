@@ -98,6 +98,7 @@
 
 	let tab = $state<TabId>('general');
 	let settings = $state<Record<string, string>>({});
+	let ytdlp = $state<api.YtdlpInfo>({ enabled: true, installed: false, last_error: null });
 	let clients = $state<string[]>([]);
 	let proxyInput = $state('');
 	let loaded = $state(false);
@@ -115,6 +116,10 @@
 		if (!ui.settingsOpen) return;
 		untrack(() => {
 			load();
+			api
+				.ytdlpInfo()
+				.then((info) => (ytdlp = { ...info }))
+				.catch(() => {});
 			updateResult = null;
 			pickerOpen = false;
 			readBack();
@@ -151,6 +156,8 @@
 	const discordOn = $derived(settings.discord_rpc === 'true');
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
+	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
+
 	const disabled = $derived(
 		new Set(
 			(settings.disabled_stream_clients ?? '')
@@ -182,6 +189,24 @@
 	async function setAutoplay(on: boolean) {
 		settings.autoplay = on ? 'true' : 'false';
 		await api.setSetting('autoplay', settings.autoplay);
+	}
+
+	async function setYtdlp(on: boolean) {
+		settings.ytdlp_enabled = on ? 'true' : 'false';
+		ytdlp.enabled = on;
+		await api.setSetting('ytdlp_enabled', settings.ytdlp_enabled);
+	}
+
+	async function installYtdlp() {
+		toast.info('Downloading yt-dlp…');
+		try {
+			await api.ytdlpInstallNow();
+			const info = await api.ytdlpInfo();
+			ytdlp = { ...info };
+			toast.success('yt-dlp ready — restricted tracks now have a fallback');
+		} catch (e) {
+			toast.error(`yt-dlp install failed: ${e}`);
+		}
 	}
 
 	async function setHideVideos(on: boolean) {
@@ -601,6 +626,23 @@
 							</p>
 						</div>
 						<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />
+					</div>
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">yt-dlp fallback</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Last resort for tracks every YouTube client refuses (restricted/DRM uploads):
+								resolve them through a self-updating yt-dlp binary.
+								<span class="mt-0.5 block font-mono text-xs text-muted-foreground/80">
+									{ytdlp.installed ? 'yt-dlp installed' : 'yt-dlp not installed yet'}
+									{ytdlp.last_error ? ` — ${ytdlp.last_error}` : ''}
+								</span>
+							</p>
+							{#if !ytdlp.installed}
+								<Button size="sm" variant="outline" class="mt-2" onclick={installYtdlp}>Install now</Button>
+							{/if}
+						</div>
+						<Switch checked={ytdlpOn} onCheckedChange={setYtdlp} />
 					</div>
 					<div class="py-3">
 						<div class="font-medium">Stream clients</div>

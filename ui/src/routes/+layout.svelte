@@ -11,6 +11,7 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { initTheme } from '$lib/theme.svelte';
@@ -25,6 +26,7 @@
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import MiniPlayer from '$lib/components/MiniPlayer.svelte';
+	import FloatingPlayer from '$lib/components/FloatingPlayer.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { auth, initApp, np, playback, ui } from '$lib/player.svelte';
@@ -47,6 +49,9 @@
 	// what tells the two apart: `mini` gets the widget instead of the app chrome, and none of the
 	// routes below it are ever rendered. Constant for the window's lifetime.
 	const isMini = browser && getCurrentWindow().label === 'mini';
+	// The floating player (Rust `floating.rs`) is the same trick again: a second, always-on-top
+	// window that coexists with the main one. It gets the card, nothing else.
+	const isFloating = browser && getCurrentWindow().label === 'floating';
 
 	// Apply the saved accent color before the first paint (ssr=false → nothing renders until now).
 	if (browser) initTheme();
@@ -72,14 +77,17 @@
      and no toasts (a banner would cover most of a 560x180 widget). -->
 {#if isMini}
 	<MiniPlayer />
+{:else if isFloating}
+	<FloatingPlayer />
 {:else}
 	<!-- The window itself is transparent; this root paints the background and, when not maximized,
 	     rounds the corners (the compositor can't round an undecorated window for us). -->
 	<div
 		class="flex h-screen flex-col overflow-hidden bg-background text-foreground {win.maximized
 			? ''
-			: 'rounded-lg'}"
+			: 'rounded-[1.25rem]'}"
 	>
+		<AmbientGlow />
 		<ResizeBorders />
 		<Titlebar />
 		<!-- relative: the queue and lyrics panels are absolute overlays inside it (see QueuePanel). -->
@@ -123,7 +131,7 @@
 	{#if updateState.available}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
+			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-xl glass-strong px-4 py-2 text-sm shadow-2xl"
 		>
 			<span>Update available — v{updateState.available.version}</span>
 			<Button size="sm" onclick={installUpdate} disabled={updateState.installing}>
@@ -143,7 +151,7 @@
 		{@const t = ui.toast}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-			class="fixed bottom-40 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm shadow-lg"
+			class="fixed bottom-40 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-xl glass-strong px-4 py-2 text-sm shadow-2xl"
 		>
 			<!-- Three branches instead of a ternary on `icon`: HugeiconsIcon freezes `icon` at mount, so a
 			     new toast replacing a visible one would keep the old glyph. -->
@@ -164,7 +172,7 @@
 	{#if playback.error}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-destructive/40 bg-card px-4 py-2 text-sm text-destructive shadow-lg"
+			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-destructive/40 glass-strong px-4 py-2 text-sm text-destructive shadow-2xl"
 		>
 			<span>{playback.error}</span>
 			<button

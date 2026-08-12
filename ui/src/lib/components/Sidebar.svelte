@@ -78,7 +78,7 @@
 </script>
 
 <aside
-	class="flex h-full w-16 shrink-0 flex-col border-r bg-sidebar p-3 text-sidebar-foreground lg:w-60"
+	class="relative flex h-full w-16 shrink-0 flex-col border-l-0 border-t-0 border-b-0 glass p-3 text-sidebar-foreground lg:w-60"
 >
 	<div class="flex items-center justify-center px-2 py-2 lg:justify-between">
 		<span class="hidden font-heading text-lg font-bold tracking-tight lg:block">Limusic</span>
@@ -96,8 +96,8 @@
 				class="group relative flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:justify-start {isActive(
 					n.href
 				)
-					? 'bg-primary/10 text-primary'
-					: 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'}"
+					? 'bg-glass-strong text-primary'
+					: 'text-sidebar-foreground/70 hover:bg-glass hover:text-sidebar-foreground'}"
 			>
 				{#if isActive(n.href)}
 					<span

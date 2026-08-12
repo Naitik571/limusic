@@ -71,7 +71,7 @@
 	onclick={onplay}
 	onkeydown={onKey}
 	aria-label={guestAdd ? `Add ${song.title} to the session queue` : `Play ${song.title}`}
-	class="group flex w-full cursor-pointer items-center gap-3 rounded-lg p-2 transition-colors hover:bg-accent/10 {active
+	class="group flex w-full cursor-pointer items-center gap-3 rounded-xl p-2 transition-colors hover:bg-glass {active
 		? 'bg-accent/10'
 		: ''} {compact ? '' : '[content-visibility:auto] [contain-intrinsic-size:auto_3.5rem]'}"
 >

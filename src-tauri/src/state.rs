@@ -34,6 +34,7 @@ pub struct AppState {
     pub db: Arc<Db>,
     pub app: AppHandle,
     pub orchestrator: Arc<Orchestrator>,
+    pub ytdlp: Arc<crate::ytdlp::YtDlp>,
     /// Sleep timer: pauses playback after a countdown or at the end of the current song. The
     /// countdown is enforced by a 1 Hz tick thread; end-of-song is checked inside
     /// `on_track_ended`. Ephemeral — never persisted (context/03 feature list).
@@ -169,6 +170,7 @@ impl AppState {
         db: Arc<Db>,
         app: AppHandle,
         orchestrator: Arc<Orchestrator>,
+        ytdlp: Arc<crate::ytdlp::YtDlp>,
         lt: Arc<LtSession>,
         cache_dir: std::path::PathBuf,
         media: Option<MediaHandle>,
@@ -182,6 +184,7 @@ impl AppState {
             db,
             app,
             orchestrator,
+            ytdlp,
             lt,
             cache_dir,
             media,

@@ -49,7 +49,7 @@
 	}
 </script>
 
-<div class="group relative flex w-full flex-col gap-2">
+<div class="group relative flex w-full flex-col gap-2 aurora-card rounded-xl">
 	<!-- draggable: every card is a drag source for home's Shortcuts grid (the only drop target). -->
 	<div
 		class="flex flex-col text-left transition-colors hover:bg-accent/10 {compact

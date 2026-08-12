@@ -41,8 +41,9 @@ fn handle_menu(app: &AppHandle, id: &str) {
             if let Some(state) = app.try_state::<Arc<AppState>>() {
                 state.flush_position();
             }
-            // Same for the widget's own position, if that's what they were quitting from.
+            // Same for the widgets' own positions, if that's what they were quitting from.
             crate::mini::save_position(app);
+            crate::floating::save_position(app);
             app.exit(0);
         }
         other => {

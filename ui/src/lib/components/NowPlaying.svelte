@@ -15,7 +15,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { dragVolume, np, playback } from '$lib/player.svelte';
 	import { appearance } from '$lib/theme.svelte';
-	import { thumb } from '$lib/thumb';
+	import { thumb, thumbHQ } from '$lib/thumb';
 	import * as api from '$lib/api';
 	import QueueList from './QueueList.svelte';
 	import LyricsView from './LyricsView.svelte';
@@ -43,9 +43,42 @@
 		attempt = 0;
 		bgFailed = false;
 	});
-	const srcs = $derived([720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px)));
+	// Aurora round: the hero art now tries full-res first — the 1080 token, `maxresdefault`
+	// on i.ytimg variants — then steps down through the sizes proven everywhere else (720 →
+	// 400 → the 120 the player bar already has loaded). Consecutive duplicates are dropped so
+	// an onerror can't land on the same URL twice and stall the step-down.
+	const srcs = $derived(
+		[thumbHQ(playback.now?.thumbnail), ...[720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px))].filter(
+			(u, i, a) => u && u !== a[i - 1]
+		) as string[]
+	);
 	const src = $derived(srcs[attempt]);
+
+	// iTunes full-res artwork (Rust art.rs): a genuine 100000x100000-999 cover for the hero,
+	// swapped in over the cascade when the lookup lands. Guarded against track-change races;
+	// if it fails to load it simply drops back to the cascade source.
+	let itunesArt = $state<string | null>(null);
+	$effect(() => {
+		const now = playback.now;
+		itunesArt = null;
+		if (!now || !now.artists || api.isLocalId(now.videoId)) return;
+		const vid = now.videoId;
+		api
+			.getHighresArt(now.artists, now.title)
+			.then((url) => {
+				if (url && vid === playback.now?.videoId) itunesArt = url;
+			})
+			.catch(() => {});
+	});
+	const heroSrc = $derived(itunesArt ?? src);
 	const imgFailed = () => attempt++;
+	function handleHeroError() {
+		if (itunesArt) {
+			itunesArt = null; // fall back to the cascade; a failure there steps down via imgFailed
+		} else {
+			imgFailed();
+		}
+	}
 
 	// Clicking the artwork toggles playback, and flashes the action just taken over it so the click
 	// visibly did something. Read `paused` before the toggle: the backend event that flips it is a
@@ -146,12 +179,12 @@
 							</div>
 						</div>
 					{/if}
-					{#if src && attempt < srcs.length}
+					{#if heroSrc && attempt < srcs.length}
 						<img
-							{src}
+							src={heroSrc}
 							alt=""
-							onerror={imgFailed}
-							class="aspect-square w-full rounded-2xl object-cover shadow-2xl"
+							onerror={handleHeroError}
+							class="aspect-square w-full rounded-3xl object-cover shadow-2xl"
 						/>
 					{:else}
 						<div
@@ -163,7 +196,7 @@
 				</button>
 				{#if volBadge !== null}
 					<span
-						class="pointer-events-none absolute top-2 left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
+						class="pointer-events-none absolute top-2 left-2 z-10 rounded-lg glass-strong px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
 						transition:fade={{ duration: 150 }}
 						aria-hidden="true"
 					>

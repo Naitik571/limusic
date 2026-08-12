@@ -672,7 +672,7 @@
 						</Button>
 					</div>
 				{:else}
-					<h1 class="mt-1 font-heading text-4xl font-bold tracking-tight drop-shadow-lg">
+					<h1 class="text-gradient mt-1 font-heading text-4xl font-bold tracking-tight">
 					{pl.title ?? 'Playlist'}
 				</h1>
 				{/if}

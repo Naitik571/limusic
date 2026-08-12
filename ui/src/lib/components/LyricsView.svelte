@@ -170,7 +170,7 @@
 					class="flex w-full items-center gap-2.5 text-left font-heading font-semibold leading-snug transition-[color,transform,text-shadow,opacity] duration-500 ease-out hover:text-foreground
 						{expanded ? 'py-3.5 text-4xl' : 'py-2 text-xl'}
 						{i === activeIndex
-							? 'lv-active scale-[1.04]'
+							? 'lv-active lv-glow scale-[1.04]'
 							: i < activeIndex
 								? 'text-muted-foreground/35'
 								: 'text-muted-foreground'}"
@@ -240,6 +240,15 @@
 	.lv-active {
 		color: var(--foreground);
 		text-shadow: 0 0 26px color-mix(in oklab, var(--primary) 55%, transparent);
+	}
+
+	/* Aurora: the active synced line reads as accent→violet gradient text. */
+	.lv-glow {
+		background-image: linear-gradient(100deg, var(--primary) 10%, oklch(0.7 0.2 285) 60%, oklch(0.65 0.19 335) 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		text-shadow: none;
 	}
 
 	/* Equalizer bars: scale from the bottom, staggered via inline animation-delay. */

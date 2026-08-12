@@ -95,7 +95,7 @@
      (the compositor can't round an undecorated window for us — same trick as the main window). -->
 <div
 	data-tauri-drag-region="deep"
-	class="group relative flex h-screen w-screen select-none overflow-hidden rounded-2xl border border-border/60 bg-card text-foreground"
+	class="group relative flex h-screen w-screen select-none overflow-hidden rounded-2xl border-transparent glass-strong text-foreground"
 >
 	<!-- Cover art under the left half, masked so it dissolves into the card instead of ending on a
 	     seam. Keyed so a track change cross-fades. -->

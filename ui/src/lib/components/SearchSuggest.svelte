@@ -137,7 +137,7 @@
 		class="{inputClass}{icon ? ' pl-9' : ''}"
 	/>
 	{#if suggOpen && entries.length}
-		<div class="absolute top-full right-0 left-0 z-50 mt-1.5 overflow-hidden rounded-lg border bg-popover shadow-xl">
+		<div class="absolute top-full right-0 left-0 z-50 mt-1.5 overflow-hidden rounded-xl glass-strong shadow-2xl">
 			<div class="max-h-80 overflow-y-auto p-1">
 				{#each entries as s, j (s.kind + s.label)}
 					<button

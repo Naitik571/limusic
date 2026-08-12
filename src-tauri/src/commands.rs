@@ -196,7 +196,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 10] = [
+const UI_SETTINGS: [&str; 11] = [
     "proxy",
     "quality",
     "enable_history",
@@ -207,6 +207,7 @@ const UI_SETTINGS: [&str; 10] = [
     "autoplay",
     "hide_videos",
     "prevent_duplicates",
+    "ytdlp_enabled",
 ];
 
 #[tauri::command]
@@ -237,6 +238,9 @@ pub async fn set_setting(
     if key == "discord_rpc" {
         state.set_discord_enabled(value == "true");
     }
+    if key == "ytdlp_enabled" {
+        state.ytdlp.set_enabled(value == "true");
+    }
     // Applies to what's fetched from here on: the live queue keeps whatever is already in it.
     if key == "hide_videos" {
         state.it.set_hide_videos(value == "true");
@@ -257,6 +261,31 @@ pub async fn set_setting(
         res.map_err(|e| format!("autostart: {e}"))?;
     }
     Ok(())
+}
+
+/// Status of the yt-dlp fallback for the settings screen: whether the toggle is on, whether
+/// the binary is installed, and the last download/update error (if any). The UI can also kick
+/// the install early, so a toggled-on user who's about to hit a restricted track can warm it.
+#[tauri::command]
+pub async fn ytdlp_info(state: St<'_>) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "enabled": state.ytdlp.enabled(),
+        "installed": state.ytdlp.installed(),
+        "last_error": state.ytdlp.last_error(),
+    }))
+}
+
+/// Force-install/update yt-dlp now (settings-screen button), so the fallback is warm.
+#[tauri::command]
+pub async fn ytdlp_install_now(state: St<'_>) -> Result<(), String> {
+    state.ytdlp.ensure_ready().await
+}
+
+/// Full-resolution iTunes artwork for the now-playing hero cover (Aurora round). Returns None
+/// when iTunes has nothing sane — the UI keeps the regular thumbnail.
+#[tauri::command]
+pub async fn get_highres_art(artist: String, title: String) -> Result<Option<String>, String> {
+    crate::art::lookup(&artist, &title).await
 }
 
 /// The streamable client keys the orchestrator tries, for the "disabled clients" setting. Names
@@ -359,6 +388,30 @@ pub async fn open_mini(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
     crate::tray::show_main(&app);
+    Ok(())
+}
+
+// --- floating player (floating.rs) ------------------------------------------------------------
+
+/// Pop the floating player out (or tuck it back in). Coexists with the main window — it's the
+/// always-on-top now-playing card, not a replacement.
+#[tauri::command]
+pub async fn toggle_floating(app: tauri::AppHandle) -> Result<(), String> {
+    // GTK wants window creation on the main thread, so hop and post the result back rather than
+    // logging a failure the user would only see as a click that did nothing.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(crate::floating::toggle(&handle));
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|_| "the floating player never answered".to_string())?
+}
+
+/// Tear the floating player down (its close button / quitting).
+#[tauri::command]
+pub async fn close_floating(app: tauri::AppHandle) -> Result<(), String> {
+    crate::floating::close(&app);
     Ok(())
 }
 

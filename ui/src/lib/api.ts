@@ -262,6 +262,23 @@ export const openMini = () => invoke<void>('open_mini');
 /** Close the widget and bring the app back. */
 export const closeMini = () => invoke<void>('close_mini');
 
+// --- floating player (Rust floating.rs) ---------------------------------------------------------
+export const toggleFloating = () => invoke<void>('toggle_floating');
+export const closeFloating = () => invoke<void>('close_floating');
+
+// --- hi-res cover art (Rust art.rs) ------------------------------------------------------------
+export const getHighresArt = (artist: string, title: string) =>
+	invoke<string | null>('get_highres_art', { artist, title });
+
+// --- yt-dlp fallback (Rust ytdlp.rs) -----------------------------------------------------------------
+export interface YtdlpInfo {
+	enabled: boolean;
+	installed: boolean;
+	last_error: string | null;
+}
+export const ytdlpInfo = () => invoke<YtdlpInfo>('ytdlp_info');
+export const ytdlpInstallNow = () => invoke<void>('ytdlp_install_now');
+
 // --- browse / library (context/08) ---------------------------------------------------------
 /** `params` is a `HomeChip.params` token — omit for the unfiltered feed. */
 export const getHome = (params?: string) => invoke<HomePage>('get_home', { params });

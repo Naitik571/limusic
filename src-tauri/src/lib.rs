@@ -1,9 +1,11 @@
 //! Limusic Tauri app. Wires transport + player + db + orchestrator behind the command boundary.
 
+mod art;
 mod cipher;
 mod commands;
 mod db;
 mod discord;
+mod floating;
 mod lastfm;
 mod listentogether;
 mod local;
@@ -16,6 +18,7 @@ mod session;
 mod state;
 mod tray;
 mod webview;
+mod ytdlp;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -221,11 +224,25 @@ pub fn run() {
             let config = Arc::new(PlayerConfigStore::new(&data_dir));
             let cipher = Arc::new(CipherDeobfuscator::new(handle.clone(), &data_dir, config));
             let potoken = Arc::new(PoTokenGenerator::new(handle.clone(), db.clone()));
+            // yt-dlp fallback (2026-08 round): managed binary, prewarmed in the background so the
+            // first restricted track doesn't pay the download cost. Enabled by default; the
+            // settings toggle flips it live.
+            let ytdlp = Arc::new(ytdlp::YtDlp::new(
+                handle.clone(),
+                db.get_setting("ytdlp_enabled").as_deref().map_or(true, |v| v == "true"),
+            ));
+            {
+                let y = ytdlp.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = y.ensure_ready().await;
+                });
+            }
             let orchestrator = Arc::new(Orchestrator::new(
                 it.clone(),
                 clients.clone(),
                 cipher.clone(),
                 potoken.clone(),
+                Some(ytdlp.clone()),
             ));
 
             // OS media controls (MPRIS/SMTC/NowPlaying). Its callback resolves AppState lazily, so
@@ -253,6 +270,7 @@ pub fn run() {
                 db,
                 handle.clone(),
                 orchestrator,
+                ytdlp,
                 lt,
                 cache_dir.clone(),
                 media,
@@ -375,12 +393,17 @@ pub fn run() {
             commands::get_settings,
             commands::set_setting,
             commands::get_stream_clients,
+            commands::ytdlp_info,
+            commands::get_highres_art,
+            commands::ytdlp_install_now,
             commands::clear_caches,
             commands::get_account,
             commands::sign_out,
             commands::login_webview,
             commands::open_mini,
             commands::close_mini,
+            commands::toggle_floating,
+            commands::close_floating,
             commands::get_home,
             commands::get_home_more,
             commands::get_library,

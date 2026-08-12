@@ -236,7 +236,7 @@
                         {album.subtitle ?? "Album"}
                     </div>
                     <h1
-                        class="mt-1 font-heading text-4xl font-bold tracking-tight drop-shadow"
+                        class="text-gradient mt-1 font-heading text-4xl font-bold tracking-tight"
                     >
                         {album.title ?? "Album"}
                     </h1>
