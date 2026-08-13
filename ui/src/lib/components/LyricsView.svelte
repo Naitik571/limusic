@@ -71,8 +71,29 @@
 		return i;
 	});
 
-	// Current playback position in ms (karaoke word-sweep reads it every frame).
+	// Raw playback position in ms (from the throttled ~250ms position tick).
 	const posMs = $derived(playback.position * 1000);
+
+	// Smooth playback position in ms, interpolated every animation frame. The position tick only
+	// arrives every ~250ms, so feeding `posMs` straight into the word sweep makes the gradient
+	// jump in visible steps. `smoothMs` eases toward the latest tick continuously, so the sweep
+	// reads as a fluid highlight even between ticks.
+	let smoothMs = $state(0);
+	{
+		// Read `playback.position` only inside the RAF closure (never synchronously) so this
+		// effect has no reactive deps and runs exactly once.
+		let raf = 0;
+		const tick = () => {
+			const target = playback.position * 1000;
+			if (smoothMs === 0) smoothMs = target;
+			else smoothMs += (target - smoothMs) * 0.22;
+			raf = requestAnimationFrame(tick);
+		};
+		$effect(() => {
+			raf = requestAnimationFrame(tick);
+			return () => cancelAnimationFrame(raf);
+		});
+	}
 
 	// 0..1 progress through a single word, clamped. Drives the gradient sweep on the active line.
 	function getWordProgress(word: api.LyricWord, currentMs: number): number {
@@ -202,11 +223,11 @@
 								{@const isWordEnd = word.text.endsWith(' ') || word.text.endsWith('\n')}
 								{@const cleanText = word.text.trimEnd()}
 								{#if i === activeIndex}
-									{@const progress = getWordProgress(word, posMs)}
+									{@const progress = getWordProgress(word, smoothMs)}
 									{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
 									{@const isCurrentWord = progress > 0 && progress < 1}
 									<span
-										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-100 ease-out {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord ? 'scale-[1.03]' : ''}"
+										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord ? 'scale-[1.03]' : ''}"
 										style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%)"
 									>{cleanText}</span>
 								{:else}

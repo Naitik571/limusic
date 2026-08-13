@@ -196,7 +196,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 11] = [
+const UI_SETTINGS: [&str; 16] = [
     "proxy",
     "quality",
     "enable_history",
@@ -208,6 +208,11 @@ const UI_SETTINGS: [&str; 11] = [
     "hide_videos",
     "prevent_duplicates",
     "ytdlp_enabled",
+    "download_dir",
+    "download_quality",
+    "download_format",
+    "use_offline",
+    "visualizer",
 ];
 
 #[tauri::command]
@@ -260,6 +265,9 @@ pub async fn set_setting(
         };
         res.map_err(|e| format!("autostart: {e}"))?;
     }
+    // Let every window react to a setting flip immediately (e.g. the visualizer toggle in the
+    // mini/floating players, which are separate webviews that can't share Svelte state).
+    let _ = app.emit("setting-changed", serde_json::json!({ "key": key, "value": value }));
     Ok(())
 }
 
@@ -893,6 +901,81 @@ pub async fn lastfm_disconnect(state: St<'_>) -> Result<(), String> {
 #[tauri::command]
 pub async fn lastfm_status(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(crate::lastfm::status(&state))
+}
+
+// --- offline downloads ----------------------------------------------------------------------
+
+/// Save a track for offline playback. Resolves its stream and writes the audio to the download
+/// directory; the resolver then plays the local file on every later play. Emits progress/complete
+/// events. Re-running on an already-downloaded track is a no-op.
+#[tauri::command]
+pub async fn download_track(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    video_id: String,
+    title: String,
+    artists: String,
+    album: Option<String>,
+    duration: i64,
+    thumb: Option<String>,
+) -> Result<(), String> {
+    crate::downloads::download_track(
+        &app,
+        &state.db,
+        &state.orchestrator,
+        &video_id,
+        &title,
+        &artists,
+        album.as_deref(),
+        duration,
+        thumb.as_deref(),
+    )
+    .await
+}
+
+/// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings
+/// "Downloads" list renders.
+#[tauri::command]
+pub async fn list_downloads(state: St<'_>) -> Result<serde_json::Value, String> {
+    let rows = state.db.list_downloads();
+    let total = state.db.downloads_total_bytes();
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|d| {
+            serde_json::json!({
+                "video_id": d.video_id,
+                "file_path": d.file_path,
+                "title": d.title,
+                "artists": d.artists,
+                "album": d.album,
+                "duration": d.duration,
+                "thumb": d.thumb,
+                "quality": d.quality,
+                "format": d.format,
+                "size_bytes": d.size_bytes,
+                "added_at": d.added_at,
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({ "items": items, "total_bytes": total }))
+}
+
+/// Remove one downloaded track (file + catalogue row).
+#[tauri::command]
+pub async fn delete_download(state: St<'_>, video_id: String) -> Result<(), String> {
+    crate::downloads::delete_track(&state.db, &video_id)
+}
+
+/// Wipe every download. The files go with the rows.
+#[tauri::command]
+pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
+    for d in state.db.list_downloads() {
+        let _ = std::fs::remove_file(&d.file_path);
+    }
+    for d in state.db.list_downloads() {
+        state.db.delete_download(&d.video_id);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

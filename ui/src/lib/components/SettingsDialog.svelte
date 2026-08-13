@@ -39,11 +39,12 @@
 	import { updateState, checkForUpdatesInteractive, installUpdate } from '$lib/updater.svelte';
 	import { getVersion } from '@tauri-apps/api/app';
 
-	type TabId = 'general' | 'themes' | 'playback' | 'data' | 'about';
+	type TabId = 'general' | 'themes' | 'playback' | 'downloads' | 'data' | 'about';
 	const TABS: { id: TabId; label: string }[] = [
 		{ id: 'general', label: 'General' },
 		{ id: 'themes', label: 'Themes' },
 		{ id: 'playback', label: 'Playback' },
+		{ id: 'downloads', label: 'Downloads' },
 		{ id: 'data', label: 'Data & storage' },
 		{ id: 'about', label: 'About' }
 	];
@@ -157,6 +158,72 @@
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
+	const visualizerOn = $derived(settings.visualizer !== 'false');
+
+	async function setVisualizer(on: boolean) {
+		settings.visualizer = on ? 'true' : 'false';
+		await api.setVisualizer(on);
+	}
+
+	// --- downloads tab ---
+	const DOWNLOAD_FORMATS = [
+		{ id: 'm4a', label: 'M4A (AAC)' },
+		{ id: 'opus', label: 'Opus' },
+		{ id: 'webm', label: 'WebM (Opus)' }
+	];
+	const downloadDir = $derived(settings.download_dir ?? '');
+	const downloadQuality = $derived(settings.download_quality ?? 'AUTO');
+	const downloadFormat = $derived(settings.download_format ?? 'm4a');
+	const useOffline = $derived(settings.use_offline === 'true');
+	const downloads = $state<api.DownloadedTrack[]>([]);
+
+	async function refreshDownloads() {
+		try { downloads.splice(0, downloads.length, ...(await api.listDownloads())); } catch {}
+	}
+
+	async function pickDownloadDir() {
+		const picked = await open({ directory: true, defaultPath: downloadDir || undefined });
+		if (typeof picked === 'string' && picked) {
+			settings.download_dir = picked;
+			await api.setSetting('download_dir', picked);
+		}
+	}
+
+	async function setDownloadQuality(q: string) {
+		settings.download_quality = q;
+		await api.setSetting('download_quality', q);
+	}
+
+	async function setDownloadFormat(f: string) {
+		settings.download_format = f;
+		await api.setSetting('download_format', f);
+	}
+
+	async function setUseOffline(on: boolean) {
+		settings.use_offline = on ? 'true' : 'false';
+		await api.setSetting('use_offline', settings.use_offline);
+	}
+
+	async function removeDownload(vid: string) {
+		await api.deleteDownload(vid);
+		await refreshDownloads();
+	}
+
+	async function clearAllDownloads() {
+		await api.clearDownloads();
+		await refreshDownloads();
+	}
+
+	function fmtSize(bytes: number) {
+		if (!bytes) return '—';
+		const mb = bytes / (1024 * 1024);
+		return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+	}
+
+	// Load the list whenever the tab is opened.
+	$effect(() => {
+		if (tab === 'downloads') refreshDownloads();
+	});
 
 	const disabled = $derived(
 		new Set(
@@ -644,6 +711,16 @@
 						</div>
 						<Switch checked={ytdlpOn} onCheckedChange={setYtdlp} />
 					</div>
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Audio visualizer</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								A reactive spectrum behind the cover in the mini and floating players. Driven by
+								playback, so it needs no extra bandwidth.
+							</p>
+						</div>
+						<Switch checked={visualizerOn} onCheckedChange={setVisualizer} />
+					</div>
 					<div class="py-3">
 						<div class="font-medium">Stream clients</div>
 						<p class="mt-0.5 mb-2 text-sm text-muted-foreground">
@@ -662,7 +739,87 @@
 							{/each}
 						</div>
 					</div>
-				{:else if tab === 'data'}
+				{:else if tab === 'downloads'}
+					<div class="border-b py-3">
+						<div class="font-medium">Download location</div>
+						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
+							Where offline tracks are saved. Defaults to the app data folder if empty.
+						</p>
+						<div class="flex items-center gap-2">
+							<Input class="flex-1" readonly value={downloadDir} placeholder="App data / downloads" />
+							<Button size="sm" variant="outline" onclick={pickDownloadDir}>Browse…</Button>
+						</div>
+					</div>
+					<div class="border-b py-3">
+						<div class="font-medium">Default quality</div>
+						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
+							Quality used when you download a track for offline listening.
+						</p>
+						<div class="flex gap-2">
+							{#each QUALITIES as q (q.id)}
+								<Button
+									variant={downloadQuality === q.id ? 'default' : 'outline'}
+									size="sm"
+									onclick={() => setDownloadQuality(q.id)}
+								>{q.label}</Button>
+							{/each}
+						</div>
+					</div>
+					<div class="border-b py-3">
+						<div class="font-medium">Audio format</div>
+						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
+							Container/codec for saved files. M4A is the most compatible.
+						</p>
+						<div class="flex gap-2">
+							{#each DOWNLOAD_FORMATS as f (f.id)}
+								<Button
+									variant={downloadFormat === f.id ? 'default' : 'outline'}
+									size="sm"
+									onclick={() => setDownloadFormat(f.id)}
+								>{f.label}</Button>
+							{/each}
+						</div>
+					</div>
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Use downloads when available</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								Play the saved file instead of streaming whenever you have one — works offline and
+								saves bandwidth.
+							</p>
+						</div>
+						<Switch checked={useOffline} onCheckedChange={setUseOffline} />
+					</div>
+					<div class="py-3">
+						<div class="flex items-center justify-between">
+							<div class="font-medium">Downloaded tracks</div>
+							<Button size="sm" variant="ghost" disabled={downloads.length === 0} onclick={clearAllDownloads}>
+								Clear all
+							</Button>
+						</div>
+						{#if downloads.length === 0}
+							<p class="mt-2 text-sm text-muted-foreground">
+								Nothing saved yet. Use the ⋮ menu on any track and choose “Download”.
+							</p>
+						{:else}
+							<div class="mt-2 flex flex-col gap-1">
+								{#each downloads as d (d.video_id)}
+									<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{d.title}</div>
+											<div class="truncate text-xs text-muted-foreground">{d.artists}</div>
+										</div>
+										<div class="flex items-center gap-3 text-xs text-muted-foreground">
+											<span class="uppercase">{d.format}</span>
+											<span>{fmtSize(d.size_bytes)}</span>
+											<Button size="sm" variant="ghost" onclick={() => removeDownload(d.video_id)}>Remove</Button>
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+{:else if tab === 'data'}
 					<div class="border-b py-3">
 						<div class="font-medium">Proxy</div>
 						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">

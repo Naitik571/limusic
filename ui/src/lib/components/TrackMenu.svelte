@@ -16,9 +16,12 @@
 		FavouriteIcon,
 		UserListIcon,
 		Vynil02Icon,
-		DashboardSquare02Icon
+		DashboardSquare02Icon,
+		Download01Icon,
+		Delete01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
+	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
 	import { anchorMenu, toBody } from '$lib/menu';
 	import { addPick, enqueue, isLiked, startRadio, toggleLike } from '$lib/player.svelte';
@@ -49,10 +52,16 @@
 	let my = $state(0);
 	let openUp = $state(false);
 
+	let downloaded = $state(false);
 	function openMenu(e: MouseEvent) {
 		e.stopPropagation();
 		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement));
 		menuOpen = true;
+		if (!api.isLocalId(song.video_id)) {
+			api.listDownloads().then((list) => (downloaded = list.some((x) => x.video_id === song.video_id))).catch(() => {});
+		} else {
+			downloaded = false;
+		}
 	}
 	// stopPropagation everywhere: the trigger sits inside a clickable row (TrackRow's whole row is a
 	// play target), so its click must not reach the row's onplay (e.g. replacing the queue with the
@@ -164,6 +173,32 @@
 		>
 			<HugeiconsIcon icon={DashboardSquare02Icon} class="h-4 w-4" /> Add to shortcuts
 		</button>
+		{#if !isLocal}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm {downloaded
+					? 'text-destructive hover:bg-destructive/10'
+					: 'hover:bg-accent/10'}"
+				onclick={(e) =>
+					run(e, () => {
+						if (downloaded) api.deleteDownload(song.video_id).then(() => (downloaded = false));
+						else
+							api
+								.downloadTrack({
+									video_id: song.video_id,
+									title: song.title,
+									artists: song.artists,
+									album: song.album ? String(song.album) : null,
+									duration: Number(song.duration ?? 0),
+									thumbnail: song.thumbnail
+								})
+									.then(() => (downloaded = true))
+									.catch((err) => toast.error(`Download failed: ${err}`));
+					})}
+				>
+				<HugeiconsIcon icon={downloaded ? Delete01Icon : Download01Icon} class="h-4 w-4" />
+				{downloaded ? 'Remove download' : 'Download'}
+			</button>
+		{/if}
 		{#if onAdd && !isLocal}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"

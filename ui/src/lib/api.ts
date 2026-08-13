@@ -250,6 +250,36 @@ export const clearCaches = () => invoke<void>('clear_caches');
 /** Grant the webview a URL for one font file the user picked, so `@font-face` can load it. */
 export const allowFontFile = (path: string) => invoke<void>('allow_font_file', { path });
 
+// --- offline downloads (Rust downloads.rs) ------------------------------------------------------
+export interface DownloadedTrack {
+	video_id: string;
+	title: string;
+	artists: string;
+	album: string | null;
+	duration: number;
+	thumbnail: string | null;
+	format: string;
+	size_bytes: number;
+	added_at: number;
+}
+export const downloadTrack = (item: {
+	video_id: string;
+	title: string;
+	artists: string;
+	album?: string | null;
+	duration: number;
+	thumbnail?: string | null;
+}) =>
+	invoke<void>('download_track', item);
+export const listDownloads = () => invoke<DownloadedTrack[]>('list_downloads');
+export const deleteDownload = (video_id: string) =>
+	invoke<void>('delete_download', { video_id });
+export const clearDownloads = () => invoke<void>('clear_downloads');
+
+// --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
+export const getVisualizer = async () => (await getSettings()).visualizer === 'true';
+export const setVisualizer = (on: boolean) => setSetting('visualizer', on ? 'true' : 'false');
+
 // --- auth (context/15) ---------------------------------------------------------------------
 export const getAccount = () => invoke<Account>('get_account');
 export const signOut = () => invoke<void>('sign_out');

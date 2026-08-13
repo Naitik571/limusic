@@ -5,6 +5,7 @@ mod cipher;
 mod commands;
 mod db;
 mod discord;
+mod downloads;
 mod floating;
 mod lastfm;
 mod listentogether;
@@ -397,6 +398,10 @@ pub fn run() {
             commands::get_highres_art,
             commands::ytdlp_install_now,
             commands::clear_caches,
+            commands::list_downloads,
+            commands::download_track,
+            commands::delete_download,
+            commands::clear_downloads,
             commands::get_account,
             commands::sign_out,
             commands::login_webview,

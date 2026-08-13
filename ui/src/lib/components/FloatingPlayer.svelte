@@ -23,6 +23,7 @@
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
 	import * as api from '$lib/api';
+	import Visualizer from '$lib/components/Visualizer.svelte';
 	import {
 		playback,
 		commitVolume,
@@ -102,6 +103,7 @@
 		{/key}
 		<div class="absolute inset-0 bg-gradient-to-b from-black/45 via-black/25 to-black/75"></div>
 	</div>
+	<!-- Audio visualizer: a reactive spectrum along the bottom edge. -->
 
 	<!-- Dismiss. Hidden until the pointer is over the card: it is not part of the design, it is the
 	     way out of it. The command destroys this very window, so its reply lands nowhere — the
@@ -248,5 +250,9 @@
 				</button>
 			{/if}
 		</div>
+	</div>
+	<!-- Audio visualizer: reactive spectrum along the bottom edge. -->
+	<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-12 opacity-90 mix-blend-screen">
+		<Visualizer bars={32} class="rounded-b-[1.75rem]" />
 	</div>
 </div>

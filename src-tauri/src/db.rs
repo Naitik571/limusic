@@ -65,6 +65,19 @@ impl Db {
                 mtime         INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS local_tracks_album ON local_tracks(album_key);
+            CREATE TABLE IF NOT EXISTS downloads (
+                video_id   TEXT PRIMARY KEY,
+                file_path  TEXT NOT NULL,
+                title      TEXT NOT NULL,
+                artists    TEXT NOT NULL,
+                album      TEXT,
+                duration   INTEGER NOT NULL,
+                thumb      TEXT,
+                quality    TEXT NOT NULL,
+                format     TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                added_at   INTEGER NOT NULL
+            );
             "#,
         )?;
         // Migrate pre-Phase-4 DBs that predate the loudness_db column. Errors ("duplicate column")
@@ -302,6 +315,92 @@ impl Db {
             }
         }
         out
+    }
+}
+
+/// A track the user has saved for offline playback. The audio bytes live at `file_path`; this row
+/// is the catalogue the UI lists and the resolver consults before hitting the network.
+#[derive(Debug, Clone)]
+pub struct DownloadTrack {
+    pub video_id: String,
+    pub file_path: String,
+    pub title: String,
+    pub artists: String,
+    pub album: Option<String>,
+    pub duration: i64,
+    pub thumb: Option<String>,
+    pub quality: String,
+    pub format: String,
+    pub size_bytes: i64,
+    pub added_at: i64,
+}
+
+impl Db {
+    /// Path of the downloaded audio file for `video_id`, if one exists.
+    pub fn download_path(&self, video_id: &str) -> Option<String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row("SELECT file_path FROM downloads WHERE video_id = ?1", [video_id], |r| {
+            r.get(0)
+        })
+        .ok()
+    }
+
+    /// Record a finished download (replaces any prior entry for the same video id).
+    pub fn put_download(&self, d: &DownloadTrack) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute(
+            "INSERT INTO downloads(video_id, file_path, title, artists, album, duration, thumb, quality, format, size_bytes, added_at)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(video_id) DO UPDATE SET file_path=excluded.file_path, title=excluded.title,
+                artists=excluded.artists, album=excluded.album, duration=excluded.duration, thumb=excluded.thumb,
+                quality=excluded.quality, format=excluded.format, size_bytes=excluded.size_bytes, added_at=excluded.added_at",
+            rusqlite::params![
+                d.video_id, d.file_path, d.title, d.artists, d.album, d.duration, d.thumb,
+                d.quality, d.format, d.size_bytes, d.added_at
+            ],
+        );
+    }
+
+    /// All downloaded tracks, newest first.
+    pub fn list_downloads(&self) -> Vec<DownloadTrack> {
+        let conn = self.0.lock().unwrap();
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT video_id, file_path, title, artists, album, duration, thumb, quality, format, size_bytes, added_at
+             FROM downloads ORDER BY added_at DESC",
+        ) {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok(DownloadTrack {
+                    video_id: r.get(0)?,
+                    file_path: r.get(1)?,
+                    title: r.get(2)?,
+                    artists: r.get(3)?,
+                    album: r.get(4)?,
+                    duration: r.get(5)?,
+                    thumb: r.get(6)?,
+                    quality: r.get(7)?,
+                    format: r.get(8)?,
+                    size_bytes: r.get(9)?,
+                    added_at: r.get(10)?,
+                })
+            }) {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+
+    /// Remove one download's row (the file itself is deleted by the caller).
+    pub fn delete_download(&self, video_id: &str) {
+        let conn = self.0.lock().unwrap();
+        let _ = conn.execute("DELETE FROM downloads WHERE video_id = ?1", [video_id]);
+    }
+
+    /// How much disk the offline library currently occupies.
+    pub fn downloads_total_bytes(&self) -> i64 {
+        let conn = self.0.lock().unwrap();
+        conn.query_row("SELECT COALESCE(SUM(size_bytes),0) FROM downloads", [], |r| r.get(0))
+            .unwrap_or(0)
     }
 }
 

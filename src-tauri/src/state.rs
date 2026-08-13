@@ -306,6 +306,28 @@ impl AppState {
                 ResolveError::LocalMissing(path.to_owned())
             });
         }
+        // Offline download: if the user has saved this track and "use offline" is on, play the
+        // local file instead of spending a network resolve + stream-URL. Mirrors the local-file
+        // path above — mpv takes the path directly, no headers (context/11-ish).
+        if self.db.get_setting("use_offline").as_deref() == Some("true") {
+            if let Some(path) = self.db.download_path(video_id) {
+                tracing::debug!(video_id, "offline download hit");
+                return Ok(PlaybackData {
+                    video_id: video_id.to_owned(),
+                    stream_url: path,
+                    itag: 0,
+                    headers: Default::default(),
+                    expires_in_seconds: i64::MAX,
+                    loudness_db: None,
+                    playback_url: None,
+                    title: None,
+                    artists: None,
+                    duration: None,
+                    thumbnail: None,
+                    stream_client: "offline".to_owned(),
+                });
+            }
+        }
         // Latency cache first (context/11) — honor expiry, never a source of truth.
         // 60s safety margin: a URL that expires mid-load/mid-buffer fails as Raw(-13).
         let now = now_secs();
