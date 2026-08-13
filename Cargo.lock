@@ -2410,7 +2410,7 @@ dependencies = [
 
 [[package]]
 name = "limusic-app"
-version = "0.3.17"
+version = "0.3.18"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

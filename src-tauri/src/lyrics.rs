@@ -28,10 +28,39 @@ const LRCLIB_ROOT: &str = "https://lrclib.net/api";
 
 /// One display line. `time_ms` present ⇔ the line is synced (a plain-lyrics response has none).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricWord {
+    pub text: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+/// One display line. `time_ms` present means the line is synced (a plain-lyrics response has none).
+/// `words` carries per-word timings when a provider returned them; `end_time_ms` is the line's own
+/// end cue (karaoke needs it to know when the last word stops).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LyricLine {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time_ms: Option<u64>,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub words: Option<Vec<LyricWord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translation: Option<String>,
+}
+
+impl LyricLine {
+    /// Convenience constructor for the common case (plain text or a single cue, no words).
+    pub fn simple(time_ms: Option<u64>, text: String) -> Self {
+        Self {
+            time_ms,
+            end_time_ms: None,
+            text,
+            words: None,
+            translation: None,
+        }
+    }
 }
 
 /// What the UI gets (and what `lyrics_cache` stores as JSON).
@@ -107,7 +136,17 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     }
     let req = &req;
 
-    // 1. LRCLIB exact match.
+    // 1. Boidu, ahead of LRCLIB because it is the only provider here that returns word-level
+    //    timings, and those are what the karaoke sweep renders. Going first also means it is the
+    //    one provider that sees every track played rather than only the ones LRCLIB misses, so it
+    //    is behind a setting. Off falls straight through to the chain as it was before.
+    if state.db.get_setting("lyrics_boidu").as_deref() != Some("false") {
+        if let Ok(Some(l)) = boidu_get(req).await {
+            return (Some(l), req.duration.is_some());
+        }
+    }
+
+    // 2. LRCLIB exact match.
     let lr = lrclib_get(req).await;
     if let Ok(hit) = &lr {
         definitive = true;
@@ -134,7 +173,13 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
                         instrumental: false,
                         lines: lines
                             .into_iter()
-                            .map(|l| LyricLine { time_ms: Some(l.time_ms), text: l.text })
+                            .map(|l| LyricLine {
+                                time_ms: Some(l.time_ms),
+                                end_time_ms: None,
+                                text: l.text,
+                                words: None,
+                                translation: None,
+                            })
                             .collect(),
                     }),
                     true,
@@ -338,7 +383,7 @@ fn plain_from_text(text: Option<&str>, source: &str) -> Option<Lyrics> {
         instrumental: false,
         lines: text
             .lines()
-            .map(|l| LyricLine { time_ms: None, text: l.trim_end().to_owned() })
+            .map(|l| LyricLine::simple(None, l.trim_end().to_owned()))
             .collect(),
     })
 }
@@ -625,7 +670,13 @@ fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
             }
         }
         for &ms in &times {
-            out.push(LyricLine { time_ms: Some(ms), text: rest.to_owned() });
+            out.push(LyricLine {
+                time_ms: Some(ms),
+                end_time_ms: None,
+                text: rest.to_owned(),
+                words: None,
+                translation: None,
+            });
         }
     }
     out.sort_by_key(|l| l.time_ms);
@@ -672,6 +723,398 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
+
+// --- Boidu (word-level karaoke provider) ----------------------------------------------------
+//
+// lyrics-api.boidu.dev (the Better Lyrics API) is the only free, keyless provider that returns
+// word-level timings - TTML with per-word begin/end. Nothing else in the chain does, and the
+// karaoke sweep needs it. Sits FIRST in the chain (see fetch), behind the lyrics_boidu
+// setting so it can be turned off. Returns synced LRC or TTML; word timings ride along.
+
+const BOIDU_UA: &str = concat!(
+    "Limusic v",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/Naitik571/limusic)"
+);
+
+/// Ok(None) = no Boidu result; Err = transport trouble.
+async fn boidu_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    let mut q: Vec<(&str, String)> = vec![("s", req.title.clone()), ("a", req.artists.clone())];
+    if let Some(album) = &req.album {
+        q.push(("al", album.clone()));
+    }
+    if let Some(d) = req.duration.filter(|d| *d > 0.0) {
+        q.push(("d", format!("{}", d.round() as i64)));
+    }
+
+    let url = "https://lyrics-api.boidu.dev/getLyrics";
+    tracing::debug!(title = %req.title, artist = %req.artists, "lyrics: querying Boidu provider");
+    let resp: serde_json::Value = match web_http()
+        .get(url)
+        .query(&q)
+        .header("User-Agent", BOIDU_UA)
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error = %e, "lyrics: Boidu json parse failed");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error = %e, "lyrics: Boidu request failed");
+            return Ok(None);
+        }
+    };
+
+    let lrc_str = resp
+        .get("ttml")
+        .or_else(|| resp.get("syncedLyrics"))
+        .or_else(|| resp.get("lyrics"))
+        .or_else(|| resp.get("lrc"))
+        .and_then(|v| {
+            if let Some(s) = v.as_str() {
+                if !s.trim().is_empty() {
+                    return Some(s.to_string());
+                }
+            }
+            if v.is_array() {
+                return serde_json::to_string(v).ok();
+            }
+            None
+        });
+
+    let hit = lrc_str.and_then(|lrc| from_parsed("Boidu", parse_lrc_or_ttml(&lrc)));
+    match &hit {
+        Some(l) => tracing::debug!(count = l.lines.len(), synced = l.synced, "lyrics: Boidu hit"),
+        None => tracing::debug!("lyrics: Boidu returned no lines"),
+    }
+    Ok(hit)
+}
+
+/// A provider's parsed lines as a result, or None when there was nothing to show.
+/// synced is derived from the lines rather than asserted by the caller. TTML without begin
+/// attributes, and JSON items carrying text but no time, both parse to real lines with no cue.
+fn from_parsed(source: &str, lines: Vec<LyricLine>) -> Option<Lyrics> {
+    if lines.is_empty() {
+        return None;
+    }
+    Some(Lyrics {
+        source: source.to_owned(),
+        synced: lines.iter().any(|l| l.time_ms.is_some()),
+        instrumental: false,
+        lines,
+    })
+}
+
+/// Parse LRC, eLRC (inline word tags), TTML/AAML XML, or the Better-Lyrics/JSON array shape into
+/// LyricLines. Used by every provider that returns more than plain text.
+fn parse_lrc_or_ttml(text: &str) -> Vec<LyricLine> {
+    let trimmed = text.trim();
+
+    // 1. JSON array (Better Lyrics / KPOE / LyricsPlus): objects with text + time + words[].
+    if (trimmed.starts_with('[') || trimmed.starts_with('{'))
+        && (trimmed.contains("\"text\"")
+            || trimmed.contains("\"time\"")
+            || trimmed.contains("\"words\"")
+            || trimmed.contains("\"start\"")
+            || trimmed.contains("\"startTime\""))
+    {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            let mut out = Vec::new();
+            let arr_opt = val
+                .as_array()
+                .or_else(|| val.get("lyrics").and_then(|v| v.as_array()))
+                .or_else(|| val.get("lines").and_then(|v| v.as_array()))
+                .or_else(|| val.get("element").and_then(|v| v.as_array()));
+            if let Some(arr) = arr_opt {
+                for item in arr {
+                    let line_text = item
+                        .get("text")
+                        .or_else(|| item.get("words"))
+                        .or_else(|| item.get("line"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    let time_val = item
+                        .get("time")
+                        .or_else(|| item.get("startTime"))
+                        .or_else(|| item.get("start"))
+                        .or_else(|| item.get("t"))
+                        .and_then(parse_time_val);
+
+                    let mut words = Vec::new();
+                    if let Some(w_arr) = item.get("words").and_then(|v| v.as_array()) {
+                        for w in w_arr {
+                            let w_text = w
+                                .get("text")
+                                .or_else(|| w.get("word"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let w_start = w
+                                .get("startTime")
+                                .or_else(|| w.get("start"))
+                                .or_else(|| w.get("time"))
+                                .and_then(parse_time_val)
+                                .or(time_val);
+                            let w_end = w
+                                .get("endTime")
+                                .or_else(|| w.get("end"))
+                                .and_then(parse_time_val)
+                                .or_else(|| w_start.map(|s| s + 500));
+                            if let (Some(b), Some(e)) = (w_start, w_end) {
+                                words.push(LyricWord { text: w_text, start_ms: b, end_ms: e });
+                            }
+                        }
+                    }
+
+                    if !line_text.is_empty() || time_val.is_some() {
+                        out.push(LyricLine {
+                            time_ms: time_val,
+                            end_time_ms: None,
+                            text: line_text,
+                            words: if !words.is_empty() { Some(words) } else { None },
+                            translation: None,
+                        });
+                    }
+                }
+                if !out.is_empty() {
+                    out.sort_by_key(|l| l.time_ms);
+                    return out;
+                }
+            }
+        }
+    }
+
+    // 2. TTML / AAML XML.
+    if trimmed.starts_with('<') || trimmed.contains("<p ") || trimmed.contains("<tt") {
+        let ttml_lines = parse_ttml_aaml(trimmed);
+        if !ttml_lines.is_empty() {
+            return ttml_lines;
+        }
+    }
+
+    // 3. LRC / eLRC.
+    parse_elrc(text)
+}
+
+/// TTML and Apple Music AAML XML parser - extracts per-line + per-word timings.
+fn parse_ttml_aaml(xml: &str) -> Vec<LyricLine> {
+    let mut lines = Vec::new();
+    let mut pos = 0;
+    while let Some(p_start) = xml[pos..].find("<p") {
+        let abs_p_start = pos + p_start;
+        let Some(p_tag_end) = xml[abs_p_start..].find('>') else { break };
+        let abs_p_tag_end = abs_p_start + p_tag_end;
+        let p_tag_str = &xml[abs_p_start..abs_p_tag_end + 1];
+
+        let Some(p_close) = xml[abs_p_tag_end..].find("</p>") else { break };
+        let abs_p_close = abs_p_tag_end + p_close;
+        let inner_str = &xml[abs_p_tag_end + 1..abs_p_close];
+
+        pos = abs_p_close + 4;
+
+        let line_begin = parse_xml_attr(p_tag_str, "begin").and_then(|s| parse_ttml_time(&s));
+        let line_end = parse_xml_attr(p_tag_str, "end").and_then(|s| parse_ttml_time(&s));
+
+        let mut words: Vec<LyricWord> = Vec::new();
+        let mut span_pos = 0;
+        let mut plain_text_buf = String::new();
+
+        while let Some(s_start) = inner_str[span_pos..].find("<span") {
+            let abs_s_start = span_pos + s_start;
+            let Some(s_tag_end) = inner_str[abs_s_start..].find('>') else { break };
+            let abs_s_tag_end = abs_s_start + s_tag_end;
+            let s_tag_str = &inner_str[abs_s_start..abs_s_tag_end + 1];
+
+            let before = strip_xml_tags(&inner_str[span_pos..abs_s_start]);
+            if !before.is_empty() {
+                plain_text_buf.push_str(&before);
+                if let Some(last_w) = words.last_mut() {
+                    last_w.text.push_str(&before);
+                }
+            }
+
+            let Some(s_close) = inner_str[abs_s_tag_end..].find("</span>") else { break };
+            let abs_s_close = abs_s_tag_end + s_close;
+            let w_text = strip_xml_tags(&inner_str[abs_s_tag_end + 1..abs_s_close]);
+
+            let w_begin =
+                parse_xml_attr(s_tag_str, "begin").and_then(|s| parse_ttml_time(&s)).or(line_begin);
+            let w_end =
+                parse_xml_attr(s_tag_str, "end").and_then(|s| parse_ttml_time(&s)).or(line_end);
+
+            if let (Some(b), Some(e)) = (w_begin, w_end) {
+                if !w_text.is_empty() {
+                    words.push(LyricWord { text: w_text.clone(), start_ms: b, end_ms: e });
+                }
+            }
+            plain_text_buf.push_str(&w_text);
+            span_pos = abs_s_close + 7;
+        }
+
+        if span_pos < inner_str.len() {
+            plain_text_buf.push_str(&strip_xml_tags(&inner_str[span_pos..]));
+        }
+
+        let words_opt = if !words.is_empty() { Some(words) } else { None };
+        let full_text = plain_text_buf.trim().to_string();
+        if !full_text.is_empty() || line_begin.is_some() {
+            lines.push(LyricLine {
+                time_ms: line_begin,
+                end_time_ms: line_end,
+                text: full_text,
+                words: words_opt,
+                translation: None,
+            });
+        }
+    }
+    lines.sort_by_key(|l| l.time_ms);
+    lines
+}
+
+/// Enhanced LRC parser - handles inline word-timing tags (<00:01.23>word).
+fn parse_elrc(lrc: &str) -> Vec<LyricLine> {
+    let mut base_lines = parse_lrc(lrc);
+    for line in &mut base_lines {
+        if line.text.contains('<') || line.text.contains('(') {
+            let mut words = Vec::new();
+            let mut text_buf = String::new();
+            let mut last_ms = line.time_ms.unwrap_or(0);
+
+            let mut pos = 0;
+            let text_bytes = line.text.as_bytes();
+            while pos < text_bytes.len() {
+                if text_bytes[pos] == b'<' {
+                    if let Some(end_idx) = line.text[pos..].find('>') {
+                        let tag = &line.text[pos + 1..pos + end_idx];
+                        if let Some(w_ms) = parse_lrc_time(tag) {
+                            pos += end_idx + 1;
+                            let next_tag_idx = line.text[pos..]
+                                .find('<')
+                                .map(|i| pos + i)
+                                .unwrap_or(line.text.len());
+                            let w_str = &line.text[pos..next_tag_idx];
+                            text_buf.push_str(w_str);
+                            words.push(LyricWord {
+                                text: w_str.to_string(),
+                                start_ms: last_ms,
+                                end_ms: w_ms,
+                            });
+                            last_ms = w_ms;
+                            pos = next_tag_idx;
+                            continue;
+                        }
+                    }
+                }
+                let ch = line.text[pos..].chars().next().unwrap_or(' ');
+                text_buf.push(ch);
+                pos += ch.len_utf8();
+            }
+
+            if !words.is_empty() {
+                line.text = text_buf.trim().to_string();
+                line.words = Some(words);
+            }
+        }
+    }
+    base_lines
+}
+
+/// LRCMux: merge word timings from a second source into lines that lack them.
+/// mm:ss, mm:ss.xx, or mm:ss.xxx -> milliseconds (LRC timestamps).
+fn parse_ttml_time(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if let Some(rest) = s.strip_suffix("ms") {
+        return rest.parse::<u64>().ok();
+    }
+    if let Some(rest) = s.strip_suffix('s') {
+        let secs: f64 = rest.parse().ok()?;
+        return Some((secs * 1000.0) as u64);
+    }
+    if s.contains(':') {
+        let parts: Vec<&str> = s.split(':').collect();
+        if parts.len() == 3 {
+            let h: u64 = parts[0].parse().ok()?;
+            let m: u64 = parts[1].parse().ok()?;
+            let secs: f64 = parts[2].parse().ok()?;
+            return Some((h * 3600 + m * 60) * 1000 + (secs * 1000.0) as u64);
+        } else if parts.len() == 2 {
+            let m: u64 = parts[0].parse().ok()?;
+            let secs: f64 = parts[1].parse().ok()?;
+            return Some(m * 60 * 1000 + (secs * 1000.0) as u64);
+        }
+    }
+    let secs: f64 = s.parse().ok()?;
+    Some((secs * 1000.0) as u64)
+}
+
+/// Pull a name="value" or name='value' attribute out of a tag string.
+fn parse_xml_attr(tag: &str, attr: &str) -> Option<String> {
+    let pattern = format!("{attr}=\"");
+    if let Some(idx) = tag.find(&pattern) {
+        let start = idx + pattern.len();
+        let end = tag[start..].find('"')?;
+        return Some(tag[start..start + end].to_string());
+    }
+    let pattern_single = format!("{attr}='");
+    if let Some(idx) = tag.find(&pattern_single) {
+        let start = idx + pattern_single.len();
+        let end = tag[start..].find('\'')?;
+        return Some(tag[start..start + end].to_string());
+    }
+    None
+}
+
+/// A JSON number/string -> milliseconds. Sub-500 values are read as seconds (the APIs mix units).
+fn parse_time_val(v: &serde_json::Value) -> Option<u64> {
+    if let Some(f) = v.as_f64() {
+        if f < 500.0 {
+            Some((f * 1000.0) as u64)
+        } else {
+            Some(f as u64)
+        }
+    } else if let Some(u) = v.as_u64() {
+        if u < 500 {
+            Some(u * 1000)
+        } else {
+            Some(u)
+        }
+    } else if let Some(s) = v.as_str() {
+        if let Ok(f) = s.parse::<f64>() {
+            if f < 500.0 {
+                Some((f * 1000.0) as u64)
+            } else {
+                Some(f as u64)
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+/// Strip XML tags, keeping the text between them (used for TTML span/word text).
+fn strip_xml_tags(s: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in s.chars() {
+        if c == '<' {
+            in_tag = true;
+        } else if c == '>' {
+            in_tag = false;
+        } else if !in_tag {
+            out.push(c);
+        }
+    }
+    out
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -729,5 +1172,35 @@ mod tests {
         assert!(!l.synced);
         assert_eq!(l.lines.len(), 4);
         assert_eq!(l.lines[2].text, "");
+    }
+
+    #[test]
+    fn boidu_ttml_yields_word_timings() {
+        let ttml = "<tt><body><div><p begin=\"00:01.00\" end=\"00:04.00\">\
+            <span begin=\"00:01.00\" end=\"00:02.00\">Hello </span>\
+            <span begin=\"00:02.00\" end=\"00:04.00\">world</span></p></div></body></tt>";
+        let lines = parse_lrc_or_ttml(ttml);
+        assert_eq!(lines.len(), 1);
+        let line = &lines[0];
+        assert_eq!(line.time_ms, Some(1000));
+        assert_eq!(line.end_time_ms, Some(4000));
+        let words = line.words.as_ref().expect("should carry words");
+        assert_eq!(words.len(), 2);
+        assert_eq!(words[0].text, "Hello ");
+        assert_eq!(words[0].start_ms, 1000);
+        assert_eq!(words[0].end_ms, 2000);
+        assert_eq!(words[1].text, "world");
+        assert_eq!(words[1].start_ms, 2000);
+        assert_eq!(words[1].end_ms, 4000);
+    }
+
+    #[test]
+    fn boidu_json_array_word_timings() {
+        let json = r#"[{"text":"hello","time":1.0,"words":[{"text":"hello","startTime":1.0,"endTime":2.0}]}]"#;
+        let lines = parse_lrc_or_ttml(json);
+        assert_eq!(lines.len(), 1);
+        let words = lines[0].words.as_ref().expect("words");
+        assert_eq!(words[0].start_ms, 1000);
+        assert_eq!(words[0].end_ms, 2000);
     }
 }

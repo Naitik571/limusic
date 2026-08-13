@@ -381,10 +381,23 @@ export const onLoginDone = (cb: () => void): Promise<UnlistenFn> =>
 	listen('login-done', () => cb());
 
 // --- lyrics ---------------------------------------------------------------------------------
+/** A single timed word within a line - drives the karaoke sweep. Only present on word-level
+ *  providers (Boidu), so the UI falls back to whole-line highlighting elsewhere. */
+export interface LyricWord {
+	text: string;
+	start_ms: number;
+	end_ms: number;
+}
 export interface LyricLine {
 	/** Start cue in milliseconds; present ⇔ the line is synced. */
 	time_ms?: number;
+	/** End cue in milliseconds (karaoke needs it to know when the last word stops). */
+	end_time_ms?: number;
 	text: string;
+	/** Per-word timings when the provider returned them. */
+	words?: LyricWord[];
+	/** Line translation (Netease), when available. */
+	translation?: string;
 }
 export interface Lyrics {
 	/** Attribution for the panel footer ("LRCLIB", "Source: Musixmatch", …). */

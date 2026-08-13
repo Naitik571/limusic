@@ -71,6 +71,18 @@
 		return i;
 	});
 
+	// Current playback position in ms (karaoke word-sweep reads it every frame).
+	const posMs = $derived(playback.position * 1000);
+
+	// 0..1 progress through a single word, clamped. Drives the gradient sweep on the active line.
+	function getWordProgress(word: api.LyricWord, currentMs: number): number {
+		if (currentMs <= word.start_ms) return 0;
+		if (currentMs >= word.end_ms) return 1;
+		const dur = word.end_ms - word.start_ms;
+		if (dur <= 0) return 1;
+		return (currentMs - word.start_ms) / dur;
+	}
+
 	// Auto-scroll pauses while the user is scrolling (wheel/touch/scrollbar), resumes after 3s.
 	// Tracked via input events, not `scroll`, so our own smooth scrolls don't trip it.
 	let userScrollUntil = 0;
@@ -182,7 +194,29 @@
 							<span class="lv-eq h-full w-[3px] rounded-full bg-primary" style="animation-delay:0.3s"></span>
 						</span>
 					{/if}
-					<span class="min-w-0 flex-1">{line.text || '♪'}</span>
+					{#if line.words && line.words.length > 0}
+						<!-- Word-by-word karaoke sweep (Better-Lyrics style, highly optimized):
+						     only the gradient stop moves per frame, so the clip/fill stay static. -->
+						<span class="min-w-0 flex-1 inline-flex flex-wrap items-baseline">
+							{#each line.words as word, wIdx (wIdx)}
+								{@const isWordEnd = word.text.endsWith(' ') || word.text.endsWith('\n')}
+								{@const cleanText = word.text.trimEnd()}
+								{#if i === activeIndex}
+									{@const progress = getWordProgress(word, posMs)}
+									{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
+									{@const isCurrentWord = progress > 0 && progress < 1}
+									<span
+										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-100 ease-out {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord ? 'scale-[1.03]' : ''}"
+										style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%)"
+									>{cleanText}</span>
+								{:else}
+									<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {i < activeIndex ? 'text-muted-foreground/35' : 'text-muted-foreground'}">{cleanText}</span>
+								{/if}
+							{/each}
+						</span>
+					{:else}
+						<span class="min-w-0 flex-1">{line.text || '♪'}</span>
+					{/if}
 				</button>
 			{/each}
 		</div>
