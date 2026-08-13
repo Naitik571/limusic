@@ -196,7 +196,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 16] = [
+const UI_SETTINGS: [&str; 15] = [
     "proxy",
     "quality",
     "enable_history",
@@ -212,7 +212,6 @@ const UI_SETTINGS: [&str; 16] = [
     "download_quality",
     "download_format",
     "use_offline",
-    "visualizer",
 ];
 
 #[tauri::command]
@@ -265,8 +264,8 @@ pub async fn set_setting(
         };
         res.map_err(|e| format!("autostart: {e}"))?;
     }
-    // Let every window react to a setting flip immediately (e.g. the visualizer toggle in the
-    // mini/floating players, which are separate webviews that can't share Svelte state).
+    // Let every window react to a setting flip immediately (separate webviews like the mini/floating
+    // players can't share Svelte state, so they listen for this).
     let _ = app.emit("setting-changed", serde_json::json!({ "key": key, "value": value }));
     Ok(())
 }
@@ -931,6 +930,47 @@ pub async fn download_track(
         thumb.as_deref(),
     )
     .await
+}
+
+/// Download every (non-local) track in a playlist or album. Fetches the page, then enqueues a
+/// download for each item the resolver can reach — already-downloaded tracks are skipped by
+/// `download_track` itself. Reports `{ ok, total, skipped }` so the UI can toast a summary.
+#[tauri::command]
+pub async fn download_playlist(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    id: String,
+) -> Result<serde_json::Value, String> {
+    let client = metadata_client(&state)?;
+    let page = state.it.playlist(client, &id).await.map_err(|e| e.to_string())?;
+    let mut total = 0u32;
+    let mut skipped = 0u32;
+    for item in page.items {
+        if crate::local::is_local_song(&item.video_id) {
+            skipped += 1;
+            continue;
+        }
+        total += 1;
+        let _ = crate::downloads::download_track(
+            &app,
+            &state.db,
+            &state.orchestrator,
+            &item.video_id,
+            &item.title,
+            &item.artists,
+            item.album.as_deref(),
+            item.duration.as_deref()
+                .map(|s| {
+                    s.split(':').rev().enumerate().fold(0i64, |acc, (i, p)| {
+                        acc + p.trim().parse::<i64>().unwrap_or(0) * 60i64.pow(i as u32)
+                    })
+                })
+                .unwrap_or(0),
+            item.thumbnail.as_deref(),
+        )
+        .await;
+    }
+    Ok(serde_json::json!({ "ok": true, "total": total, "skipped": skipped }))
 }
 
 /// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings

@@ -115,6 +115,10 @@
 	// it prunes a deleted font. Opening the modal is the only thing that should run it.
 	$effect(() => {
 		if (!ui.settingsOpen) return;
+		if (ui.settingsTab) {
+			tab = ui.settingsTab as TabId;
+			ui.settingsTab = '';
+		}
 		untrack(() => {
 			load();
 			api
@@ -158,13 +162,6 @@
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
-	const visualizerOn = $derived(settings.visualizer !== 'false');
-
-	async function setVisualizer(on: boolean) {
-		settings.visualizer = on ? 'true' : 'false';
-		await api.setVisualizer(on);
-	}
-
 	// --- downloads tab ---
 	const DOWNLOAD_FORMATS = [
 		{ id: 'm4a', label: 'M4A (AAC)' },
@@ -710,16 +707,6 @@
 							{/if}
 						</div>
 						<Switch checked={ytdlpOn} onCheckedChange={setYtdlp} />
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Audio visualizer</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								A reactive spectrum behind the cover in the mini and floating players. Driven by
-								playback, so it needs no extra bandwidth.
-							</p>
-						</div>
-						<Switch checked={visualizerOn} onCheckedChange={setVisualizer} />
 					</div>
 					<div class="py-3">
 						<div class="font-medium">Stream clients</div>

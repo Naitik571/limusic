@@ -40,12 +40,12 @@
 	aria-expanded={menuOpen}
 	class="flex h-full cursor-pointer items-center gap-2 px-2.5 text-xs transition-colors hover:bg-muted aria-expanded:bg-muted"
 >
-	{#if auth.account?.signedIn && auth.account.thumbnail}
+	{#if auth.account?.signedIn && auth.account.thumb}
 		<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
 		     clamps width to the content-box while height stays fixed → a vertical oval. Inline so it's
 		     immune to Preflight and to stale dev CSS. -->
 		<img
-			src={thumb(auth.account.thumbnail, 64)}
+			src={thumb(auth.account.thumb, 64)}
 			alt=""
 			style="width:1.25rem;height:1.25rem;max-width:none"
 			class="shrink-0 rounded-full object-cover ring-1 ring-border"

@@ -22,6 +22,26 @@ export const playback = $state({
 	liked: false
 });
 
+// --- Offline download progress indicator (Titlebar). One reactive count of in-flight
+// downloads, fed by the Rust event bus. `active > 0` means yellow; it drops to 0 and
+// `done` ticks up when the last one finishes (green until the next batch starts).
+export const downloadStatus = $state({ active: 0, done: 0, errored: 0 });
+
+let downloadMonitorStarted = false;
+export function startDownloadMonitor() {
+	if (downloadMonitorStarted || !browser) return;
+	downloadMonitorStarted = true;
+	api.onDownloadProgress(() => (downloadStatus.active += 1));
+	api.onDownloadComplete(() => {
+		downloadStatus.active = Math.max(0, downloadStatus.active - 1);
+		downloadStatus.done += 1;
+	});
+	api.onDownloadError(() => {
+		downloadStatus.active = Math.max(0, downloadStatus.active - 1);
+		downloadStatus.errored += 1;
+	});
+}
+
 /**
  * The full-window now-playing view (NowPlaying.svelte): big artwork, plus the Queue/Lyrics tabs.
  * It lives here rather than in the layout because starting something playing opens it, and every
@@ -555,6 +575,7 @@ export const ui = $state({
 	moveFrom: '' as string,
 	toast: null as Toast | null,
 	settingsOpen: false, // the settings modal
+	settingsTab: '' as string, // when set, the settings modal opens on this tab (consumed on open)
 	ltOpen: false // the Listen Together modal
 });
 

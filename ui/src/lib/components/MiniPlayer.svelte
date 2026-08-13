@@ -33,8 +33,6 @@
 		toggleNowPlayingLike
 	} from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
-	import Visualizer from '$lib/components/Visualizer.svelte';
-
 	const now = $derived(playback.now);
 	const shuffleOn = $derived(playback.queue.shuffle ?? false);
 	const repeat = $derived(playback.queue.repeat ?? 'off');
@@ -224,10 +222,6 @@
 		</div>
 	</div>
 
-	<!-- Right: what's next, and the transport. -->
-	<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-9 opacity-90 mix-blend-screen">
-		<Visualizer bars={24} class="rounded-b-2xl" />
-	</div>
 	<div class="relative flex w-56 shrink-0 flex-col gap-2 py-3 pl-1 pr-3">
 		<!-- Takes whatever height is left above the controls, and the fourth row runs past that edge
 		     and dissolves into it: the queue should look like it continues, not like it ends at

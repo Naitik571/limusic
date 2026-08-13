@@ -400,6 +400,7 @@ pub fn run() {
             commands::clear_caches,
             commands::list_downloads,
             commands::download_track,
+            commands::download_playlist,
             commands::delete_download,
             commands::clear_downloads,
             commands::get_account,

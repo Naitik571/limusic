@@ -68,7 +68,7 @@ export interface Account {
 	signedIn: boolean;
 	name?: string | null;
 	handle?: string | null;
-	thumbnail?: string | null;
+	thumb?: string | null;
 }
 
 export interface BrowseItem {
@@ -263,12 +263,12 @@ export interface DownloadedTrack {
 	added_at: number;
 }
 export const downloadTrack = (item: {
-	video_id: string;
+	videoId: string;
 	title: string;
 	artists: string;
 	album?: string | null;
 	duration: number;
-	thumbnail?: string | null;
+	thumb?: string | null;
 }) =>
 	invoke<void>('download_track', item);
 export const listDownloads = () => invoke<DownloadedTrack[]>('list_downloads');
@@ -276,9 +276,17 @@ export const deleteDownload = (video_id: string) =>
 	invoke<void>('delete_download', { video_id });
 export const clearDownloads = () => invoke<void>('clear_downloads');
 
+// Download progress events (Rust → UI). Used by the Titlebar indicator.
+export const onDownloadProgress = (cb: () => void) =>
+	listen('download-progress', () => cb());
+export const onDownloadComplete = (cb: () => void) =>
+	listen('download-complete', () => cb());
+export const onDownloadError = (cb: () => void) =>
+	listen('download-error', () => cb());
+export const downloadPlaylist = (id: string) =>
+	invoke<{ ok: boolean; total: number; skipped: number }>('download_playlist', { id });
+
 // --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
-export const getVisualizer = async () => (await getSettings()).visualizer === 'true';
-export const setVisualizer = (on: boolean) => setSetting('visualizer', on ? 'true' : 'false');
 
 // --- auth (context/15) ---------------------------------------------------------------------
 export const getAccount = () => invoke<Account>('get_account');

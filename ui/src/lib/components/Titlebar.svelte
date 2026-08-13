@@ -12,6 +12,7 @@
 		SquareIcon,
 		Cancel01Icon,
 		MinimizeScreenIcon,
+		Download01Icon,
 		CheckmarkCircle01Icon,
 		Loading03Icon,
 		HotspotOfflineIcon
@@ -21,7 +22,7 @@
 	import AccountMenu from './AccountMenu.svelte';
 	import logo from '$lib/assets/favicon.svg';
 	import * as api from '$lib/api';
-	import { openMiniPlayer, toast } from '$lib/player.svelte';
+	import { openMiniPlayer, toast, ui, downloadStatus, startDownloadMonitor } from '$lib/player.svelte';
 
 	const win = getCurrentWindow();
 
@@ -69,6 +70,7 @@
 			else if (s.connected) toast.success(`Scrobbling as ${s.username}`);
 			else if (!wasConnecting) toast.success('Last.fm disconnected');
 		});
+		startDownloadMonitor();
 		return () => sub.then((u) => u());
 	});
 
@@ -179,6 +181,26 @@
 					/>
 				{/if}
 			</span>
+		</button>
+
+		<!-- Offline downloads indicator: yellow dot while tracks are downloading, green once the
+     	     current batch finishes. Clicking opens the Downloads settings tab. -->
+		<button
+			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+			title={downloadStatus.active > 0
+				? `Downloading ${downloadStatus.active} track${downloadStatus.active === 1 ? '' : 's'}…`
+				: downloadStatus.done > 0
+					? 'Downloads ready'
+					: 'Downloads'}
+			aria-label="Downloads"
+			onclick={() => (ui.settingsTab = 'downloads')}
+		>
+			<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
+			{#if downloadStatus.active > 0}
+				<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400 ring-2 ring-background"></span>
+			{:else if downloadStatus.done > 0}
+				<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background"></span>
+			{/if}
 		</button>
 
 		<!-- Mini player: hides the app to the tray and hands over to the floating widget (mini.rs).

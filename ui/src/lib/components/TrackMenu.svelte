@@ -184,12 +184,12 @@
 						else
 							api
 								.downloadTrack({
-									video_id: song.video_id,
+									videoId: song.video_id,
 									title: song.title,
 									artists: song.artists,
 									album: song.album ? String(song.album) : null,
 									duration: Number(song.duration ?? 0),
-									thumbnail: song.thumbnail
+									thumb: song.thumbnail
 								})
 									.then(() => (downloaded = true))
 									.catch((err) => toast.error(`Download failed: ${err}`));

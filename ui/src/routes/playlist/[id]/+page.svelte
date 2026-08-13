@@ -17,6 +17,7 @@
 		ListRestartIcon,
 		Playlist02Icon,
 		Move01Icon,
+		Download01Icon,
 		PlusSignIcon,
 		RefreshIcon
 	} from '@hugeicons/core-free-icons';
@@ -73,6 +74,14 @@
 	// Only offer rename/delete on playlists the signed-in user actually owns (backend `owned` flag).
 	// Liked Music reports owned but can't be renamed/deleted, so exclude it explicitly.
 	const editable = $derived((pl?.owned ?? false) && !isLiked);
+
+async function downloadPlaylistHere() {
+		if (!pl) return;
+		toast('Downloading playlist…');
+		api.downloadPlaylist(id)
+			.then((r) => toast.success(`Queued ${r.total} track${r.total === 1 ? '' : 's'} for download`))
+			.catch((e) => toast.error(`Download failed: ${e}`));
+	}
 
 	async function load(pid: string) {
 		const key = `playlist:${pid}`;
@@ -682,6 +691,16 @@
 						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" />
 						Play
 					</Button>
+					{#if !isOnRepeat}
+						<Button
+							variant="outline"
+							class="gap-2"
+							onclick={downloadPlaylistHere}
+							title="Download playlist for offline"
+						>
+							<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" /> Download
+						</Button>
+					{/if}
 					{#if confirmingDelete}
 						<div class="flex items-center gap-2 rounded-lg border border-destructive/40 px-2 py-1">
 							<span class="text-xs text-muted-foreground">Delete this playlist?</span>
