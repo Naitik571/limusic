@@ -34,7 +34,7 @@ YouTube Music client, and grew from there.
 - **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
 - **Gapless playback**, powered by libmpv
 - **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
-- **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump
+- **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump, plus an Apple Music-style word-by-word karaoke sweep on the active line
 - **Mini Player** — Minimize the player and keep enjoying your music
 - **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed
 - **Local Music** — ability to play your own local music, with all metadata still intact
@@ -43,6 +43,8 @@ YouTube Music client, and grew from there.
 - **OS media keys** and now-playing integration (MPRIS on Linux, SMTC on Windows)
 - **System tray** — close the window, keep the music; play/pause and skip from the tray, optional start-on-login
 - **Listen Together** — synced listening rooms over a small self-hosted relay
+- **Offline downloads** — save any track for offline listening from its ⋮ menu; downloaded tracks play straight from disk, so they work with no network and save bandwidth (Settings → Downloads controls the location, default quality and format)
+- **Audio visualizer** — a live spectrum behind the cover in the mini and floating players; toggle it in Settings → Playback
 - **Self-updating builds** (AppImage on Linux, setup.exe on Windows)
 - **Customization via Themes and Fonts** — Customize your music player to your hearts content
 
@@ -128,6 +130,23 @@ startup, and a play/pause flash:
 - **Play/pause flash over the art** — clicking the cover art in the maximized
   player toggles playback and flashes the action just taken (play or pause
   icon) over the artwork, so the click reads as deliberate.
+
+**The v0.3.17–v0.3.19 rounds** — karaoke, offline playback, a visualizer, and polish:
+
+- **Word-level karaoke lyrics** — the active line now sweeps word-by-word with a
+  gradient fill (Apple Music style) using per-word timing from Boidu. The sweep is
+  interpolated every animation frame between the player's ~250 ms position ticks, so
+  it glides instead of stepping even on a throttled position feed.
+- **Offline downloads** — a dedicated **Settings → Downloads** tab sets the download
+  location (folder picker), default quality (Low/Auto/High) and audio format
+  (M4A/Opus/WebM), plus an "use downloads when available" toggle. Any track's ⋮ menu
+  has Download / Remove download. Saved files play straight from disk through the
+  resolver, so they work fully offline and skip the stream-URL resolve on replay.
+- **Audio visualizer** — a reactive spectrum behind the cover in both the mini and
+  floating players, toggled in **Settings → Playback**. It's driven by real playback
+  state (playing/paused + position) rather than a second audio decode, so it costs no
+  extra bandwidth and reacts live across every window.
+- **Aurora visual polish** — a translucent, glass-toned refresh of the player surfaces.
 
 ---
 
