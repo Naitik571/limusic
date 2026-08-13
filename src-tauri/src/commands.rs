@@ -915,7 +915,9 @@ pub async fn download_track(
     title: String,
     artists: String,
     album: Option<String>,
-    duration: i64,
+    // `Option` + default below: the UI sometimes sends an M:SS string (→ NaN → null in JSON)
+    // or `null` outright, and the field is only catalogue metadata, so a missing value is fine.
+    duration: Option<i64>,
     thumb: Option<String>,
 ) -> Result<(), String> {
     crate::downloads::download_track(
@@ -926,7 +928,7 @@ pub async fn download_track(
         &title,
         &artists,
         album.as_deref(),
-        duration,
+        duration.unwrap_or(0),
         thumb.as_deref(),
     )
     .await
