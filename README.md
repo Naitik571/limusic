@@ -34,7 +34,7 @@ YouTube Music client, and grew from there.
 - **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
 - **Gapless playback**, powered by libmpv
 - **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
-- **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump, plus an Apple Music-style word-by-word karaoke sweep on the active line
+- **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump, plus an Apple Music-style word-by-word karaoke sweep on the active line. The lyrics view is immersive: a blurred album-art backdrop, gradient edge fades, and a soft glow on the active line.
 - **Mini Player** — Minimize the player and keep enjoying your music
 - **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed
 - **Local Music** — ability to play your own local music, with all metadata still intact
@@ -43,8 +43,7 @@ YouTube Music client, and grew from there.
 - **OS media keys** and now-playing integration (MPRIS on Linux, SMTC on Windows)
 - **System tray** — close the window, keep the music; play/pause and skip from the tray, optional start-on-login
 - **Listen Together** — synced listening rooms over a small self-hosted relay
-- **Offline downloads** — save any track for offline listening from its ⋮ menu; downloaded tracks play straight from disk, so they work with no network and save bandwidth (Settings → Downloads controls the location, default quality and format)
-- **Audio visualizer** — a live spectrum behind the cover in the mini and floating players; toggle it in Settings → Playback
+- **Offline downloads** — save any track for offline listening from its ⋮ menu; downloaded tracks play straight from disk, so they work with no network and save bandwidth (Settings → Downloads controls the location, default quality and format). A **download manager** lives in the title bar: click the download indicator to see every in-flight, completed, and failed download with live per-track progress bars and retry. If a stream can't be resolved through YouTube, downloads fall back to yt-dlp automatically.
 - **Self-updating builds** (AppImage on Linux, setup.exe on Windows)
 - **Customization via Themes and Fonts** — Customize your music player to your hearts content
 
@@ -131,7 +130,7 @@ startup, and a play/pause flash:
   player toggles playback and flashes the action just taken (play or pause
   icon) over the artwork, so the click reads as deliberate.
 
-**The v0.3.17–v0.3.19 rounds** — karaoke, offline playback, a visualizer, and polish:
+**The v0.3.17–v0.3.19 rounds** — karaoke, offline playback, and polish:
 
 - **Word-level karaoke lyrics** — the active line now sweeps word-by-word with a
   gradient fill (Apple Music style) using per-word timing from Boidu. The sweep is
@@ -142,11 +141,27 @@ startup, and a play/pause flash:
   (M4A/Opus/WebM), plus an "use downloads when available" toggle. Any track's ⋮ menu
   has Download / Remove download. Saved files play straight from disk through the
   resolver, so they work fully offline and skip the stream-URL resolve on replay.
-- **Audio visualizer** — a reactive spectrum behind the cover in both the mini and
-  floating players, toggled in **Settings → Playback**. It's driven by real playback
-  state (playing/paused + position) rather than a second audio decode, so it costs no
-  extra bandwidth and reacts live across every window.
 - **Aurora visual polish** — a translucent, glass-toned refresh of the player surfaces.
+
+**The v0.4.2 round** — downloads that actually work, an immersive lyrics view, gamepad, and one mini player:
+
+- **Downloads fixed and made visible** — the download path now emits live byte-level
+  progress, falls back to yt-dlp when YouTube's stream resolve fails (so a track no
+  longer silently produces nothing), and the title-bar download dot opens a **download
+  manager**: every in-flight / completed / failed track with a real progress bar and a
+  retry button. Playlists download too (per-track, from the playlist/album ⋮ menu).
+- **Immersive lyrics** — the lyrics panel got the Apple Music treatment: a blurred
+  album-art backdrop, gradient fades at the top and bottom edges, and a soft glow on
+  the active line. The word-by-word karaoke sweep is unchanged.
+- **Gamepad support** — an Xbox / PlayStation (any GilRs pad) controller drives playback
+  from a background thread, so it works **even when the app is minimized to the tray**.
+  `A` play/pause · `B` next · `X` previous · `Y` like · D-pad up/down volume ·
+  D-pad left/right seek ±10s · left stick X seek · right trigger volume up / left
+  trigger volume down · `Start` toggle the mini player.
+- **One mini player** — the old Mini Player and Floating Player are merged into a single
+  extendable component. Collapsed it's a slim bar (art + title + transport); expanded it
+  grows into a full floating widget (big art, queue peek, like, volume). An in-component
+  expand toggle resizes the window live.
 
 ---
 
@@ -184,6 +199,29 @@ unfocused. Inside the app, the standard set follows YT Music's web conventions:
 
 Shortcuts yield to whatever is focused: typing in a search box, or Space on a
 focused button, still do the native thing.
+
+---
+
+## Gamepad
+
+Plug in an Xbox / PlayStation controller (any pad GilRs supports) and it drives
+playback from a background thread — so it works **even when the app is minimized to
+the tray**, no focus needed. Buttons:
+
+| Button | Action |
+|---|---|
+| `A` (South) | Play / pause |
+| `B` (East) | Next track |
+| `X` (West) | Previous track |
+| `Y` (North) | Like / unlike |
+| D-pad ↑ / ↓ | Volume +5 / −5 |
+| D-pad ← / → | Seek −10s / +10s |
+| Left stick (X) | Seek by position |
+| Right trigger / Left trigger | Volume up / down |
+| `Start` | Toggle the mini player |
+
+The mapping is fixed for now; if your pad isn't detected, make sure it's connected
+before the app starts (hot-plug support is best-effort).
 
 ---
 
