@@ -146,16 +146,16 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
 <div class="relative min-h-0 flex-1 overflow-hidden">
-	<!-- Immersive frosted art backdrop (Apple-Music-style). Sits behind the lyrics; the gradient
-	     fades it into the page background so text stays legible. -->
+	<!-- Subtle art tint behind the lyrics for an immersive feel without hurting legibility:
+	     a low-opacity cover, blurred, sitting behind an opaque-ish panel wash. -->
 	{#if backdrop}
 		<div
-			class="pointer-events-none absolute inset-0 -z-10 opacity-[0.22] blur-3xl"
+			class="pointer-events-none absolute inset-0 -z-10 opacity-[0.10] blur-2xl"
 			style="background-image:url({backdrop}); background-size:cover; background-position:center;"
 			aria-hidden="true"
 		></div>
 		<div
-			class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/70 via-background/85 to-background"
+			class="pointer-events-none absolute inset-0 -z-10 bg-background/85"
 			aria-hidden="true"
 		></div>
 	{/if}
@@ -176,9 +176,6 @@
 		{:else if lyrics?.instrumental}
 			<p class="py-8 text-center text-lg text-muted-foreground">Instrumental ♪</p>
 		{:else if lyrics && lyrics.synced}
-			<!-- Top/bottom gradient masks for the immersive feel. -->
-			<div class="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-background to-transparent"></div>
-			<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-16 bg-gradient-to-t from-background to-transparent"></div>
 			<!-- Padding lets the first/last lines center-scroll. -->
 			<div class="py-[35vh] {expanded ? 'mx-auto max-w-3xl' : ''}">
 				{#each lyrics.lines as line, i (i)}
@@ -187,13 +184,13 @@
 					<button
 						data-line={i}
 						onclick={() => seekTo(line)}
-						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,text-shadow] duration-300 ease-out hover:text-foreground
+						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform] duration-300 ease-out hover:text-foreground
 							{expanded ? 'py-3 text-3xl' : 'py-2 text-xl'}
 							{isActive
-								? 'scale-[1.04] text-foreground [text-shadow:0_0_22px_rgb(var(--foreground)/0.35)]'
+								? 'scale-[1.03] text-foreground [text-shadow:0_0_12px_rgb(var(--foreground)/0.18)]'
 								: isPast
-								? 'text-muted-foreground/40'
-								: 'text-muted-foreground/70'}"
+								? 'text-muted-foreground/50'
+								: 'text-muted-foreground'}"
 					>
 						{#if line.words && line.words.length > 0}
 							<!-- Word-by-Word Karaoke Sweep Animation (Better-Lyrics style, highly optimized) -->
@@ -213,12 +210,12 @@
 											class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-100 ease-out {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
 												? 'scale-[1.03]'
 												: ''}"
-											style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%)"
+											style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%);"
 										>
 											{cleanText}
 										</span>
 									{:else}
-										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/40' : 'text-muted-foreground/70'}">{cleanText}</span>
+										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/50' : 'text-muted-foreground'}">{cleanText}</span>
 									{/if}
 								{/each}
 							</span>

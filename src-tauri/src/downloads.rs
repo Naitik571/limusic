@@ -64,6 +64,20 @@ fn download_format(db: &Db) -> String {
     }
 }
 
+/// Turn a free-form track name into a filesystem-safe filename component. Keeps unicode letters
+/// (song titles are multilingual) but strips path separators, control chars, and the reserved
+/// Windows characters so the file lands on disk instead of erroring.
+fn sanitize_filename(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_control() && !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect::<String>()
+        .trim()
+        .to_string()
+        .chars()
+        .take(180)
+        .collect()
+}
+
 /// Resolve a stream URL the same way playback would: orchestrator first, yt-dlp as the net.
 /// Returns `None` (and the caller reports the error) if both fail.
 async fn resolve_stream(
@@ -127,8 +141,21 @@ pub async fn download_track(
 
     let dir = download_dir(app, &state.db);
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
-    let file_path = dir.join(format!("{video_id}.{format}"));
-    let tmp_path = dir.join(format!(".{video_id}.{format}.part"));
+    // Human-readable filename (Artist - Title) so the file on disk isn't just the video id.
+    // video_id stays the catalogue key, so dedup/offline-playback are unaffected.
+    let base_name = sanitize_filename(&format!(
+        "{}{}{}",
+        artists.trim(),
+        if artists.trim().is_empty() { "" } else { " - " },
+        title.trim()
+    ));
+    let base_name = if base_name.is_empty() {
+        video_id.to_owned()
+    } else {
+        base_name
+    };
+    let file_path = dir.join(format!("{base_name}.{format}"));
+    let tmp_path = dir.join(format!(".{base_name}.{format}.part"));
 
     let client = reqwest::Client::new();
     let mut req = client.get(&stream.url);
