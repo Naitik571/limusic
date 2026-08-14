@@ -139,109 +139,128 @@
 		if (dur <= 0) return 1;
 		return (currentMs - word.start_ms) / dur;
 	}
+
+	// Album art for the immersive backdrop. Resolved lazily from the active track.
+	const backdrop = $derived(playback.now?.thumbnail);
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
-<div
-	bind:this={scroller}
-	onwheel={onUserScroll}
-	ontouchmove={onUserScroll}
-	onpointerdown={onUserScroll}
-	class="min-h-0 flex-1 overflow-y-auto py-6 {expanded ? 'px-10' : 'px-5'}"
->
-	{#if loading}
-		<div class="space-y-3">
-			{#each { length: 8 } as _, i (i)}
-				<div class="h-5 animate-pulse rounded bg-muted" style="width:{55 + ((i * 17) % 40)}%"></div>
-			{/each}
-		</div>
-	{:else if lyrics?.instrumental}
-		<p class="py-8 text-center text-lg text-muted-foreground">Instrumental ♪</p>
-	{:else if lyrics && lyrics.synced}
-		<!-- Padding lets the first/last lines center-scroll. -->
-		<div class="py-[35vh] {expanded ? 'mx-auto max-w-3xl' : ''}">
-			{#each lyrics.lines as line, i (i)}
-				{@const isActive = i === activeIndex}
-				{@const isPast = i < activeIndex}
-				<button
-					data-line={i}
-					onclick={() => seekTo(line)}
-					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform] duration-300 ease-out hover:text-foreground
-						{expanded ? 'py-3 text-3xl' : 'py-2 text-xl'}
-						{isActive
-						? 'scale-[1.04] text-foreground'
-						: isPast
-							? 'text-muted-foreground/40'
-							: 'text-muted-foreground/70'}"
-				>
-					{#if line.words && line.words.length > 0}
-						<!-- Word-by-Word Karaoke Sweep Animation (Better-Lyrics style, highly optimized) -->
-						<span class="inline-flex flex-wrap items-baseline">
-							{#each line.words as word, wIdx (wIdx)}
-								{@const isWordEnd = word.text.endsWith(' ')}
-								{@const cleanText = word.text.trimEnd()}
-								{#if isActive}
-									{@const progress = getWordProgress(word, posMs)}
-									{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
-									{@const isCurrentWord = progress > 0 && progress < 1}
-									<!-- Only the gradient stop moves per frame; the clip/fill are static, so they
-									     live in the class and aren't re-serialised 60 times a second. Both
-									     colours are theme tokens: the sung half was hardcoded white, which is
-									     invisible on every light theme. -->
-									<span
-										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-100 ease-out {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
-											? 'scale-[1.03]'
-											: ''}"
-										style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%)"
-									>
-										{cleanText}
-									</span>
-								{:else}
-									<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/40' : 'text-muted-foreground/70'}">
-										{cleanText}
-									</span>
-								{/if}
-							{/each}
-						</span>
-					{:else}
-						<span>{line.text || '♪'}</span>
-					{/if}
-
-					<!-- Translation line rendering -->
-					{#if line.translation}
-						<p class="mt-1 text-sm font-normal italic tracking-wide opacity-80 transition-opacity">
-							{line.translation}
-						</p>
-					{/if}
-				</button>
-			{/each}
-		</div>
-	{:else if lyrics}
+<div class="relative min-h-0 flex-1 overflow-hidden">
+	<!-- Immersive frosted art backdrop (Apple-Music-style). Sits behind the lyrics; the gradient
+	     fades it into the page background so text stays legible. -->
+	{#if backdrop}
 		<div
-			class="space-y-2 leading-relaxed text-foreground/90 {expanded
-				? 'mx-auto max-w-3xl text-xl'
-				: 'text-[15px]'}"
-		>
-			{#each lyrics.lines as line, i (i)}
-				{#if line.text}
-					<div>
-						<p>{line.text}</p>
-						{#if line.translation}
-							<p class="text-xs italic text-muted-foreground">{line.translation}</p>
-						{/if}
-					</div>
-				{:else}
-					<div class="h-4"></div>
-				{/if}
-			{/each}
-		</div>
-	{:else}
-		<p class="py-8 text-center text-sm text-muted-foreground">No lyrics found for this track.</p>
+			class="pointer-events-none absolute inset-0 -z-10 opacity-[0.22] blur-3xl"
+			style="background-image:url({backdrop}); background-size:cover; background-position:center;"
+			aria-hidden="true"
+		></div>
+		<div
+			class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/70 via-background/85 to-background"
+			aria-hidden="true"
+		></div>
 	{/if}
+
+	<div
+		bind:this={scroller}
+		onwheel={onUserScroll}
+		ontouchmove={onUserScroll}
+		onpointerdown={onUserScroll}
+		class="relative h-full overflow-y-auto py-6 {expanded ? 'px-10' : 'px-5'}"
+	>
+		{#if loading}
+			<div class="space-y-3">
+				{#each { length: 8 } as _, i (i)}
+					<div class="h-5 animate-pulse rounded bg-muted" style="width:{55 + ((i * 17) % 40)}%"></div>
+				{/each}
+			</div>
+		{:else if lyrics?.instrumental}
+			<p class="py-8 text-center text-lg text-muted-foreground">Instrumental ♪</p>
+		{:else if lyrics && lyrics.synced}
+			<!-- Top/bottom gradient masks for the immersive feel. -->
+			<div class="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b from-background to-transparent"></div>
+			<div class="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-16 bg-gradient-to-t from-background to-transparent"></div>
+			<!-- Padding lets the first/last lines center-scroll. -->
+			<div class="py-[35vh] {expanded ? 'mx-auto max-w-3xl' : ''}">
+				{#each lyrics.lines as line, i (i)}
+					{@const isActive = i === activeIndex}
+					{@const isPast = i < activeIndex}
+					<button
+						data-line={i}
+						onclick={() => seekTo(line)}
+						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,text-shadow] duration-300 ease-out hover:text-foreground
+							{expanded ? 'py-3 text-3xl' : 'py-2 text-xl'}
+							{isActive
+								? 'scale-[1.04] text-foreground [text-shadow:0_0_22px_rgb(var(--foreground)/0.35)]'
+								: isPast
+								? 'text-muted-foreground/40'
+								: 'text-muted-foreground/70'}"
+					>
+						{#if line.words && line.words.length > 0}
+							<!-- Word-by-Word Karaoke Sweep Animation (Better-Lyrics style, highly optimized) -->
+							<span class="inline-flex flex-wrap items-baseline">
+								{#each line.words as word, wIdx (wIdx)}
+									{@const isWordEnd = word.text.endsWith(' ')}
+									{@const cleanText = word.text.trimEnd()}
+									{#if isActive}
+										{@const progress = getWordProgress(word, posMs)}
+										{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
+										{@const isCurrentWord = progress > 0 && progress < 1}
+										<!-- Only the gradient stop moves per frame; the clip/fill are static, so they
+										     live in the class and aren't re-serialised 60 times a second. Both
+										     colours are theme tokens: the sung half was hardcoded white, which is
+										     invisible on every light theme. -->
+										<span
+											class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-100 ease-out {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
+												? 'scale-[1.03]'
+												: ''}"
+											style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%)"
+										>
+											{cleanText}
+										</span>
+									{:else}
+										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/40' : 'text-muted-foreground/70'}">{cleanText}</span>
+									{/if}
+								{/each}
+							</span>
+						{:else}
+							<span>{line.text || '♪'}</span>
+						{/if}
+
+						<!-- Translation line rendering -->
+						{#if line.translation}
+							<p class="mt-1 text-sm font-normal italic tracking-wide opacity-80 transition-opacity">
+								{line.translation}
+							</p>
+						{/if}
+					</button>
+				{/each}
+			</div>
+		{:else if lyrics}
+			<div
+				class="space-y-2 leading-relaxed text-foreground/90 {expanded
+					? 'mx-auto max-w-3xl text-xl'
+					: 'text-[15px]'}"
+			>
+				{#each lyrics.lines as line, i (i)}
+					{#if line.text}
+						<div>
+							<p>{line.text}</p>
+							{#if line.translation}
+								<p class="text-xs italic text-muted-foreground">{line.translation}</p>
+							{/if}
+						</div>
+					{:else}
+						<div class="h-4"></div>
+					{/if}
+				{/each}
+			</div>
+		{:else}
+			<p class="py-8 text-center text-sm text-muted-foreground">No lyrics found for this track.</p>
+		{/if}
+	</div>
 </div>
 {#if lyrics && !loading}
 	<p class="border-t px-4 py-2 text-xs text-muted-foreground">
 		{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
 	</p>
 {/if}
-

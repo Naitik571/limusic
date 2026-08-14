@@ -21,6 +21,8 @@ tracing = "0.1"
 anyhow = "1"
 thiserror = "2"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+futures = { version = "0.3", default-features = false, features = ["std"] }
+gilrs = "0.11"
 rand = "0.8"
 listen-protocol = { path = "crates/listen-protocol" }
 

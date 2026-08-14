@@ -26,7 +26,6 @@
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import MiniPlayer from '$lib/components/MiniPlayer.svelte';
-	import FloatingPlayer from '$lib/components/FloatingPlayer.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { auth, initApp, np, playback, ui } from '$lib/player.svelte';
@@ -78,7 +77,7 @@
 {#if isMini}
 	<MiniPlayer />
 {:else if isFloating}
-	<FloatingPlayer />
+	<MiniPlayer expanded={true} />
 {:else}
 	<!-- The window itself is transparent; this root paints the background and, when not maximized,
 	     rounds the corners (the compositor can't round an undecorated window for us). -->

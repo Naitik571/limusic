@@ -22,23 +22,61 @@ export const playback = $state({
 	liked: false
 });
 
-// --- Offline download progress indicator (Titlebar). One reactive count of in-flight
-// downloads, fed by the Rust event bus. `active > 0` means yellow; it drops to 0 and
-// `done` ticks up when the last one finishes (green until the next batch starts).
-export const downloadStatus = $state({ active: 0, done: 0, errored: 0 });
+// --- Offline download manager (Titlebar popover). A reactive list of in-flight / finished /
+// failed downloads, fed by the Rust event bus. Each track carries a 0–100 percent so the UI
+// can draw a real progress bar. `active` is the count still in flight (yellow dot); when it
+// hits 0 the indicator goes green, then resets to idle once the popover is dismissed.
+export type DownloadItem = {
+	id: string;
+	title: string;
+	artists?: string;
+	thumb?: string | null;
+	percent: number; // 0–100
+	state: 'downloading' | 'done' | 'error';
+	message?: string;
+};
+export const downloads = $state<{ items: DownloadItem[]; active: number; done: number; errored: number }>(
+	{ items: [], active: 0, done: 0, errored: 0 }
+);
+// Hide the green "all done" state once the user has seen it.
+export const dismissDownloads = () => {
+	downloads.done = 0;
+	downloads.errored = 0;
+	for (const it of downloads.items) if (it.state !== 'downloading') it.state = 'downloading', (it.percent = 0);
+	downloads.items = downloads.items.filter((i) => i.state === 'downloading');
+};
 
 let downloadMonitorStarted = false;
 export function startDownloadMonitor() {
 	if (downloadMonitorStarted || !browser) return;
 	downloadMonitorStarted = true;
-	api.onDownloadProgress(() => (downloadStatus.active += 1));
-	api.onDownloadComplete(() => {
-		downloadStatus.active = Math.max(0, downloadStatus.active - 1);
-		downloadStatus.done += 1;
+	api.onDownloadProgress((p: any) => {
+		const id = p.video_id as string;
+		let it = downloads.items.find((x) => x.id === id);
+		if (!it) {
+			it = { id, title: (p.title as string) ?? id, artists: p.artists, thumb: p.thumb, percent: 0, state: 'downloading' };
+			downloads.items.push(it);
+			downloads.active += 1;
+		}
+		it.percent = Math.max(it.percent, Math.min(100, Math.round(p.percent ?? 0)));
+		it.title = (p.title as string) ?? it.title;
+		it.artists = p.artists ?? it.artists;
+		it.thumb = p.thumb ?? it.thumb;
 	});
-	api.onDownloadError(() => {
-		downloadStatus.active = Math.max(0, downloadStatus.active - 1);
-		downloadStatus.errored += 1;
+	api.onDownloadComplete((p: any) => {
+		const id = p.video_id as string;
+		const it = downloads.items.find((x) => x.id === id);
+		if (it) { it.state = 'done'; it.percent = 100; }
+		downloads.active = Math.max(0, downloads.active - 1);
+		downloads.done += 1;
+	});
+	api.onDownloadError((p: any) => {
+		const id = p.video_id as string;
+		const it = downloads.items.find((x) => x.id === id);
+		if (it) { it.state = 'error'; it.message = p.error; }
+		else downloads.items.push({ id, title: (p.title as string) ?? id, percent: 0, state: 'error', message: p.error });
+		downloads.active = Math.max(0, downloads.active - 1);
+		downloads.errored += 1;
 	});
 }
 
@@ -708,6 +746,42 @@ export function initApp(mini = false): () => void {
 	const onKey = (e: KeyboardEvent) => onShortcut(e);
 	window.addEventListener('keydown', onKey);
 	subs.push(Promise.resolve(() => window.removeEventListener('keydown', onKey)));
+	// Gamepad: the Rust poller emits `gamepad` with an action string; handle it exactly like the
+	// matching keyboard shortcut so a controller works while the app is backgrounded/tray-minimized.
+	const onGamepad = (action: string) => {
+		const pos = playback.position;
+		switch (action) {
+			case 'playpause':
+				api.togglePause();
+				break;
+			case 'next':
+				api.nextTrack();
+				break;
+			case 'prev':
+				api.prevTrack();
+				break;
+			case 'mute':
+				toggleMute();
+				break;
+			case 'volup':
+				commitVolume(Math.min(100, playback.volume + 5));
+				break;
+			case 'voldown':
+				commitVolume(Math.max(0, playback.volume - 5));
+				break;
+			case 'seekfwd':
+				api.seek(pos + 10);
+				break;
+			case 'seekback':
+				api.seek(Math.max(0, pos - 10));
+				break;
+			case 'togglemini':
+				openMiniPlayer();
+				break;
+		}
+	};
+	const gp = api.onGamepad(onGamepad);
+	subs.push(gp);
 	const teardown = () => subs.forEach((u) => u.then((f) => f()));
 	api.getQueue()
 		.then((q) => (playback.queue = q))

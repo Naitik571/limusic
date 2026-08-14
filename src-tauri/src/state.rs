@@ -211,7 +211,7 @@ impl AppState {
 
     /// User-disabled stream clients — comma-separated setting. Also the force-fail lever for the
     /// rustypipe-solo acceptance test; `LIMUSIC_DISABLED_CLIENTS` env overrides for quick testing.
-    fn disabled_clients(&self) -> HashSet<String> {
+    pub fn disabled_clients(&self) -> HashSet<String> {
         let raw = std::env::var("LIMUSIC_DISABLED_CLIENTS")
             .ok()
             .or_else(|| self.db.get_setting("disabled_stream_clients"))

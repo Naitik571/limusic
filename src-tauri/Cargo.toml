@@ -31,7 +31,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 base64 = "0.22"
 regex = "1"
 urlencoding = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "stream"] }
 
 innertube = { path = "../crates/innertube" }
 player = { path = "../crates/player" }
@@ -40,6 +40,8 @@ souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"
 listen-protocol = { workspace = true }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = { workspace = true }
+futures = { workspace = true }
+gilrs = { workspace = true }
 rand = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 discord-rich-presence = "1.1.0"

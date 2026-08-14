@@ -10,16 +10,29 @@
 //!   whatever the chosen stream itag is.
 //! - The dedicated settings (`download_dir`, `download_quality`, `download_format`,
 //!   `use_offline`) live in the KV store like every other setting; see `commands.rs`.
-//! - Progress rides the Tauri event bus so a thin UI bar can track it without polling.
+//! - Progress rides the Tauri event bus so a thin UI bar can track it without polling. We emit
+//!   `download-progress` with a real 0–100 percentage as bytes stream in, `download-complete` on
+//!   success, and `download-error` on any failure (with the message) so the UI can toast it.
+//! - Resolution mirrors playback: try the orchestrator, then fall back to yt-dlp (the same net
+//!   playback uses) so a track that plays also downloads.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use futures::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::{Db, DownloadTrack};
 use crate::orchestrator::Orchestrator;
+use crate::state::AppState;
 use innertube::AudioQuality;
+
+/// A resolved stream ready to download.
+struct Stream {
+    url: String,
+    headers: Vec<(String, String)>,
+    client: &'static str,
+}
 
 /// Where downloads live. A user-set `download_dir` wins; otherwise `<app_data>/downloads`.
 pub fn download_dir(app: &AppHandle, db: &Db) -> PathBuf {
@@ -51,13 +64,42 @@ fn download_format(db: &Db) -> String {
     }
 }
 
+/// Resolve a stream URL the same way playback would: orchestrator first, yt-dlp as the net.
+/// Returns `None` (and the caller reports the error) if both fail.
+async fn resolve_stream(
+    state: &Arc<AppState>,
+    orchestrator: &Arc<Orchestrator>,
+    video_id: &str,
+) -> Option<Stream> {
+    let quality = download_quality(&state.db);
+    if let Ok(data) = orchestrator
+        .resolve(video_id, quality, &state.disabled_clients())
+        .await
+    {
+        return Some(Stream {
+            url: data.stream_url,
+            headers: data.headers.into_iter().collect(),
+            client: "orchestrator",
+        });
+    }
+    // Last-ditch net, identical to playback's fallback.
+    if let Some(s) = state.ytdlp.resolve(video_id).await {
+        return Some(Stream {
+            url: s.url,
+            headers: Vec::new(),
+            client: "ytdlp",
+        });
+    }
+    None
+}
+
 /// Resolve + download one track's audio to disk, recording it in the catalogue.
 ///
-/// Emits `download-progress` (a few times), `download-complete`, or `download-error`. Idempotent:
-/// a second call for an already-downloaded `video_id` is a no-op.
+/// Emits `download-progress` (real byte percentage), `download-complete`, or `download-error`.
+/// Idempotent: a second call for an already-downloaded `video_id` is a no-op.
 pub async fn download_track(
     app: &AppHandle,
-    db: &Arc<Db>,
+    state: &Arc<AppState>,
     orchestrator: &Arc<Orchestrator>,
     video_id: &str,
     title: &str,
@@ -66,25 +108,31 @@ pub async fn download_track(
     duration: i64,
     thumb: Option<&str>,
 ) -> Result<(), String> {
-    if db.download_path(video_id).is_some() {
+    if state.db.download_path(video_id).is_some() {
         return Ok(());
     }
 
-    let quality = download_quality(db);
-    let format = download_format(db);
-    let data = orchestrator
-        .resolve(video_id, quality, &Default::default())
-        .await
-        .map_err(|e| format!("resolve failed: {e}"))?;
+    let format = download_format(&state.db);
+    let stream = match resolve_stream(state, orchestrator, video_id).await {
+        Some(s) => s,
+        None => {
+            let msg = "couldn't resolve a stream (InnerTube + yt-dlp both failed)".to_owned();
+            let _ = app.emit(
+                "download-error",
+                serde_json::json!({ "video_id": video_id, "title": title, "error": msg }),
+            );
+            return Err(msg);
+        }
+    };
 
-    let dir = download_dir(app, db);
+    let dir = download_dir(app, &state.db);
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
     let file_path = dir.join(format!("{video_id}.{format}"));
     let tmp_path = dir.join(format!(".{video_id}.{format}.part"));
 
     let client = reqwest::Client::new();
-    let mut req = client.get(&data.stream_url);
-    for (k, v) in &data.headers {
+    let mut req = client.get(&stream.url);
+    for (k, v) in &stream.headers {
         req = req.header(k, v);
     }
     let resp = req
@@ -92,18 +140,67 @@ pub async fn download_track(
         .await
         .map_err(|e| format!("download request failed: {e}"))?;
     if !resp.status().is_success() {
-        return Err(format!("download HTTP {}", resp.status()));
+        let msg = format!("download HTTP {}", resp.status());
+        let _ = app.emit(
+            "download-error",
+            serde_json::json!({ "video_id": video_id, "title": title, "error": msg }),
+        );
+        return Err(msg);
     }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("download body failed: {e}"))?;
 
-    // Atomic: write to a sidecar, then rename into place so a partial never looks "downloaded".
-    std::fs::write(&tmp_path, &bytes).map_err(|e| format!("write {tmp_path:?}: {e}"))?;
+    let total = resp.content_length().unwrap_or(0);
+    let mut downloaded: u64 = 0;
+    let mut file = tokio::fs::File::create(&tmp_path)
+        .await
+        .map_err(|e| format!("create {tmp_path:?}: {e}"))?;
+    let mut stream_body = resp.bytes_stream();
+    // Emit an initial progress tick so the UI lights up immediately.
+    let _ = app.emit(
+        "download-progress",
+        serde_json::json!({
+            "video_id": video_id,
+            "title": title,
+            "artists": artists,
+            "thumb": thumb,
+            "downloaded": 0,
+            "total": total,
+            "percent": 0,
+            "client": stream.client,
+        }),
+    );
+    while let Some(chunk) = stream_body.next().await {
+        let chunk = chunk.map_err(|e| format!("download body failed: {e}"))?;
+        downloaded += chunk.len() as u64;
+        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+            .await
+            .map_err(|e| format!("write: {e}"))?;
+        let percent = if total > 0 {
+            ((downloaded as f64 / total as f64) * 100.0) as u32
+        } else {
+            0
+        };
+        let _ = app.emit(
+            "download-progress",
+            serde_json::json!({
+                "video_id": video_id,
+                "title": title,
+                "artists": artists,
+                "thumb": thumb,
+                "downloaded": downloaded,
+                "total": total,
+                "percent": percent,
+                "client": stream.client,
+            }),
+        );
+    }
+    tokio::io::AsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(|e| format!("flush: {e}"))?;
+    drop(file);
     std::fs::rename(&tmp_path, &file_path).map_err(|e| format!("rename: {e}"))?;
 
-    let size = bytes.len() as i64;
+    let size = downloaded as i64;
+    let quality = download_quality(&state.db);
     let rec = DownloadTrack {
         video_id: video_id.to_owned(),
         file_path: file_path.to_string_lossy().into_owned(),
@@ -122,7 +219,7 @@ pub async fn download_track(
         size_bytes: size,
         added_at: crate::db::now_secs(),
     };
-    db.put_download(&rec);
+    state.db.put_download(&rec);
 
     let _ = app.emit(
         "download-complete",

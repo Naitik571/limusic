@@ -13,6 +13,7 @@
 		Cancel01Icon,
 		MinimizeScreenIcon,
 		Download01Icon,
+		Tick01Icon,
 		CheckmarkCircle01Icon,
 		Loading03Icon,
 		HotspotOfflineIcon
@@ -22,7 +23,9 @@
 	import AccountMenu from './AccountMenu.svelte';
 	import logo from '$lib/assets/favicon.svg';
 	import * as api from '$lib/api';
-	import { openMiniPlayer, toast, ui, downloadStatus, startDownloadMonitor } from '$lib/player.svelte';
+	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor } from '$lib/player.svelte';
+
+let downloadsOpen = $state(false);
 
 	const win = getCurrentWindow();
 
@@ -183,25 +186,82 @@
 			</span>
 		</button>
 
-		<!-- Offline downloads indicator: yellow dot while tracks are downloading, green once the
-     	     current batch finishes. Clicking opens the Downloads settings tab. -->
-		<button
-			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
-			title={downloadStatus.active > 0
-				? `Downloading ${downloadStatus.active} track${downloadStatus.active === 1 ? '' : 's'}…`
-				: downloadStatus.done > 0
-					? 'Downloads ready'
-					: 'Downloads'}
-			aria-label="Downloads"
-			onclick={() => (ui.settingsTab = 'downloads')}
-		>
-			<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
-			{#if downloadStatus.active > 0}
-				<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400 ring-2 ring-background"></span>
-			{:else if downloadStatus.done > 0}
-				<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background"></span>
+		<!-- Offline downloads: click to open the manager popover. Yellow dot while in flight,
+     	     green once the batch finishes. -->
+		<div class="relative flex h-full items-center">
+			<button
+				class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+				title={downloads.active > 0
+					? `Downloading ${downloads.active} track${downloads.active === 1 ? '' : 's'}…`
+					: downloads.done > 0
+						? 'Downloads ready'
+						: 'Downloads'}
+				aria-label="Downloads"
+				onclick={() => (downloadsOpen = !downloadsOpen)}
+			>
+				<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
+				{#if downloads.active > 0}
+					<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400 ring-2 ring-background"></span>
+				{:else if downloads.done > 0}
+					<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background"></span>
+				{/if}
+			</button>
+			{#if downloadsOpen}
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<div
+					class="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
+					role="dialog"
+				>
+					<div class="flex items-center justify-between border-b border-border px-4 py-2.5">
+						<span class="text-sm font-semibold">Downloads</span>
+						<button class="text-xs text-muted-foreground hover:text-foreground" onclick={() => (downloadsOpen = false)}>Close</button>
+					</div>
+					{#if downloads.items.length === 0}
+						<p class="px-4 py-6 text-center text-sm text-muted-foreground">No active downloads.</p>
+					{:else}
+						<ul class="max-h-96 overflow-y-auto py-1">
+							{#each downloads.items as it (it.id)}
+								<li class="flex items-center gap-3 px-4 py-2">
+									{#if it.thumb}
+										<img src={it.thumb} alt="" class="h-9 w-9 flex-shrink-0 rounded object-cover" />
+									{:else}
+										<div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+											<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
+										</div>
+									{/if}
+									<div class="min-w-0 flex-1">
+										<p class="truncate text-sm font-medium">{it.title}</p>
+										<p class="truncate text-xs text-muted-foreground">{it.artists ?? ''}</p>
+										{#if it.state === 'downloading'}
+											<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+												<div class="h-full rounded-full bg-yellow-400 transition-[width] duration-200" style="width:{it.percent}%"></div>
+											</div>
+										{:else if it.state === 'done'}
+											<p class="mt-1 text-xs text-green-500">Done</p>
+										{:else}
+											<p class="mt-1 truncate text-xs text-red-500">{it.message ?? 'Failed'}</p>
+										{/if}
+									</div>
+									{#if it.state === 'downloading'}
+											<span class="text-xs tabular-nums text-muted-foreground">{it.percent}%</span>
+									{:else if it.state === 'done'}
+											<HugeiconsIcon icon={Tick01Icon} class="h-4 w-4 text-green-500" />
+									{:else}
+										<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-red-500" />
+									{/if}
+								</li>
+						{/each}
+						</ul>
+						{#if downloads.errored > 0 || downloads.done > 0}
+							<button
+								class="w-full border-t border-border px-4 py-2 text-xs text-muted-foreground hover:text-foreground"
+								onclick={dismissDownloads}
+							>Clear finished</button>
+						{/if}
+					{/if}
+				</div>
 			{/if}
-		</button>
+		</div>
 
 		<!-- Mini player: hides the app to the tray and hands over to the floating widget (mini.rs).
 		     It sits with the integrations rather than the window controls because it swaps what

@@ -7,6 +7,7 @@ mod db;
 mod discord;
 mod downloads;
 mod floating;
+mod gamepad;
 mod lastfm;
 mod listentogether;
 mod local;
@@ -250,6 +251,10 @@ pub fn run() {
             // it's fine to spawn before AppState is managed. context/16, D11.
             let media = media::spawn(handle.clone());
 
+            // Gamepad poller (Xbox/PS). Emits `gamepad` events the frontend turns into playback
+            // actions; works while the app is backgrounded/tray-minimized.
+            gamepad::start(handle.clone());
+
             // Discord rich presence — off unless the user opted in; parks on its channel until then.
             let discord = discord::spawn(db.get_setting("discord_rpc").as_deref() == Some("true"));
 
@@ -410,6 +415,7 @@ pub fn run() {
             commands::close_mini,
             commands::toggle_floating,
             commands::close_floating,
+			commands::set_mini_expanded,
             commands::get_home,
             commands::get_home_more,
             commands::get_library,

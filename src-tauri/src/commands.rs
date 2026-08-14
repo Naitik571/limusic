@@ -422,6 +422,23 @@ pub async fn close_floating(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Resize the active mini-player window (mini or floating) to match its expanded/collapsed state.
+/// Called by the in-component expand toggle so the layout and window grow/shrink together.
+#[tauri::command]
+pub async fn set_mini_expanded(app: tauri::AppHandle, expanded: bool) -> Result<(), String> {
+    use tauri::Manager;
+    let has_mini = app.get_webview_window(crate::mini::LABEL).is_some();
+    let label = if has_mini { crate::mini::LABEL } else { crate::floating::LABEL };
+    let (w, h) = if expanded { (360.0, 560.0) } else { (560.0, 180.0) };
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(win) = app2.get_webview_window(label) {
+            let _ = win.set_size(tauri::LogicalSize::new(w, h));
+        }
+    });
+    Ok(())
+}
+
 // --- browse / library (context/08) ---------------------------------------------------------
 
 fn metadata_client(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, String> {
@@ -922,7 +939,7 @@ pub async fn download_track(
 ) -> Result<(), String> {
     crate::downloads::download_track(
         &app,
-        &state.db,
+        &state,
         &state.orchestrator,
         &video_id,
         &title,
@@ -955,7 +972,7 @@ pub async fn download_playlist(
         total += 1;
         let _ = crate::downloads::download_track(
             &app,
-            &state.db,
+            &state,
             &state.orchestrator,
             &item.video_id,
             &item.title,
