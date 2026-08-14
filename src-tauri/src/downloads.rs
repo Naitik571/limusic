@@ -141,13 +141,13 @@ pub async fn download_track(
 
     let dir = download_dir(app, &state.db);
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {dir:?}: {e}"))?;
-    // Human-readable filename (Artist - Title) so the file on disk isn't just the video id.
+    // Human-readable filename (Title - Artist) so the file on disk isn't just the video id.
     // video_id stays the catalogue key, so dedup/offline-playback are unaffected.
     let base_name = sanitize_filename(&format!(
         "{}{}{}",
-        artists.trim(),
+        title.trim(),
         if artists.trim().is_empty() { "" } else { " - " },
-        title.trim()
+        artists.trim()
     ));
     let base_name = if base_name.is_empty() {
         video_id.to_owned()
@@ -157,8 +157,23 @@ pub async fn download_track(
     let file_path = dir.join(format!("{base_name}.{format}"));
     let tmp_path = dir.join(format!(".{base_name}.{format}.part"));
 
-    let client = reqwest::Client::new();
-    let mut req = client.get(&stream.url);
+    let mut stream_url = stream.url.clone();
+    // YouTube throttles InnerTube stream URLs hard (~50-200 KB/s) unless ratebypass is present.
+    // yt-dlp adds it; without it a download crawls. Append it when the orchestrator/client left
+    // it out (yt-dlp's own resolve already includes it, so this is a no-op there).
+    if !stream_url.contains("ratebypass=") {
+        stream_url = format!(
+            "{}ratebypass=yes",
+            if stream_url.contains('?') { "&" } else { "?" }
+        );
+    }
+
+    let client = reqwest::Client::builder()
+        .tcp_nodelay(true)
+        .pool_max_idle_per_host(8)
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let mut req = client.get(&stream_url);
     for (k, v) in &stream.headers {
         req = req.header(k, v);
     }

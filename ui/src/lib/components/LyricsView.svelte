@@ -146,16 +146,16 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
 <div class="relative min-h-0 flex-1 overflow-hidden">
-	<!-- Subtle art tint behind the lyrics for an immersive feel without hurting legibility:
-	     a low-opacity cover, blurred, sitting behind an opaque-ish panel wash. -->
+	<!-- Vibrant immersive backdrop: the blurred cover tinted with the theme's primary accent, so
+	     the lyrics feel alive without fogging the text. -->
 	{#if backdrop}
 		<div
-			class="pointer-events-none absolute inset-0 -z-10 opacity-[0.10] blur-2xl"
+			class="pointer-events-none absolute inset-0 -z-10 opacity-[0.14] blur-2xl"
 			style="background-image:url({backdrop}); background-size:cover; background-position:center;"
 			aria-hidden="true"
 		></div>
 		<div
-			class="pointer-events-none absolute inset-0 -z-10 bg-background/85"
+			class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(120%_120%_at_50%_0%,rgb(var(--primary)/0.22),transparent_60%)] bg-background/80"
 			aria-hidden="true"
 		></div>
 	{/if}
@@ -184,10 +184,10 @@
 					<button
 						data-line={i}
 						onclick={() => seekTo(line)}
-						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform] duration-300 ease-out hover:text-foreground
+						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,filter] duration-300 ease-out hover:text-foreground
 							{expanded ? 'py-3 text-3xl' : 'py-2 text-xl'}
 							{isActive
-								? 'scale-[1.03] text-foreground [text-shadow:0_0_12px_rgb(var(--foreground)/0.18)]'
+								? 'scale-[1.04] text-foreground [background:linear-gradient(90deg,var(--primary),var(--foreground))] [background-clip:text] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent] [text-shadow:0_0_18px_rgb(var(--primary)/0.45)]'
 								: isPast
 								? 'text-muted-foreground/50'
 								: 'text-muted-foreground'}"
@@ -203,14 +203,13 @@
 										{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
 										{@const isCurrentWord = progress > 0 && progress < 1}
 										<!-- Only the gradient stop moves per frame; the clip/fill are static, so they
-										     live in the class and aren't re-serialised 60 times a second. Both
-										     colours are theme tokens: the sung half was hardcoded white, which is
-										     invisible on every light theme. -->
+										     live in the class and aren't re-serialised 60 times a second. Sung half
+										     uses the theme primary for vibrancy; unsung stays muted. -->
 										<span
 											class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-100 ease-out {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
-												? 'scale-[1.03]'
+												? 'scale-[1.03] [text-shadow:0_0_14px_rgb(var(--primary)/0.5)]'
 												: ''}"
-											style="background-image: linear-gradient(90deg, var(--foreground) {pct}%, var(--muted-foreground) {pct}%);"
+											style="background-image: linear-gradient(90deg, rgb(var(--primary)) {pct}%, var(--muted-foreground) {pct}%);"
 										>
 											{cleanText}
 										</span>
@@ -225,7 +224,7 @@
 
 						<!-- Translation line rendering -->
 						{#if line.translation}
-							<p class="mt-1 text-sm font-normal italic tracking-wide opacity-80 transition-opacity">
+							<p class="mt-1 text-sm font-normal italic tracking-wide text-primary/70 transition-opacity">
 								{line.translation}
 							</p>
 						{/if}
