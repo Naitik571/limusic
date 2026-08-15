@@ -1,107 +1,72 @@
+// Playlist sorting. Pure so it can be checked without a DOM (`sort.check.ts`).
+//
+// The playlist page keeps `pl.items` in YouTube's order and treats the sort as a view over it, so
+// every optimistic mutation (add, remove, setVideoId backfill, loadMore) keeps working on the real
+// list and switching back to Default costs nothing.
 import type { SongItem } from './api';
 
-export type SortMode =
-	| 'default'
-	| 'title'
-	| 'title-desc'
-	| 'artist'
-	| 'artist-desc'
-	| 'album'
-	| 'album-desc'
-	| 'duration'
-	| 'duration-desc'
-	| 'date'
-	| 'date-desc'
-	| 'plays'
-	| 'plays-desc';
+export type SortKey = 'default' | 'newest' | 'oldest' | 'title' | 'artist' | 'album' | 'plays';
 
-export const SORT_OPTIONS: { value: SortMode; label: string }[] = [
-	{ value: 'default', label: 'Default' },
-	{ value: 'title', label: 'Title (A→Z)' },
-	{ value: 'title-desc', label: 'Title (Z→A)' },
-	{ value: 'artist', label: 'Artist (A→Z)' },
-	{ value: 'artist-desc', label: 'Artist (Z→A)' },
-	{ value: 'album', label: 'Album (A→Z)' },
-	{ value: 'album-desc', label: 'Album (Z→A)' },
-	{ value: 'duration', label: 'Duration (shortest)' },
-	{ value: 'duration-desc', label: 'Duration (longest)' },
-	{ value: 'date', label: 'Date added (oldest)' },
-	{ value: 'date-desc', label: 'Date added (newest)' },
-	{ value: 'plays', label: 'Most played (least)' },
-	{ value: 'plays-desc', label: 'Most played (most)' }
+export const SORTS: { key: SortKey; label: string }[] = [
+	{ key: 'default', label: 'Default' },
+	{ key: 'newest', label: 'Newest first' },
+	{ key: 'oldest', label: 'Oldest first' },
+	{ key: 'title', label: 'Title' },
+	{ key: 'artist', label: 'Artist' },
+	{ key: 'album', label: 'Album' },
+	{ key: 'plays', label: 'Most played' }
 ];
-
-// Collations
-const ignoreArticles = (s: string) =>
-	s
-		.toLowerCase()
-		.replace(/^the\s+/, '')
-		.replace(/^a\s+/, '')
-		.replace(/^an\s+/, '');
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-// Extract a stable "added" order from set_video_id. YouTube's set video ids are of the form
-// `VIDEO_ID-EPOCH_SECONDS`; a larger number means it was added later. Songs without one fall
-// back to their position in the list (overwrite sort can't re-order those anyway).
-const addedAt = (t: SongItem): number => {
-	const s = t.set_video_id ?? '';
-	const m = /-(\d+)$/.exec(s);
-	return m ? Number(m[1]) : 0;
-};
-
-export function compareSongs(a: SongItem, b: SongItem, mode: SortMode): number {
-	switch (mode) {
-		case 'title':
-		case 'title-desc':
-			return collator.compare(ignoreArticles(a.title), ignoreArticles(b.title));
-		case 'artist':
-		case 'artist-desc':
-			return collator.compare(ignoreArticles(a.artists), ignoreArticles(b.artists));
-		case 'album':
-		case 'album-desc':
-			return collator.compare(ignoreArticles(a.album ?? ''), ignoreArticles(b.album ?? ''));
-		case 'duration':
-		case 'duration-desc':
-			return durToSec(a.duration) - durToSec(b.duration);
-		case 'date':
-		case 'date-desc':
-			return addedAt(a) - addedAt(b);
-		case 'plays':
-		case 'plays-desc': {
-			const pa = (a as SongItem & { _plays?: number })._plays ?? 0;
-			const pb = (b as SongItem & { _plays?: number })._plays ?? 0;
-			return pa - pb;
-		}
-		default:
-			return 0; // 'default' keeps the existing order
-	}
-}
-
-/** Sort `items` in place (stable) per `mode`. `plays` maps videoId → play count for the
- *  "most played" modes; it is attached as `_plays` before sorting so the comparator can read it. */
-export function sortItems(items: SongItem[], mode: SortMode, plays?: Record<string, number>): void {
-	if (mode === 'default') return;
-	const desc = mode.endsWith('-desc');
-	const base: SortMode = (desc ? mode.slice(0, -5) : mode) as SortMode;
-	if (plays && base === 'plays') {
-		for (const t of items) (t as SongItem & { _plays?: number })._plays = plays[t.video_id] ?? 0;
-	}
-	const cmp = (a: SongItem, b: SongItem) => compareSongs(a, b, base);
-	// Stable ascending sort on the base key.
-	items.sort((a, b) => cmp(a, b));
-	// For *-desc variants, reverse to get descending order while keeping tie stability.
-	if (desc) items.reverse();
-}
-
-// "3:21" / "1:02:03" → seconds (the SongItem duration is a display string, not a number).
-function durToSec(d: string | undefined): number {
-	if (!d) return 0;
-	let total = 0;
-	for (const part of d.split(':')) {
-		const n = Number(part);
-		if (Number.isNaN(n)) return 0;
-		total = total * 60 + n;
-	}
-	return total;
+/**
+ * Sort a playlist's tracks. Returns the input array untouched when there is nothing to do, a new
+ * array otherwise — the page compares identity to skip re-rendering.
+ *
+ * `baseNewestFirst` says which end of the incoming order is the newest addition. Playlist rows
+ * carry no timestamp, so newest/oldest is add order, i.e. the position YouTube hands them back in:
+ * Liked Music arrives most-recently-liked first, every other playlist arrives oldest-added first.
+ *
+ * `desc` reverses whatever the key ordered, and nothing else: ties still fall back to playlist
+ * order, and a track with no album still sorts last rather than jumping to the top.
+ *
+ * `plays` is the local listening history (videoId → count, see `api.getPlayCounts`); a track it
+ * doesn't mention counts as zero. It orders most-played first, so descending means least-played
+ * first, the same way "Newest first" reads.
+ */
+export function sortSongs(
+	items: SongItem[],
+	sort: SortKey,
+	baseNewestFirst: boolean,
+	desc = false,
+	plays: Record<string, number> = {}
+): SongItem[] {
+	if (items.length < 2) return items;
+	if (sort === 'default') return desc ? items.slice().reverse() : items;
+	if (sort === 'newest' || sort === 'oldest')
+		return ((sort === 'newest') !== desc) === baseNewestFirst ? items : items.slice().reverse();
+	const dir = desc ? -1 : 1;
+	// Ties (everything unplayed, most of a big playlist) keep playlist order.
+	if (sort === 'plays')
+		return items
+			.slice()
+			.sort((a, b) => dir * ((plays[b.video_id] ?? 0) - (plays[a.video_id] ?? 0)));
+	// Album is a grouping, so inside one album the playlist's own order stands (Array#sort is
+	// stable): an album added in one go keeps its track order, which alphabetising would destroy.
+	// Descending reverses the albums, not the tracks within one.
+	if (sort === 'album')
+		return items
+			.slice()
+			.sort(
+				(a, b) =>
+					Number(!a.album) - Number(!b.album) ||
+					dir * collator.compare(a.album ?? '', b.album ?? '')
+			);
+	// Title orders an artist's block; on a title sort the tiebreak is a no-op.
+	const key = (t: SongItem) => (sort === 'title' ? t.title : t.artists);
+	return items
+		.slice()
+		.sort(
+			(a, b) => dir * (collator.compare(key(a), key(b)) || collator.compare(a.title, b.title))
+		);
 }

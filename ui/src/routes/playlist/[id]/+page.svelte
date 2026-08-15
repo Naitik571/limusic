@@ -30,9 +30,10 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import * as api from '$lib/api';
 	import { ON_REPEAT_ID } from '$lib/api';
-	import { SORT_OPTIONS, sortItems, type SortMode } from '$lib/sort';
+	import { SORTS, sortSongs, type SortKey } from '$lib/sort';
 	import type { BrowseItem, PlaylistPage, SongItem } from '$lib/api';
 	import { getCached, putCached, invalidateCached } from '$lib/pagecache';
+	import { anchorMenu } from '$lib/menu';
 	import {
 		addPick,
 		enqueue,
@@ -56,37 +57,6 @@
 	let moreError = $state(false);
 	let inflight: Promise<void> | null = null;
 	let confirmingDelete = $state(false);
-	// Playlist sorter (ported from upstream PR #34). `sortMode` is the chosen order; for playlists
-	// the user owns we push the new order to YouTube too, so it sticks (and survives reloads). For
-	// Liked Music / On Repeat we just reorder the in-memory view. "Most played" needs play counts.
-	let sortMode = $state<SortMode>('default');
-	let sortMenuOpen = $state(false);
-	let sortMx = $state(0);
-	let sortMy = $state(0);
-	let playCountsMap = $state<Record<string, number>>({});
-
-	$effect(() => {
-		if (!pl) return;
-		api.getPlayCounts().then((m) => (playCountsMap = m)).catch(() => {});
-	});
-
-	async function sortPlaylist() {
-		if (!pl || sortMode === 'default') {
-			sortMenuOpen = false;
-			return;
-		}
-		const items = pl.items.slice();
-		sortItems(items, sortMode, sortCountsFor());
-		pl = { ...pl, items };
-		cacheCurrent();
-		sortMenuOpen = false;
-		toast.success('Playlist sorted');
-	}
-
-	function sortCountsFor(): Record<string, number> | undefined {
-		return sortMode === 'plays' || sortMode === 'plays-desc' ? playCountsMap : undefined;
-	}
-
 	// A random song's cover, used as a blurred hero backdrop (like the artist/album pages).
 	let bgImage = $state<string | null>(null);
 
@@ -109,7 +79,85 @@
 	// Liked Music reports owned but can't be renamed/deleted, so exclude it explicitly.
 	const editable = $derived((pl?.owned ?? false) && !isLiked);
 
-async function downloadPlaylistHere() {
+	// ——— Sorting (the original repo's sorter: a view over `pl.items`) ————————————————
+	// `pl.items` stays in YouTube's order; every optimistic mutation (add, remove, setVideoId
+	// backfill, loadMore) works against the real list, and switching back to Default costs nothing.
+	// The sort is a derived view on top, so it is never written back and never needs undoing.
+	let sort = $state<SortKey>('default');
+	let desc = $state(false);
+	let sortOpen = $state(false);
+	let sx = $state(0);
+	let sy = $state(0);
+	let sortUp = $state(false);
+	const sortLabel = $derived(
+		sort === 'default' ? 'Sort' : (SORTS.find((s) => s.key === sort)?.label ?? 'Sort')
+	);
+
+	// "Most played" sorts against local listening history. It's a SQLite read the other six sorts
+	// don't need, so fetch it only when it's first asked for.
+	let plays = $state<Record<string, number>>({});
+	let playsInflight: Promise<void> | null = null;
+	function loadPlays(): Promise<void> {
+		playsInflight ??= api
+			.getPlayCounts()
+			.then((c) => void (plays = c))
+			// An empty map just sorts everything as unplayed, which beats blocking the sort.
+			.catch(() => {});
+		return playsInflight;
+	}
+
+	// Liked Music is the one playlist YouTube hands back newest-addition-first.
+	const sortedItems = $derived(sortSongs(pl?.items ?? [], sort, isLiked, desc, plays));
+
+	// The rows actually on screen: the sorted view of whatever pages are loaded.
+	const shown = $derived(sortedItems);
+	const sorting = $derived(sort !== 'default' || desc);
+
+	// A sort has to cover the whole playlist, not the pages scrolled so far, so pull the rest in
+	// before play/queue hand a short list to the queue. Stops on a failed page (`moreError`), on
+	// navigation, and on any walk that made no progress. Answers whether it got the lot.
+	async function loadAll(): Promise<boolean> {
+		const pid = id;
+		moreError = false; // an explicit action gets another go at a page the scroll gave up on
+		while (pl?.continuation && !moreError) {
+			const token = pl.continuation;
+			await loadMore();
+			if (pid !== id) return false;
+			if (pl?.continuation === token) break; // no progress, nothing left to walk
+		}
+		return !pl?.continuation;
+	}
+	async function ready(): Promise<boolean> {
+		if (!sorting) return true;
+		if (sort === 'plays') await loadPlays(); // queueing before the counts land sorts by nothing
+		if (!pl?.continuation) return true;
+		return loadAll();
+	}
+	// A sorted queue is built from whatever loaded; a page that failed is missing, and can't be
+	// fixed later — say so instead of silently handing over half a playlist.
+	function warnPartial(what: string) {
+		toast.error(`Couldn't load all of this playlist, so only what loaded was ${what}.`);
+	}
+	function chooseSort(key: SortKey) {
+		sortOpen = false;
+		if (key === sort) return;
+		sort = key;
+		desc = false;
+		if (key === 'plays') loadPlays(); // the list re-sorts itself when the counts land
+		if (sorting) loadAll(); // start the walk now so Play rarely has to wait
+	}
+	function toggleDesc() {
+		desc = !desc;
+		if (sorting) loadAll();
+	}
+	// Right-anchored like the other header menus: the trigger sits at the far end of the header, so
+	// a menu wider than it would run off the page opening leftwards from its left edge.
+	function openSort(e: MouseEvent) {
+		({ right: sx, y: sy, openUp: sortUp } = anchorMenu(e.currentTarget as HTMLElement, 300));
+		sortOpen = true;
+	}
+
+	async function downloadPlaylistHere() {
 		if (!pl) return;
 		toast('Downloading playlist…');
 		api.downloadPlaylist(id)
@@ -394,9 +442,22 @@ async function downloadPlaylistHere() {
 	// the pages scrolled so far, but waiting for it here is what made long playlists take forever
 	// to start: YouTube hands out tracks 100 at a time and the tokens are chained, so the backend
 	// takes the token and walks the rest into the queue while page 1 is already playing.
-	function playAll(start: number | null) {
+	async function playAll(start: number | null) {
 		if (!pl) return;
-		playFrom(asItem(), pl.items, start, isOnRepeat ? undefined : id, undefined, pl.continuation);
+		const pid = id;
+		const whole = await ready();
+		if (!pl || pid !== id) return;
+		const pick = start === null ? null : shown[start];
+		const at = pick ? sortedItems.indexOf(pick) : -1;
+		if (!whole) warnPartial('played');
+		playFrom(
+			asItem(),
+			sortedItems,
+			at >= 0 ? at : null,
+			isOnRepeat ? undefined : id,
+			undefined,
+			sorting ? undefined : pl.continuation
+		);
 	}
 
 	// Random cover from the songs, picked once per load so it stays stable while browsing
@@ -416,9 +477,13 @@ async function downloadPlaylistHere() {
 
 	// Same deal as `playAll` for a long playlist: the loaded pages go in now and the token hands
 	// the rest to the backend to walk in behind them.
-	function queue(next: boolean) {
+	async function queue(next: boolean) {
 		if (!pl?.items.length) return;
-		enqueue(pl.items, next, pl.title, pl.continuation);
+		const pid = id;
+		const whole = await ready();
+		if (!pl || pid !== id) return;
+		if (!whole) warnPartial('queued');
+		enqueue(sortedItems, next, pl.title, sorting ? undefined : pl.continuation);
 	}
 
 	function shufflePlay() {
@@ -737,18 +802,28 @@ async function downloadPlaylistHere() {
 					{/if}
 					<Button
 						variant="ghost"
-						size="icon"
 						aria-label="Sort playlist"
-						title="Sort playlist"
-						onclick={(e) => {
-							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-							sortMx = r.left;
-							sortMy = r.bottom + 4;
-							sortMenuOpen = true;
-						}}
+						title={`Sort playlist${sort !== 'default' ? ` (${sortLabel})` : ''}`}
+						onclick={openSort}
+						class="gap-2"
 					>
 						<HugeiconsIcon icon={ArrowDownAZIcon} class="h-5 w-5 text-muted-foreground" />
+						<span class="hidden text-sm md:inline">{sortLabel}</span>
 					</Button>
+					{#if sort !== 'default'}
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Reverse sort order"
+							title={desc ? 'Sort ascending' : 'Sort descending'}
+							onclick={toggleDesc}
+						>
+							<HugeiconsIcon
+								icon={desc ? ArrowUpNarrowWideIcon : ArrowDownWideNarrowIcon}
+								class="h-5 w-5 text-muted-foreground"
+							/>
+						</Button>
+					{/if}
 					{#if confirmingDelete}
 						<div class="flex items-center gap-2 rounded-lg border border-destructive/40 px-2 py-1">
 							<span class="text-xs text-muted-foreground">Delete this playlist?</span>
@@ -813,7 +888,7 @@ async function downloadPlaylistHere() {
 					</Button>
 				</div>
 			{/if}
-			{#each pl.items as item, i (item.video_id + i)}
+			{#each shown as item, i (item.video_id + i)}
 				<!-- The row is interactive by design (select/play/right-click); TrackRow inside
 				     provides the keyboard-accessible controls. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -908,30 +983,36 @@ async function downloadPlaylistHere() {
 	{/if}
 </div>
 
-{#if sortMenuOpen}
+{#if sortOpen}
 	<button
 		class="fixed inset-0 z-40 cursor-default"
-		onclick={() => (sortMenuOpen = false)}
+		onclick={() => (sortOpen = false)}
 		aria-label="Close menu"
 	></button>
 	<div
-		class="fixed z-50 max-h-[70vh] w-60 origin-top-left animate-in overflow-y-auto rounded-xl border-transparent glass-strong p-2 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-		style="left:{sortMx}px; top:{sortMy}px;"
+		class="fixed z-50 max-h-[70vh] w-56 origin-top-right animate-in overflow-y-auto rounded-xl border-transparent glass-strong p-2 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {sortUp ? 'origin-bottom-right' : 'origin-top-right'}"
+		style="right:{sx}px; {sortUp ? 'bottom' : 'top'}:{sy}px;"
 	>
 		<RadioGroup.Root class="gap-0">
-			{#each SORT_OPTIONS as opt (opt.value)}
+			{#each SORTS as s (s.key)}
 				<button
 					type="button"
 					class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-					onclick={() => {
-						sortMode = opt.value;
-						sortPlaylist();
-					}}
+					onclick={() => chooseSort(s.key)}
 				>
-					<RadioGroup.Item checked={sortMode === opt.value} class="pointer-events-none mr-1" />
-					<span class={sortMode === opt.value ? 'font-semibold text-foreground' : ''}>{opt.label}</span>
+					<RadioGroup.Item checked={sort === s.key} class="pointer-events-none mr-1" />
+					<span class={sort === s.key ? 'font-semibold text-foreground' : ''}>{s.label}</span>
 				</button>
 			{/each}
+			<div class="my-1 h-px bg-border"></div>
+			<button
+				type="button"
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={toggleDesc}
+			>
+				<RadioGroup.Item checked={desc} class="pointer-events-none mr-1" />
+				<span class={desc ? 'font-semibold text-foreground' : ''}>Reverse order</span>
+			</button>
 		</RadioGroup.Root>
 	</div>
 {/if}

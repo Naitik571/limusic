@@ -139,33 +139,16 @@
 		if (dur <= 0) return 1;
 		return (currentMs - word.start_ms) / dur;
 	}
-
-	// Album art for the immersive backdrop. Resolved lazily from the active track.
-	const backdrop = $derived(playback.now?.thumbnail);
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
-<div class="relative min-h-0 flex-1 overflow-hidden">
-	<!-- Subtle blurred art tint behind the lyrics. Low opacity + opaque wash keeps text legible. -->
-	{#if backdrop}
-		<div
-			class="pointer-events-none absolute inset-0 -z-10 opacity-[0.08] blur-2xl"
-			style="background-image:url({backdrop}); background-size:cover; background-position:center;"
-			aria-hidden="true"
-		></div>
-		<div
-			class="pointer-events-none absolute inset-0 -z-10 bg-background/90"
-			aria-hidden="true"
-		></div>
-	{/if}
-
-	<div
-		bind:this={scroller}
-		onwheel={onUserScroll}
-		ontouchmove={onUserScroll}
-		onpointerdown={onUserScroll}
-		class="relative h-full overflow-y-auto py-6 {expanded ? 'px-10' : 'px-5'}"
-	>
+<div
+	bind:this={scroller}
+	onwheel={onUserScroll}
+	ontouchmove={onUserScroll}
+	onpointerdown={onUserScroll}
+	class="min-h-0 flex-1 overflow-y-auto py-6 {expanded ? 'px-10' : 'px-5'}"
+>
 		{#if loading}
 			<div class="space-y-3">
 				{#each { length: 8 } as _, i (i)}
@@ -186,10 +169,10 @@
 						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform] duration-300 ease-out hover:text-foreground
 							{expanded ? 'py-3 text-3xl' : 'py-2 text-xl'}
 							{isActive
-								? 'scale-[1.03] text-foreground [text-shadow:0_0_14px_var(--primary)]'
+								? 'scale-[1.04] text-foreground'
 								: isPast
-								? 'text-muted-foreground/50'
-								: 'text-muted-foreground'}"
+									? 'text-muted-foreground/40'
+									: 'text-muted-foreground/70'}"
 					>
 						{#if line.words && line.words.length > 0}
 							<!-- Word-by-Word Karaoke Sweep Animation (Better-Lyrics style, highly optimized) -->
@@ -214,7 +197,7 @@
 											{cleanText}
 										</span>
 									{:else}
-										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/50' : 'text-muted-foreground'}">{cleanText}</span>
+										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/40' : 'text-muted-foreground/70'}">{cleanText}</span>
 									{/if}
 								{/each}
 							</span>
@@ -253,7 +236,6 @@
 		{:else}
 			<p class="py-8 text-center text-sm text-muted-foreground">No lyrics found for this track.</p>
 		{/if}
-	</div>
 </div>
 {#if lyrics && !loading}
 	<p class="border-t px-4 py-2 text-xs text-muted-foreground">

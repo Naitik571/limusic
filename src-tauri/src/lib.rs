@@ -412,7 +412,6 @@ pub fn run() {
             commands::login_webview,
                         commands::open_mini,
                         commands::close_mini,
-                        commands::set_mini_expanded,
                         commands::get_home,
             commands::get_home_more,
             commands::get_library,

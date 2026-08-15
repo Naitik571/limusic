@@ -398,13 +398,6 @@ pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Resize the mini-player window to match its expanded/collapsed state.
-/// Called by the in-component expand toggle so the layout and window grow/shrink together.
-#[tauri::command]
-pub async fn set_mini_expanded(app: tauri::AppHandle, expanded: bool) -> Result<(), String> {
-    crate::mini::set_expanded(&app, expanded)
-}
-
 // --- browse / library (context/08) ---------------------------------------------------------
 
 fn metadata_client(state: &Arc<AppState>) -> Result<&innertube::YouTubeClient, String> {

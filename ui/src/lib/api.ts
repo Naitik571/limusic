@@ -533,7 +533,3 @@ export const onLtNotice = (cb: (msg: string) => void): Promise<UnlistenFn> =>
 // the same actions the keyboard shortcuts trigger. Works while the app is backgrounded.
 export const onGamepad = (cb: (action: string) => void): Promise<UnlistenFn> =>
 	listen<string>('gamepad', (e) => cb(e.payload));
-// Resize the active mini-player window to its expanded/collapsed size. The toggle in
-// MiniPlayer.svelte flips the layout and calls this so the window grows/shrinks with it.
-export const setMiniExpanded = (expanded: boolean) =>
-	invoke('set_mini_expanded', { expanded });
