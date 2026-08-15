@@ -78,6 +78,19 @@ fn sanitize_filename(name: &str) -> String {
         .collect()
 }
 
+// Static client pool to reuse connections (massive speedup on multi-track downloads).
+static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn client() -> &'static reqwest::Client {
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .tcp_nodelay(true)
+            .pool_max_idle_per_host(8)
+            .build()
+            .expect("reqwest client build")
+    })
+}
+
 /// Resolve a stream URL the same way playback would: orchestrator first, yt-dlp as the net.
 /// Returns `None` (and the caller reports the error) if both fail.
 async fn resolve_stream(
@@ -105,6 +118,20 @@ async fn resolve_stream(
         });
     }
     None
+}
+
+/// Safely append `ratebypass=yes` ONLY to googlevideo URLs that don't already have it.
+/// This defeats YouTube's ~50-200 KB/s throttle without breaking signed URLs.
+fn with_ratebypass(url: &str) -> String {
+    if url.contains("googlevideo.com") && !url.contains("ratebypass=") {
+        format!(
+            "{}{}ratebypass=yes",
+            url,
+            if url.contains('?') { "&" } else { "?" }
+        )
+    } else {
+        url.to_owned()
+    }
 }
 
 /// Resolve + download one track's audio to disk, recording it in the catalogue.
@@ -157,32 +184,24 @@ pub async fn download_track(
     let file_path = dir.join(format!("{base_name}.{format}"));
     let tmp_path = dir.join(format!(".{base_name}.{format}.part"));
 
-    // Use the resolved stream URL. InnerTube googlevideo URLs without `ratebypass=yes` are
-    // throttled by YouTube to ~50-200 KB/s; yt-dlp only reaches full speed because it appends it.
-    // We append it here too — but ONLY to googlevideo.com URLs and only when absent, so we never
-    // touch a signed URL's existing params or break a non-google host. (The tuned client below
-    // keeps connection throughput up.)
-    let stream_url = if stream.url.contains("googlevideo.com")
-        && !stream.url.contains("ratebypass=")
-    {
-        format!(
-            "{}{}ratebypass=yes",
-            stream.url,
-            if stream.url.contains('?') { "&" } else { "?" }
+    // Use the resolved stream URL with safe ratebypass append for googlevideo URLs.
+    let stream_url = with_ratebypass(&stream.url);
+    let resp = client()
+        .get(&stream_url)
+        .headers(
+            stream
+                .headers
+                .iter()
+                .fold(reqwest::header::HeaderMap::new(), |mut m, (k, v)| {
+                    if let (Ok(name), Ok(value)) = (
+                        reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                        reqwest::header::HeaderValue::from_bytes(v.as_bytes()),
+                    ) {
+                        m.insert(name, value);
+                    }
+                    m
+                }),
         )
-    } else {
-        stream.url.clone()
-    };
-    let client = reqwest::Client::builder()
-        .tcp_nodelay(true)
-        .pool_max_idle_per_host(8)
-        .build()
-        .map_err(|e| format!("client build failed: {e}"))?;
-    let mut req = client.get(&stream_url);
-    for (k, v) in &stream.headers {
-        req = req.header(k, v);
-    }
-    let resp = req
         .send()
         .await
         .map_err(|e| format!("download request failed: {e}"))?;
@@ -215,30 +234,37 @@ pub async fn download_track(
             "client": stream.client,
         }),
     );
+    // Throttle progress emissions to ~10/sec (every 100ms) so the event bus doesn't flood.
+    let mut last_emit = std::time::Instant::now();
     while let Some(chunk) = stream_body.next().await {
         let chunk = chunk.map_err(|e| format!("download body failed: {e}"))?;
         downloaded += chunk.len() as u64;
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
             .await
             .map_err(|e| format!("write: {e}"))?;
-        let percent = if total > 0 {
-            ((downloaded as f64 / total as f64) * 100.0) as u32
-        } else {
-            0
-        };
-        let _ = app.emit(
-            "download-progress",
-            serde_json::json!({
-                "video_id": video_id,
-                "title": title,
-                "artists": artists,
-                "thumb": thumb,
-                "downloaded": downloaded,
-                "total": total,
-                "percent": percent,
-                "client": stream.client,
-            }),
-        );
+        // Only emit progress if 100ms has passed since last emit (or at 100%).
+        let should_emit = last_emit.elapsed().as_millis() >= 100 || downloaded >= total as u64;
+        if should_emit {
+            last_emit = std::time::Instant::now();
+            let percent = if total > 0 {
+                ((downloaded as f64 / total as f64) * 100.0) as u32
+            } else {
+                0
+            };
+            let _ = app.emit(
+                "download-progress",
+                serde_json::json!({
+                    "video_id": video_id,
+                    "title": title,
+                    "artists": artists,
+                    "thumb": thumb,
+                    "downloaded": downloaded,
+                    "total": total,
+                    "percent": percent,
+                    "client": stream.client,
+                }),
+            );
+        }
     }
     tokio::io::AsyncWriteExt::flush(&mut file)
         .await

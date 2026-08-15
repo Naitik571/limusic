@@ -398,45 +398,11 @@ pub async fn close_mini(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// --- floating player (floating.rs) ------------------------------------------------------------
-
-/// Pop the floating player out (or tuck it back in). Coexists with the main window — it's the
-/// always-on-top now-playing card, not a replacement.
-#[tauri::command]
-pub async fn toggle_floating(app: tauri::AppHandle) -> Result<(), String> {
-    // GTK wants window creation on the main thread, so hop and post the result back rather than
-    // logging a failure the user would only see as a click that did nothing.
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let handle = app.clone();
-    app.run_on_main_thread(move || {
-        let _ = tx.send(crate::floating::toggle(&handle));
-    })
-    .map_err(|e| e.to_string())?;
-    rx.await.map_err(|_| "the floating player never answered".to_string())?
-}
-
-/// Tear the floating player down (its close button / quitting).
-#[tauri::command]
-pub async fn close_floating(app: tauri::AppHandle) -> Result<(), String> {
-    crate::floating::close(&app);
-    Ok(())
-}
-
-/// Resize the active mini-player window (mini or floating) to match its expanded/collapsed state.
+/// Resize the mini-player window to match its expanded/collapsed state.
 /// Called by the in-component expand toggle so the layout and window grow/shrink together.
 #[tauri::command]
 pub async fn set_mini_expanded(app: tauri::AppHandle, expanded: bool) -> Result<(), String> {
-    use tauri::Manager;
-    let has_mini = app.get_webview_window(crate::mini::LABEL).is_some();
-    let label = if has_mini { crate::mini::LABEL } else { crate::floating::LABEL };
-    let (w, h) = if expanded { (360.0, 560.0) } else { (560.0, 180.0) };
-    let app2 = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(win) = app2.get_webview_window(label) {
-            let _ = win.set_size(tauri::LogicalSize::new(w, h));
-        }
-    });
-    Ok(())
+    crate::mini::set_expanded(&app, expanded)
 }
 
 // --- browse / library (context/08) ---------------------------------------------------------

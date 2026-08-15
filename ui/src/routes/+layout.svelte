@@ -48,9 +48,6 @@
 	// what tells the two apart: `mini` gets the widget instead of the app chrome, and none of the
 	// routes below it are ever rendered. Constant for the window's lifetime.
 	const isMini = browser && getCurrentWindow().label === 'mini';
-	// The floating player (Rust `floating.rs`) is the same trick again: a second, always-on-top
-	// window that coexists with the main one. It gets the card, nothing else.
-	const isFloating = browser && getCurrentWindow().label === 'floating';
 
 	// Apply the saved accent color before the first paint (ssr=false → nothing renders until now).
 	if (browser) initTheme();
@@ -73,11 +70,9 @@
 <ModeWatcher />
 
 <!-- The mini player is the whole window when it is the window: no titlebar, no sidebar, no routes,
-     and no toasts (a banner would cover most of a 560x180 widget). -->
+    and no toasts (a banner would cover most of a 560x180 widget). -->
 {#if isMini}
 	<MiniPlayer />
-{:else if isFloating}
-	<MiniPlayer expanded={true} />
 {:else}
 	<!-- The window itself is transparent; this root paints the background and, when not maximized,
 	     rounds the corners (the compositor can't round an undecorated window for us). -->

@@ -43,7 +43,6 @@ fn handle_menu(app: &AppHandle, id: &str) {
             }
             // Same for the widgets' own positions, if that's what they were quitting from.
             crate::mini::save_position(app);
-            crate::floating::save_position(app);
             app.exit(0);
         }
         other => {

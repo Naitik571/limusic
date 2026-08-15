@@ -84,16 +84,14 @@ export function sortItems(items: SongItem[], mode: SortMode, plays?: Record<stri
 	if (mode === 'default') return;
 	const desc = mode.endsWith('-desc');
 	const base: SortMode = (desc ? mode.slice(0, -5) : mode) as SortMode;
-	if (plays && (base === 'plays')) {
+	if (plays && base === 'plays') {
 		for (const t of items) (t as SongItem & { _plays?: number })._plays = plays[t.video_id] ?? 0;
 	}
 	const cmp = (a: SongItem, b: SongItem) => compareSongs(a, b, base);
 	// Stable ascending sort on the base key.
 	items.sort((a, b) => cmp(a, b));
-	// For *-desc variants (and date-desc), reverse to descending while keeping tie stability.
-	if (desc || base === 'date') items.reverse();
-	// 'date' (oldest first) = ascending by addedAt, so do NOT reverse; 'date-desc' reversed above.
-	if (base === 'date') items.reverse(); // undo the reverse above so oldest-first stays ascending
+	// For *-desc variants, reverse to get descending order while keeping tie stability.
+	if (desc) items.reverse();
 }
 
 // "3:21" / "1:02:03" → seconds (the SongItem duration is a display string, not a number).

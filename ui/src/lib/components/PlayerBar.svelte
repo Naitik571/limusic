@@ -19,8 +19,7 @@
 		MusicNote01Icon,
 		ArrowUp01Icon,
 		ArrowDown01Icon,
-		Moon01Icon,
-		MaximizeScreenIcon
+		Moon01Icon
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
@@ -441,21 +440,16 @@
 				</div>
 			{/if}
 			<Button variant="ghost" size="icon-sm" onclick={openMiniPlayer} aria-label="Mini player">
-				<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
-			</Button>
-			<!-- Pop the always-on-top floating player out (Rust floating.rs): the same playback
-			     stream, as a portable glass card that stays on top of other apps. -->
-			<Button variant="ghost" size="icon-sm" onclick={() => api.toggleFloating()} aria-label="Floating player">
-				<HugeiconsIcon icon={MaximizeScreenIcon} class="h-5 w-5" />
-			</Button>
-			<Button
-				variant={lyricsOpen ? 'secondary' : 'ghost'}
-				size="icon-sm"
-				onclick={onToggleLyrics}
-				aria-label="Toggle lyrics"
-			>
-				<HugeiconsIcon icon={Mic01Icon} class="h-5 w-5" />
-			</Button>
+						<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
+					</Button>
+					<Button
+						variant={lyricsOpen ? 'secondary' : 'ghost'}
+						size="icon-sm"
+						onclick={onToggleLyrics}
+						aria-label="Toggle lyrics"
+					>
+						<HugeiconsIcon icon={Mic01Icon} class="h-5 w-5" />
+					</Button>
 			<Button
 				variant={queueOpen ? 'secondary' : 'ghost'}
 				size="icon-sm"

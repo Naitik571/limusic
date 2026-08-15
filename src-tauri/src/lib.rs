@@ -6,7 +6,6 @@ mod commands;
 mod db;
 mod discord;
 mod downloads;
-mod floating;
 mod gamepad;
 mod lastfm;
 mod listentogether;
@@ -411,12 +410,10 @@ pub fn run() {
             commands::get_account,
             commands::sign_out,
             commands::login_webview,
-            commands::open_mini,
-            commands::close_mini,
-            commands::toggle_floating,
-            commands::close_floating,
-			commands::set_mini_expanded,
-            commands::get_home,
+                        commands::open_mini,
+                        commands::close_mini,
+                        commands::set_mini_expanded,
+                        commands::get_home,
             commands::get_home_more,
             commands::get_library,
             commands::get_library_albums,

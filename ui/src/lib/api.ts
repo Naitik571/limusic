@@ -295,14 +295,10 @@ export const signOut = () => invoke<void>('sign_out');
 export const loginWebview = () => invoke<void>('login_webview');
 
 // --- mini player (Rust mini.rs) ---------------------------------------------------------------
-/** Hide the app to the tray and open the floating widget (a second window running this same SPA). */
+/** Hide the app to the tray and open the mini player widget (a second window running this same SPA). */
 export const openMini = () => invoke<void>('open_mini');
 /** Close the widget and bring the app back. */
 export const closeMini = () => invoke<void>('close_mini');
-
-// --- floating player (Rust floating.rs) ---------------------------------------------------------
-export const toggleFloating = () => invoke<void>('toggle_floating');
-export const closeFloating = () => invoke<void>('close_floating');
 
 // --- hi-res cover art (Rust art.rs) ------------------------------------------------------------
 export const getHighresArt = (artist: string, title: string) =>

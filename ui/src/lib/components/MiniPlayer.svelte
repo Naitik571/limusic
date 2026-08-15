@@ -1,11 +1,9 @@
 <script lang="ts">
-	// The single, extendable mini-player. Both the `mini` window (collapsed by default) and the
-	// `floating` window (expanded by default) mount THIS component — the two are no longer separate
-	// files. The `expanded` prop morphs the design:
+	// The single, extendable mini-player. The `expanded` prop morphs the design:
 	//   collapsed -> slim bar: masked cover on the left, title/meta, transport + a queue peek.
 	//   expanded  -> full now-playing card: big centered cover, transport, volume, like, queue.
-	// The expand button inside toggles `expanded` and asks Rust to resize the window to match, so
-	// "how extended it is" drives both the layout and the window size.
+	// The expand button inside toggles `expanded` and asks Rust to resize the window to match,
+	// so "how extended it is" drives both the layout and the window size.
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		PreviousIcon,
@@ -85,19 +83,18 @@
 	}
 
 	// Expand/collapse: flip the prop and ask Rust to resize the window to the matching size so the
-	// layout and the window grow/shrink together. The restore/close buttons are window-aware via
-	// the label we read at mount.
-	import { getCurrentWindow } from '@tauri-apps/api/window';
-	const label = getCurrentWindow().label;
-	const isFloating = label === 'floating';
-	function toggleExpand() {
-		expanded = !expanded;
-		api.setMiniExpanded(expanded).catch(() => {});
-	}
-	function closeOrRestore() {
-		if (isFloating) api.closeFloating().catch(() => {});
-		else api.closeMini().catch(() => {});
-	}
+		// layout and the window grow/shrink together. The restore/close buttons are window-aware via
+		// the label we read at mount.
+		import { getCurrentWindow } from '@tauri-apps/api/window';
+		const label = getCurrentWindow().label;
+		// Only one mini window now (no floating); closeMini works for both compact/expanded.
+		function toggleExpand() {
+			expanded = !expanded;
+			api.setMiniExpanded(expanded).catch(() => {});
+		}
+		function closeOrRestore() {
+			api.closeMini().catch(() => {});
+		}
 </script>
 
 <svelte:window onpointerup={() => (volDragging = false)} />
@@ -149,14 +146,14 @@
 	{/if}
 
 	<!-- Restore / close. Hidden until hover (it's the way out, not part of the design). -->
-	<button
-		class="absolute {expanded ? 'right-3 top-3' : 'left-2 top-2'} z-20 flex size-6 cursor-pointer items-center justify-center rounded-md text-white/60 opacity-0 transition hover:bg-white/15 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
-		onclick={closeOrRestore}
-		title={isFloating ? 'Close' : 'Back to Limusic'}
-		aria-label={isFloating ? 'Close' : 'Back to Limusic'}
-	>
-		<HugeiconsIcon icon={isFloating ? Cancel01Icon : MaximizeScreenIcon} class="h-3.5 w-3.5" />
-	</button>
+		<button
+			class="absolute {expanded ? 'right-3 top-3' : 'left-2 top-2'} z-20 flex size-6 cursor-pointer items-center justify-center rounded-md text-white/60 opacity-0 transition hover:bg-white/15 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+			onclick={closeOrRestore}
+			title="Back to Limusic"
+			aria-label="Back to Limusic"
+		>
+			<HugeiconsIcon icon={MaximizeScreenIcon} class="h-3.5 w-3.5" />
+		</button>
 
 	<!-- Expand / collapse. -->
 	<button

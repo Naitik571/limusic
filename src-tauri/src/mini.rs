@@ -1,16 +1,12 @@
-//! Mini player: a small always-on-top widget that stands in for the main window.
+//! Unified mini player: a single always-on-top widget that morphs between compact (pill)
+//! and expanded (card) modes. Replaces both `mini.rs` and `floating.rs` — one window,
+//! zero per-window sync (all events are global `app.emit`).
 //!
-//! It loads the same SPA as the main window — the root layout branches on the window label — so
-//! there is no second bundle and no second copy of the playback state: every event this app emits
-//! is global (`app.emit`, never `emit_to`), so both webviews are driven by the same stream.
+//! Compact:  560x180, fixed-size pill (masked cover + title + transport + queue peek)
+//! Expanded: 360x560, resizable card (big art + transport + volume/like + full queue)
 //!
-//! Opening it hides the main window; the app keeps running in the tray. Coming back is always
-//! [`crate::tray::show_main`] — the widget's restore button, a tray click, the tray menu and a
-//! second launch all land there, so they cannot drift apart.
-//!
-//! ponytail: a second webview costs a second WebKit web process. Resizing the main window in place
-//! would be cheaper, but it throws away everything the app has rendered on every toggle. Revisit
-//! only if idle memory in mini mode ever matters more than an instant restore.
+//! The expand button toggles `expanded` prop + resizes the window so layout + window
+//! grow/shrink together. No separate floating window needed.
 
 use std::sync::Arc;
 
@@ -23,13 +19,16 @@ use crate::state::AppState;
 
 pub const LABEL: &str = "mini";
 
-/// Logical size of the widget. Fixed: it's a pill, not a window you arrange.
-const W: f64 = 560.0;
-const H: f64 = 180.0;
+/// Compact (pill) logical size.
+const COMPACT_W: f64 = 560.0;
+const COMPACT_H: f64 = 180.0;
+/// Expanded (card) logical size.
+const EXPANDED_W: f64 = 360.0;
+const EXPANDED_H: f64 = 560.0;
 /// Inset from the screen edge the first time it opens.
 const MARGIN: f64 = 24.0;
-/// Where the user last dragged it, as physical `"x,y"`. Physical because monitor geometry is, and
-/// two displays can disagree on scale factor.
+/// Where the user last dragged it, as physical `x,y`. Physical because monitor geometry is,
+/// and two displays can disagree on scale factor.
 const POS_KEY: &str = "mini_position";
 
 /// Build (or re-show) the widget, and hide the main window behind it.
@@ -43,8 +42,8 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
     } else {
         let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
             .title("Limusic")
-            .inner_size(W, H)
-            .resizable(false)
+            .inner_size(COMPACT_W, COMPACT_H)
+            .resizable(false) // compact starts fixed
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
@@ -70,8 +69,7 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Remember where the widget currently sits. No-op when it isn't up. Its own function because
-/// quitting from the tray is a way down that never reaches [`close`].
+/// Remember where the widget currently sits. No-op when it isn't up.
 pub fn save_position(app: &AppHandle) {
     let Some(w) = app.get_webview_window(LABEL) else { return };
     if let (Ok(p), Some(state)) = (w.outer_position(), app.try_state::<Arc<AppState>>()) {
@@ -94,6 +92,18 @@ pub fn close(app: &AppHandle) {
     });
 }
 
+/// Resize the window to match expanded/collapsed state. Also flips `resizable` so the expanded
+/// card can be dragged larger if the user wants.
+pub fn set_expanded(app: &AppHandle, expanded: bool) -> Result<(), String> {
+    let Some(win) = app.get_webview_window(LABEL) else {
+        return Ok(());
+    };
+    let (w, h) = if expanded { (EXPANDED_W, EXPANDED_H) } else { (COMPACT_W, COMPACT_H) };
+    let _ = win.set_resizable(expanded);
+    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+    Ok(())
+}
+
 /// Where to put it: the last position if that spot still exists (a display can be unplugged
 /// between sessions), otherwise the bottom-right of whichever display the app is on.
 fn placement(app: &AppHandle, win: &WebviewWindow) -> Option<PhysicalPosition<i32>> {
@@ -104,7 +114,7 @@ fn placement(app: &AppHandle, win: &WebviewWindow) -> Option<PhysicalPosition<i3
         .or_else(|| bottom_right(app, win))
 }
 
-/// `"x,y"` in physical pixels, as [`close`] wrote it.
+/// `x,y` in physical pixels, as `close` wrote it.
 fn parse_pos(s: &str) -> Option<PhysicalPosition<i32>> {
     let (x, y) = s.split_once(',')?;
     Some(PhysicalPosition::new(x.trim().parse().ok()?, y.trim().parse().ok()?))
@@ -130,8 +140,8 @@ fn bottom_right(app: &AppHandle, win: &WebviewWindow) -> Option<PhysicalPosition
     let area = m.work_area();
     let px = |logical: f64| (logical * m.scale_factor()).round() as i32;
     Some(PhysicalPosition::new(
-        area.position.x + area.size.width as i32 - px(W + MARGIN),
-        area.position.y + area.size.height as i32 - px(H + MARGIN),
+        area.position.x + area.size.width as i32 - px(COMPACT_W + MARGIN),
+        area.position.y + area.size.height as i32 - px(COMPACT_H + MARGIN),
     ))
 }
 
