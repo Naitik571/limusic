@@ -413,6 +413,12 @@ export const onAuthChanged = (cb: (a: Account) => void): Promise<UnlistenFn> =>
  */
 export const onLocalChanged = (cb: (removed: string[]) => void): Promise<UnlistenFn> =>
 	listen<{ removed: string[] }>('local-changed', (e) => cb(e.payload.removed));
+
+/** videoId → play count over the trailing On Repeat window. Feeds the playlist page's "Most
+ *  played" sort; absent keys simply mean the track hasn't been played this month. */
+export const getPlayCounts = (): Promise<Record<string, number>> =>
+	invoke<Record<string, number>>('play_counts');
+
 export const onLoginError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
 	listen<string>('login-error', (e) => cb(e.payload));
 export const onLoginDone = (cb: () => void): Promise<UnlistenFn> =>

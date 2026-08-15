@@ -237,6 +237,22 @@ impl Db {
         out
     }
 
+    /// Play count per videoId since `since`. [`Db::top_plays`] answers "what are my N most played
+    /// songs"; this answers "how many times have I played each of these", which is what sorting an
+    /// arbitrary playlist by plays needs. Same table, so the same trailing window applies.
+    pub fn play_counts(&self, since: i64) -> Vec<(String, i64)> {
+        let conn = self.0.lock().unwrap();
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = conn
+            .prepare("SELECT video_id, COUNT(*) FROM plays WHERE played_at >= ?1 GROUP BY video_id")
+        {
+            if let Ok(rows) = stmt.query_map([since], |r| Ok((r.get(0)?, r.get(1)?))) {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+
     // --- local music library (local.rs) -------------------------------------------------------
 
     /// Every known file with its recorded mtime — the scanner re-reads tags only where it differs.

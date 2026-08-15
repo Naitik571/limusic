@@ -157,14 +157,28 @@ pub async fn download_track(
     let file_path = dir.join(format!("{base_name}.{format}"));
     let tmp_path = dir.join(format!(".{base_name}.{format}.part"));
 
-    // Use the resolved stream URL exactly as playback would (mutating signed googlevideo URLs
-    // breaks the signature and fails the download). The tuned client below keeps throughput up.
+    // Use the resolved stream URL. InnerTube googlevideo URLs without `ratebypass=yes` are
+    // throttled by YouTube to ~50-200 KB/s; yt-dlp only reaches full speed because it appends it.
+    // We append it here too — but ONLY to googlevideo.com URLs and only when absent, so we never
+    // touch a signed URL's existing params or break a non-google host. (The tuned client below
+    // keeps connection throughput up.)
+    let stream_url = if stream.url.contains("googlevideo.com")
+        && !stream.url.contains("ratebypass=")
+    {
+        format!(
+            "{}{}ratebypass=yes",
+            stream.url,
+            if stream.url.contains('?') { "&" } else { "?" }
+        )
+    } else {
+        stream.url.clone()
+    };
     let client = reqwest::Client::builder()
         .tcp_nodelay(true)
         .pool_max_idle_per_host(8)
         .build()
         .map_err(|e| format!("client build failed: {e}"))?;
-    let mut req = client.get(&stream.url);
+    let mut req = client.get(&stream_url);
     for (k, v) in &stream.headers {
         req = req.header(k, v);
     }

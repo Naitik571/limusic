@@ -494,6 +494,18 @@ pub async fn get_library_artists(state: St<'_>) -> Result<Vec<BrowseItem>, Strin
     state.it.library_artists(client).await.map_err(|e| e.to_string())
 }
 
+/// videoId → how many times it was played, over the same trailing window On Repeat is built from
+/// (the history table is pruned to it, so there is no older data to offer). Feeds the playlist
+/// page's "Most played" sort; a track the map doesn't mention has not been played this month.
+#[tauri::command]
+pub fn play_counts(state: St<'_>) -> std::collections::HashMap<String, i64> {
+    state
+        .db
+        .play_counts(now_secs() - ON_REPEAT_WINDOW_SECS)
+        .into_iter()
+        .collect()
+}
+
 /// A playlist or album page. `id` is the browseId (`VL…` / `MPRE…`); Liked Songs is `VLLM`, and
 /// `LIMUSIC_ON_REPEAT` is the local auto-playlist rather than anything YouTube knows about.
 #[tauri::command]

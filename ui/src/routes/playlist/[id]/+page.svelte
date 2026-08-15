@@ -19,15 +19,18 @@
 		Move01Icon,
 		Download01Icon,
 		PlusSignIcon,
-		RefreshIcon
+		RefreshIcon,
+		ArrowDownAZIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import TrackRow from '$lib/components/TrackRow.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import * as api from '$lib/api';
 	import { ON_REPEAT_ID } from '$lib/api';
+	import { SORT_OPTIONS, sortItems, type SortMode } from '$lib/sort';
 	import type { BrowseItem, PlaylistPage, SongItem } from '$lib/api';
 	import { getCached, putCached, invalidateCached } from '$lib/pagecache';
 	import {
@@ -53,6 +56,37 @@
 	let moreError = $state(false);
 	let inflight: Promise<void> | null = null;
 	let confirmingDelete = $state(false);
+	// Playlist sorter (ported from upstream PR #34). `sortMode` is the chosen order; for playlists
+	// the user owns we push the new order to YouTube too, so it sticks (and survives reloads). For
+	// Liked Music / On Repeat we just reorder the in-memory view. "Most played" needs play counts.
+	let sortMode = $state<SortMode>('default');
+	let sortMenuOpen = $state(false);
+	let sortMx = $state(0);
+	let sortMy = $state(0);
+	let playCountsMap = $state<Record<string, number>>({});
+
+	$effect(() => {
+		if (!pl) return;
+		api.getPlayCounts().then((m) => (playCountsMap = m)).catch(() => {});
+	});
+
+	async function sortPlaylist() {
+		if (!pl || sortMode === 'default') {
+			sortMenuOpen = false;
+			return;
+		}
+		const items = pl.items.slice();
+		sortItems(items, sortMode, sortCountsFor());
+		pl = { ...pl, items };
+		cacheCurrent();
+		sortMenuOpen = false;
+		toast.success('Playlist sorted');
+	}
+
+	function sortCountsFor(): Record<string, number> | undefined {
+		return sortMode === 'plays' || sortMode === 'plays-desc' ? playCountsMap : undefined;
+	}
+
 	// A random song's cover, used as a blurred hero backdrop (like the artist/album pages).
 	let bgImage = $state<string | null>(null);
 
@@ -701,6 +735,20 @@ async function downloadPlaylistHere() {
 							<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" /> Download
 						</Button>
 					{/if}
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Sort playlist"
+						title="Sort playlist"
+						onclick={(e) => {
+							const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+							sortMx = r.left;
+							sortMy = r.bottom + 4;
+							sortMenuOpen = true;
+						}}
+					>
+						<HugeiconsIcon icon={ArrowDownAZIcon} class="h-5 w-5 text-muted-foreground" />
+					</Button>
 					{#if confirmingDelete}
 						<div class="flex items-center gap-2 rounded-lg border border-destructive/40 px-2 py-1">
 							<span class="text-xs text-muted-foreground">Delete this playlist?</span>
@@ -860,6 +908,33 @@ async function downloadPlaylistHere() {
 	{/if}
 </div>
 
+{#if sortMenuOpen}
+	<button
+		class="fixed inset-0 z-40 cursor-default"
+		onclick={() => (sortMenuOpen = false)}
+		aria-label="Close menu"
+	></button>
+	<div
+		class="fixed z-50 max-h-[70vh] w-60 origin-top-left animate-in overflow-y-auto rounded-xl border-transparent glass-strong p-2 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		style="left:{sortMx}px; top:{sortMy}px;"
+	>
+		<RadioGroup.Root class="gap-0">
+			{#each SORT_OPTIONS as opt (opt.value)}
+				<button
+					type="button"
+					class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+					onclick={() => {
+						sortMode = opt.value;
+						sortPlaylist();
+					}}
+				>
+					<RadioGroup.Item checked={sortMode === opt.value} class="pointer-events-none mr-1" />
+					<span class={sortMode === opt.value ? 'font-semibold text-foreground' : ''}>{opt.label}</span>
+				</button>
+			{/each}
+		</RadioGroup.Root>
+	</div>
+{/if}
 {#if selMenuOpen}
 	<button
 		class="fixed inset-0 z-40 cursor-default"

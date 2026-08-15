@@ -199,6 +199,15 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         Err(e) => tracing::debug!(error = %e, "lyrics: musixmatch failed"),
     }
 
+    // 2c. Megalobiz synced — keyless LRC scrape. Sits in the synced tier between Musixmatch and
+    //    LRCLIB's fuzzy search: it catches tracks the paid/unofficial sources miss, and a synced
+    //    hit here still beats the plain tier below.
+    match megalobiz(req).await {
+        Ok(Some(l)) => return (Some(l), true),
+        Ok(None) => {}
+        Err(e) => tracing::debug!(error = %e, "lyrics: megalobiz failed"),
+    }
+
     // 3. LRCLIB fuzzy search — a synced fuzzy match still beats any plain text, so it outranks
     //    the plain tier below. (YT lyrics are region-licensed and can be entirely absent.)
     let searched = lrclib_search(req).await;
@@ -604,6 +613,85 @@ async fn genius(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
         return Ok(None);
     }
     Ok(plain_from_text(Some(&blocks.join("\n\n")), "Genius"))
+}
+
+/// Megalobiz — keyless synced-lyrics source. The search page lists matches; each result links to
+/// an LRC page we scrape. Adds a fifth, no-token-needed provider so timed lyrics still appear when
+/// LRCLIB / Musixmatch / YTM come up empty (Genius only returns plain text).
+async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    let q = format!("{} {}", req.title, req.artists);
+    let search = web_http()
+        .get("https://www.megalobiz.com/search/")
+        .query(&[("q", q.as_str()), ("type", "lrc")])
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    // First result href: href="/lyrics/<slug>.html"
+    let href = {
+        let re = regex::Regex::new(r#"href="(/lyrics/[^"]+\.html)""#).unwrap();
+        match re.captures(&search) {
+            Some(c) => c.get(1).map(|m| m.as_str().to_owned()),
+            None => None,
+        }
+    };
+    let Some(href) = href else {
+        return Ok(None);
+    };
+    let page = web_http()
+        .get(format!("https://www.megalobiz.com{href}"))
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    // LRC lines live in <p id="..." class="lb-offset">[mm:ss.xx] text</p>
+    let block_re = regex::Regex::new(r#"<p id="[^"]*" class="lb-offset[^"]*">(.*?)</p>"#).unwrap();
+    let line_re = regex::Regex::new(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]").unwrap();
+    let mut out = String::new();
+    let mut last_was_ts = false;
+    for cap in block_re.captures_iter(&page) {
+        let raw = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+        let line = html_unescape(&strip_html_tags(raw)).trim().to_owned();
+        // Does this block carry a leading timestamp? Megalobiz puts the [mm:ss.xx] inside the <p>.
+        if let Some(ts) = line_re.captures(&line) {
+            let min: u64 = ts.get(1).unwrap().as_str().parse().unwrap_or(0);
+            let sec: u64 = ts.get(2).unwrap().as_str().parse().unwrap_or(0);
+            let ms: u64 = {
+                let frac = ts.get(3).map(|m| m.as_str()).unwrap_or("");
+                let digits: String = frac.chars().filter(char::is_ascii_digit).take(3).collect();
+                match digits.len() {
+                    1 => digits.parse().unwrap_or(0) * 100,
+                    2 => digits.parse().unwrap_or(0) * 10,
+                    _ => digits.parse().unwrap_or(0),
+                }
+            };
+            let _ = (min, sec); // timestamp already in the text we keep
+            last_was_ts = true;
+        } else if last_was_ts {
+            // continuation line (no timestamp) — keep as is
+        }
+        if !line.is_empty() {
+            out.push_str(&line);
+            out.push('\n');
+        }
+    }
+    if out.trim().is_empty() {
+        return Ok(None);
+    }
+    // Re-parse as LRC so we get a proper synced structure when timestamps are present.
+    let lines = parse_lrc(&out);
+    if !lines.is_empty() {
+        Ok(Some(Lyrics {
+            synced: true,
+            instrumental: false,
+            lines,
+            source: "Megalobiz".into(),
+        }))
+    } else {
+        Ok(plain_from_text(Some(&out), "Megalobiz"))
+    }
 }
 
 /// `<div data-lyrics-container="true" …> … </div>` — non-greedy up to the first close tag; the
