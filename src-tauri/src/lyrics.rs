@@ -667,7 +667,7 @@ async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
                     _ => digits.parse().unwrap_or(0),
                 }
             };
-            let _ = (min, sec); // timestamp already in the text we keep
+            let _ = (min, sec, ms); // timestamp already in the text we keep
             last_was_ts = true;
         } else if last_was_ts {
             // continuation line (no timestamp) — keep as is

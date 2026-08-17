@@ -272,14 +272,20 @@ export const allowFontFile = (path: string) => invoke<void>('allow_font_file', {
 // --- offline downloads (Rust downloads.rs) ------------------------------------------------------
 export interface DownloadedTrack {
 	video_id: string;
+	file_path: string;
 	title: string;
 	artists: string;
 	album: string | null;
 	duration: number;
-	thumbnail: string | null;
+	thumb: string | null;
+	quality: string;
 	format: string;
 	size_bytes: number;
 	added_at: number;
+}
+export interface DownloadList {
+	items: DownloadedTrack[];
+	total_bytes: number;
 }
 export const downloadTrack = (item: {
 	videoId: string;
@@ -290,7 +296,7 @@ export const downloadTrack = (item: {
 	thumb?: string | null;
 }) =>
 	invoke<void>('download_track', item);
-export const listDownloads = () => invoke<DownloadedTrack[]>('list_downloads');
+export const listDownloads = () => invoke<DownloadList>('list_downloads');
 export const deleteDownload = (video_id: string) =>
 	invoke<void>('delete_download', { video_id });
 export const clearDownloads = () => invoke<void>('clear_downloads');
@@ -303,7 +309,10 @@ export const onDownloadComplete = (cb: (p: any) => void) =>
 export const onDownloadError = (cb: (p: any) => void) =>
 	listen('download-error', (e) => cb(e.payload));
 export const downloadPlaylist = (id: string) =>
-	invoke<{ ok: boolean; total: number; skipped: number }>('download_playlist', { id });
+	invoke<{ ok: boolean; total: number; skipped: number; downloaded: number; failed: number }>(
+		'download_playlist',
+		{ id }
+	);
 
 // --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
 

@@ -163,20 +163,25 @@
 				{#each lyrics.lines as line, i (i)}
 					{@const isActive = i === activeIndex}
 					{@const isPast = i < activeIndex}
+					<!-- The active line reads as the focal point: gradient + a soft primary glow for
+					     whole-line lyrics, a scale-up for karaoke lines (their per-word sweep is the
+					     colour). Everything else recedes in muted steps, waking up on hover. -->
 					<button
 						data-line={i}
 						onclick={() => seekTo(line)}
-						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform] duration-300 ease-out hover:text-foreground
+						class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-300 ease-out
 							{expanded ? 'py-3 text-3xl' : 'py-2 text-xl'}
 							{isActive
-								? 'scale-[1.04] text-foreground'
+								? line.words?.length
+									? 'scale-[1.04]'
+									: 'text-gradient scale-[1.04] [filter:drop-shadow(0_2px_14px_color-mix(in_srgb,var(--primary)_30%,transparent))]'
 								: isPast
-									? 'text-muted-foreground/40'
-									: 'text-muted-foreground/70'}"
+									? 'text-muted-foreground/35 hover:text-muted-foreground/75'
+									: 'text-muted-foreground/65 hover:text-foreground/90'}"
 					>
 						{#if line.words && line.words.length > 0}
 							<!-- Word-by-Word Karaoke Sweep Animation (Better-Lyrics style, highly optimized) -->
-							<span class="inline-flex flex-wrap items-baseline">
+							<span class="inline-flex flex-wrap items-baseline {isActive ? 'drop-shadow-[0_1px_8px_color-mix(in_srgb,var(--primary)_35%,transparent)]' : ''}">
 								{#each line.words as word, wIdx (wIdx)}
 									{@const isWordEnd = word.text.endsWith(' ')}
 									{@const cleanText = word.text.trimEnd()}
@@ -197,7 +202,7 @@
 											{cleanText}
 										</span>
 									{:else}
-										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/40' : 'text-muted-foreground/70'}">{cleanText}</span>
+										<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/35' : 'text-muted-foreground/65'}">{cleanText}</span>
 									{/if}
 								{/each}
 							</span>
@@ -207,7 +212,11 @@
 
 						<!-- Translation line rendering -->
 						{#if line.translation}
-							<p class="mt-1 text-sm font-normal italic tracking-wide text-muted-foreground/70 transition-opacity">
+							<p
+								class="mt-1 font-sans text-sm font-normal tracking-wide transition-colors {isActive
+									? 'text-muted-foreground/90'
+									: 'text-muted-foreground/50'}"
+							>
 								{line.translation}
 							</p>
 						{/if}
@@ -216,16 +225,18 @@
 			</div>
 		{:else if lyrics}
 			<div
-				class="space-y-2 leading-relaxed text-foreground/90 {expanded
+				class="space-y-2 leading-loose text-foreground/90 {expanded
 					? 'mx-auto max-w-3xl text-xl'
 					: 'text-[15px]'}"
 			>
 				{#each lyrics.lines as line, i (i)}
 					{#if line.text}
-						<div>
+						<div class="transition-colors hover:text-foreground">
 							<p>{line.text}</p>
 							{#if line.translation}
-								<p class="text-xs italic text-muted-foreground">{line.translation}</p>
+								<p class="text-sm italic tracking-wide text-muted-foreground/70">
+									{line.translation}
+								</p>
 							{/if}
 						</div>
 					{:else}

@@ -935,9 +935,24 @@ pub async fn download_track(
     .await
 }
 
-/// Download every (non-local) track in a playlist or album. Fetches the page, then enqueues a
-/// download for each item the resolver can reach — already-downloaded tracks are skipped by
-/// `download_track` itself. Reports `{ ok, total, skipped }` so the UI can toast a summary.
+/// Parse a `"m:ss"` / `"h:mm:ss"` duration string into seconds (0 if absent/unparseable).
+fn duration_secs(s: Option<&str>) -> i64 {
+    let Some(s) = s else { return 0 };
+    let parts: Vec<i64> = s.split(':').filter_map(|p| p.trim().parse().ok()).collect();
+    match parts.as_slice() {
+        [secs] => *secs,
+        [m, secs] => m * 60 + secs,
+        [h, m, secs] => h * 3600 + m * 60 + secs,
+        _ => 0,
+    }
+}
+
+/// Download every (non-local, not-yet-saved) track in a playlist or album. Walks ALL pages so a
+/// long playlist downloads in full — the old behaviour stopped at the first ~100 tracks — then
+/// pulls the missing ones DOWNLOAD_CONCURRENCY at a time. Reports a full summary
+/// `{ ok, total, skipped, downloaded, failed }` so the UI can toast exactly what happened:
+/// `skipped` counts both local files and tracks already in the offline catalogue, so re-running a
+/// download only fetches what's actually missing (60 of 100 already saved → 40 fetched).
 #[tauri::command]
 pub async fn download_playlist(
     app: tauri::AppHandle,
@@ -946,34 +961,68 @@ pub async fn download_playlist(
 ) -> Result<serde_json::Value, String> {
     let client = metadata_client(&state)?;
     let page = state.it.playlist(client, &id).await.map_err(|e| e.to_string())?;
-    let mut total = 0u32;
+
+    // Walk every page (bounded the same way the queue fill is). A continuation that hands back an
+    // empty page ends the walk.
+    let mut items = page.items;
+    let mut token = page.continuation;
+    let mut pages = 0usize;
+    while let Some(t) = token {
+        if pages >= 50 {
+            break;
+        }
+        pages += 1;
+        let more = state
+            .it
+            .playlist_continuation(client, &t)
+            .await
+            .map_err(|e| e.to_string())?;
+        items.extend(more.items);
+        token = more.continuation;
+    }
+
+    // Dedupe by video id (a playlist can carry the same song twice), drop local files and tracks
+    // that are already downloaded, then fetch only the remainder.
+    let mut seen = std::collections::HashSet::new();
+    let mut candidates: Vec<crate::downloads::DownloadCandidate> = Vec::new();
     let mut skipped = 0u32;
-    for item in page.items {
+    for item in items {
         if crate::local::is_local_song(&item.video_id) {
             skipped += 1;
             continue;
         }
-        total += 1;
-        let _ = crate::downloads::download_track(
-            &app,
-            &state,
-            &state.orchestrator,
-            &item.video_id,
-            &item.title,
-            &item.artists,
-            item.album.as_deref(),
-            item.duration.as_deref()
-                .map(|s| {
-                    s.split(':').rev().enumerate().fold(0i64, |acc, (i, p)| {
-                        acc + p.trim().parse::<i64>().unwrap_or(0) * 60i64.pow(i as u32)
-                    })
-                })
-                .unwrap_or(0),
-            item.thumbnail.as_deref(),
-        )
-        .await;
+        if !seen.insert(item.video_id.clone()) {
+            continue; // duplicate row — don't count it against anything, it's one song
+        }
+        if crate::downloads::is_downloaded(&state, &item.video_id) {
+            skipped += 1;
+            continue;
+        }
+        candidates.push(crate::downloads::DownloadCandidate {
+            video_id: item.video_id,
+            title: item.title,
+            artists: item.artists,
+            album: item.album,
+            duration: duration_secs(item.duration.as_deref()),
+            thumb: item.thumbnail,
+        });
     }
-    Ok(serde_json::json!({ "ok": true, "total": total, "skipped": skipped }))
+
+    let total = candidates.len() as u32 + skipped;
+    let (completed, failed) = crate::downloads::download_many(
+        &app,
+        &state,
+        &state.orchestrator,
+        candidates,
+    )
+    .await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "total": total,
+        "skipped": skipped,
+        "downloaded": completed as u32,
+        "failed": failed as u32,
+    }))
 }
 
 /// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings
@@ -1014,8 +1063,6 @@ pub async fn delete_download(state: St<'_>, video_id: String) -> Result<(), Stri
 pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
     for d in state.db.list_downloads() {
         let _ = std::fs::remove_file(&d.file_path);
-    }
-    for d in state.db.list_downloads() {
         state.db.delete_download(&d.video_id);
     }
     Ok(())

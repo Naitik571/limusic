@@ -1818,6 +1818,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "h2"
+version = "0.4.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "indexmap 2.14.0",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1942,6 +1961,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
+ "h2",
  "http",
  "http-body",
  "httparse",
@@ -2168,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "innertube"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "hex",
  "reqwest 0.12.28",
@@ -2490,7 +2510,7 @@ dependencies = [
 
 [[package]]
 name = "limusic-app"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2549,7 +2569,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "listen-protocol"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3291,7 +3311,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "player"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "libc",
  "libmpv2",
@@ -3707,6 +3727,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
+ "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -4599,7 +4620,7 @@ dependencies = [
 
 [[package]]
 name = "sync-server"
-version = "0.4.7"
+version = "0.5.0"
 dependencies = [
  "futures-util",
  "listen-protocol",

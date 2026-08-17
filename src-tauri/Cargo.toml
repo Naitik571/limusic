@@ -31,7 +31,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 base64 = "0.22"
 regex = "1"
 urlencoding = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "stream", "http2"] }
 
 innertube = { path = "../crates/innertube" }
 player = { path = "../crates/player" }

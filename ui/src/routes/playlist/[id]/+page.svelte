@@ -23,8 +23,10 @@
 		ArrowDownAZIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
+	import { Search01Icon } from '@hugeicons/core-free-icons';
 	import TrackRow from '$lib/components/TrackRow.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -113,6 +115,25 @@
 	const shown = $derived(sortedItems);
 	const sorting = $derived(sort !== 'default' || desc);
 
+	// ——— Search inside the playlist ———————————————————————————————
+	// Filters the loaded rows by title OR artist (case-insensitive). Client-side and over what's
+	// loaded, exactly like sorting: on a long playlist the search covers what you can see, and
+	// scrolling still loads more. Each result keeps its index into `shown` so play/select map back
+	// to the real row, even with duplicate titles.
+	let search = $state('');
+	const searched = $derived(
+		shown.map((item, idx) => ({ item, idx })).filter(({ item }) => {
+			const q = search.trim().toLowerCase();
+			if (!q) return true;
+			return (
+				item.title.toLowerCase().includes(q) ||
+				(item.artists ?? '').toLowerCase().includes(q) ||
+				(item.album ?? '').toLowerCase().includes(q)
+			);
+		})
+	);
+	const searching = $derived(search.trim().length > 0);
+
 	// A sort has to cover the whole playlist, not the pages scrolled so far, so pull the rest in
 	// before play/queue hand a short list to the queue. Stops on a failed page (`moreError`), on
 	// navigation, and on any walk that made no progress. Answers whether it got the lot.
@@ -160,8 +181,22 @@
 	async function downloadPlaylistHere() {
 		if (!pl) return;
 		toast('Downloading playlist…');
-		api.downloadPlaylist(id)
-			.then((r) => toast.success(`Queued ${r.total} track${r.total === 1 ? '' : 's'} for download`))
+		api
+			.downloadPlaylist(id)
+			.then((r) => {
+				if (r.downloaded === 0 && r.failed === 0)
+					toast.success(`All ${r.skipped} track${r.skipped === 1 ? '' : 's'} already downloaded`);
+				else if (r.failed > 0)
+					toast.error(
+						`Downloaded ${r.downloaded}, ${r.failed} failed${r.skipped ? `, ${r.skipped} already saved` : ''}`
+					);
+				else
+					toast.success(
+						`Downloaded ${r.downloaded} track${r.downloaded === 1 ? '' : 's'}${
+							r.skipped ? ` (${r.skipped} already saved)` : ''
+						}`
+					);
+			})
 			.catch((e) => toast.error(`Download failed: ${e}`));
 	}
 
@@ -887,27 +922,51 @@
 						<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
 					</Button>
 				</div>
+			{:else}
+				<!-- Search inside the playlist: title, artist (and album). Sticky so it stays reachable
+				     on a long list; selecting rows swaps it for the selection toolbar above. -->
+				<div
+					class="sticky top-0 z-10 -mx-4 mb-1 flex items-center gap-2 border-b bg-background/95 px-4 py-2 backdrop-blur"
+				>
+					<HugeiconsIcon icon={Search01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+					<Input
+						bind:value={search}
+						placeholder="Search songs, artists…"
+						class="h-8 flex-1"
+						aria-label="Search this playlist"
+					/>
+					{#if searching}
+						<Button variant="ghost" size="icon" aria-label="Clear search" onclick={() => (search = '')}>
+							<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-muted-foreground" />
+						</Button>
+						<span class="shrink-0 text-xs text-muted-foreground">
+							{searched.length} of {shown.length}
+						</span>
+					{/if}
+				</div>
 			{/if}
-			{#each shown as item, i (item.video_id + i)}
+			{#each searched as { item, idx } (item.video_id + idx)}
 				<!-- The row is interactive by design (select/play/right-click); TrackRow inside
 				     provides the keyboard-accessible controls. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="rounded-lg {selected.has(selKey(item)) ? 'bg-accent/20 ring-1 ring-primary/40' : ''}"
-					onclickcapture={(e) => onRowClickCapture(e, i)}
-					oncontextmenu={(e) => onRowContextMenu(e, i)}
+					onclickcapture={(e) => onRowClickCapture(e, idx)}
+					oncontextmenu={(e) => onRowContextMenu(e, idx)}
 				>
 					<TrackRow
 						song={item}
-						index={i}
+						index={idx}
 						active={item.video_id === nowId}
-						onplay={() => playAll(i)}
+						onplay={() => playAll(idx)}
 						onAdd={() => openAddToPlaylist(item)}
 						onRemove={isLiked || (editable && item.set_video_id) ? () => removeTrack(item) : undefined}
 					/>
 				</div>
 			{:else}
-				<p class="p-4 text-sm text-muted-foreground">This playlist is empty.</p>
+				<p class="p-4 text-sm text-muted-foreground">
+					{searching ? 'No songs match your search.' : 'This playlist is empty.'}
+				</p>
 			{/each}
 			{#if pl.continuation}
 				{#if moreError}

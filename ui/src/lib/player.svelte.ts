@@ -45,10 +45,29 @@ export const dismissDownloads = () => {
 	downloads.items = downloads.items.filter((i) => i.state === 'downloading');
 };
 
+// videoIds currently saved for offline playback — the "already downloaded" indicator on track
+// rows. Seeded from the catalogue at startup, then kept in step by the download events (and the
+// delete/clear paths, which mark back). A Set here (not per-row state) so every list shares it.
+export const downloadedIds = $state<Set<string>>(new Set());
+export function loadDownloadedIds(): Promise<void> {
+	return api
+		.listDownloads()
+		.then((r) => {
+			// Mutate in place: the binding is a const (state proxy), and `.clear()/.add()` on a
+			// `$state` Set is reactive — reassigning the const would not be.
+			downloadedIds.clear();
+			for (const x of r.items) downloadedIds.add(x.video_id);
+		})
+		.catch(() => {});
+}
+export const markDownloaded = (id: string) => downloadedIds.add(id);
+export const markNotDownloaded = (id: string) => downloadedIds.delete(id);
+
 let downloadMonitorStarted = false;
 export function startDownloadMonitor() {
 	if (downloadMonitorStarted || !browser) return;
 	downloadMonitorStarted = true;
+	loadDownloadedIds();
 	api.onDownloadProgress((p: any) => {
 		const id = p.video_id as string;
 		let it = downloads.items.find((x) => x.id === id);
@@ -66,6 +85,7 @@ export function startDownloadMonitor() {
 		const id = p.video_id as string;
 		const it = downloads.items.find((x) => x.id === id);
 		if (it) { it.state = 'done'; it.percent = 100; }
+		downloadedIds.add(id);
 		downloads.active = Math.max(0, downloads.active - 1);
 		downloads.done += 1;
 	});
