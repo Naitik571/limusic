@@ -3,7 +3,7 @@
 // context/11 UI contract — this module only calls commands / subscribes to events.
 import { browser } from '$app/environment';
 import * as api from './api';
-import type { Account, BrowseItem, NowPlaying, QueueState, SongItem } from './api';
+import type { Account, AccountIdentity, BrowseItem, NowPlaying, QueueState, SongItem } from './api';
 import { applyLtState, lt } from './lt.svelte';
 import { clearCached } from './pagecache';
 import * as pl from './personal';
@@ -16,7 +16,6 @@ export const playback = $state({
 	position: 0,
 	duration: 0,
 	volume: 100,
-	error: null as string | null,
 	// Like state for the current track — seeded from the track's real `likeStatus` on each change,
 	// then optimistic on toggle.
 	liked: false
@@ -121,36 +120,60 @@ export const library = $state({
 	extrasError: null as string | null
 });
 
+/** Account switches can happen while a library request is still in flight. A generation lets the
+ * old response finish harmlessly instead of overwriting the newly selected channel's data. */
+let libraryGeneration = 0;
+
+function resetLibraryForAccount() {
+	libraryGeneration++;
+	library.items = [];
+	library.loaded = false;
+	library.loading = false;
+	library.error = null;
+	library.albums = [];
+	library.artists = [];
+	library.extrasLoaded = false;
+	library.extrasLoading = false;
+	library.extrasError = null;
+}
+
 /** Fetch the library once (or force a refresh). No-op while a load is in flight. */
 export async function loadLibrary(force = false) {
 	if (library.loading || (library.loaded && !force)) return;
+	const generation = libraryGeneration;
 	library.loading = true;
 	library.error = null;
 	try {
-		library.items = await api.getLibrary();
+		const items = await api.getLibrary();
+		if (generation !== libraryGeneration) return;
+		library.items = items;
 		library.loaded = true;
 	} catch (e) {
-		library.error = String(e);
+		if (generation === libraryGeneration) library.error = String(e);
 	} finally {
-		library.loading = false;
+		if (generation === libraryGeneration) library.loading = false;
 	}
 }
 
 /** Saved albums + artists, same caching rules as `loadLibrary`. */
 export async function loadLibraryExtras(force = false) {
 	if (library.extrasLoading || (library.extrasLoaded && !force)) return;
+	const generation = libraryGeneration;
 	library.extrasLoading = true;
 	library.extrasError = null;
 	try {
-		[library.albums, library.artists] = await Promise.all([
+		const [albums, artists] = await Promise.all([
 			api.getLibraryAlbums(),
 			api.getLibraryArtists()
 		]);
+		if (generation !== libraryGeneration) return;
+		library.albums = albums;
+		library.artists = artists;
 		library.extrasLoaded = true;
 	} catch (e) {
-		library.extrasError = String(e);
+		if (generation === libraryGeneration) library.extrasError = String(e);
 	} finally {
-		library.extrasLoading = false;
+		if (generation === libraryGeneration) library.extrasLoading = false;
 	}
 }
 
@@ -614,8 +637,17 @@ export const ui = $state({
 	toast: null as Toast | null,
 	settingsOpen: false, // the settings modal
 	settingsTab: '' as string, // when set, the settings modal opens on this tab (consumed on open)
-	ltOpen: false // the Listen Together modal
+	ltOpen: false, // the Listen Together modal
+	channelPickerOpen: false,
+	channelPickerRequired: false, // true while a multi-channel login is not finalized yet
+	channelIdentities: [] as AccountIdentity[]
 });
+
+export function openChannelPicker(required = false) {
+	ui.channelPickerRequired = required;
+	ui.channelIdentities = [];
+	ui.channelPickerOpen = true;
+}
 
 export type Toast = { msg: string; kind: 'info' | 'success' | 'error' };
 
@@ -698,7 +730,6 @@ export function initApp(mini = false): () => void {
 		api.onNowPlaying((n) => {
 			playback.now = n;
 			playback.liked = n.liked ?? false; // reflect the track's real like status when known
-			playback.error = null; // a track started → clear any stale dead-end banner
 			// Feeds Shortcuts recency and the community shelf's artist seed. Every play lands here,
 			// gapless advances included, so it's the one hook that sees them all.
 			pl.touchPick(personal, n.videoId);
@@ -714,7 +745,7 @@ export function initApp(mini = false): () => void {
 			// moved past, and applying it would yank the thumb backwards mid-drag.
 			if (!volTimer) playback.volume = v;
 		}),
-		api.onPlaybackError((msg) => (playback.error = msg)),
+		api.onPlaybackError((msg) => toast.error(msg)),
 		api.onPlaybackNotice((msg) => toast(msg)), // auto-skipped an unplayable track
 		api.onSleepTimerFired(() => {
 			clearSleepTimer();
@@ -723,18 +754,19 @@ export function initApp(mini = false): () => void {
 		api.onLocalChanged(forgetLocal), // a local file turned out to be gone — drop it everywhere
 		api.onAuthChanged((a) => {
 			auth.account = a;
-			if (a.signedIn) {
-				if (!mini) loadLibrary(true);
-			} else {
-				library.items = [];
-				library.loaded = false;
-				library.albums = [];
-				library.artists = [];
-				library.extrasLoaded = false;
+			resetLibraryForAccount();
+			// Signing out doesn't empty the library: On Repeat and anything saved on this machine
+			// are still there, and the backend answers both without touching YouTube.
+			if (!mini) loadLibrary(true);
+			if (!a.signedIn) {
+				ui.channelPickerOpen = false;
+				ui.channelPickerRequired = false;
+				ui.channelIdentities = [];
 			}
 			clearCached();
 			auth.epoch++;
 		}),
+		api.onAccountSelectionRequired(() => openChannelPicker(true)),
 		api.onLoginError((msg) => toast.error(msg)),
 		api.onLoginDone(() => toast.success('Signed in')),
 		// Listen Together (context/19): mirror the Rust session state; surface notices as toasts.
@@ -816,7 +848,24 @@ export function initApp(mini = false): () => void {
 	api.getAccount()
 		.then((a) => {
 			auth.account = a;
-			if (a.signedIn) loadLibrary();
+			if (a.signedIn && a.selectionRequired) {
+				openChannelPicker(true);
+				return;
+			}
+			loadLibrary();
+			if (a.signedIn) {
+				// Only when the stored answer might be the provisional one: databases that predate
+				// `canSwitch` default it to true so the action stays discoverable, and this is what
+				// demotes single-channel users back to no switcher. A stored `false` is already
+				// authoritative, so most launches skip the request entirely.
+				if (a.canSwitch) {
+					api.getAccountIdentities()
+						.then((identities) => {
+							if (auth.account?.signedIn) auth.account.canSwitch = identities.length > 1;
+						})
+						.catch(() => {});
+				}
+			}
 		})
 		.catch(() => {});
 	// Scan the local folders once at startup: it seeds the Library's Local tab and, more to the

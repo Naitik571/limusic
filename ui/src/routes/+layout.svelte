@@ -25,6 +25,7 @@
 	import AddToPlaylist from '$lib/components/AddToPlaylist.svelte';
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
+	import ChannelPicker from '$lib/components/ChannelPicker.svelte';
 	import MiniPlayer from '$lib/components/MiniPlayer.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -119,8 +120,9 @@
 	<AddToPlaylist />
 	<SettingsDialog />
 	<ListenTogether />
+	<ChannelPicker />
 
-	<!-- The three notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
+	<!-- The two notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
 	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. -->
 	{#if updateState.available}
 		<div
@@ -160,20 +162,6 @@
 				/>
 			{/if}
 			{t.msg}
-		</div>
-	{/if}
-
-	{#if playback.error}
-		<div
-			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-xl border border-destructive/40 glass-strong px-4 py-2 text-sm text-destructive shadow-2xl"
-		>
-			<span>{playback.error}</span>
-			<button
-				class="text-muted-foreground hover:text-foreground"
-				aria-label="Dismiss"
-				onclick={() => (playback.error = null)}>✕</button
-			>
 		</div>
 	{/if}
 {/if}

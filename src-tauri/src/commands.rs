@@ -350,6 +350,19 @@ pub async fn get_account(state: St<'_>) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+pub async fn get_account_identities(state: St<'_>) -> Result<Vec<serde_json::Value>, String> {
+    state.account_identities().await
+}
+
+#[tauri::command]
+pub async fn switch_account(
+    state: St<'_>,
+    selection_key: String,
+) -> Result<serde_json::Value, String> {
+    state.switch_account(&selection_key).await
+}
+
+#[tauri::command]
 pub async fn sign_out(state: St<'_>) -> Result<(), String> {
     let state = state.inner().clone();
     state.sign_out().await;
