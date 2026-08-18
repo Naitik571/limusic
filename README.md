@@ -51,7 +51,7 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-A growing set of changes on top of upstream, all merged into `master`.
+A growing set of changes on top of upstream, all available in the latest release.
 
 **Earlier rounds (base upstream `v0.3.12`):**
 
@@ -162,6 +162,57 @@ startup, and a play/pause flash:
   extendable component. Collapsed it's a slim bar (art + title + transport); expanded it
   grows into a full floating widget (big art, queue peek, like, volume). An in-component
   expand toggle resizes the window live.
+
+**The v0.4.3–v0.4.4 round** — playlist sorter, faster downloads, Megalobiz lyrics, one mini player:
+
+- **Playlist sorting** — the playlist page can sort its tracks by Title, Artist, Album,
+  Newest, Oldest or Plays, with a default that keeps the playlist's own order (and an album
+  sort that still plays a whole album in track order). The sort applies to what's loaded
+  and is stable as more pages load.
+- **Downloads that don't crawl** — download stream URLs get `ratebypass=yes` appended safely
+  (googlevideo URLs only, never touching a signed URL's existing params), which defeats
+  YouTube's ~50–200 KB/s stream throttle; the HTTP client is tuned for pooled connections
+  and progress events are throttled so the UI stays smooth. Downloaded files are named
+  `Title - Artist` from the track's real metadata instead of the uploader's channel.
+- **Megalobiz synced lyrics** — one more fallback for timed lyrics, after LRCLIB and YouTube
+  Music's own source.
+- **One mini player** — the separate floating player was removed and merged into the single
+  extendable mini player component, so there's exactly one collapse/expand surface instead of
+  two overlapping widgets.
+
+**The v0.4.7 round** — YouTube channel switcher and artist polish:
+
+- **Channel switcher** — an account with several YouTube channels can pick which one requests
+  act as (for real library/playlist data and recommendations) right from the title bar. A
+  multi-channel sign-in pauses for you to choose instead of silently defaulting to Google's
+  pick, and the choice survives restarts.
+- **Artist monthly listeners** — the artist page now shows monthly listeners alongside
+  subscribers.
+- **Top songs "show all"** — an artist's top songs open into the full playlist page instead of
+  being stuck at the preview count.
+
+**The v0.5.0 round** — parallel downloads, download indicators, playlist search, and themes
+with real personality:
+
+- **Parallel playlist downloads** — downloading a playlist now walks every page, skips songs
+  that are already on disk, and pulls the rest four at a time, with a summary of how many were
+  downloaded, skipped and failed.
+- **Download indicators** — songs you've downloaded show a persistent indicator in their rows,
+  and it stays in sync as downloads complete or files are removed.
+- **Faster single-track downloads** — the download client now speaks HTTP/2, which lifts
+  per-file speeds on hosts that support it.
+- **Playlist search bar** — filter the loaded tracks by song, artist or album as you scroll;
+  selecting and playing from a filtered view works exactly like the full list.
+- **Lyrics polish** — the active synced line reads as the focal point (gradient + a soft
+  primary glow, or a scale-up on karaoke lines), past lines recede into the background, and
+  plain un-timed lyrics got cleaner typography.
+- **Themes with personalities** — five new palette themes that don't just change colours:
+  **Pixel** (Press Start 2P type, CRT scanlines, dashed focus rings), **Arcade** (Bungee +
+  Rubik, dual glow, chunky focus rings), **Synthwave** (Orbitron with a neon glow, retro
+  grid + sunset wash), **Gruvbox** (JetBrains Mono display, warm wash, terminal selection)
+  and **Nord** (IBM Plex display, icy wash, hairline rings). Each brings its own fonts,
+  background treatment, focus ring and selection colour — and all six new font families are
+  also available in the Fonts pickers for any theme.
 
 ---
 
