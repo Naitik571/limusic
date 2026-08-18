@@ -60,6 +60,12 @@ export const FONTS: { label: string; value: string }[] = [
 	{ label: 'Montserrat', value: "'Montserrat Variable', sans-serif" },
 	{ label: 'Outfit', value: "'Outfit Variable', sans-serif" },
 	{ label: 'DM Sans', value: "'DM Sans Variable', sans-serif" },
+	{ label: 'Rubik', value: "'Rubik Variable', sans-serif" },
+	{ label: 'Orbitron', value: "'Orbitron Variable', sans-serif" },
+	{ label: 'JetBrains Mono', value: "'JetBrains Mono Variable', sans-serif" },
+	{ label: 'Space Grotesk', value: "'Space Grotesk Variable', sans-serif" },
+	{ label: 'Bungee', value: "'Bungee', sans-serif" },
+	{ label: 'Press Start 2P', value: "'Press Start 2P', sans-serif" },
 	{ label: 'System', value: 'ui-sans-serif, system-ui, sans-serif' }
 ];
 
