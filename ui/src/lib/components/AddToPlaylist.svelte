@@ -38,34 +38,53 @@
 		if (!songs?.length) return;
 		try {
 			// Sequential — a whole album is a handful of requests; don't hammer the API in parallel.
-			for (const song of songs) await api.addToPlaylist(pl.id, song.video_id);
-			bumpLibraryTrackCount(pl.id, songs.length);
+			// YouTube refuses a track the playlist already holds, so only the ones it accepted get
+			// counted and drawn: an optimistic row for a refused add is a row that can never be
+			// removed (no setVideoId behind it) until the app restarts.
+			const added: typeof songs = [];
+			for (const song of songs) {
+				if (await api.addToPlaylist(pl.id, song.video_id)) added.push(song);
+			}
+			const dupes = songs.length - added.length;
+			bumpLibraryTrackCount(pl.id, added.length);
 			// A move: the same songs leave the source playlist. Rows without a set_video_id can't
 			// be removed individually — those stay (they're usually just-optimistic adds).
 			if (from) {
 				let removed = 0;
-				for (const song of songs) {
+				for (const song of added) {
 					if (!song.set_video_id) continue;
 					await api.removeFromPlaylist(from, song.video_id, song.set_video_id);
 					removed++;
 				}
 				if (removed) {
 					bumpLibraryTrackCount(from, -removed);
-					notePlaylistMove(from, songs);
+					notePlaylistMove(from, added);
 					toast.success(
 						removed > 1 ? `Moved ${removed} songs to ${pl.title}` : `Moved to ${pl.title}`
 					);
 				} else {
-					notePlaylistAdd(pl.id, songs);
-					toast.success(
-						songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`
-					);
+					notePlaylistAdd(pl.id, added);
+					if (!added.length) {
+						toast(dupes > 1 ? `All ${dupes} are already in ${pl.title}` : `Already in ${pl.title}`);
+					} else if (dupes) {
+						toast.success(`Added ${added.length} to ${pl.title} (${dupes} already there)`);
+					} else {
+						toast.success(
+							added.length > 1 ? `Added ${added.length} songs to ${pl.title}` : `Added to ${pl.title}`
+						);
+					}
 				}
 			} else {
-				notePlaylistAdd(pl.id, songs);
-				toast.success(
-					songs.length > 1 ? `Added ${songs.length} songs to ${pl.title}` : `Added to ${pl.title}`
-				);
+				notePlaylistAdd(pl.id, added);
+				if (!added.length) {
+					toast(dupes > 1 ? `All ${dupes} are already in ${pl.title}` : `Already in ${pl.title}`);
+				} else if (dupes) {
+					toast.success(`Added ${added.length} to ${pl.title} (${dupes} already there)`);
+				} else {
+					toast.success(
+						added.length > 1 ? `Added ${added.length} songs to ${pl.title}` : `Added to ${pl.title}`
+					);
+				}
 			}
 		} catch (e) {
 			toast.error(String(e));
