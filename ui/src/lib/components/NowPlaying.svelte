@@ -20,6 +20,16 @@
 	import QueueList from './QueueList.svelte';
 	import LyricsView from './LyricsView.svelte';
 
+	// Off in settings, this view drops its tabs and the queue/lyrics panels stay in charge of both
+	// (see +layout): they paint above this (z-30 over z-20), so all this needs is to hand back the
+	// width they take at lg+ instead of letting them cover a third of the artwork. Below lg they're
+	// a scrimmed overlay and there's nothing to shrink into. In tabbed mode both are always closed.
+	let { queueOpen, lyricsOpen }: { queueOpen: boolean; lyricsOpen: boolean } = $props();
+	const tabbed = $derived(appearance.tabbedPlayer);
+	// ponytail: mirrors QueuePanel / LyricsPanel's w-80, keep in sync if those change.
+	const panels = $derived(Number(queueOpen) + Number(lyricsOpen));
+	const inset = $derived(['', 'lg:right-80', 'lg:right-[40rem]'][panels]);
+
 	// Going somewhere means the user wants that page, not this one: minimise. The player bar brings
 	// it back. beforeNavigate (not a pathname effect) so clicking the tab you're already on counts.
 	beforeNavigate(() => (np.open = false));
@@ -117,7 +127,7 @@
      ponytail: left offsets mirror Sidebar's w-16/lg:w-60 — keep in sync if those change. -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
-	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10"
+	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10 {inset}"
 >
 	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
 	     needs no colour extraction (which a remote image would taint the canvas for anyway). The
@@ -147,8 +157,11 @@
 	>
 		{#if !big}
 			<!-- Centred against the full height of the column on the right. Below md there isn't room
-			     for both columns, and the queue wins. -->
-			<div class="hidden min-w-0 flex-1 items-center justify-center md:flex">
+			     for both columns, and the queue wins. Untabbed there is no second column, so the
+			     artwork is the whole view at every width. -->
+			<div
+				class="min-w-0 flex-1 items-center justify-center {tabbed ? 'hidden md:flex' : 'flex'}"
+			>
 				<button
 					type="button"
 					class="relative block w-full max-w-[var(--art)] cursor-pointer rounded-2xl bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -206,8 +219,9 @@
 			</div>
 		{/if}
 
-		<div class="flex min-h-0 flex-col {big ? 'flex-1' : 'w-full md:w-[22rem] xl:w-[26rem]'}">
-			<Tabs.Root
+		{#if tabbed}
+			<div class="flex min-h-0 flex-col {big ? 'flex-1' : 'w-full md:w-[22rem] xl:w-[26rem]'}">
+				<Tabs.Root
 				value={np.tab}
 				onValueChange={(v) => (np.tab = v as typeof np.tab)}
 				class="min-h-0 flex-1"
@@ -250,6 +264,7 @@
 					</Tabs.Content>
 				{/if}
 			</Tabs.Root>
-		</div>
+			</div>
+		{/if}
 	</div>
 </div>

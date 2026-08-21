@@ -6,7 +6,7 @@
 	import { UserCircleIcon, Logout01Icon, ArrowDown01Icon } from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import * as api from '$lib/api';
-	import { auth } from '$lib/player.svelte';
+	import { auth, openChannelPicker } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
 
 	let menuOpen = $state(false);
@@ -32,6 +32,11 @@
 		api.loginWebview(); // native sign-in window takes over; result arrives via auth-changed
 		menuOpen = false;
 	}
+
+	function switchChannel() {
+		menuOpen = false;
+		openChannelPicker();
+	}
 </script>
 
 <button
@@ -40,12 +45,12 @@
 	aria-expanded={menuOpen}
 	class="flex h-full cursor-pointer items-center gap-2 px-2.5 text-xs transition-colors hover:bg-muted aria-expanded:bg-muted"
 >
-	{#if auth.account?.signedIn && auth.account.thumb}
+	{#if auth.account?.signedIn && auth.account.thumbnail}
 		<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
 		     clamps width to the content-box while height stays fixed → a vertical oval. Inline so it's
 		     immune to Preflight and to stale dev CSS. -->
 		<img
-			src={thumb(auth.account.thumb, 64)}
+			src={thumb(auth.account.thumbnail, 64)}
 			alt=""
 			style="width:1.25rem;height:1.25rem;max-width:none"
 			class="shrink-0 rounded-full object-cover ring-1 ring-border"
@@ -77,10 +82,19 @@
 		{#if auth.account?.signedIn}
 			<div class="mb-3">
 				<div class="truncate text-sm font-medium">{auth.account.name ?? 'Account'}</div>
-				{#if auth.account.handle}
-					<div class="truncate text-xs text-muted-foreground">{auth.account.handle}</div>
+				{#if auth.account.handle || auth.account.email}
+					<div class="truncate text-xs text-muted-foreground">
+						{auth.account.handle ?? auth.account.email}
+					</div>
 				{/if}
 			</div>
+			<!-- Always offered, never gated on a stored "you have one channel": that answer comes from
+			     a single accounts_list call at sign-in, and when it fails the switcher used to vanish
+			     for good. The picker fetches the list live and shows its own error. -->
+			<Button variant="outline" size="sm" class="mb-2 w-full gap-2" onclick={switchChannel}>
+				<HugeiconsIcon icon={UserCircleIcon} class="h-4 w-4" />
+				Switch channel
+			</Button>
 			<Button variant="outline" size="sm" class="w-full gap-2" onclick={doSignOut}>
 				<HugeiconsIcon icon={Logout01Icon} class="h-4 w-4" />
 				Sign out

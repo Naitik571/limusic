@@ -24,7 +24,7 @@
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
 	import { anchorMenu, toBody } from '$lib/menu';
-	import { addPick, enqueue, isLiked, startRadio, toggleLike } from '$lib/player.svelte';
+	import { addPick, enqueue, isLiked, startRadio, toggleLike, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -52,16 +52,10 @@
 	let my = $state(0);
 	let openUp = $state(false);
 
-	let downloaded = $state(false);
 	function openMenu(e: MouseEvent) {
 		e.stopPropagation();
 		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement));
 		menuOpen = true;
-		if (!api.isLocalId(song.video_id)) {
-			api.listDownloads().then((list) => (downloaded = list.some((x) => x.video_id === song.video_id))).catch(() => {});
-		} else {
-			downloaded = false;
-		}
 	}
 	// stopPropagation everywhere: the trigger sits inside a clickable row (TrackRow's whole row is a
 	// play target), so its click must not reach the row's onplay (e.g. replacing the queue with the
@@ -81,6 +75,9 @@
 	// A local file has no YouTube identity: liking it or putting it in a YTM playlist is not a
 	// thing, so those items don't show. Queue, shortcuts and go-to-album work normally.
 	const isLocal = $derived(api.isLocalId(song.video_id));
+	// Shared with every other row: downloading here, in a playlist bulk download, or in Settings
+	// flips this instantly (and deleting anywhere clears it).
+	const downloaded = $derived(downloadedIds.has(song.video_id));
 </script>
 
 <button class="{triggerClass} {menuOpen ? 'opacity-100' : ''}" onclick={openMenu} aria-label="Track options">
@@ -180,7 +177,7 @@
 					: 'hover:bg-accent/10'}"
 				onclick={(e) =>
 					run(e, () => {
-						if (downloaded) api.deleteDownload(song.video_id).then(() => (downloaded = false));
+						if (downloaded) api.deleteDownload(song.video_id).then(() => markNotDownloaded(song.video_id));
 						else
 							api
 								.downloadTrack({
@@ -191,7 +188,7 @@
 									duration: Number(song.duration ?? 0),
 									thumb: song.thumbnail
 								})
-									.then(() => (downloaded = true))
+									.then(() => markDownloaded(song.video_id))
 									.catch((err) => toast.error(`Download failed: ${err}`));
 					})}
 				>

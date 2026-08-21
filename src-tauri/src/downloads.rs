@@ -78,7 +78,9 @@ fn sanitize_filename(name: &str) -> String {
         .collect()
 }
 
-// Static client pool to reuse connections (massive speedup on multi-track downloads).
+// Static client pool to reuse connections (massive speedup on multi-track downloads). HTTP/2 is
+// on because googlevideo serves it and the multiplexing + adaptive window measurably beats HTTP/1.1
+// on a single large stream; connection reuse across the batch keeps the resolver warm.
 static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
 fn client() -> &'static reqwest::Client {
@@ -86,6 +88,7 @@ fn client() -> &'static reqwest::Client {
         reqwest::Client::builder()
             .tcp_nodelay(true)
             .pool_max_idle_per_host(8)
+            .http2_adaptive_window(true)
             .build()
             .expect("reqwest client build")
     })
@@ -314,4 +317,76 @@ pub fn delete_track(db: &Db, video_id: &str) -> Result<(), String> {
     }
     db.delete_download(video_id);
     Ok(())
+}
+
+/// Everything `download_track` needs to know about one track, pre-assembled by the batch caller
+/// (the playlist/album page walker in commands.rs) so a multi-track download stays readable.
+pub struct DownloadCandidate {
+    pub video_id: String,
+    pub title: String,
+    pub artists: String,
+    pub album: Option<String>,
+    pub duration: i64,
+    pub thumb: Option<String>,
+}
+
+/// How many tracks pull at once when the user downloads a whole playlist/album. Four parallel
+/// streams keeps a long playlist moving without hammering YouTube, the connection pool, or the
+/// disk; more than that barely helps (the bottleneck is the shared pipe, not our client).
+pub const DOWNLOAD_CONCURRENCY: usize = 4;
+
+/// True when the track is already saved — the playlist walker uses it to count "skipped" before
+/// the worker tasks start, and `download_track` re-checks it so a duplicate sneaking in past the
+/// dedupe is still a no-op.
+pub fn is_downloaded(state: &AppState, video_id: &str) -> bool {
+    state.db.download_path(video_id).is_some()
+}
+
+/// Download a batch of tracks with at most [`DOWNLOAD_CONCURRENCY`] streams in flight at once.
+/// Already-downloaded tracks are skipped (the caller counts them; this also re-checks), each
+/// success/error still rides the usual `download-*` events, and the whole batch resolves even if
+/// individual tracks fail. Returns `(completed, failed)`.
+pub async fn download_many(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    orchestrator: &Arc<Orchestrator>,
+    candidates: Vec<DownloadCandidate>,
+) -> (usize, usize) {
+    // Acquire before spawn: the loop only starts a new task once a permit frees, so at most
+    // DOWNLOAD_CONCURRENCY tasks ever exist (no pile of idle tasks on a 1000-track playlist).
+    let sem = Arc::new(tokio::sync::Semaphore::new(DOWNLOAD_CONCURRENCY));
+    let mut handles = Vec::with_capacity(candidates.len());
+    for c in candidates {
+        let permit = match sem.clone().acquire_owned().await {
+            Ok(p) => p,
+            Err(_) => break, // semaphore dropped — never happens, but don't spin
+        };
+        let app = app.clone();
+        let state = state.clone();
+        let orchestrator = orchestrator.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = permit; // held for the whole download
+            download_track(
+                &app,
+                &state,
+                &orchestrator,
+                &c.video_id,
+                &c.title,
+                &c.artists,
+                c.album.as_deref(),
+                c.duration,
+                c.thumb.as_deref(),
+            )
+            .await
+        }));
+    }
+    let mut completed = 0usize;
+    let mut failed = 0usize;
+    for handle in handles {
+        match handle.await {
+            Ok(Ok(())) => completed += 1,
+            _ => failed += 1,
+        }
+    }
+    (completed, failed)
 }

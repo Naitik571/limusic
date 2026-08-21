@@ -26,6 +26,12 @@ pub enum Error {
     VisitorDataNotFound,
     #[error("Your YouTube Music session expired — open the account menu and sign in again.")]
     SessionExpired,
+    #[error("This track is already in the playlist.")]
+    AlreadyInPlaylist,
+    #[error(
+        "YouTube Music only allows custom playlist art on accounts with a verified phone number."
+    )]
+    CoverRefused,
     #[error("{0}")]
     Other(String),
 }
@@ -123,6 +129,10 @@ impl InnerTube {
         self.session.write().unwrap().data_sync_id = id;
     }
 
+    pub fn data_sync_id(&self) -> Option<String> {
+        self.session.read().unwrap().data_sync_id.clone()
+    }
+
     pub fn set_visitor_data(&self, vd: Option<String>) {
         self.session.write().unwrap().visitor_data = vd;
     }
@@ -132,6 +142,19 @@ impl InnerTube {
     pub(crate) fn context_for(&self, client: &YouTubeClient) -> crate::models::context::Context {
         let s = self.session.read().unwrap();
         client.to_context(&s.locale, s.visitor_data.as_deref(), s.data_sync_id.as_deref())
+    }
+
+    /// Build a one-off authenticated context for identity validation without changing the shared
+    /// session seen by concurrent browse/playback requests. The caller commits the id only after
+    /// the validation response succeeds.
+    pub(crate) fn context_for_identity(
+        &self,
+        client: &YouTubeClient,
+        data_sync_id: &str,
+    ) -> crate::models::context::Context {
+        let s = self.session.read().unwrap();
+        let dsid = s.cookie.as_ref().map(|_| data_sync_id);
+        client.to_context(&s.locale, s.visitor_data.as_deref(), dsid)
     }
 
     /// POST a JSON body to an InnerTube endpoint with this client's headers, retrying
@@ -172,6 +195,44 @@ impl InnerTube {
                 Err(e) => return Err(e.into()),
             }
         }
+    }
+
+    /// POST raw bytes to a path on the same origin that is *not* under `/youtubei`, with this
+    /// client's headers plus `extra`, and hand back the response headers along with the body.
+    ///
+    /// Google's resumable uploader ("Scotty") lives on its own path and answers the first step in
+    /// a header, so neither `post`'s URL shape nor its JSON-only return works here. The
+    /// `content-type: application/json` the client headers carry stays put even when the body is
+    /// an image: the uploader ignores it, and that is the shape known to work.
+    pub(crate) async fn post_upload(
+        &self,
+        path: &str,
+        client: &YouTubeClient,
+        extra: &[(&'static str, String)],
+        body: Vec<u8>,
+    ) -> Result<(HeaderMap, Vec<u8>), Error> {
+        let mut headers = self.headers(client, true);
+        for (name, value) in extra {
+            if let Ok(v) = HeaderValue::from_str(value) {
+                headers.insert(HeaderName::from_static(name), v);
+            }
+        }
+        // Explicitly, from the body we are about to send: reqwest omits `content-length` entirely
+        // when the body is empty, and the uploader answers the empty "start" call with a bare
+        // 411 Length Required. Sending it ourselves costs nothing on the calls that carry bytes.
+        if let Ok(v) = HeaderValue::from_str(&body.len().to_string()) {
+            headers.insert(reqwest::header::CONTENT_LENGTH, v);
+        }
+        let resp = self
+            .http
+            .post(format!("{ORIGIN}/{path}"))
+            .headers(headers)
+            .body(body)
+            .send()
+            .await?
+            .error_for_status()?;
+        let headers = resp.headers().clone();
+        Ok((headers, resp.bytes().await?.to_vec()))
     }
 
     /// Per-request headers. context/01 §ytClient. Note `X-YouTube-Client-Name` carries the
@@ -378,5 +439,23 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.sapisid().as_deref(), Some("secret123"));
+    }
+
+    #[test]
+    fn identity_validation_context_does_not_mutate_the_committed_session() {
+        let clients = crate::clients::Clients::bundled();
+        let web = clients.get(crate::clients::METADATA_CLIENT).unwrap();
+        let session = Session {
+            cookie: Some("SAPISID=secret".into()),
+            data_sync_id: Some("committed-id".into()),
+            ..Default::default()
+        };
+        let it = InnerTube::new(session, None).unwrap();
+
+        assert_eq!(
+            it.context_for_identity(web, "candidate-id").user.on_behalf_of_user.as_deref(),
+            Some("candidate-id")
+        );
+        assert_eq!(it.context_for(web).user.on_behalf_of_user.as_deref(), Some("committed-id"));
     }
 }

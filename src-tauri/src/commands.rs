@@ -350,6 +350,19 @@ pub async fn get_account(state: St<'_>) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+pub async fn get_account_identities(state: St<'_>) -> Result<Vec<serde_json::Value>, String> {
+    state.account_identities().await
+}
+
+#[tauri::command]
+pub async fn switch_account(
+    state: St<'_>,
+    selection_key: String,
+) -> Result<serde_json::Value, String> {
+    state.switch_account(&selection_key).await
+}
+
+#[tauri::command]
 pub async fn sign_out(state: St<'_>) -> Result<(), String> {
     let state = state.inner().clone();
     state.sign_out().await;
@@ -438,6 +451,12 @@ pub async fn get_library(state: St<'_>) -> Result<Vec<BrowseItem>, String> {
             },
         );
     }
+    // A card has nowhere to put two images, so a custom cover simply is the artwork here.
+    for item in &mut items {
+        if let Some(cover) = custom_cover(&state, &item.id) {
+            item.thumbnail = Some(cover);
+        }
+    }
     Ok(items)
 }
 
@@ -475,13 +494,19 @@ pub async fn get_playlist(state: St<'_>, id: String) -> Result<PlaylistPage, Str
             title: Some("On Repeat".into()),
             subtitle: Some(format!("{} songs you've played most this month", items.len())),
             thumbnail: None,
+            description: None,
+            privacy: None,
+            cover: None,
             items,
             continuation: None,
             owned: false, // nothing to rename or delete; it rebuilds itself from what you play
         });
     }
     let client = metadata_client(&state)?;
-    state.it.playlist(client, &id).await.map_err(|e| e.to_string())
+    let mut page = state.it.playlist(client, &id).await.map_err(|e| e.to_string())?;
+    // Alongside YouTube's own thumbnail, not over it: the dialog offers to drop the custom one.
+    page.cover = custom_cover(&state, &id);
+    Ok(page)
 }
 
 /// The On Repeat track list: most-played first, over the trailing window. Rows whose stored JSON
@@ -672,7 +697,7 @@ pub async fn add_to_playlist(
     state: St<'_>,
     playlist_id: String,
     video_id: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let client = editable_playlist(&state, &playlist_id)?;
     state.it.playlist_add(client, &playlist_id, &video_id).await.map_err(|e| e.to_string())
 }
@@ -698,10 +723,204 @@ pub async fn create_playlist(state: St<'_>, title: String) -> Result<String, Str
     state.it.create_playlist(client, &title).await.map_err(|e| e.to_string())
 }
 
+/// Edit a playlist you own, from the "Edit playlist" dialog: name, description, visibility.
+///
+/// Each field is `None` when the user left it alone, and only what changed is sent: an edit of
+/// the name must not blank a description we failed to read back off the page.
 #[tauri::command]
-pub async fn rename_playlist(state: St<'_>, playlist_id: String, name: String) -> Result<(), String> {
+pub async fn edit_playlist_details(
+    state: St<'_>,
+    playlist_id: String,
+    name: Option<String>,
+    description: Option<String>,
+    public: Option<bool>,
+) -> Result<(), String> {
     let client = editable_playlist(&state, &playlist_id)?;
-    state.it.playlist_rename(client, &playlist_id, &name).await.map_err(|e| e.to_string())
+    // The switch is two-state; YouTube's third value (UNLISTED) is only ever left as it was.
+    let privacy = public.map(|p| if p { "PUBLIC" } else { "PRIVATE" });
+    state
+        .it
+        .playlist_edit_details(
+            client,
+            &playlist_id,
+            name.as_deref(),
+            description.as_deref(),
+            privacy,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Custom playlist artwork, in both places it lives.
+///
+/// Setting one is local-first: the picked image is copied in beside the local-music covers and
+/// answered straight back, then pushed to YouTube Music in the background (`sync_cover`), because
+/// the upload is three round trips and nobody should watch a spinner for their own file.
+///
+/// Dropping one waits, and that is deliberate. Once a cover has been up there, YouTube's own
+/// thumbnail *is* that cover, so a local-first removal would fall back to the very image being
+/// removed and only reach the rebuilt collage a beat later: two swaps, the first of them pointless.
+/// The clear is a single small call, so it answers with the thumbnail YouTube rebuilt and the UI
+/// changes once.
+#[tauri::command]
+pub async fn set_playlist_cover(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    playlist_id: String,
+    path: Option<String>,
+) -> Result<CoverResult, String> {
+    use tauri::Manager;
+    // What YouTube's uploader will take. WebP is not on the list: it answers 415 for one, and a
+    // cover that only works on this machine is worse than one the picker never offered.
+    const IMAGE_EXTS: [&str; 3] = ["jpg", "jpeg", "png"];
+
+    let key = cover_key(&playlist_id);
+    let stored = state.db.get_setting(&key);
+    let Some(src) = path else {
+        // YouTube first, so the local copy is still on screen while it answers. Its refusal is
+        // never fatal though: dropping the cover from this machine is what the user clicked, and
+        // an account that was not allowed to set one up there has nothing to clear anyway.
+        let thumbnail = match clear_cover_on_youtube(&state, &playlist_id).await {
+            Ok(t) => {
+                state.db.delete_setting(&synced_key(&playlist_id));
+                t
+            }
+            Err(e) => {
+                tracing::warn!(playlist_id, error = %e, "custom cover not cleared on YouTube Music");
+                // Only worth saying when a cover of ours actually reached the account: otherwise
+                // there was nothing up there to keep, and the warning would be a lie.
+                if state.db.get_setting(&synced_key(&playlist_id)).is_some() {
+                    let _ = state.app.emit(
+                        "cover-error",
+                        serde_json::json!({
+                            "message": "Removed here, but YouTube Music kept its copy.",
+                        }),
+                    );
+                }
+                None
+            }
+        };
+        state.db.delete_setting(&key);
+        if let Some(old) = stored {
+            let _ = std::fs::remove_file(old);
+        }
+        return Ok(CoverResult { cover: None, thumbnail });
+    };
+    let src = std::path::Path::new(&src);
+    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    if !IMAGE_EXTS.contains(&ext.as_str()) {
+        return Err("Pick a JPEG or PNG image: YouTube Music won't take anything else.".into());
+    }
+    // ponytail: a flat size cap instead of downscaling. It keeps a 40px sidebar thumb from
+    // decoding a camera raw in the webview and the upload from swallowing one; reach for the
+    // `image` crate and a real resize only if 8 MB turns out to bother anyone.
+    const MAX_BYTES: u64 = 8 * 1024 * 1024;
+    if src.metadata().map(|m| m.len()).unwrap_or(0) > MAX_BYTES {
+        return Err("That image is over 8 MB. Pick a smaller one.".into());
+    }
+    let dir = crate::local::covers_dir(&app).join("playlists");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Timestamped, so replacing a cover can't be served out of the webview's cache under the name
+    // it already has. The id is filtered to filename characters rather than trusted: it arrives
+    // from the UI, and a `..` in it would write outside this directory.
+    let stem: String = playlist_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    let dest = dir.join(format!("{stem}-{}.{ext}", crate::db::now_secs()));
+    std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
+    // Only now is the cover it replaces safe to unlink. Dropping it any earlier means a picked
+    // file this command goes on to refuse (wrong format, too big, unreadable) takes the artwork
+    // already on screen down with it, and the toast talks about the new file while the old one is
+    // the thing that just disappeared.
+    if let Some(old) = stored {
+        let _ = std::fs::remove_file(old);
+    }
+    let dest = dest.to_string_lossy().to_string();
+    // The covers directory is allowed recursively at startup, but the first cover on a fresh
+    // install is written after that ran, so name this file explicitly too.
+    let _ = app.asset_protocol_scope().allow_file(&dest);
+    state.db.set_setting(&key, &dest);
+    sync_cover(&state, &playlist_id, dest.clone());
+    Ok(CoverResult { cover: Some(dest), thumbnail: None })
+}
+
+/// What the UI needs to draw after a cover changed: where the local copy is, and (on a removal)
+/// the thumbnail YouTube rebuilt in its place.
+#[derive(serde::Serialize)]
+pub struct CoverResult {
+    cover: Option<String>,
+    thumbnail: Option<String>,
+}
+
+/// Send the cover on to YouTube Music behind the picker's back: the local copy is already on
+/// screen, and the upload is a three-call round trip nobody should wait through.
+///
+/// A failure is a toast, not a rollback: the artwork is still right here, and it is still this
+/// playlist's cover on this machine. Signed out (or On Repeat, which YouTube has never heard of),
+/// there is nothing to sync and local is all there ever was.
+fn sync_cover(state: &Arc<AppState>, playlist_id: &str, path: String) {
+    if playlist_id == ON_REPEAT_ID || !state.it.is_logged_in() {
+        return;
+    }
+    let state = Arc::clone(state);
+    let playlist_id = playlist_id.to_owned();
+    tauri::async_runtime::spawn(async move {
+        let Some(client) = state.clients.get(innertube::METADATA_CLIENT) else {
+            return;
+        };
+        // Read here, not on the command's thread: the file was just written and the caller has its
+        // answer already.
+        let result = match std::fs::read(&path) {
+            Ok(image) => state.it.playlist_set_cover(client, &playlist_id, image).await,
+            Err(e) => Err(innertube::Error::Other(e.to_string())),
+        };
+        match result {
+            // Remembered so a later removal knows whether YouTube has anything of ours to drop.
+            Ok(()) => state.db.set_setting(&synced_key(&playlist_id), "1"),
+            Err(e) => {
+                tracing::warn!(playlist_id, error = %e, "playlist cover didn't reach YouTube Music");
+                let message = match e {
+                    // The one refusal with a known cause and no fix inside this app. Say it once,
+                    // plainly, and leave the cover where it already is: on this machine.
+                    innertube::Error::CoverRefused => format!("Artwork saved on this device. {e}"),
+                    e => format!("Artwork saved here, but the upload to YouTube Music failed: {e}"),
+                };
+                let _ = state.app.emit("cover-error", serde_json::json!({ "message": message }));
+            }
+        }
+    });
+}
+
+/// Drop the custom thumbnail from the account, answering the one YouTube rebuilt from the tracks.
+/// Nothing to do (and nothing to answer with) when there is no account behind the playlist.
+async fn clear_cover_on_youtube(
+    state: &Arc<AppState>,
+    playlist_id: &str,
+) -> Result<Option<String>, String> {
+    if playlist_id == ON_REPEAT_ID || !state.it.is_logged_in() {
+        return Ok(None);
+    }
+    let client = metadata_client(state)?;
+    state.it.playlist_clear_cover(client, playlist_id).await.map_err(|e| e.to_string())
+}
+
+fn cover_key(playlist_id: &str) -> String {
+    // Browse ids arrive `VL`-prefixed and playlist ids don't; one playlist, one key either way.
+    format!("playlist_cover:{}", playlist_id.strip_prefix("VL").unwrap_or(playlist_id))
+}
+
+/// Set once a cover of ours has actually landed on the account, so a removal knows whether there
+/// is anything up there to warn about failing to clear.
+fn synced_key(playlist_id: &str) -> String {
+    format!("{}:synced", cover_key(playlist_id))
+}
+
+/// The custom artwork stored for a playlist, if the file is still there. The user owns that
+/// directory and can empty it, and a dead path renders as a broken image.
+fn custom_cover(state: &Arc<AppState>, playlist_id: &str) -> Option<String> {
+    let path = state.db.get_setting(&cover_key(playlist_id))?;
+    std::path::Path::new(&path).is_file().then_some(path)
 }
 
 #[tauri::command]
@@ -922,9 +1141,24 @@ pub async fn download_track(
     .await
 }
 
-/// Download every (non-local) track in a playlist or album. Fetches the page, then enqueues a
-/// download for each item the resolver can reach — already-downloaded tracks are skipped by
-/// `download_track` itself. Reports `{ ok, total, skipped }` so the UI can toast a summary.
+/// Parse a `"m:ss"` / `"h:mm:ss"` duration string into seconds (0 if absent/unparseable).
+fn duration_secs(s: Option<&str>) -> i64 {
+    let Some(s) = s else { return 0 };
+    let parts: Vec<i64> = s.split(':').filter_map(|p| p.trim().parse().ok()).collect();
+    match parts.as_slice() {
+        [secs] => *secs,
+        [m, secs] => m * 60 + secs,
+        [h, m, secs] => h * 3600 + m * 60 + secs,
+        _ => 0,
+    }
+}
+
+/// Download every (non-local, not-yet-saved) track in a playlist or album. Walks ALL pages so a
+/// long playlist downloads in full — the old behaviour stopped at the first ~100 tracks — then
+/// pulls the missing ones DOWNLOAD_CONCURRENCY at a time. Reports a full summary
+/// `{ ok, total, skipped, downloaded, failed }` so the UI can toast exactly what happened:
+/// `skipped` counts both local files and tracks already in the offline catalogue, so re-running a
+/// download only fetches what's actually missing (60 of 100 already saved → 40 fetched).
 #[tauri::command]
 pub async fn download_playlist(
     app: tauri::AppHandle,
@@ -933,34 +1167,68 @@ pub async fn download_playlist(
 ) -> Result<serde_json::Value, String> {
     let client = metadata_client(&state)?;
     let page = state.it.playlist(client, &id).await.map_err(|e| e.to_string())?;
-    let mut total = 0u32;
+
+    // Walk every page (bounded the same way the queue fill is). A continuation that hands back an
+    // empty page ends the walk.
+    let mut items = page.items;
+    let mut token = page.continuation;
+    let mut pages = 0usize;
+    while let Some(t) = token {
+        if pages >= 50 {
+            break;
+        }
+        pages += 1;
+        let more = state
+            .it
+            .playlist_continuation(client, &t)
+            .await
+            .map_err(|e| e.to_string())?;
+        items.extend(more.items);
+        token = more.continuation;
+    }
+
+    // Dedupe by video id (a playlist can carry the same song twice), drop local files and tracks
+    // that are already downloaded, then fetch only the remainder.
+    let mut seen = std::collections::HashSet::new();
+    let mut candidates: Vec<crate::downloads::DownloadCandidate> = Vec::new();
     let mut skipped = 0u32;
-    for item in page.items {
+    for item in items {
         if crate::local::is_local_song(&item.video_id) {
             skipped += 1;
             continue;
         }
-        total += 1;
-        let _ = crate::downloads::download_track(
-            &app,
-            &state,
-            &state.orchestrator,
-            &item.video_id,
-            &item.title,
-            &item.artists,
-            item.album.as_deref(),
-            item.duration.as_deref()
-                .map(|s| {
-                    s.split(':').rev().enumerate().fold(0i64, |acc, (i, p)| {
-                        acc + p.trim().parse::<i64>().unwrap_or(0) * 60i64.pow(i as u32)
-                    })
-                })
-                .unwrap_or(0),
-            item.thumbnail.as_deref(),
-        )
-        .await;
+        if !seen.insert(item.video_id.clone()) {
+            continue; // duplicate row — don't count it against anything, it's one song
+        }
+        if crate::downloads::is_downloaded(&state, &item.video_id) {
+            skipped += 1;
+            continue;
+        }
+        candidates.push(crate::downloads::DownloadCandidate {
+            video_id: item.video_id,
+            title: item.title,
+            artists: item.artists,
+            album: item.album,
+            duration: duration_secs(item.duration.as_deref()),
+            thumb: item.thumbnail,
+        });
     }
-    Ok(serde_json::json!({ "ok": true, "total": total, "skipped": skipped }))
+
+    let total = candidates.len() as u32 + skipped;
+    let (completed, failed) = crate::downloads::download_many(
+        &app,
+        &state,
+        &state.orchestrator,
+        candidates,
+    )
+    .await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "total": total,
+        "skipped": skipped,
+        "downloaded": completed as u32,
+        "failed": failed as u32,
+    }))
 }
 
 /// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings
@@ -1001,8 +1269,6 @@ pub async fn delete_download(state: St<'_>, video_id: String) -> Result<(), Stri
 pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
     for d in state.db.list_downloads() {
         let _ = std::fs::remove_file(&d.file_path);
-    }
-    for d in state.db.list_downloads() {
         state.db.delete_download(&d.video_id);
     }
     Ok(())

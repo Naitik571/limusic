@@ -11,7 +11,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast } from '$lib/player.svelte';
+	import { ui, toast, markNotDownloaded, downloadedIds } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import {
 		THEMES,
@@ -175,7 +175,9 @@
 	const downloads = $state<api.DownloadedTrack[]>([]);
 
 	async function refreshDownloads() {
-		try { downloads.splice(0, downloads.length, ...(await api.listDownloads())); } catch {}
+		try {
+			downloads.splice(0, downloads.length, ...(await api.listDownloads()).items);
+		} catch {}
 	}
 
 	async function pickDownloadDir() {
@@ -203,11 +205,13 @@
 
 	async function removeDownload(vid: string) {
 		await api.deleteDownload(vid);
+		markNotDownloaded(vid);
 		await refreshDownloads();
 	}
 
 	async function clearAllDownloads() {
 		await api.clearDownloads();
+		downloadedIds.clear();
 		await refreshDownloads();
 	}
 
@@ -609,6 +613,21 @@
 								{/each}
 							</div>
 						{/if}
+					</div>
+
+					<div class="flex items-start justify-between gap-4 border-b py-3">
+						<div class="min-w-0">
+							<div class="font-medium">Queue and lyrics in the player view</div>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								On, the player view carries them as tabs and the bar's two buttons switch between
+								them. Off, those buttons only ever open the side panels, which stay open over the
+								player view so you can see both at once.
+							</p>
+						</div>
+						<Switch
+							checked={appearance.tabbedPlayer}
+							onCheckedChange={(on) => setAppearance({ tabbedPlayer: on })}
+						/>
 					</div>
 
 					<div class="flex items-start justify-between gap-4 border-b py-3">

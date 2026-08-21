@@ -83,6 +83,13 @@ pub struct PlaylistPage {
     pub title: Option<String>,
     pub subtitle: Option<String>,
     pub thumbnail: Option<String>,
+    /// The playlist's own blurb, as the edit dialog needs it back to leave it alone.
+    pub description: Option<String>,
+    /// `PUBLIC` / `PRIVATE` / `UNLISTED`. Only owned playlists carry the edit header it comes from.
+    pub privacy: Option<String>,
+    /// Custom artwork the user picked on this machine, filled in by the app (YouTube has no
+    /// playlist-thumbnail API). `thumbnail` stays YouTube's, so dropping the custom one is free.
+    pub cover: Option<String>,
     pub items: Vec<SongItem>,
     pub continuation: Option<String>,
     /// True only when the signed-in user owns this playlist (rename/delete allowed). YouTube wraps
@@ -105,8 +112,12 @@ pub struct ArtistPage {
     /// The wide hero/banner image from the immersive header.
     pub thumbnail: Option<String>,
     pub description: Option<String>,
-    /// e.g. "137M monthly listeners" / "32.7M subscribers".
+    /// e.g. "32.7M subscribers" (the long form; the short one is a bare "32.7M").
     pub subscribers: Option<String>,
+    /// The header's other count line, e.g. "137M monthly audience". Absent on artists YouTube
+    /// publishes no listener figure for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monthly_listeners: Option<String>,
     /// Subscribe target — the channelId (falls back to the browseId, which is the same `UC…`).
     pub channel_id: String,
     pub subscribed: bool,
@@ -116,6 +127,10 @@ pub struct ArtistPage {
     pub radio_playlist_id: Option<String>,
     /// Top songs shelf (usually 5).
     pub top_songs: Vec<SongItem>,
+    /// The shelf's "Show all" target: a `VL…` playlist of the artist's songs, pageable like any
+    /// other playlist. Absent on artists whose shelf has no show-all link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_songs_id: Option<String>,
     /// Card carousels (Albums / Singles / Videos / …), each with an optional "More" browse target.
     pub sections: Vec<ArtistCarousel>,
 }
@@ -226,7 +241,17 @@ pub fn parse_playlist(root: &Value) -> PlaylistPage {
         .collect();
     // Present only for playlists the signed-in user owns — the sole reliable ownership signal.
     let owned = !find_all(root, "musicEditablePlaylistDetailHeaderRenderer").is_empty();
-    PlaylistPage { title, subtitle, thumbnail, items, continuation: shelf_continuation(root), owned }
+    PlaylistPage {
+        title,
+        subtitle,
+        thumbnail,
+        description: header_description(root, header),
+        privacy: playlist_privacy(root),
+        cover: None, // the app fills this in from its own store
+        items,
+        continuation: shelf_continuation(root),
+        owned,
+    }
 }
 
 /// Parse a browse continuation response (more playlist tracks). context/08.
@@ -411,7 +436,7 @@ pub fn parse_album(root: &Value) -> AlbumPage {
 
     // Target the header's own thumbnail subtree so we get the cover, not the artist avatar.
     let thumbnail = header.and_then(|h| h.get("thumbnail")).and_then(last_thumbnail);
-    let description = album_description(root, header);
+    let description = header_description(root, header);
 
     // Album track rows carry no per-track thumbnail (every track shares the cover shown once in
     // the header), so parse_list_item leaves them None. Fill missing ones with the album cover so
@@ -504,7 +529,17 @@ fn album_playlist_id(root: &Value) -> Option<String> {
     })
 }
 
-fn album_description(root: &Value, header: Option<&Value>) -> Option<String> {
+/// The visibility of an owned playlist, off the header that wraps the edit form. Absent everywhere
+/// else: someone else's playlist never says whether it is public.
+fn playlist_privacy(root: &Value) -> Option<String> {
+    find_all(root, "musicPlaylistEditHeaderRenderer")
+        .into_iter()
+        .find_map(|h| h.get("privacy").and_then(Value::as_str))
+        .map(str::to_owned)
+}
+
+/// The blurb under an album's or playlist's title, wherever this response happens to keep it.
+fn header_description(root: &Value, header: Option<&Value>) -> Option<String> {
     if let Some(d) = header.and_then(|h| runs_text(h.get("description"))) {
         return Some(d);
     }
@@ -534,12 +569,16 @@ pub fn parse_artist(root: &Value, browse_id: &str) -> ArtistPage {
         .map(str::to_owned)
         .unwrap_or_else(|| browse_id.to_owned());
     let subscribed = sub.and_then(|s| s.get("subscribed")).and_then(Value::as_bool).unwrap_or(false);
+    // Long form first: `subscriberCountText` is a bare "2.96M", `longSubscriberCountText` the
+    // labelled "2.96M subscribers" (localized by the context's hl, so don't relabel it here).
     let subscribers = sub.and_then(|s| {
-        text_or_runs(s.get("subscriberCountText")).or_else(|| text_or_runs(s.get("longSubscriberCountText")))
+        text_or_runs(s.get("longSubscriberCountText")).or_else(|| text_or_runs(s.get("subscriberCountText")))
     });
+    let monthly_listeners = header.and_then(|h| text_or_runs(h.get("monthlyListenerCount")));
 
     // Walk the section list: the first list shelf = top songs; every carousel = a card row.
     let mut top_songs = Vec::new();
+    let mut top_songs_id = None;
     let mut sections = Vec::new();
     if let Some(contents) = find_all(root, "sectionListRenderer")
         .into_iter()
@@ -552,6 +591,13 @@ pub fn parse_artist(root: &Value, browse_id: &str) -> ArtistPage {
                         .into_iter()
                         .filter_map(parse_list_item)
                         .collect();
+                    // "Show all" (and the shelf title, same endpoint) points at a `VL…` playlist
+                    // holding every top song. Prefix-checked: other shelves link a channel instead.
+                    top_songs_id = find_all(shelf.get("bottomEndpoint").unwrap_or(shelf), "browseId")
+                        .into_iter()
+                        .filter_map(Value::as_str)
+                        .find(|id| id.starts_with("VL"))
+                        .map(str::to_owned);
                 }
             } else if let Some(carousel) = node.get("musicCarouselShelfRenderer") {
                 if let Some(sec) = parse_artist_carousel(carousel) {
@@ -568,10 +614,12 @@ pub fn parse_artist(root: &Value, browse_id: &str) -> ArtistPage {
         thumbnail,
         description,
         subscribers,
+        monthly_listeners,
         channel_id,
         subscribed,
         radio_playlist_id,
         top_songs,
+        top_songs_id,
         sections,
     }
 }
@@ -1132,6 +1180,36 @@ mod tests {
         assert!(p.owned);
     }
 
+    /// What the "Edit playlist" dialog prefills from. Both fields have to survive the round trip:
+    /// a description read back as `None` is one the dialog would offer to overwrite with nothing.
+    #[test]
+    fn an_owned_playlist_reports_its_description_and_privacy() {
+        let root = json!({
+            "header": { "musicEditablePlaylistDetailHeaderRenderer": {
+                "header": { "musicResponsiveHeaderRenderer": {
+                    "title": { "runs": [{ "text": "Late night" }] },
+                    "description": { "runs": [{ "text": "for the drive home" }] }
+                } },
+                "editHeader": { "musicPlaylistEditHeaderRenderer": {
+                    "title": { "runs": [{ "text": "Late night" }] },
+                    "privacy": "PUBLIC"
+                } }
+            } }
+        });
+        let p = parse_playlist(&root);
+        assert!(p.owned);
+        assert_eq!(p.description.as_deref(), Some("for the drive home"));
+        assert_eq!(p.privacy.as_deref(), Some("PUBLIC"));
+
+        // Someone else's playlist has no edit header, so there is no visibility to report.
+        let theirs = json!({
+            "header": { "musicResponsiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Late night" }] }
+            } }
+        });
+        assert_eq!(parse_playlist(&theirs).privacy, None);
+    }
+
     #[test]
     fn detects_signed_out_state() {
         let signed_out = json!({
@@ -1404,8 +1482,10 @@ mod tests {
                 "subscriptionButton": { "subscribeButtonRenderer": {
                     "channelId": "UCdrake",
                     "subscribed": true,
-                    "subscriberCountText": { "runs": [{ "text": "32.7M subscribers" }] }
-                } }
+                    "subscriberCountText": { "runs": [{ "text": "32.7M" }] },
+                    "longSubscriberCountText": { "runs": [{ "text": "32.7M subscribers" }] }
+                } },
+                "monthlyListenerCount": { "runs": [{ "text": "137M monthly audience" }] }
             } },
             "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [{ "tabRenderer": { "content": {
                 "sectionListRenderer": { "contents": [
@@ -1417,7 +1497,8 @@ mod tests {
                                 { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Drake" }] } } }
                             ]
                         } }
-                    ] } },
+                    ],
+                    "bottomEndpoint": { "browseEndpoint": { "browseId": "VLOLAK5uy_drake" } } } },
                     { "musicCarouselShelfRenderer": {
                         "header": { "musicCarouselShelfBasicHeaderRenderer": {
                             "title": { "runs": [{ "text": "Albums" }] },
@@ -1442,8 +1523,10 @@ mod tests {
         assert_eq!(a.channel_id, "UCdrake");
         assert!(a.subscribed);
         assert_eq!(a.subscribers.as_deref(), Some("32.7M subscribers"));
+        assert_eq!(a.monthly_listeners.as_deref(), Some("137M monthly audience"));
         assert_eq!(a.top_songs.len(), 1);
         assert_eq!(a.top_songs[0].video_id, "song1");
+        assert_eq!(a.top_songs_id.as_deref(), Some("VLOLAK5uy_drake"));
         assert_eq!(a.sections.len(), 1);
         assert_eq!(a.sections[0].title, "Albums");
         assert_eq!(a.sections[0].items[0].kind, "album");

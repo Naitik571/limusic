@@ -1,12 +1,18 @@
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
-@import "@fontsource-variable/oxanium";
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/ibm-plex-sans";
-@import "@fontsource-variable/montserrat";
-@import "@fontsource-variable/outfit";
-@import "@fontsource-variable/dm-sans";
+@import '@fontsource-variable/oxanium';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/ibm-plex-sans';
+@import '@fontsource-variable/montserrat';
+@import '@fontsource-variable/outfit';
+@import '@fontsource-variable/dm-sans';
+@import '@fontsource-variable/rubik';
+@import '@fontsource-variable/orbitron';
+@import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource/press-start-2p';
+@import '@fontsource/bungee';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -427,6 +433,552 @@
 	--sidebar-ring: oklch(0.7729 0.1535 163.2231);
 }
 
+/* --- Pixel — an 8-bit take: Game-Boy greens, hard-edged (blur-free) shadows, tiny radius.
+   The hard-edge shadows are the point: they stay "pixelated" instead of blurring like every
+   other theme's soft glow. */
+.theme-pixel {
+	--background: oklch(0.94 0.03 100);
+	--foreground: oklch(0.30 0.03 130);
+	--card: oklch(0.98 0.015 100);
+	--card-foreground: oklch(0.30 0.03 130);
+	--popover: oklch(0.98 0.015 100);
+	--popover-foreground: oklch(0.30 0.03 130);
+	--primary: oklch(0.58 0.15 145);
+	--primary-foreground: oklch(0.99 0 0);
+	--secondary: oklch(0.90 0.04 95);
+	--secondary-foreground: oklch(0.35 0.04 130);
+	--muted: oklch(0.91 0.03 100);
+	--muted-foreground: oklch(0.48 0.04 130);
+	--accent: oklch(0.63 0.19 25);
+	--accent-foreground: oklch(0.99 0 0);
+	--destructive: oklch(0.60 0.20 25);
+	--border: oklch(0.86 0.04 100);
+	--input: oklch(0.86 0.04 100);
+	--ring: oklch(0.58 0.15 145);
+	--chart-1: oklch(0.58 0.15 145);
+	--chart-2: oklch(0.63 0.19 25);
+	--chart-3: oklch(0.72 0.13 200);
+	--chart-4: oklch(0.62 0.12 70);
+	--chart-5: oklch(0.55 0.12 320);
+	--sidebar: oklch(0.91 0.03 100);
+	--sidebar-foreground: oklch(0.30 0.03 130);
+	--sidebar-primary: oklch(0.58 0.15 145);
+	--sidebar-primary-foreground: oklch(0.99 0 0);
+	--sidebar-accent: oklch(0.63 0.19 25);
+	--sidebar-accent-foreground: oklch(0.99 0 0);
+	--sidebar-border: oklch(0.86 0.04 100);
+	--sidebar-ring: oklch(0.58 0.15 145);
+	--radius: 0.25rem;
+	--font-sans: 'Oxanium Variable', sans-serif;
+	--font-heading: 'Press Start 2P', 'Oxanium Variable', sans-serif;
+	--font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--shadow-2xs: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.12);
+	--shadow-xs: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.12);
+	--shadow-sm: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.15), 0px 1px 2px -1px oklch(0.30 0.03 130 / 0.15);
+	--shadow-md: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.15), 0px 2px 4px -1px oklch(0.30 0.03 130 / 0.15);
+	--shadow-lg: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.15), 0px 4px 6px -1px oklch(0.30 0.03 130 / 0.15);
+	--shadow-xl: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.15), 0px 8px 10px -1px oklch(0.30 0.03 130 / 0.15);
+	--shadow-2xl: 0px 2px 0px 0px oklch(0.30 0.03 130 / 0.30);
+}
+.dark.theme-pixel {
+	--background: oklch(0.16 0.02 145);
+	--foreground: oklch(0.86 0.06 140);
+	--card: oklch(0.22 0.03 145);
+	--card-foreground: oklch(0.86 0.06 140);
+	--popover: oklch(0.22 0.03 145);
+	--popover-foreground: oklch(0.86 0.06 140);
+	--primary: oklch(0.76 0.17 140);
+	--primary-foreground: oklch(0.14 0.02 145);
+	--secondary: oklch(0.26 0.02 145);
+	--secondary-foreground: oklch(0.80 0.05 140);
+	--muted: oklch(0.24 0.02 145);
+	--muted-foreground: oklch(0.65 0.04 145);
+	--accent: oklch(0.75 0.14 200);
+	--accent-foreground: oklch(0.14 0.02 145);
+	--destructive: oklch(0.68 0.19 25);
+	--border: oklch(0.30 0.03 145);
+	--input: oklch(0.30 0.03 145);
+	--ring: oklch(0.76 0.17 140);
+	--chart-1: oklch(0.76 0.17 140);
+	--chart-2: oklch(0.75 0.14 200);
+	--chart-3: oklch(0.68 0.19 25);
+	--chart-4: oklch(0.76 0.13 70);
+	--chart-5: oklch(0.68 0.13 320);
+	--sidebar: oklch(0.14 0.02 145);
+	--sidebar-foreground: oklch(0.86 0.06 140);
+	--sidebar-primary: oklch(0.76 0.17 140);
+	--sidebar-primary-foreground: oklch(0.14 0.02 145);
+	--sidebar-accent: oklch(0.75 0.14 200);
+	--sidebar-accent-foreground: oklch(0.14 0.02 145);
+	--sidebar-border: oklch(0.30 0.03 145);
+	--sidebar-ring: oklch(0.76 0.17 140);
+}
+
+/* --- Arcade — loud, saturated gaming: electric purple primary over a magenta-dark light mode,
+   and a hot-pink-to-cyan burst in dark. */
+.theme-arcade {
+	--background: oklch(0.96 0.02 300);
+	--foreground: oklch(0.30 0.06 300);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.30 0.06 300);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.30 0.06 300);
+	--primary: oklch(0.53 0.27 300);
+	--primary-foreground: oklch(0.99 0 0);
+	--secondary: oklch(0.92 0.04 300);
+	--secondary-foreground: oklch(0.36 0.08 300);
+	--muted: oklch(0.93 0.03 300);
+	--muted-foreground: oklch(0.50 0.05 300);
+	--accent: oklch(0.68 0.17 200);
+	--accent-foreground: oklch(0.12 0.03 200);
+	--destructive: oklch(0.60 0.22 25);
+	--border: oklch(0.87 0.03 300);
+	--input: oklch(0.87 0.03 300);
+	--ring: oklch(0.53 0.27 300);
+	--chart-1: oklch(0.53 0.27 300);
+	--chart-2: oklch(0.68 0.17 200);
+	--chart-3: oklch(0.63 0.22 330);
+	--chart-4: oklch(0.72 0.18 70);
+	--chart-5: oklch(0.55 0.15 160);
+	--sidebar: oklch(0.92 0.04 300);
+	--sidebar-foreground: oklch(0.30 0.06 300);
+	--sidebar-primary: oklch(0.53 0.27 300);
+	--sidebar-primary-foreground: oklch(0.99 0 0);
+	--sidebar-accent: oklch(0.68 0.17 200);
+	--sidebar-accent-foreground: oklch(0.12 0.03 200);
+	--sidebar-border: oklch(0.87 0.03 300);
+	--sidebar-ring: oklch(0.53 0.27 300);
+	--radius: 0.75rem;
+	--font-sans: 'Rubik Variable', sans-serif;
+	--font-heading: 'Bungee', 'Rubik Variable', sans-serif;
+	--font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--shadow-2xs: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.08);
+	--shadow-xs: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.08);
+	--shadow-sm: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.12), 0px 1px 2px -2px oklch(0.30 0.06 300 / 0.12);
+	--shadow-md: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.12), 0px 2px 4px -2px oklch(0.30 0.06 300 / 0.12);
+	--shadow-lg: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.12), 0px 4px 6px -2px oklch(0.30 0.06 300 / 0.12);
+	--shadow-xl: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.12), 0px 8px 10px -2px oklch(0.30 0.06 300 / 0.12);
+	--shadow-2xl: 0px 4px 8px -2px oklch(0.30 0.06 300 / 0.28);
+}
+.dark.theme-arcade {
+	--background: oklch(0.17 0.04 300);
+	--foreground: oklch(0.92 0.03 300);
+	--card: oklch(0.23 0.05 300);
+	--card-foreground: oklch(0.92 0.03 300);
+	--popover: oklch(0.23 0.05 300);
+	--popover-foreground: oklch(0.92 0.03 300);
+	--primary: oklch(0.65 0.28 330);
+	--primary-foreground: oklch(0.16 0.04 300);
+	--secondary: oklch(0.28 0.05 300);
+	--secondary-foreground: oklch(0.86 0.04 300);
+	--muted: oklch(0.26 0.05 300);
+	--muted-foreground: oklch(0.65 0.05 300);
+	--accent: oklch(0.76 0.15 200);
+	--accent-foreground: oklch(0.12 0.03 200);
+	--destructive: oklch(0.68 0.20 25);
+	--border: oklch(0.34 0.05 300);
+	--input: oklch(0.34 0.05 300);
+	--ring: oklch(0.65 0.28 330);
+	--chart-1: oklch(0.65 0.28 330);
+	--chart-2: oklch(0.76 0.15 200);
+	--chart-3: oklch(0.62 0.27 300);
+	--chart-4: oklch(0.76 0.16 70);
+	--chart-5: oklch(0.70 0.13 160);
+	--sidebar: oklch(0.14 0.03 300);
+	--sidebar-foreground: oklch(0.92 0.03 300);
+	--sidebar-primary: oklch(0.65 0.28 330);
+	--sidebar-primary-foreground: oklch(0.16 0.04 300);
+	--sidebar-accent: oklch(0.76 0.15 200);
+	--sidebar-accent-foreground: oklch(0.12 0.03 200);
+	--sidebar-border: oklch(0.34 0.05 300);
+	--sidebar-ring: oklch(0.65 0.28 330);
+}
+
+/* --- Synthwave — outrun night: hot pink primary, cyan accents, deep violet dark mode. */
+.theme-synthwave {
+	--background: oklch(0.95 0.03 330);
+	--foreground: oklch(0.30 0.08 320);
+	--card: oklch(0.99 0.01 330);
+	--card-foreground: oklch(0.30 0.08 320);
+	--popover: oklch(0.99 0.01 330);
+	--popover-foreground: oklch(0.30 0.08 320);
+	--primary: oklch(0.60 0.25 350);
+	--primary-foreground: oklch(0.99 0 0);
+	--secondary: oklch(0.91 0.05 330);
+	--secondary-foreground: oklch(0.36 0.09 330);
+	--muted: oklch(0.92 0.04 330);
+	--muted-foreground: oklch(0.50 0.06 330);
+	--accent: oklch(0.65 0.15 220);
+	--accent-foreground: oklch(0.99 0 0);
+	--destructive: oklch(0.60 0.22 25);
+	--border: oklch(0.88 0.04 330);
+	--input: oklch(0.88 0.04 330);
+	--ring: oklch(0.60 0.25 350);
+	--chart-1: oklch(0.60 0.25 350);
+	--chart-2: oklch(0.65 0.15 220);
+	--chart-3: oklch(0.55 0.22 300);
+	--chart-4: oklch(0.72 0.18 100);
+	--chart-5: oklch(0.55 0.15 160);
+	--sidebar: oklch(0.91 0.05 330);
+	--sidebar-foreground: oklch(0.30 0.08 320);
+	--sidebar-primary: oklch(0.60 0.25 350);
+	--sidebar-primary-foreground: oklch(0.99 0 0);
+	--sidebar-accent: oklch(0.65 0.15 220);
+	--sidebar-accent-foreground: oklch(0.99 0 0);
+	--sidebar-border: oklch(0.88 0.04 330);
+	--sidebar-ring: oklch(0.60 0.25 350);
+	--radius: 0.4rem;
+	--font-sans: 'Outfit Variable', sans-serif;
+	--font-heading: 'Orbitron Variable', 'Outfit Variable', sans-serif;
+	--font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--shadow-2xs: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.08);
+	--shadow-xs: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.08);
+	--shadow-sm: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.12), 0px 1px 2px -2px oklch(0.30 0.08 320 / 0.12);
+	--shadow-md: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.12), 0px 2px 4px -2px oklch(0.30 0.08 320 / 0.12);
+	--shadow-lg: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.12), 0px 4px 6px -2px oklch(0.30 0.08 320 / 0.12);
+	--shadow-xl: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.12), 0px 8px 10px -2px oklch(0.30 0.08 320 / 0.12);
+	--shadow-2xl: 0px 4px 8px -1px oklch(0.30 0.08 320 / 0.28);
+}
+.dark.theme-synthwave {
+	--background: oklch(0.16 0.05 320);
+	--foreground: oklch(0.91 0.04 330);
+	--card: oklch(0.22 0.06 320);
+	--card-foreground: oklch(0.91 0.04 330);
+	--popover: oklch(0.22 0.06 320);
+	--popover-foreground: oklch(0.91 0.04 330);
+	--primary: oklch(0.70 0.25 350);
+	--primary-foreground: oklch(0.16 0.05 320);
+	--secondary: oklch(0.28 0.06 320);
+	--secondary-foreground: oklch(0.86 0.04 330);
+	--muted: oklch(0.26 0.06 320);
+	--muted-foreground: oklch(0.66 0.05 330);
+	--accent: oklch(0.80 0.15 220);
+	--accent-foreground: oklch(0.14 0.04 320);
+	--destructive: oklch(0.68 0.20 25);
+	--border: oklch(0.34 0.06 320);
+	--input: oklch(0.34 0.06 320);
+	--ring: oklch(0.70 0.25 350);
+	--chart-1: oklch(0.70 0.25 350);
+	--chart-2: oklch(0.80 0.15 220);
+	--chart-3: oklch(0.62 0.22 300);
+	--chart-4: oklch(0.78 0.18 100);
+	--chart-5: oklch(0.72 0.14 160);
+	--sidebar: oklch(0.14 0.04 320);
+	--sidebar-foreground: oklch(0.91 0.04 330);
+	--sidebar-primary: oklch(0.70 0.25 350);
+	--sidebar-primary-foreground: oklch(0.16 0.05 320);
+	--sidebar-accent: oklch(0.80 0.15 220);
+	--sidebar-accent-foreground: oklch(0.14 0.04 320);
+	--sidebar-border: oklch(0.34 0.06 320);
+	--sidebar-ring: oklch(0.70 0.25 350);
+}
+
+/* --- Gruvbox — warm retro terminal: cream + coffee in light, dark leather in dark, with the
+   classic orange/red/aqua trinity instead of a single accent. */
+.theme-gruvbox {
+	--background: oklch(0.95 0.02 85);
+	--foreground: oklch(0.35 0.05 45);
+	--card: oklch(0.98 0.015 85);
+	--card-foreground: oklch(0.35 0.05 45);
+	--popover: oklch(0.98 0.015 85);
+	--popover-foreground: oklch(0.35 0.05 45);
+	--primary: oklch(0.62 0.14 60);
+	--primary-foreground: oklch(0.99 0 0);
+	--secondary: oklch(0.91 0.03 85);
+	--secondary-foreground: oklch(0.40 0.05 45);
+	--muted: oklch(0.92 0.02 85);
+	--muted-foreground: oklch(0.52 0.04 45);
+	--accent: oklch(0.60 0.18 25);
+	--accent-foreground: oklch(0.99 0 0);
+	--destructive: oklch(0.60 0.18 25);
+	--border: oklch(0.87 0.03 85);
+	--input: oklch(0.87 0.03 85);
+	--ring: oklch(0.62 0.14 60);
+	--chart-1: oklch(0.62 0.14 60);
+	--chart-2: oklch(0.60 0.18 25);
+	--chart-3: oklch(0.58 0.15 145);
+	--chart-4: oklch(0.68 0.10 200);
+	--chart-5: oklch(0.60 0.12 300);
+	--sidebar: oklch(0.91 0.03 85);
+	--sidebar-foreground: oklch(0.35 0.05 45);
+	--sidebar-primary: oklch(0.62 0.14 60);
+	--sidebar-primary-foreground: oklch(0.99 0 0);
+	--sidebar-accent: oklch(0.60 0.18 25);
+	--sidebar-accent-foreground: oklch(0.99 0 0);
+	--sidebar-border: oklch(0.87 0.03 85);
+	--sidebar-ring: oklch(0.62 0.14 60);
+	--radius: 0.35rem;
+	--font-sans: 'Space Grotesk Variable', sans-serif;
+	--font-heading: 'JetBrains Mono Variable', 'Space Grotesk Variable', sans-serif;
+	--font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--shadow-2xs: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.08);
+	--shadow-xs: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.08);
+	--shadow-sm: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.12), 0px 1px 2px -2px oklch(0.35 0.05 45 / 0.12);
+	--shadow-md: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.12), 0px 2px 4px -2px oklch(0.35 0.05 45 / 0.12);
+	--shadow-lg: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.12), 0px 4px 6px -2px oklch(0.35 0.05 45 / 0.12);
+	--shadow-xl: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.12), 0px 8px 10px -2px oklch(0.35 0.05 45 / 0.12);
+	--shadow-2xl: 0px 4px 8px -2px oklch(0.35 0.05 45 / 0.28);
+}
+.dark.theme-gruvbox {
+	--background: oklch(0.20 0.02 50);
+	--foreground: oklch(0.90 0.02 85);
+	--card: oklch(0.26 0.02 50);
+	--card-foreground: oklch(0.90 0.02 85);
+	--popover: oklch(0.26 0.02 50);
+	--popover-foreground: oklch(0.90 0.02 85);
+	--primary: oklch(0.72 0.14 60);
+	--primary-foreground: oklch(0.16 0.02 50);
+	--secondary: oklch(0.31 0.02 50);
+	--secondary-foreground: oklch(0.85 0.02 85);
+	--muted: oklch(0.28 0.02 50);
+	--muted-foreground: oklch(0.68 0.03 85);
+	--accent: oklch(0.75 0.10 180);
+	--accent-foreground: oklch(0.16 0.02 50);
+	--destructive: oklch(0.66 0.16 25);
+	--border: oklch(0.36 0.02 50);
+	--input: oklch(0.36 0.02 50);
+	--ring: oklch(0.72 0.14 60);
+	--chart-1: oklch(0.72 0.14 60);
+	--chart-2: oklch(0.66 0.16 25);
+	--chart-3: oklch(0.72 0.13 145);
+	--chart-4: oklch(0.76 0.10 200);
+	--chart-5: oklch(0.70 0.12 300);
+	--sidebar: oklch(0.17 0.02 50);
+	--sidebar-foreground: oklch(0.90 0.02 85);
+	--sidebar-primary: oklch(0.72 0.14 60);
+	--sidebar-primary-foreground: oklch(0.16 0.02 50);
+	--sidebar-accent: oklch(0.75 0.10 180);
+	--sidebar-accent-foreground: oklch(0.16 0.02 50);
+	--sidebar-border: oklch(0.36 0.02 50);
+	--sidebar-ring: oklch(0.72 0.14 60);
+}
+
+/* --- Nord — Arctic coolness: slate-blues and frost everywhere, calm and restrained. */
+.theme-nord {
+	--background: oklch(0.95 0.01 250);
+	--foreground: oklch(0.35 0.02 250);
+	--card: oklch(0.99 0.005 250);
+	--card-foreground: oklch(0.35 0.02 250);
+	--popover: oklch(0.99 0.005 250);
+	--popover-foreground: oklch(0.35 0.02 250);
+	--primary: oklch(0.65 0.10 230);
+	--primary-foreground: oklch(0.99 0 0);
+	--secondary: oklch(0.92 0.01 250);
+	--secondary-foreground: oklch(0.42 0.02 250);
+	--muted: oklch(0.93 0.01 250);
+	--muted-foreground: oklch(0.52 0.02 250);
+	--accent: oklch(0.70 0.08 210);
+	--accent-foreground: oklch(0.99 0 0);
+	--destructive: oklch(0.60 0.18 25);
+	--border: oklch(0.89 0.01 250);
+	--input: oklch(0.89 0.01 250);
+	--ring: oklch(0.65 0.10 230);
+	--chart-1: oklch(0.65 0.10 230);
+	--chart-2: oklch(0.70 0.08 210);
+	--chart-3: oklch(0.65 0.10 160);
+	--chart-4: oklch(0.66 0.12 130);
+	--chart-5: oklch(0.60 0.10 300);
+	--sidebar: oklch(0.92 0.01 250);
+	--sidebar-foreground: oklch(0.35 0.02 250);
+	--sidebar-primary: oklch(0.65 0.10 230);
+	--sidebar-primary-foreground: oklch(0.99 0 0);
+	--sidebar-accent: oklch(0.70 0.08 210);
+	--sidebar-accent-foreground: oklch(0.99 0 0);
+	--sidebar-border: oklch(0.89 0.01 250);
+	--sidebar-ring: oklch(0.65 0.10 230);
+	--radius: 0.5rem;
+	--font-sans: 'Inter Variable', sans-serif;
+	--font-heading: 'IBM Plex Sans Variable', 'Inter Variable', sans-serif;
+	--font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--shadow-2xs: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.08);
+	--shadow-xs: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.08);
+	--shadow-sm: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.12), 0px 1px 2px -2px oklch(0.35 0.02 250 / 0.12);
+	--shadow-md: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.12), 0px 2px 4px -2px oklch(0.35 0.02 250 / 0.12);
+	--shadow-lg: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.12), 0px 4px 6px -2px oklch(0.35 0.02 250 / 0.12);
+	--shadow-xl: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.12), 0px 8px 10px -2px oklch(0.35 0.02 250 / 0.12);
+	--shadow-2xl: 0px 4px 8px -2px oklch(0.35 0.02 250 / 0.28);
+}
+.dark.theme-nord {
+	--background: oklch(0.20 0.02 255);
+	--foreground: oklch(0.91 0.01 250);
+	--card: oklch(0.26 0.02 255);
+	--card-foreground: oklch(0.91 0.01 250);
+	--popover: oklch(0.26 0.02 255);
+	--popover-foreground: oklch(0.91 0.01 250);
+	--primary: oklch(0.76 0.09 225);
+	--primary-foreground: oklch(0.20 0.02 255);
+	--secondary: oklch(0.31 0.02 255);
+	--secondary-foreground: oklch(0.85 0.01 250);
+	--muted: oklch(0.28 0.02 255);
+	--muted-foreground: oklch(0.68 0.02 250);
+	--accent: oklch(0.78 0.10 195);
+	--accent-foreground: oklch(0.20 0.02 255);
+	--destructive: oklch(0.68 0.17 25);
+	--border: oklch(0.36 0.02 255);
+	--input: oklch(0.36 0.02 255);
+	--ring: oklch(0.76 0.09 225);
+	--chart-1: oklch(0.76 0.09 225);
+	--chart-2: oklch(0.78 0.10 195);
+	--chart-3: oklch(0.75 0.10 160);
+	--chart-4: oklch(0.76 0.12 130);
+	--chart-5: oklch(0.70 0.10 300);
+	--sidebar: oklch(0.17 0.02 255);
+	--sidebar-foreground: oklch(0.91 0.01 250);
+	--sidebar-primary: oklch(0.76 0.09 225);
+	--sidebar-primary-foreground: oklch(0.20 0.02 255);
+	--sidebar-accent: oklch(0.78 0.10 195);
+	--sidebar-accent-foreground: oklch(0.20 0.02 255);
+	--sidebar-border: oklch(0.36 0.02 255);
+	--sidebar-ring: oklch(0.76 0.09 225);
+}
+
+/* --- Theme personalities ------------------------------------------------
+   The token blocks above give each palette its colours, fonts and shadows, but a theme is more
+   than a palette — this is the part that makes them actually *feel* different: background
+   treatments (scanlines, grids, glows), heading styling, focus rings and selection colour.
+   Every rule here is gated on the `.theme-<id>` class on <html> and unlayered, so it wins over
+   the layered utilities it replaces (same trick as the frosted chrome rules further down).
+
+   `.app-root` is the whole-window shell (see +layout.svelte); positioning it lets a theme paint
+   an overlay film or gradients over the app's own `bg-background`. */
+
+/* — Pixel: 8-bit CRT. Scanline film over the window, hard dashed focus rings, pixel-green
+   selection, and a tiny dithered wash behind the content. */
+.theme-pixel .app-root {
+	position: relative;
+	background-image:
+		radial-gradient(85% 45% at 50% 0%, color-mix(in oklch, var(--primary) 11%, transparent), transparent 68%),
+		repeating-linear-gradient(45deg, color-mix(in oklch, var(--primary) 4%, transparent) 0 1px, transparent 1px 10px);
+}
+.theme-pixel .app-root::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	pointer-events: none;
+	background-image: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.06) 0 1px, transparent 1px 2px);
+}
+.theme-pixel h1,
+.theme-pixel h2,
+.theme-pixel h3,
+.theme-pixel .font-heading {
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+.theme-pixel .text-gradient {
+	background-image: linear-gradient(100deg, var(--primary) 10%, oklch(0.72 0.13 200) 90%);
+}
+.theme-pixel :focus-visible {
+	outline: 2px dashed var(--primary);
+	outline-offset: 2px;
+}
+.theme-pixel ::selection {
+	background: color-mix(in oklch, var(--primary) 45%, transparent);
+}
+
+/* — Arcade: loud cabinets. Vibrant dual glow behind the content, Bungee display type,
+   chunky accent focus rings and cyan-tinted selection. */
+.theme-arcade .app-root {
+	position: relative;
+	background-image:
+		radial-gradient(120% 85% at 18% -8%, color-mix(in oklch, var(--primary) 24%, transparent), transparent 55%),
+		radial-gradient(100% 80% at 92% 112%, color-mix(in oklch, var(--accent) 20%, transparent), transparent 60%);
+}
+.theme-arcade h1,
+.theme-arcade h2,
+.theme-arcade h3,
+.theme-arcade .font-heading {
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+.theme-arcade .text-gradient {
+	background-image: linear-gradient(100deg, var(--primary) 5%, var(--accent) 62%, oklch(0.66 0.25 300) 105%);
+}
+.theme-arcade :focus-visible {
+	outline: 3px solid color-mix(in oklch, var(--accent) 70%, transparent);
+	outline-offset: 2px;
+}
+.theme-arcade ::selection {
+	background: color-mix(in oklch, var(--accent) 50%, transparent);
+}
+
+/* — Synthwave: outrun night. Perspective-free retro grid + a cyan sunset wash up top, Orbitron
+   type with a neon glow, cyan selection. */
+.theme-synthwave .app-root {
+	position: relative;
+	background-image:
+		radial-gradient(120% 55% at 50% -12%, color-mix(in oklch, var(--accent) 26%, transparent), transparent 60%),
+		radial-gradient(70% 40% at 50% 115%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 55%),
+		repeating-linear-gradient(90deg, color-mix(in oklch, var(--foreground) 5%, transparent) 0 1px, transparent 1px 40px),
+		repeating-linear-gradient(0deg, color-mix(in oklch, var(--foreground) 5%, transparent) 0 1px, transparent 1px 40px);
+}
+.theme-synthwave h1,
+.theme-synthwave h2,
+.theme-synthwave h3,
+.theme-synthwave .font-heading {
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	text-shadow: 0 0 18px color-mix(in oklch, var(--primary) 50%, transparent);
+}
+.theme-synthwave .text-gradient {
+	background-image: linear-gradient(100deg, var(--accent) 10%, oklch(0.7 0.25 350) 55%, var(--primary) 95%);
+}
+.theme-synthwave :focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+.theme-synthwave ::selection {
+	background: color-mix(in oklch, var(--accent) 55%, transparent);
+}
+
+/* — Gruvbox: warm terminal. A soft warm wash, mono display type, terminal-style selection and a
+   faint inner ring on card surfaces. */
+.theme-gruvbox .app-root {
+	position: relative;
+	background-image:
+		radial-gradient(110% 75% at 50% 0%, color-mix(in oklch, var(--primary) 9%, transparent), transparent 68%),
+		radial-gradient(90% 45% at 95% 95%, color-mix(in oklch, var(--accent) 6%, transparent), transparent 55%);
+}
+.theme-gruvbox h1,
+.theme-gruvbox h2,
+.theme-gruvbox h3,
+.theme-gruvbox .font-heading {
+	letter-spacing: -0.01em;
+}
+.theme-gruvbox ::selection {
+	background: color-mix(in oklch, var(--primary) 45%, transparent);
+}
+.theme-gruvbox .bg-card {
+	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+/* — Nord: Arctic calm. An icy wash, tight IBM Plex type, thin focus ring and a cool selection. */
+.theme-nord .app-root {
+	position: relative;
+	background-image: radial-gradient(120% 70% at 50% -10%, color-mix(in oklch, var(--accent) 9%, transparent), transparent 65%);
+}
+.theme-nord h1,
+.theme-nord h2,
+.theme-nord h3,
+.theme-nord .font-heading {
+	letter-spacing: 0.01em;
+}
+.theme-nord :focus-visible {
+	outline: 1px solid var(--primary);
+	outline-offset: 2px;
+}
+.theme-nord ::selection {
+	background: color-mix(in oklch, var(--primary) 40%, transparent);
+}
+.theme-nord .bg-card {
+	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
 @theme inline {
 	--font-sans: var(--font-sans);
 	--font-heading: var(--font-heading);
@@ -492,8 +1044,30 @@
 		   can paint rounded corners (see +layout.svelte). */
 		@apply bg-transparent text-foreground;
 	}
+	html,
+	body {
+		/* Chromium (WebView2, so Windows) rubber-bands the whole page when a wheel reaches the
+		   viewport with nothing left to scroll — and off Android it does that even along an axis
+		   that never scrolls, picking the axis from whatever delta is left over. The titlebar has
+		   no scrollable ancestor at all, so every wheel over it lands there, and a hair of sideways
+		   delta slides the page left or right. The window is transparent and undecorated, so the
+		   bounce pulls the app off its own frame and shows the desktop through the gap (issue #9).
+		   WebKitGTK has no elastic overscroll, hence never on Fedora.
+
+		   On both elements deliberately: Chromium takes the viewport's overscroll-behavior from the
+		   viewport-defining element, which is <body> while <html> has visible overflow. Only 140+
+		   reads it off <html>, so on an older WebView2 the <html> rule alone is dead CSS. */
+		overscroll-behavior: none;
+	}
 	html {
 		@apply font-sans;
+	}
+	img {
+		/* No artwork in this app is a drag payload: the drag sources for the shortcuts grid and the
+		   queue are the wrapping card/row, never the image. Left native, every <img> peels off a
+		   ghost on mousedown-drag. The wrapper still starts its own drag, same as the
+		   draggable="false" the cards already carry on their images. */
+		-webkit-user-drag: none;
 	}
 }
 

@@ -5,18 +5,23 @@
 	// close — per the design, the scrobbler lives with the window controls but visually apart.
 	// Account (sign in/out) sits first in that cluster, in its own component.
 	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
+		ArrowLeft01Icon,
+		ArrowRight01Icon,
 		MinusSignIcon,
 		SquareIcon,
 		Cancel01Icon,
 		MinimizeScreenIcon,
 		Download01Icon,
-		Tick01Icon,
-		CheckmarkCircle01Icon,
-		Loading03Icon,
-		HotspotOfflineIcon
+			Tick01Icon,
+			CheckmarkCircle01Icon,
+			Loading03Icon,
+			HotspotOfflineIcon,
+			UserGroup02Icon,
+			Link04Icon
 	} from '@hugeicons/core-free-icons';
 	import LastFmIcon from './LastFmIcon.svelte';
 	import DiscordIcon from './DiscordIcon.svelte';
@@ -24,10 +29,23 @@
 	import logo from '$lib/assets/favicon.svg';
 	import * as api from '$lib/api';
 	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor } from '$lib/player.svelte';
+	import { lt } from '$lib/lt.svelte';
 
 let downloadsOpen = $state(false);
 
 	const win = getCurrentWindow();
+
+	// Back/forward. `depth` is how many history entries deep the session is, `deepest` how far it
+	// has ever been, so both buttons grey out instead of doing nothing. popstate carries a signed
+	// delta (the mouse's side buttons come through here); anything else is a push, which wipes the
+	// entries ahead of us.
+	let depth = $state(0);
+	let deepest = $state(0);
+	afterNavigate((nav) => {
+		if (nav.type === 'enter') depth = deepest = 0;
+		else if (nav.delta !== undefined) depth = Math.max(0, depth + nav.delta);
+		else deepest = depth += 1;
+	});
 
 	// Last.fm connection state. `connecting` is UI-local: set on click, cleared by the
 	// `lastfm-state` event (success, failure, or timeout) — the backend always answers.
@@ -132,13 +150,71 @@ let downloadsOpen = $state(false);
 	</span>
 
 	<!-- pointer-events-none: the logo is decoration; clicks on it should drag the window. -->
-	<img src={logo} alt="" class="pointer-events-none ml-3 h-4 w-4" />
+	<div class="flex h-full items-center">
+		<img src={logo} alt="" class="pointer-events-none ml-3 mr-1 h-4 w-4" />
+		<!-- Bigger and heavier than the icons on the right: these are navigation, and at their
+		     weight the arrow read as decoration and got missed. -->
+		<button
+			class="flex h-full w-9 items-center justify-center text-foreground/80 transition-colors hover:bg-accent/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+			onclick={() => history.back()}
+			disabled={depth === 0}
+			title="Back"
+			aria-label="Back"
+		>
+			<HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2.5} class="h-5 w-5" />
+		</button>
+		<button
+			class="flex h-full w-9 items-center justify-center text-foreground/80 transition-colors hover:bg-accent/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+			onclick={() => history.forward()}
+			disabled={depth === deepest}
+			title="Forward"
+			aria-label="Forward"
+		>
+			<HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2.5} class="h-5 w-5" />
+		</button>
+	</div>
 
 	<div class="flex h-full items-center">
 		<!-- Account first, then the integrations, then the window controls. The drag region lives on
 		     <header> only, so these children are ordinary buttons — don't add the attribute here. -->
 		<AccountMenu />
 		<div class="mx-1.5 h-4 w-px bg-border"></div>
+
+		<!-- Paste a YouTube Music link and go to it: the only way into a playlist that is shared by
+		     link and never appears in search or the library (#63). -->
+		<button
+			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+			onclick={() => (ui.linkOpen = true)}
+			title="Open link"
+			aria-label="Open link"
+		>
+			<HugeiconsIcon icon={Link04Icon} class="h-4 w-4" />
+		</button>
+
+		<!-- Opens the same modal as the home hero's button (one dialog, mounted in +layout). -->
+		<button
+			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {lt.role !==
+			'none'
+				? 'text-primary'
+				: ''}"
+			onclick={() => (ui.ltOpen = true)}
+			title="Listen Together"
+			aria-label="Listen Together"
+		>
+			<span class="relative">
+				<HugeiconsIcon icon={UserGroup02Icon} class="h-4 w-4" />
+				{#if lt.role !== 'none'}
+					<!-- Discord's status dot with a ping behind it: two layers, because animate-ping
+					     scales and fades the element it's on, so a lone dot would blink out. -->
+					<span class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5">
+						<span class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75"
+						></span>
+						<span class="absolute inset-0 rounded-full bg-emerald-500 ring-[1.5px] ring-background"
+						></span>
+					</span>
+				{/if}
+			</span>
+		</button>
 
 		<button
 			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {discordOn

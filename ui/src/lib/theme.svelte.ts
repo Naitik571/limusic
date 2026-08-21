@@ -14,7 +14,21 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { isLight } from './color';
 import { allowFontFile } from './api';
 
-export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin' | 'caffeine' | 'neon' | 'breeze';
+export type ThemeId =
+	| 'rose'
+	| 'blue'
+	| 'lime'
+	| 'purple'
+	| 'teal'
+	| 'catppuccin'
+	| 'caffeine'
+	| 'neon'
+	| 'breeze'
+	| 'pixel'
+	| 'arcade'
+	| 'synthwave'
+	| 'gruvbox'
+	| 'nord';
 
 // `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (lime,
 // teal) need a dark foreground; dark accents keep the light one. `color` is just the picker swatch.
@@ -31,7 +45,12 @@ export const THEMES: Theme[] = [
 	{ id: 'catppuccin', label: 'Catppuccin', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' },
 	{ id: 'caffeine', label: 'Caffeine', kind: 'palette', color: 'oklch(0.4341 0.0392 41.9938)' },
 	{ id: 'neon', label: 'Neon', kind: 'palette', color: 'oklch(0.6726 0.2904 341.4084)' },
-	{ id: 'breeze', label: 'Breeze', kind: 'palette', color: 'oklch(0.7227 0.1920 149.5793)' }
+	{ id: 'breeze', label: 'Breeze', kind: 'palette', color: 'oklch(0.7227 0.1920 149.5793)' },
+	{ id: 'pixel', label: 'Pixel', kind: 'palette', color: 'oklch(0.76 0.17 140)' },
+	{ id: 'arcade', label: 'Arcade', kind: 'palette', color: 'oklch(0.65 0.28 330)' },
+	{ id: 'synthwave', label: 'Synthwave', kind: 'palette', color: 'oklch(0.70 0.25 350)' },
+	{ id: 'gruvbox', label: 'Gruvbox', kind: 'palette', color: 'oklch(0.72 0.14 60)' },
+	{ id: 'nord', label: 'Nord', kind: 'palette', color: 'oklch(0.76 0.09 225)' }
 ];
 
 /** Font stacks bundled with the app (imported in layout.css). "System" needs no download. */
@@ -41,6 +60,12 @@ export const FONTS: { label: string; value: string }[] = [
 	{ label: 'Montserrat', value: "'Montserrat Variable', sans-serif" },
 	{ label: 'Outfit', value: "'Outfit Variable', sans-serif" },
 	{ label: 'DM Sans', value: "'DM Sans Variable', sans-serif" },
+	{ label: 'Rubik', value: "'Rubik Variable', sans-serif" },
+	{ label: 'Orbitron', value: "'Orbitron Variable', sans-serif" },
+	{ label: 'JetBrains Mono', value: "'JetBrains Mono Variable', sans-serif" },
+	{ label: 'Space Grotesk', value: "'Space Grotesk Variable', sans-serif" },
+	{ label: 'Bungee', value: "'Bungee', sans-serif" },
+	{ label: 'Press Start 2P', value: "'Press Start 2P', sans-serif" },
 	{ label: 'System', value: 'ui-sans-serif, system-ui, sans-serif' }
 ];
 
@@ -84,7 +109,13 @@ export const custom = $state<Custom>({
  */
 export const appearance = $state({
 	/** Blur the playing track's artwork behind the now-playing view. */
-	artworkBackground: true
+	artworkBackground: true,
+	/**
+	 * The now-playing view carries queue and lyrics itself, as tabs, and the player bar's two
+	 * buttons switch between them while it's open. Off, those buttons only ever open the floating
+	 * side panels, which then sit over the now-playing view like they sit over a page.
+	 */
+	tabbedPlayer: true
 });
 
 export function setAppearance(patch: Partial<typeof appearance>): void {
@@ -309,8 +340,9 @@ export function initTheme(): void {
 	}
 	try {
 		const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) ?? '{}');
-		if (typeof saved?.artworkBackground === 'boolean')
-			appearance.artworkBackground = saved.artworkBackground;
+		for (const k of ['artworkBackground', 'tabbedPlayer'] as const) {
+			if (typeof saved?.[k] === 'boolean') appearance[k] = saved[k];
+		}
 	} catch {
 		// unparseable — keep the defaults
 	}

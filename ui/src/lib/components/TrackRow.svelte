@@ -4,12 +4,13 @@
 		FavouriteIcon,
 		MusicNote01Icon,
 		PlayIcon,
-		PlayListAddIcon
+		PlayListAddIcon,
+		DownloadSquare01Icon
 	} from '@hugeicons/core-free-icons';
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
-	import { isLiked, toggleLike } from '$lib/player.svelte';
+	import { isLiked, toggleLike, downloadedIds } from '$lib/player.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import ArtistLine from './ArtistLine.svelte';
 
@@ -127,6 +128,12 @@
 	</div>
 
 	<div class="flex shrink-0 items-center {compact ? 'gap-0.5' : 'gap-2'}">
+		{#if downloadedIds.has(song.video_id) && !compact}
+			<!-- Persistent, not hover-only: "saved for offline" is state the row has to keep showing. -->
+			<span class="shrink-0 text-primary" title="Downloaded — plays offline">
+				<HugeiconsIcon icon={DownloadSquare01Icon} class="h-4 w-4" />
+			</span>
+		{/if}
 		{#if song.duration && !compact}
 			<span class="text-xs text-muted-foreground">{song.duration}</span>
 		{/if}

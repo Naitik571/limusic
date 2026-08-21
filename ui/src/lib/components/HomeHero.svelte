@@ -59,12 +59,12 @@
 	<div class="relative z-10 p-6 pt-8">
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex min-w-0 items-center gap-3">
-				{#if auth.account?.signedIn && auth.account.thumb}
+				{#if auth.account?.signedIn && auth.account.thumbnail}
 					<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
 					     clamps width to the content-box while height stays fixed → a vertical oval. Inline so
 					     it's immune to Preflight and to stale dev CSS. -->
 					<img
-						src={thumb(auth.account.thumb, 128)}
+						src={thumb(auth.account.thumbnail, 128)}
 						alt=""
 						style="width:2.75rem;height:2.75rem;max-width:none"
 						class="shrink-0 rounded-full object-cover ring-2 ring-border"

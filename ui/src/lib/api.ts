@@ -68,7 +68,23 @@ export interface Account {
 	signedIn: boolean;
 	name?: string | null;
 	handle?: string | null;
-	thumb?: string | null;
+	email?: string | null;
+	thumbnail?: string | null;
+	channelId?: string | null;
+	canSwitch?: boolean;
+	/** The cookie authenticated, but a multi-channel login is not complete until one is chosen. */
+	selectionRequired?: boolean;
+}
+
+export interface AccountIdentity {
+	/** Opaque, process-local selector. Raw delegated/data-sync ids stay in Rust. */
+	selectionKey: string;
+	name: string;
+	handle?: string | null;
+	email?: string | null;
+	thumbnail?: string | null;
+	channelId?: string | null;
+	selected: boolean;
 }
 
 export interface BrowseItem {
@@ -137,6 +153,12 @@ export interface PlaylistPage {
 	title?: string;
 	subtitle?: string;
 	thumbnail?: string;
+	/** The playlist's own blurb, which the edit dialog prefills its description with. */
+	description?: string;
+	/** `PUBLIC` / `PRIVATE` / `UNLISTED`. Only playlists you own report it. */
+	privacy?: string;
+	/** Custom artwork picked on this machine; falls back to `thumbnail` when unset. */
+	cover?: string;
 	items: SongItem[];
 	continuation?: string;
 	/** True only when the signed-in user owns this playlist (rename/delete allowed). */
@@ -185,9 +207,12 @@ export interface ArtistPage {
 	thumbnail?: string;
 	description?: string;
 	subscribers?: string;
+	monthlyListeners?: string;
 	channelId: string;
 	subscribed: boolean;
 	topSongs: SongItem[];
+	/** `VL…` playlist of all the artist's top songs, behind the shelf's "See all". */
+	topSongsId?: string;
 	sections: ArtistCarousel[];
 }
 
@@ -253,14 +278,20 @@ export const allowFontFile = (path: string) => invoke<void>('allow_font_file', {
 // --- offline downloads (Rust downloads.rs) ------------------------------------------------------
 export interface DownloadedTrack {
 	video_id: string;
+	file_path: string;
 	title: string;
 	artists: string;
 	album: string | null;
 	duration: number;
-	thumbnail: string | null;
+	thumb: string | null;
+	quality: string;
 	format: string;
 	size_bytes: number;
 	added_at: number;
+}
+export interface DownloadList {
+	items: DownloadedTrack[];
+	total_bytes: number;
 }
 export const downloadTrack = (item: {
 	videoId: string;
@@ -271,7 +302,7 @@ export const downloadTrack = (item: {
 	thumb?: string | null;
 }) =>
 	invoke<void>('download_track', item);
-export const listDownloads = () => invoke<DownloadedTrack[]>('list_downloads');
+export const listDownloads = () => invoke<DownloadList>('list_downloads');
 export const deleteDownload = (video_id: string) =>
 	invoke<void>('delete_download', { video_id });
 export const clearDownloads = () => invoke<void>('clear_downloads');
@@ -284,12 +315,19 @@ export const onDownloadComplete = (cb: (p: any) => void) =>
 export const onDownloadError = (cb: (p: any) => void) =>
 	listen('download-error', (e) => cb(e.payload));
 export const downloadPlaylist = (id: string) =>
-	invoke<{ ok: boolean; total: number; skipped: number }>('download_playlist', { id });
+	invoke<{ ok: boolean; total: number; skipped: number; downloaded: number; failed: number }>(
+		'download_playlist',
+		{ id }
+	);
 
 // --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
 
 // --- auth (context/15) ---------------------------------------------------------------------
 export const getAccount = () => invoke<Account>('get_account');
+export const getAccountIdentities = () =>
+	invoke<AccountIdentity[]>('get_account_identities');
+export const switchAccount = (selectionKey: string) =>
+	invoke<Account>('switch_account', { selectionKey });
 export const signOut = () => invoke<void>('sign_out');
 /** Open the in-app Google sign-in webview (context/15 Path A). Result arrives via onAuthChanged. */
 export const loginWebview = () => invoke<void>('login_webview');
@@ -366,12 +404,21 @@ export const removeLocalFolder = (path: string) =>
 // --- write actions (context/01 ✎) ----------------------------------------------------------
 export const like = (videoId: string, liked: boolean) => invoke<void>('like', { videoId, liked });
 export const addToPlaylist = (playlistId: string, videoId: string) =>
-	invoke<void>('add_to_playlist', { playlistId, videoId });
+	invoke<boolean>('add_to_playlist', { playlistId, videoId });
 export const removeFromPlaylist = (playlistId: string, videoId: string, setVideoId: string) =>
 	invoke<void>('remove_from_playlist', { playlistId, videoId, setVideoId });
 export const createPlaylist = (title: string) => invoke<string>('create_playlist', { title });
-export const renamePlaylist = (playlistId: string, name: string) =>
-	invoke<void>('rename_playlist', { playlistId, name });
+/** Name / description / visibility, from the "Edit playlist" dialog. Leave a field out and
+ *  YouTube is never told about it, so an untouched one can't be overwritten. */
+export const editPlaylistDetails = (
+	playlistId: string,
+	changes: { name?: string; description?: string; public?: boolean }
+) => invoke<void>('edit_playlist_details', { playlistId, ...changes });
+/** Custom playlist artwork. `path` is a file the user picked; `null` drops it. Answers where the
+ *  local copy went, and on a removal the thumbnail YouTube rebuilt from the tracks (that one is
+ *  worth waiting for: YouTube's own thumbnail is the cover being removed until it lands). */
+export const setPlaylistCover = (playlistId: string, path: string | null) =>
+	invoke<{ cover?: string; thumbnail?: string }>('set_playlist_cover', { playlistId, path });
 export const deletePlaylist = (playlistId: string) =>
 	invoke<void>('delete_playlist', { playlistId });
 export const subscribe = (channelId: string, subscribed: boolean) =>
@@ -401,8 +448,14 @@ export const onPlaybackError = (cb: (msg: string) => void): Promise<UnlistenFn> 
 	listen<{ message: string }>('playback-error', (e) => cb(e.payload.message));
 export const onPlaybackNotice = (cb: (msg: string) => void): Promise<UnlistenFn> =>
 	listen<{ message: string }>('playback-notice', (e) => cb(e.payload.message));
+/** Custom playlist artwork applied here but refused by YouTube Music (it syncs in the background,
+ *  so the failure lands long after the picker closed). */
+export const onCoverError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+	listen<{ message: string }>('cover-error', (e) => cb(e.payload.message));
 export const onAuthChanged = (cb: (a: Account) => void): Promise<UnlistenFn> =>
 	listen<Account>('auth-changed', (e) => cb(e.payload));
+export const onAccountSelectionRequired = (cb: () => void): Promise<UnlistenFn> =>
+	listen('account-selection-required', () => cb());
 /**
  * Local music disappeared from disk. Fired when a play attempt finds nothing there, carrying the
  * song (and album, if that emptied it) so every view holding those ids can drop them at once.
