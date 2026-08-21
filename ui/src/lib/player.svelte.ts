@@ -664,6 +664,7 @@ export const ui = $state({
 	settingsOpen: false, // the settings modal
 	settingsTab: '' as string, // when set, the settings modal opens on this tab (consumed on open)
 	ltOpen: false, // the Listen Together modal
+	linkOpen: false, // the "open a pasted link" modal
 	channelPickerOpen: false,
 	channelPickerRequired: false, // true while a multi-channel login is not finalized yet
 	channelIdentities: [] as AccountIdentity[]

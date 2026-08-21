@@ -181,6 +181,77 @@ export function touchPick(p: Personal, id: string, now = Date.now()): boolean {
 	return true;
 }
 
+/**
+ * A stored card read back against the live library list. A Shortcuts tile and a recent both keep the
+ * card as it looked the day it went in, so a playlist that has since gained tracks or changed cover
+ * kept showing the old count right next to a library grid showing the new one (#67). The library
+ * list is fetched and every add/remove patches it, so it wins wherever it holds the same id.
+ * Anything the library doesn't know (On Repeat, a local album, something never saved) keeps its
+ * snapshot, which is also what makes those tiles render offline.
+ *
+ * ponytail: library playlists and liked music, because those are what change under you. Feed it
+ * `local.albums` too if a rescan ever leaves a local tile's count stale in the same way.
+ */
+export function freshen<T extends BrowseItem>(item: T, live: BrowseItem[]): T {
+	const row = live.find((i) => i.id === item.id);
+	if (!row) return item;
+	return {
+		...item,
+		title: row.title,
+		subtitle: row.subtitle ?? item.subtitle,
+		thumbnail: row.thumbnail ?? item.thumbnail
+	};
+}
+
+// --- Saved library ------------------------------------------------------------------------------
+
+/** Save or unsave a playlist/album/artist. Returns whether it is saved now. */
+export function toggleSaved(p: Personal, item: BrowseItem): boolean {
+	if (p.saved.some((s) => s.id === item.id)) {
+		p.saved = p.saved.filter((s) => s.id !== item.id);
+		return false;
+	}
+	// The card as it was on screen: opening it refetches everything anyway, so a stale subtitle is
+	// the worst this can go wrong, and storing it is what makes the grid render offline.
+	p.saved = [{ ...item }, ...p.saved];
+	return true;
+}
+
+export const isSaved = (p: Personal, id: string): boolean => p.saved.some((s) => s.id === id);
+
+/** Saved here and also on the account, so the account's copy is the one to unsave while signed in. */
+export const isSynced = (p: Personal, id: string): boolean =>
+	p.saved.some((s) => s.id === id && s.synced === true);
+
+/** What the Library's sync button still has to push. */
+export const unsynced = (p: Personal): Saved[] => p.saved.filter((s) => !s.synced);
+
+/**
+ * Flag the rows that made it onto the account. They are kept, not dropped: deleting them is what
+ * emptied the library the moment the user signed out again, and `mergeSaved` already collapses the
+ * local row and YouTube's own into one card while signed in.
+ */
+export function markSynced(p: Personal, ids: string[]) {
+	const done = new Set(ids);
+	p.saved = p.saved.map((s) => (done.has(s.id) ? { ...s, synced: true } : s));
+}
+
+/**
+ * One kind's saved cards followed by YouTube's own, minus anything in both. Deduped by id, which
+ * matches across the two: a library grid and a search card come out of the same parser, so an album
+ * saved here and liked on YouTube is one `MPRE…` either way.
+ */
+export function mergeSaved(
+	p: Personal,
+	items: BrowseItem[],
+	kind: BrowseItem['kind']
+): BrowseItem[] {
+	const local = p.saved.filter((s) => s.kind === kind);
+	if (!local.length) return items;
+	const have = new Set(items.map((i) => i.id));
+	return [...local.filter((s) => !have.has(s.id)), ...items];
+}
+
 // --- Sidebar pins + ordering -------------------------------------------------------------------
 
 export function togglePin(p: Personal, id: string): 'pinned' | 'unpinned' | 'full' {
