@@ -835,6 +835,12 @@ export function initApp(mini = false): () => void {
 			case 'seekback':
 				api.seek(Math.max(0, pos - 10));
 				break;
+			case 'seekfwd_fast':
+				api.seek(pos + 30);
+				break;
+			case 'seekback_fast':
+				api.seek(Math.max(0, pos - 30));
+				break;
 			case 'togglemini':
 				openMiniPlayer();
 				break;

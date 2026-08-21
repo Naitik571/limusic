@@ -852,8 +852,8 @@
 .theme-pixel .app-root {
 	position: relative;
 	background-image:
-		radial-gradient(85% 45% at 50% 0%, color-mix(in oklch, var(--primary) 9%, transparent), transparent 70%),
-		repeating-linear-gradient(45deg, color-mix(in oklch, var(--primary) 3%, transparent) 0 1px, transparent 1px 12px);
+		radial-gradient(85% 45% at 50% 0%, color-mix(in oklch, var(--primary) 11%, transparent), transparent 68%),
+		repeating-linear-gradient(45deg, color-mix(in oklch, var(--primary) 4%, transparent) 0 1px, transparent 1px 10px);
 }
 .theme-pixel .app-root::after {
 	content: '';
@@ -861,7 +861,7 @@
 	inset: 0;
 	z-index: 2;
 	pointer-events: none;
-	background-image: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.05) 0 1px, transparent 1px 3px);
+	background-image: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.06) 0 1px, transparent 1px 2px);
 }
 .theme-pixel h1,
 .theme-pixel h2,
@@ -912,9 +912,10 @@
 .theme-synthwave .app-root {
 	position: relative;
 	background-image:
-		radial-gradient(120% 55% at 50% -12%, color-mix(in oklch, var(--accent) 22%, transparent), transparent 62%),
-		repeating-linear-gradient(90deg, color-mix(in oklch, var(--foreground) 4%, transparent) 0 1px, transparent 1px 44px),
-		repeating-linear-gradient(0deg, color-mix(in oklch, var(--foreground) 4%, transparent) 0 1px, transparent 1px 44px);
+		radial-gradient(120% 55% at 50% -12%, color-mix(in oklch, var(--accent) 26%, transparent), transparent 60%),
+		radial-gradient(70% 40% at 50% 115%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 55%),
+		repeating-linear-gradient(90deg, color-mix(in oklch, var(--foreground) 5%, transparent) 0 1px, transparent 1px 40px),
+		repeating-linear-gradient(0deg, color-mix(in oklch, var(--foreground) 5%, transparent) 0 1px, transparent 1px 40px);
 }
 .theme-synthwave h1,
 .theme-synthwave h2,
@@ -939,7 +940,9 @@
    faint inner ring on card surfaces. */
 .theme-gruvbox .app-root {
 	position: relative;
-	background-image: radial-gradient(110% 75% at 50% 0%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 70%);
+	background-image:
+		radial-gradient(110% 75% at 50% 0%, color-mix(in oklch, var(--primary) 9%, transparent), transparent 68%),
+		radial-gradient(90% 45% at 95% 95%, color-mix(in oklch, var(--accent) 6%, transparent), transparent 55%);
 }
 .theme-gruvbox h1,
 .theme-gruvbox h2,
