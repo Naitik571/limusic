@@ -3,7 +3,6 @@
 <img src="./assets/docs/limusic-github-image.png" alt="Limusic Banner" width="100%">
 
 # Limusic
-
 **A native desktop YouTube Music client — Rust + Tauri, ad-free, no Electron.**
 
 <p align="center">
@@ -27,192 +26,89 @@ YouTube Music client, and grew from there.
 ---
 
 ## Features
-
 - **Ad-free playback** — streams come straight from YouTube's API, ads never do
-- **Search & browse** — songs, albums, artists, playlists, and the YTM home feed
-- **Sign in** with your YouTube Music account: in-app Google login or cookie-paste
-- **Your library** — playlists, liked songs, and write actions (like, add to playlist, create/rename/delete playlists, subscribe)
+- **Search & browse** — songs, albums, artists, playlists, and the YTM home feed; **paste any YouTube/YT Music link** (playlist, album, song, artist) from the titlebar and open it directly
+- **Sign in** with your YouTube Music account: in-app Google login or cookie-paste — **channel switcher** for accounts with multiple YouTube channels
+- **Your library** — playlists, liked songs, write actions (like, add to playlist, create/rename/delete playlists, subscribe) and a **playlist search** to filter tracks by title/artist/album
 - **Gapless playback**, powered by libmpv
 - **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
-- **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump, plus an Apple Music-style word-by-word karaoke sweep on the active line. The lyrics view is immersive: a blurred album-art backdrop, gradient edge fades, and a soft glow on the active line.
-- **Mini Player** — Minimize the player and keep enjoying your music
+- **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump, plus an Apple Music-style word-by-word karaoke sweep on the active line. Immersive: blurred album-art backdrop, gradient edge fades and a soft glow on the active line
+- **Mini Player** — minimize the player and keep enjoying your music
 - **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed
-- **Local Music** — ability to play your own local music, with all metadata still intact
+- **Local Music** — play your own local files with all metadata intact
 - **Last.fm scrobbling** — connect once from the title bar, every play is scrobbled
 - **Discord Rich Presence** — artwork, live progress bar, one click to toggle
 - **OS media keys** and now-playing integration (MPRIS on Linux, SMTC on Windows)
 - **System tray** — close the window, keep the music; play/pause and skip from the tray, optional start-on-login
 - **Listen Together** — synced listening rooms over a small self-hosted relay
-- **Offline downloads** — save any track for offline listening from its ⋮ menu; downloaded tracks play straight from disk, so they work with no network and save bandwidth (Settings → Downloads controls the location, default quality and format). A **download manager** lives in the title bar: click the download indicator to see every in-flight, completed, and failed download with live per-track progress bars and retry. If a stream can't be resolved through YouTube, downloads fall back to yt-dlp automatically.
-- **Self-updating builds** (AppImage on Linux, setup.exe on Windows)
-- **Customization via Themes and Fonts** — Customize your music player to your hearts content
+- **Gamepad** — full controller support (Xbox/PS/JoyCon): play/pause, next/prev, volume, seek, fast-scrub, mini-player toggle — works even when the app is tray-minimized (see Gamepad table below)
+- **Offline downloads** — save any track from its ⋮ menu; a **download manager** in the title bar shows live per-track progress. Playlists download in parallel (4 at a time, skips what's already on disk) and fall back to yt-dlp when a stream can't be resolved. **Downloaded tracks show a persistent indicator in their rows** and play straight from disk, offline.
+- **Themes with real personality** — five palette themes beyond the accent colours: **Pixel** (8-bit CRT scanlines, Press Start 2P), **Arcade** (Bungee + dual glow), **Synthwave** (Orbitron + neon grid + sunset wash), **Gruvbox** (JetBrains Mono + warm paper), **Nord** (icy calm, IBM Plex) — each with its own fonts, background treatment, focus ring and selection colour. All six new font families are also available as overrides for any theme.
+- **Self-updating builds** (AppImage on Linux, setup.exe on Windows) + **Ctrl/Cmd +/− zoom**
+- **Customization** — accent colour, hue, radius, font overrides and locally-loaded font files under Settings → Themes
 
 ---
 
 ## What's different in this fork
 
-A growing set of changes on top of upstream, all available in the latest release.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.5.3`.
 
-**Earlier rounds (base upstream `v0.3.12`):**
+**Base fixes (upstream `v0.3.12` base):**
+- **No more quiet playback** — removed the attenuate-only `loudnessDb` gain filter (typically +2…+7 dB cut) so audio is unmodified; stale filters from older builds are cleared on track load
+- **Keyboard shortcuts** — `Space`/`K` play/pause, `Shift+N`/`P` next/prev, `M` mute, arrows volume/seek (`↑`/`↓` ±5, `←`/`→` ±5s), `J`/`L` seek ±10s. Work in both windows, yield to focused inputs.
+- **Sleep timer** — player-bar moon button: pause after 15/30/60 min or end-of-song; Rust-enforced with window closed
+- **Drag to reorder the queue** — pointer-driven (not HTML5 DnD, broken in some webviews); playing track stays put, guests can't reorder in Listen Together
+- **Test-stability** — Discord backoff boundary race fix (no more random CI flake)
 
-- **No more quiet playback** — the per-track loudness filter is gone. Upstream
-  applied an attenuate-only gain derived from YouTube's `loudnessDb` field
-  (typically +2…+7 dB on real libraries), so tracks were cut by up to 7 dB.
-  Playback is now unmodified, and any stale filter left by an older build is
-  cleared as soon as a track loads.
-- **Keyboard shortcuts** — see the table in the next section: `Space`/`K`
-  play-pause, `Shift`+`N`/`P` next-previous, `M` mute, arrows for volume and
-  seek, `J`/`L` for ±10 s seeks. They work in both the main window and the
-  mini player.
-- **Sleep timer** — the moon button in the player bar pauses playback after
-  15/30/60 minutes or at the end of the song. The countdown is enforced by the
-  Rust core, so it keeps running (and pausing) even with the window closed.
-- **Drag to reorder the queue** — grab any upcoming track and drop it on
-  another row to move it into that slot. The playing track stays put, and
-  guests in a Listen Together room can't reorder.
-- **Test-stability fix** — the Discord presence backoff test no longer flakes
-  on an exact-boundary timing race that randomly failed CI.
+**v0.3.16 — player, lyrics, queue & playlist UX:**
+- **Maximized-player gestures** — wheel over cover = volume (one tick, fades), click cover = play/pause; ignored elsewhere so nearby content never changes volume by accident
+- **Smooth lyrics** — 650 ms quint tween instead of snap; yields to your scroll, resumes 3s after last input
+- **Queue history peek** — scroll up at the top of the queue to reveal previously played (4 at a time, survives track changes)
+- **Live search suggestions** — home + `/search` typeahead (debounced, keyboard-navigable)
+- **\"More like this\" playlist recommendations** — editable playlists show auditionable suggestions; avoids dupes, swaps on add, seed-rotate button
+- **Playlist multi-select + bulk actions** — Ctrl/Shift select, right-click move/remove
+- **Edit-home drag fix** — pointer events on the home editor (WebView2 HTML5 DnD is broken)
 
-**The v0.3.16 round** — player ergonomics, lyrics, queue and playlist UX:
+**v0.3.17+ — cipher resilience, startup speed, player polish:**
+- **Restricted tracks play again** — cipher tables from community registries (faraday + zemer), polled + merged at runtime, baked snapshot in release builds; validates stream URLs via HEAD (including `WEB_REMIX`); dropped broken `IOS`, retried mid-playback
+- **Faster startup (PoToken persistence)** — BotGuard token (~12 h) persisted to DB so second launch skips the hidden-webview bootstrap (~1.6 s saved); invalidated on first rejected web-client stream
+- **Play/pause flash** — click maximized cover toggles and flashes the action icon
 
-- **Maximized-player gestures** — in the expanded player, scrolling over the
-  square cover art adjusts the volume (one notch per wheel tick, with a live
-  volume badge that fades out), and clicking the cover toggles play/pause. The
-  wheel is deliberately ignored anywhere else in the maximized view, so
-  browsing nearby content can never change the volume by accident.
-- **Smooth lyrics** — the lyrics panel glides with a hand-tuned 650 ms
-  ease-in-out-quint tween instead of the browser's native jumpy snap, and
-  yields while you scroll yourself, resuming three seconds after your last
-  input — it never fights your hand.
-- **Queue history peek** — scroll up at the top of the queue to reveal the
-  songs that already played, four at a time, all the way back to the start of
-  the session. The reveal survives track changes (it only resets when the
-  queue itself is rebuilt).
-- **Live search suggestions** — both the home search bar and the /search page
-  suggest songs, artists, albums and playlists as you type (debounced,
-  keyboard-navigable, click-to-play) instead of waiting for Enter.
-- **"More like this" playlist recommendations** — open any editable playlist
-  and a shelf suggests similar songs. Every recommendation has its own play
-  button so you can audition it before committing, songs already in the
-  playlist are never suggested, adding a song immediately swaps in a fresh
-  one, and a "Find more like this" button at the bottom rotates the seed to
-  the next playlist track and fetches a new batch.
-- **Playlist multi-select & bulk actions** — Ctrl/Shift-click to select several
-  tracks at once, then right-click to move them to another playlist or remove
-  them all in one go.
-- **Edit-home drag fix** — drag-to-reorder on the home-page editor is driven
-  by pointer events, which work reliably in the WebView2 runtime where
-  HTML5 drag-and-drop is broken.
+**v0.3.17–v0.3.19 — karaoke & offline:**
+- **Word-level karaoke** — active line sweeps word-by-word (gradient fill) via Boidu timings, interpolated per frame between ~250 ms position ticks
+- **Offline downloads** — Settings → Downloads (location, quality, format, use-when-available); any track's ⋮ → Download/Remove; plays from disk (no stream resolve), fully offline; yt-dlp fallback
+- **Aurora polish** — translucent glass refresh of player surfaces
 
-**The latest round** — ported from upstream: restricted tracks, faster
-startup, and a play/pause flash:
+**v0.4.2 — downloads that actually work, immersive lyrics, gamepad, one mini player:**
+- **Downloads that work** — byte-level progress, yt-dlp fallback when resolve fails, title-bar download manager with live progress + retry; playlists download per-track
+- **Immersive lyrics** — blurred art backdrop, edge fades, soft glow on active line (karaoke sweep unchanged)
+- **Gamepad (first pass)** — Xbox/PS pad drives playback from a background thread even when tray-minimized
+- **One mini player** — Mini + Floating merged into a single extendable component (resize live via toggle)
 
-- **Restricted tracks play again** — YouTube changed its players so the old
-  regex-based signature/n-transform extraction stopped matching everywhere.
-  The cipher tables now come from the same two community registries the other
-  players read (Metrolist's faraday + Zemer's zemer-cipher), polled and merged
-  at runtime with the tracked table kept deliberately empty; every release
-  build bakes in a snapshot so even a first run with no network access to the
-  registries can decipher. Stream URLs are validated with a HEAD before use
-  (WEB_REMIX included — previously only the fallback clients were checked),
-  the broken IOS client was dropped for ANDROID_VR, and a stream that gets
-  rejected mid-playback is retried on another client.
-- **Faster startup (PoToken persistence)** — the BotGuard session token
-  (~12 h validity per Google's own `/GenerateIT`) used to be re-minted on
-  every launch, standing up a hidden web process and running the full
-  bootstrap (~1.6 s of startup) to re-learn a string we were told stays valid
-  until tomorrow. It now round-trips through the settings database (internal
-  key — the webview can neither read nor write it), so a second launch
-  skips the bootstrap entirely. A token Google stops honouring early is
-  dropped the moment a web-client stream is rejected instead of being
-  replayed for the rest of its nominal lifetime.
-- **Play/pause flash over the art** — clicking the cover art in the maximized
-  player toggles playback and flashes the action just taken (play or pause
-  icon) over the artwork, so the click reads as deliberate.
+**v0.4.3–v0.4.4 — sorter, fast downloads, Megalobiz:**
+- **Playlist sorting** — playlist page sorts by Title/Artist/Album/Newest/Oldest/Plays (default keeps playlist order), stable as more pages load, with reverse toggle
+- **Fast downloads** — `ratebypass=yes` only on bare `googlevideo` URLs (never on signed ones — avoids 403), pooled HTTP/2, throttled progress → defeats the ~50–200 KB/s throttle; files named `Title - Artist` from real metadata
+- **Megalobiz synced lyrics** — 5th fallback source (after LRCLIB, YouTube timed, Musixmatch, Genius)
 
-**The v0.3.17–v0.3.19 rounds** — karaoke, offline playback, and polish:
+**v0.4.7 — channel switcher & artist polish:**
+- **Channel switcher** — accounts with multiple YouTube channels can pick which one requests act as, from the title bar; multi-channel sign-in pauses for choice and survives restarts
+- **Artist monthly listeners** + **top songs \"show all\"** into the full playlist page
 
-- **Word-level karaoke lyrics** — the active line now sweeps word-by-word with a
-  gradient fill (Apple Music style) using per-word timing from Boidu. The sweep is
-  interpolated every animation frame between the player's ~250 ms position ticks, so
-  it glides instead of stepping even on a throttled position feed.
-- **Offline downloads** — a dedicated **Settings → Downloads** tab sets the download
-  location (folder picker), default quality (Low/Auto/High) and audio format
-  (M4A/Opus/WebM), plus an "use downloads when available" toggle. Any track's ⋮ menu
-  has Download / Remove download. Saved files play straight from disk through the
-  resolver, so they work fully offline and skip the stream-URL resolve on replay.
-- **Aurora visual polish** — a translucent, glass-toned refresh of the player surfaces.
+**v0.5.0–v0.5.1 — parallel downloads, indicators, search, themes:**
+- **Parallel playlist downloads** — walks every page, skips existing files, pulls 4 at a time with a done/skipped/failed summary
+- **Download indicators** — persistent dot/check in rows for tracks already offline (stays in sync as files are removed)
+- **Playlist search** — filter loaded tracks by title/artist/album while scrolling
+- **Lyrics polish** — active line as focal point (gradient + primary glow / karaoke scale-up), past lines recede, cleaner unsynced typography
+- **Themes with personalities** — Pixel, Arcade, Synthwave, Gruvbox, Nord (see Features → Themes) + six new font families available to any theme
+- **Edit playlists** (from upstream `0.4.8/0.5.0` port) — name/description/privacy + cover upload from the playlist menu; playlist search refinement
+- **Interface zoom** — `Ctrl/Cmd +/−` to scale the UI (about text + layout), and the player view can show queue & lyrics as tabs
 
-**The v0.4.2 round** — downloads that actually work, an immersive lyrics view, gamepad, and one mini player:
-
-- **Downloads fixed and made visible** — the download path now emits live byte-level
-  progress, falls back to yt-dlp when YouTube's stream resolve fails (so a track no
-  longer silently produces nothing), and the title-bar download dot opens a **download
-  manager**: every in-flight / completed / failed track with a real progress bar and a
-  retry button. Playlists download too (per-track, from the playlist/album ⋮ menu).
-- **Immersive lyrics** — the lyrics panel got the Apple Music treatment: a blurred
-  album-art backdrop, gradient fades at the top and bottom edges, and a soft glow on
-  the active line. The word-by-word karaoke sweep is unchanged.
-- **Gamepad support** — an Xbox / PlayStation (any GilRs pad) controller drives playback
-  from a background thread, so it works **even when the app is minimized to the tray**.
-  `A` play/pause · `B` next · `X` previous · `Y` like · D-pad up/down volume ·
-  D-pad left/right seek ±10s · left stick X seek · right trigger volume up / left
-  trigger volume down · `Start` toggle the mini player.
-- **One mini player** — the old Mini Player and Floating Player are merged into a single
-  extendable component. Collapsed it's a slim bar (art + title + transport); expanded it
-  grows into a full floating widget (big art, queue peek, like, volume). An in-component
-  expand toggle resizes the window live.
-
-**The v0.4.3–v0.4.4 round** — playlist sorter, faster downloads, Megalobiz lyrics, one mini player:
-
-- **Playlist sorting** — the playlist page can sort its tracks by Title, Artist, Album,
-  Newest, Oldest or Plays, with a default that keeps the playlist's own order (and an album
-  sort that still plays a whole album in track order). The sort applies to what's loaded
-  and is stable as more pages load.
-- **Downloads that don't crawl** — download stream URLs get `ratebypass=yes` appended safely
-  (googlevideo URLs only, never touching a signed URL's existing params), which defeats
-  YouTube's ~50–200 KB/s stream throttle; the HTTP client is tuned for pooled connections
-  and progress events are throttled so the UI stays smooth. Downloaded files are named
-  `Title - Artist` from the track's real metadata instead of the uploader's channel.
-- **Megalobiz synced lyrics** — one more fallback for timed lyrics, after LRCLIB and YouTube
-  Music's own source.
-- **One mini player** — the separate floating player was removed and merged into the single
-  extendable mini player component, so there's exactly one collapse/expand surface instead of
-  two overlapping widgets.
-
-**The v0.4.7 round** — YouTube channel switcher and artist polish:
-
-- **Channel switcher** — an account with several YouTube channels can pick which one requests
-  act as (for real library/playlist data and recommendations) right from the title bar. A
-  multi-channel sign-in pauses for you to choose instead of silently defaulting to Google's
-  pick, and the choice survives restarts.
-- **Artist monthly listeners** — the artist page now shows monthly listeners alongside
-  subscribers.
-- **Top songs "show all"** — an artist's top songs open into the full playlist page instead of
-  being stuck at the preview count.
-
-**The v0.5.0 round** — parallel downloads, download indicators, playlist search, and themes
-with real personality:
-
-- **Parallel playlist downloads** — downloading a playlist now walks every page, skips songs
-  that are already on disk, and pulls the rest four at a time, with a summary of how many were
-  downloaded, skipped and failed.
-- **Download indicators** — songs you've downloaded show a persistent indicator in their rows,
-  and it stays in sync as downloads complete or files are removed.
-- **Faster single-track downloads** — the download client now speaks HTTP/2, which lifts
-  per-file speeds on hosts that support it.
-- **Playlist search bar** — filter the loaded tracks by song, artist or album as you scroll;
-  selecting and playing from a filtered view works exactly like the full list.
-- **Lyrics polish** — the active synced line reads as the focal point (gradient + a soft
-  primary glow, or a scale-up on karaoke lines), past lines recede into the background, and
-  plain un-timed lyrics got cleaner typography.
-- **Themes with personalities** — five new palette themes that don't just change colours:
-  **Pixel** (Press Start 2P type, CRT scanlines, dashed focus rings), **Arcade** (Bungee +
-  Rubik, dual glow, chunky focus rings), **Synthwave** (Orbitron with a neon glow, retro
-  grid + sunset wash), **Gruvbox** (JetBrains Mono display, warm wash, terminal selection)
-  and **Nord** (IBM Plex display, icy wash, hairline rings). Each brings its own fonts,
-  background treatment, focus ring and selection colour — and all six new font families are
-  also available in the Fonts pickers for any theme.
+**v0.5.3 — upstream parity + full gamepad + theme polish:**
+- **Open a YouTube/Music link** — new Link button in the title bar accepts any `youtube.com` / `music.youtube.com` / `youtu.be` URL (playlist, album, artist, song). Song links start radio; other kinds open their page. Reaches link-only playlists that never appear in search.
+- **Playlist page now scrolls as one** — the header scrolls away with the tracks instead of pinning 1/3 of the window (matches album page behaviour)
+- **Shortcuts + Jump-back-in stay live** — adding tracks to a playlist (or a cover change) immediately updates Shortcuts and library/recent tiles, no restart needed
+- **Full gamepad** — every button mapped for one-handed control: shoulders/triggers for volume/seek, left-stick Y for volume scrub, **right-stick X for fast scrub ±30s**, Select → previous, stick deadzone 0.35 @ ~10 Hz, trigger axes fallback for XInput. Frontend handles `seekfwd_fast`/`seekback_fast` alongside normal seek. Hot-plug best-effort.
+- **Theme personality polish** — Pixel's dither/scanlines, Synthwave's grid + dual glow, Gruvbox's warm corner glow tightened so switching themes actually feels different
 
 ---
 
@@ -255,7 +151,7 @@ focused button, still do the native thing.
 
 ## Gamepad
 
-Plug in an Xbox / PlayStation controller (any pad GilRs supports) and it drives
+Plug in an Xbox / PlayStation / JoyCon (any pad GilRs supports) and it drives
 playback from a background thread — so it works **even when the app is minimized to
 the tray**, no focus needed. Buttons:
 
@@ -264,15 +160,19 @@ the tray**, no focus needed. Buttons:
 | `A` (South) | Play / pause |
 | `B` (East) | Next track |
 | `X` (West) | Previous track |
-| `Y` (North) | Like / unlike |
+| `Y` (North) | Mute |
+| `Select` / Back | Previous track |
+| `LB` / `RB` | Seek −10s / +10s |
+| `LT` / `RT` (triggers) | Volume −5 / +5 |
 | D-pad ↑ / ↓ | Volume +5 / −5 |
 | D-pad ← / → | Seek −10s / +10s |
-| Left stick (X) | Seek by position |
-| Right trigger / Left trigger | Volume up / down |
+| Left stick X | Seek (hold, ~10 Hz) |
+| Left stick Y | Volume (hold, ~10 Hz) |
+| Right stick X | **Fast seek** −30s / +30s (hold) |
 | `Start` | Toggle the mini player |
 
 The mapping is fixed for now; if your pad isn't detected, make sure it's connected
-before the app starts (hot-plug support is best-effort).
+before the app starts (hot-plug is best-effort).
 
 ---
 
