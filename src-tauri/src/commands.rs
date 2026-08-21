@@ -1088,6 +1088,102 @@ pub async fn get_lyrics(
     .await)
 }
 
+// --- Changelog ------------------------------------------------------------------------------
+
+#[derive(Clone, serde::Serialize)]
+pub struct ReleaseNote {
+    version: String,
+    /// `YYYY-MM-DD`, or empty for an unpublished tag.
+    date: String,
+    /// The release description, verbatim markdown. The About tab renders it.
+    body: String,
+}
+
+/// What's new, read straight from the GitHub releases API so the release description is the only
+/// place the changelog is written. Cached for the process: the list only changes when a release
+/// is cut, and unauthenticated GitHub allows 60 requests an hour.
+#[tauri::command]
+pub async fn release_notes() -> Result<Vec<ReleaseNote>, String> {
+    static CACHE: std::sync::OnceLock<Vec<ReleaseNote>> = std::sync::OnceLock::new();
+    if let Some(cached) = CACHE.get() {
+        return Ok(cached.clone());
+    }
+    #[derive(serde::Deserialize)]
+    struct GhRelease {
+        tag_name: String,
+        published_at: Option<String>,
+        body: Option<String>,
+        draft: bool,
+        prerelease: bool,
+    }
+    let http = reqwest::Client::builder()
+        .user_agent(concat!("Limusic/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let releases: Vec<GhRelease> = http
+        .get("https://api.github.com/repos/Naitik571/limusic/releases?per_page=20")
+        .header("User-Agent", concat!("Limusic/", env!("CARGO_PKG_VERSION")))
+        .header("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let notes: Vec<ReleaseNote> = releases
+        .into_iter()
+        .filter(|r| !r.draft && !r.prerelease)
+        .map(|r| ReleaseNote {
+            version: r.tag_name.trim_start_matches('v').to_string(),
+            date: r
+                .published_at
+                .and_then(|d| d.split('T').next().map(str::to_string))
+                .unwrap_or_default(),
+            body: r.body.unwrap_or_default(),
+        })
+        .collect();
+    Ok(CACHE.get_or_init(|| notes).clone())
+}
+
+/// Whether this build can install an update itself, or only point the user at the download.
+///
+/// Tauri's Linux updater knows one trick: rewrite an AppImage in place. It takes the path from
+/// `Env::appimage` and, when that is unset, falls back to `current_exe()` and writes the downloaded
+/// AppImage bytes over whatever it finds there. On the `.rpm` and on distro packages (the AUR's
+/// `limusic-bin`) that is a package-manager-owned `/usr/bin/limusic-app`: it fails on permissions
+/// rather than doing damage, but offering the button at all is a lie. Those users update through
+/// their package manager, so the UI shows them a download link instead.
+///
+/// Reads the same `Env::appimage` the updater plugin decides on, so the two cannot disagree.
+#[tauri::command]
+pub fn can_self_update(app: tauri::AppHandle) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use tauri::Manager;
+        app.env().appimage.is_some()
+    }
+    // Windows runs the NSIS installer and macOS swaps the .app bundle; both work however the app
+    // was installed.
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        true
+    }
+}
+
+/// Open a link from the UI in the real browser. An `<a href>` inside the webview would navigate
+/// the app itself off the SPA, with no way back.
+#[tauri::command]
+pub async fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("only http(s) links".into());
+    }
+    crate::lastfm::open_browser(&url)
+}
+
 // --- Last.fm scrobbling ---------------------------------------------------------------------
 
 /// Start the browser auth flow. Returns once the authorize page is open; the outcome (session

@@ -458,6 +458,9 @@ pub fn run() {
             commands::lastfm_connect,
             commands::lastfm_disconnect,
             commands::lastfm_status,
+            commands::release_notes,
+            commands::can_self_update,
+            commands::open_external,
         ])
         .on_window_event(|window, event| {
             // Close-to-tray: ✕ hides the main window and playback keeps running; real quit is
