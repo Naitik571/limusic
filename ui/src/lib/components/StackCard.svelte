@@ -69,7 +69,7 @@
 			></div>
 			<!-- No resting shadow: see MediaCard. The sheet edges above are what gives the card
 			     its depth, and they cost a transform instead of a gaussian blur per card. -->
-			<div class="relative h-full w-full overflow-hidden rounded-xl bg-muted">
+			<div class="aurora-card relative h-full w-full overflow-hidden rounded-xl bg-muted">
 				{#if hasArt}
 					<img
 						{src}

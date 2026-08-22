@@ -29,7 +29,7 @@
 
 <div class="group relative w-full">
 	<div
-		class="relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-2xl bg-muted"
+		class="aurora-card relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-2xl bg-muted"
 		role="button"
 		tabindex="0"
 		draggable="true"
