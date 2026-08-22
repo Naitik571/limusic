@@ -36,7 +36,7 @@
 	import type { BrowseItem, PlaylistPage, SongItem } from '$lib/api';
 	import { getCached, putCached, invalidateCached } from '$lib/pagecache';
 	import { thumb } from '$lib/thumb';
-	import { anchorMenu } from '$lib/menu';
+	import { anchorMenu, ctxHost, type Anchor } from '$lib/menu';
 	import {
 		addPick,
 		enqueue,
@@ -66,8 +66,7 @@
 
 	// ⋯ options menu, positioned `fixed` at the button so it isn't clipped (matches TrackRow).
 	let menuOpen = $state(false);
-	let mx = $state(0);
-	let my = $state(0);
+	let anchor = $state<Anchor>({ style: '', origin: '' });
 
 	// "Edit playlist": name, description, visibility and a cover of your own.
 	let editing = $state(false);
@@ -97,9 +96,7 @@
 	let sort = $state<SortKey>('default');
 	let desc = $state(false);
 	let sortOpen = $state(false);
-	let sx = $state(0);
-	let sy = $state(0);
-	let sortUp = $state(false);
+	let sortAnchor = $state<Anchor>({ style: '', origin: '' });
 	const sortLabel = $derived(
 		sort === 'default' ? 'Sort' : (SORTS.find((s) => s.key === sort)?.label ?? 'Sort')
 	);
@@ -183,7 +180,7 @@
 	// Right-anchored like the other header menus: the trigger sits at the far end of the header, so
 	// a menu wider than it would run off the page opening leftwards from its left edge.
 	function openSort(e: MouseEvent) {
-		({ right: sx, y: sy, openUp: sortUp } = anchorMenu(e.currentTarget as HTMLElement, 300));
+		sortAnchor = anchorMenu(e, { height: 240, align: 'right' });
 		sortOpen = true;
 	}
 
@@ -547,10 +544,11 @@
 		playFrom(asItem(), pl.items, null, isOnRepeat ? undefined : id, true, pl.continuation);
 	}
 
+	// Click on the ⋯ opens under the button; right-click on the header opens at the pointer.
 	function openMenu(e: MouseEvent) {
-		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		mx = r.left;
-		my = r.bottom + 4;
+		e.preventDefault(); // a right-click must not also raise WebKit's own menu
+		e.stopPropagation();
+		anchor = anchorMenu(e, { height: 320 });
 		menuOpen = true;
 	}
 	function run(action: () => void) {
@@ -768,7 +766,9 @@
 	{:else if error}
 		<div class="p-6"><ErrorState message={error} onRetry={() => load(id)} /></div>
 	{:else if pl}
-		<div class="content-in relative flex min-h-[38vh] items-end gap-6 overflow-hidden border-b p-6">
+		<!-- data-ctx on the header: right-click anywhere in it (artwork, title, buttons' surroundings)
+		     opens the playlist ⋯ menu at the pointer. -->
+		<div class="content-in relative flex min-h-[38vh] items-end gap-6 overflow-hidden border-b p-6" data-ctx>
 			{#if bgImage}
 				<img
 					src={bgImage}
@@ -1061,8 +1061,9 @@
 		aria-label="Close menu"
 	></button>
 	<div
-		class="fixed z-50 max-h-[70vh] w-56 origin-top-right animate-in overflow-y-auto rounded-xl border-transparent glass-strong p-2 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {sortUp ? 'origin-bottom-right' : 'origin-top-right'}"
-		style="right:{sx}px; {sortUp ? 'bottom' : 'top'}:{sy}px;"
+		class="fixed z-50 max-h-[70vh] w-56 animate-in overflow-y-auto rounded-xl border-transparent glass-strong p-2 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {sortAnchor.origin}"
+		style={sortAnchor.style}
+	>
 	>
 		<RadioGroup.Root class="gap-0">
 			{#each SORTS as s (s.key)}
@@ -1140,11 +1141,15 @@
 	<button
 		class="fixed inset-0 z-40 cursor-default"
 		onclick={() => (menuOpen = false)}
+		oncontextmenu={(e) => {
+			e.preventDefault();
+			menuOpen = false;
+		}}
 		aria-label="Close menu"
 	></button>
 	<div
-		class="fixed z-50 min-w-52 origin-top-left animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-		style="left:{mx}px; top:{my}px;"
+		class="fixed z-50 min-w-52 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {anchor.origin}"
+		style={anchor.style}
 	>
 		<button
 			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"

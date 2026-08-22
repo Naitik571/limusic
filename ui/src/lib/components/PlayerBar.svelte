@@ -38,7 +38,7 @@
 		toggleNowPlayingLike,
 		type SleepTimerMode
 	} from '$lib/player.svelte';
-	import { anchorMenu, toBody } from '$lib/menu';
+	import { anchorMenu, toBody, type Anchor } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
@@ -79,13 +79,11 @@
 
 	// Sleep timer chip menu (same anchored-popup pattern as TrackMenu).
 	let sleepMenuOpen = $state(false);
-	let mx = $state(0);
-	let my = $state(0);
-	let openUp = $state(false);
+	let sleepAnchor = $state<Anchor>({ style: '', origin: '' });
 
 	function openSleepMenu(e: MouseEvent) {
 		e.stopPropagation();
-		({ right: mx, y: my, openUp } = anchorMenu(e.currentTarget as HTMLElement));
+		sleepAnchor = anchorMenu(e, { align: 'right' });
 		sleepMenuOpen = true;
 	}
 	function closeSleepMenu(e: MouseEvent) {
@@ -166,45 +164,46 @@
 	onwheel={onBarWheel}
 	class="flex items-center gap-2 border-x-0 border-b-0 glass px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3"
 >
-	<!-- Now playing -->
-		<div class="flex min-w-0 flex-1 items-center gap-3">
-			<button
-				type="button"
-				class="group relative block shrink-0 cursor-pointer rounded-lg bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-				onclick={(e) => {
-					e.stopPropagation();
-					api.togglePause();
-				}}
-				aria-label={playback.paused ? 'Play' : 'Pause'}
-				title={playback.paused ? 'Play' : 'Pause'}
-			>
-				{#key playback.now?.videoId}
-					{#if playback.now?.thumbnail}
-						<img
-							src={thumb(playback.now.thumbnail, 120)}
-							alt=""
-							style="max-width:none"
-							class="h-12 w-12 rounded-lg object-cover"
-							in:fade={{ duration: 250 }}
-						/>
-					{:else}
-						<div
-							class="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
-						>
-							<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
-						</div>
-					{/if}
-				{/key}
-				{#if volBadge !== null}
-					<span
-						class="pointer-events-none absolute -top-2 -left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
-						transition:fade={{ duration: 150 }}
-						aria-hidden="true"
+	<!-- Now playing. data-ctx: right-clicking the cover, the title or the space around them opens
+	     the ⋯ menu for the track that's playing. -->
+	<div class="flex min-w-0 flex-1 items-center gap-3" data-ctx>
+		<button
+			type="button"
+			class="group relative block shrink-0 cursor-pointer rounded-lg bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+			onclick={(e) => {
+				e.stopPropagation();
+				api.togglePause();
+			}}
+			aria-label={playback.paused ? 'Play' : 'Pause'}
+			title={playback.paused ? 'Play' : 'Pause'}
+		>
+			{#key playback.now?.videoId}
+				{#if playback.now?.thumbnail}
+					<img
+						src={thumb(playback.now.thumbnail, 120)}
+						alt=""
+						style="max-width:none"
+						class="h-12 w-12 rounded-lg object-cover"
+						in:fade={{ duration: 250 }}
+					/>
+				{:else}
+					<div
+						class="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
 					>
-						{volBadge}%
-					</span>
+						<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
+					</div>
 				{/if}
-			</button>
+			{/key}
+			{#if volBadge !== null}
+				<span
+					class="pointer-events-none absolute -top-2 -left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
+					transition:fade={{ duration: 150 }}
+					aria-hidden="true"
+				>
+					{volBadge}%
+				</span>
+			{/if}
+		</button>
 		<div class="min-w-0">
 			<div class="flex items-center gap-1.5">
 				<div class="truncate text-sm font-medium">{playback.now?.title ?? 'Nothing playing'}</div>
@@ -398,10 +397,8 @@
 					{@attach toBody}
 				></button>
 				<div
-					class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {openUp
-						? 'origin-bottom-right'
-						: 'origin-top-right'}"
-					style="right:{mx}px; {openUp ? 'bottom' : 'top'}:{my}px;"
+					class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {sleepAnchor.origin}"
+					style={sleepAnchor.style}
 					{@attach toBody}
 				>
 					<button

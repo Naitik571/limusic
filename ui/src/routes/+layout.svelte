@@ -16,6 +16,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { appearance, initTheme } from '$lib/theme.svelte';
 	import { dragScroll } from '$lib/dnd';
+	import { suppressNative } from '$lib/menu';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
 	import ResizeBorders from '$lib/components/ResizeBorders.svelte';
@@ -84,6 +85,11 @@
 		};
 	});
 </script>
+
+<!-- oncontextmenu: the app's own menus handle their right-click and stop the event, so anything
+     that reaches the window is a place where WebKit would have offered back / reload / inspect.
+     Text fields and selections keep the native menu (see `suppressNative`). -->
+<svelte:window oncontextmenu={suppressNative} />
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 <ModeWatcher />
