@@ -100,6 +100,93 @@ async fn owned_continuation_not_doubled() {
     eprintln!("verified {checked} track continuations, no doubling");
 }
 
+/// Issue #72: the library grids come back ~25 at a time, so a single browse truncated any bigger
+/// library. Asserts the grids page past one response, on an account that has more than one page.
+///   LIMUSIC_COOKIE=… LIMUSIC_VISITOR=… cargo test -p innertube --features integration-tests library_grids_page -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn library_grids_page_past_the_first_response() {
+    let Some(cookie) = std::env::var("LIMUSIC_COOKIE").ok().filter(|s| !s.is_empty()) else {
+        eprintln!("skipped: set LIMUSIC_COOKIE (+LIMUSIC_VISITOR) to run");
+        return;
+    };
+    let visitor = std::env::var("LIMUSIC_VISITOR").ok().filter(|s| !s.is_empty());
+    let it = InnerTube::new(
+        Session { cookie: Some(cookie), visitor_data: visitor, ..Session::default() },
+        None,
+    )
+    .unwrap();
+    let clients = Clients::bundled();
+    let client = clients.get("WEB_REMIX").expect("WEB_REMIX client");
+
+    let mut paged = 0;
+    for (name, items) in [
+        ("playlists", it.library_playlists(client).await.expect("library playlists")),
+        ("albums", it.library_albums(client).await.expect("library albums")),
+        ("artists", it.library_artists(client).await.expect("library artists")),
+    ] {
+        eprintln!("{name}: {} items", items.len());
+        let mut seen = std::collections::HashSet::new();
+        for i in &items {
+            assert!(seen.insert(i.id.clone()), "{name} grid repeated {} across pages", i.id);
+        }
+        if items.len() > 25 {
+            paged += 1;
+        }
+    }
+    assert!(paged > 0, "no library grid exceeded one page — test this on a fuller account");
+}
+
+/// The playlist sort is YouTube's, not ours: the app asks for an order and renders what comes back
+/// (`PlaylistSort::params`). Those params are a protobuf literal copied out of YouTube's own menu,
+/// so this pins the half that moves under us — that they still sort, and that the menu still says
+/// which order the list is in and whether the choice can be written back.
+///
+/// Read-only on purpose. The write side (`playlist_set_sort`) changes a real playlist for every
+/// client on the account, so it is not something a test suite should do behind your back.
+///   LIMUSIC_COOKIE=… LIMUSIC_VISITOR=… cargo test -p innertube --features integration-tests playlist_sort -- --ignored --nocapture
+#[tokio::test]
+#[ignore]
+async fn playlist_sort_params_still_order_the_server_side_list() {
+    let Some(cookie) = std::env::var("LIMUSIC_COOKIE").ok().filter(|s| !s.is_empty()) else {
+        eprintln!("skipped: set LIMUSIC_COOKIE (+LIMUSIC_VISITOR) to run");
+        return;
+    };
+    let visitor = std::env::var("LIMUSIC_VISITOR").ok().filter(|s| !s.is_empty());
+    let it = InnerTube::new(
+        Session { cookie: Some(cookie), visitor_data: visitor, ..Session::default() },
+        None,
+    )
+    .unwrap();
+    let clients = Clients::bundled();
+    let client = clients.get("WEB_REMIX").expect("WEB_REMIX client");
+
+    // Liked Music is the one list every account has, and YouTube sorts it without being asked to
+    // store anything on a playlist.
+    let plain = it.playlist(client, "VLLM", None).await.expect("liked music");
+    let menu = plain.sort_menu.clone().expect("Liked Music still offers a sort menu");
+    assert!(!menu.editable, "Liked Music sorts through browse params, not a playlist edit");
+    assert!(plain.items.len() > 1, "need more than one track to tell an order from another");
+
+    let titles = |p: &innertube::PlaylistPage| -> Vec<String> {
+        p.items.iter().map(|i| i.title.clone()).collect()
+    };
+    let asc = it.playlist(client, "VLLM", Some((PlaylistSort::Title, false))).await.expect("A-Z");
+    let desc = it.playlist(client, "VLLM", Some((PlaylistSort::Title, true))).await.expect("Z-A");
+    assert_eq!(
+        asc.sort_menu.as_ref().and_then(|m| m.selected),
+        Some(PlaylistSort::Title),
+        "the menu has to report back the order we asked for"
+    );
+    assert_ne!(titles(&asc), titles(&desc), "descending params must not return the same page");
+    assert_ne!(titles(&asc), titles(&plain), "a title sort must not return the stored order");
+
+    // Put Liked Music back: asking for an order is what persists it on this one list.
+    let restored = it.playlist(client, "VLLM", Some((PlaylistSort::Default, false))).await;
+    assert!(restored.is_ok(), "failed to restore Liked Music to its stored order");
+    eprintln!("title sort verified against {} tracks, Liked Music restored", plain.items.len());
+}
+
 /// Every surface has to hand the queue an artist that is a *name*. That string is the player bar,
 /// the OS media widget, Discord, and the Last.fm scrobble, so the two bad shapes are: nothing at all
 /// (YouTube ships the per-track artist column empty on single-artist albums, `"text": {}`, because
