@@ -199,7 +199,6 @@
 						<!-- Word-by-word karaoke — Apple-style azure-to-violet sweep with a gentle vertical float -->
 						{@const wordCount = Math.max(1, line.words.length)}
 						<span class="inline-flex flex-wrap items-baseline {isActive ? 'drop-shadow-[0_2px_12px_rgba(110,110,255,0.30)] [animation:karaoke-float_3s_ease-in-out_infinite_alternate]' : ''}">
-						<span class="inline-flex flex-wrap items-baseline">
 							{#each line.words as word, wIdx (wIdx)}
 								{@const isWordEnd = word.text.endsWith(' ')}
 								{@const cleanText = word.text.trimEnd()}
@@ -214,14 +213,12 @@
 									     colours are theme tokens: the sung half was hardcoded white, which is
 									     invisible on every light theme. -->
 									<span
-class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-150 ease-out will-change-transform {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
-										? 'scale-[1.08] -translate-y-[3px]'
-										: progress >= 1
-											? 'scale-[1.03] -translate-y-[1px]'
-											: ''}"
-											? 'scale-[1.03]'
-											: ''}"
-									style="background-image: linear-gradient(90deg, {sung} {pct}%, color-mix(in srgb, {sung} 26%, var(--muted-foreground)) {pct}%)"
+										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-150 ease-out will-change-transform {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
+											? 'scale-[1.08] -translate-y-[3px]'
+											: progress >= 1
+												? 'scale-[1.03] -translate-y-[1px]'
+												: ''}"
+										style="background-image: linear-gradient(90deg, {sung} {pct}%, color-mix(in srgb, {sung} 26%, var(--muted-foreground)) {pct}%)"
 									>
 										{cleanText}
 									</span>
@@ -257,37 +254,8 @@ class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:trans
 				{#if line.text}
 					<div>
 						<p>{line.text}</p>
-						{#if line.translation}
-							<p class="text-xs italic text-muted-foreground">{line.translation}</p>
-						{/if}
-
-						<!-- Translation line rendering -->
-						{#if line.translation}
-							<p
-								class="mt-1 font-sans text-sm font-normal tracking-wide transition-colors {isActive
-									? 'text-muted-foreground/90'
-									: 'text-muted-foreground/50'}"
-							>
-								{line.translation}
-							</p>
-						{/if}
-					</button>
-				{/each}
-			</div>
-		{:else if lyrics}
-			<div
-				class="space-y-2 leading-loose text-foreground/90 {expanded
-					? 'mx-auto max-w-3xl text-xl'
-					: 'text-[15px]'}"
-			>
-				{#each lyrics.lines as line, i (i)}
-					{#if line.text}
-						<div class="transition-colors hover:text-foreground">
-							<p>{line.text}</p>
 							{#if line.translation}
-								<p class="text-sm italic tracking-wide text-muted-foreground/70">
-									{line.translation}
-								</p>
+								<p class="text-xs italic text-muted-foreground">{line.translation}</p>
 							{/if}
 						</div>
 					{:else}
