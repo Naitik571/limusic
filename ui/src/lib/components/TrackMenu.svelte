@@ -25,7 +25,7 @@
 	import * as api from '$lib/api';
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
-	import { anchorMenu, ctxHost, toBody, type Anchor } from '$lib/menu';
+	import { anchorMenu, ctxHost, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
 	import { addPick, enqueue, isLiked, startRadio, toggleLike, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
 
 	let {
@@ -50,7 +50,7 @@
 	} = $props();
 
 	let menuOpen = $state(false);
-	let anchor = $state<Anchor>({ style: '', origin: '' });
+	let anchor = $state(NO_ANCHOR);
 
 	// Click on the ⋯ opens under the button; right-click on the host row opens at the pointer.
 	function openMenu(e: MouseEvent) {
@@ -109,9 +109,10 @@
 		{@attach toBody}
 	></button>
 	<div
-		class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {anchor.origin}"
+		class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style={anchor.style}
 		{@attach toBody}
+		{@attach fitMenu(anchor)}
 	>
 		{#if !linksOnly}
 			<button
