@@ -143,17 +143,6 @@
 		return (currentMs - word.start_ms) / dur;
 	}
 
-	// Apple-Music-style sweep hues: azure -> violet across the line. A fixed palette rather than
-	// the theme accent so the karaoke treatment reads the same on every theme.
-	const SWEEP_FROM = { l: 0.78, c: 0.13, h: 232 };
-	const SWEEP_TO = { l: 0.64, c: 0.2, h: 300 };
-	function sungColor(t: number): string {
-		const mix = (a: number, b: number) => a + (b - a) * t;
-		const l = mix(SWEEP_FROM.l, SWEEP_TO.l).toFixed(3);
-		const c = mix(SWEEP_FROM.c, SWEEP_TO.c).toFixed(3);
-		const h = Math.round(mix(SWEEP_FROM.h, SWEEP_TO.h));
-		return `oklch(${l} ${c} ${h})`;
-	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
@@ -185,20 +174,20 @@
 				<button
 					data-line={i}
 					onclick={() => seekTo(line)}
-					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform] duration-300 ease-out hover:text-foreground
+					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-300 ease-out
 						{expanded ? 'py-3 text-3xl' : compact ? 'py-1 text-sm' : 'py-2 text-xl'}
 						{isActive
 						? line.words?.length
 								? 'scale-[1.04]'
-								: 'scale-[1.05] [animation:karaoke-float_3s_ease-in-out_infinite_alternate] [filter:drop-shadow(0_2px_14px_rgba(110,110,255,0.35))] [background-image:linear-gradient(90deg,oklch(0.78_0.13_232),oklch(0.64_0.2_300))] [-webkit-background-clip:text] [background-clip:text]'
+								: 'text-gradient scale-[1.04] [filter:drop-shadow(0_2px_14px_color-mix(in_srgb,var(--primary)_30%,transparent))]'
 						: isPast
 							? 'text-muted-foreground/40'
 							: 'text-muted-foreground/70'}"
 				>
 					{#if line.words && line.words.length > 0}
-						<!-- Word-by-word karaoke — Apple-style azure-to-violet sweep with a gentle vertical float -->
+						<!-- Word-by-word karaoke — the Aurora gradient sweeps across each word, with a gentle vertical float -->
 						{@const wordCount = Math.max(1, line.words.length)}
-						<span class="inline-flex flex-wrap items-baseline {isActive ? 'drop-shadow-[0_2px_12px_rgba(110,110,255,0.30)] [animation:karaoke-float_3s_ease-in-out_infinite_alternate]' : ''}">
+						<span class="inline-flex flex-wrap items-baseline {isActive ? 'drop-shadow-[0_2px_12px_color-mix(in_srgb,var(--primary)_40%,transparent)] [animation:karaoke-float_3s_ease-in-out_infinite_alternate]' : ''}">
 							{#each line.words as word, wIdx (wIdx)}
 								{@const isWordEnd = word.text.endsWith(' ')}
 								{@const cleanText = word.text.trimEnd()}
@@ -206,8 +195,6 @@
 									{@const progress = getWordProgress(word, posMs)}
 									{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
 									{@const isCurrentWord = progress > 0 && progress < 1}
-								{@const hueT = wIdx / wordCount}
-								{@const sung = sungColor(hueT)}
 									<!-- Only the gradient stop moves per frame; the clip/fill are static, so they
 									     live in the class and aren't re-serialised 60 times a second. Both
 									     colours are theme tokens: the sung half was hardcoded white, which is
@@ -218,7 +205,7 @@
 											: progress >= 1
 												? 'scale-[1.03] -translate-y-[1px]'
 												: ''}"
-										style="background-image: linear-gradient(90deg, {sung} {pct}%, color-mix(in srgb, {sung} 26%, var(--muted-foreground)) {pct}%)"
+										style="background-image: linear-gradient(90deg, var(--primary) {pct}%, color-mix(in oklab, var(--primary) 55%, var(--accent) 45%) {pct}%, var(--muted-foreground) {pct}%)"
 									>
 										{cleanText}
 									</span>
