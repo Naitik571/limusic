@@ -162,6 +162,12 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         return (Some(l), req.duration.is_some());
     }
 
+    // 1d. Apple Music — only when the user pasted their own tokens in Settings. Word/syllable
+    // level data that beats everything else, gated behind bring-your-own credentials.
+    if let Ok(Some(l)) = apple_get(state, req).await {
+        return (Some(l), req.duration.is_some());
+    }
+
     // 2. LRCLIB exact match.
     let lr = lrclib_get(req).await;
     if let Ok(hit) = &lr {
@@ -518,6 +524,18 @@ async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Erro
         }
     }
 
+    // Richsync first: Musixmatch's word-level payload (same token, same macro call family).
+    // Each line carries time + duration in ms and a `words` array of {o/word start/end} in
+    // seconds-floats. Word-level beats line-synced, so try it before falling back.
+    if let Ok(Some(lines)) = mxm_richsync(&resp).await {
+        return Ok(Some(Lyrics {
+            source: "Musixmatch".into(),
+            synced: true,
+            instrumental: false,
+            lines,
+        }));
+    }
+
     let body = resp
         .pointer("/message/body/macro_calls/track.subtitles.get/message/body/subtitle_list/0/subtitle/subtitle_body")
         .and_then(|v| v.as_str())
@@ -538,6 +556,231 @@ async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Erro
         }));
     }
     Ok(plain_from_text(Some(&cleaned), "Musixmatch"))
+}
+
+/// Parse Musixmatch richsync JSON into word-level LyricLines. The macro response nests it at
+/// `macro_calls > track.richsync.get > message > body > richsync` when the track has one; the
+/// standalone endpoint returns it at `message.body.richsync`. Both shapes land here.
+fn mxm_richsync_parse(rs: &serde_json::Value) -> Option<Vec<LyricLine>> {
+    let arr = rs.get("lines")?.as_array()?;
+    let mut out = Vec::new();
+    for line in arr {
+        // ts/te are milliseconds (numbers or numeric strings depending on API mood).
+        let ts = line.get("ts").and_then(parse_time_val)?;
+        let te = line.get("te").and_then(parse_time_val);
+        let text = line.get("line").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let mut words = Vec::new();
+        if let Some(ws) = line.get("words").and_then(|v| v.as_array()) {
+            for w in ws {
+                // lrc is the word text; start/end are seconds as floats (or strings).
+                let wt = w.get("word").or_else(|| w.get("lrc")).and_then(|v| v.as_str());
+                let Some(wt) = wt else { continue };
+                if wt.trim().is_empty() {
+                    continue;
+                }
+                let ws_ms = w
+                    .get("start")
+                    .or_else(|| w.get("startTime"))
+                    .and_then(parse_time_val)
+                    .unwrap_or(ts);
+                // End falls back to "next 500ms" like every other provider's guess.
+                let we_ms = w
+                    .get("end")
+                    .or_else(|| w.get("endTime"))
+                    .and_then(parse_time_val)
+                    .unwrap_or(ws_ms + 500);
+                words.push(LyricWord {
+                    text: wt.to_string(),
+                    start_ms: ws_ms,
+                    end_ms: we_ms,
+                });
+            }
+        }
+        out.push(LyricLine {
+            time_ms: Some(ts),
+            end_time_ms: te.or_else(|| words.last().map(|w| w.end_ms)),
+            text: if text.is_empty() { words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join("") } else { text },
+            words: if words.is_empty() { None } else { Some(words) },
+            translation: None,
+        });
+    }
+    let has_words = out.iter().any(|l| l.words.is_some());
+    (!out.is_empty() && has_words).then_some(out)
+}
+
+/// Try to pull a richsync out of an already-fetched macro response. If the macro didn't include
+/// it, ask `track.richsync.get` directly with the matched track id (one extra request, only on
+/// this path — cheap compared with losing word timings for Musixmatch's whole catalog).
+async fn mxm_richsync(resp: &serde_json::Value) -> Result<Option<Vec<LyricLine>>, reqwest::Error> {
+    // 1. Already inside the macro response?
+    if let Some(rs) = resp.pointer("/message/body/macro_calls/track.richsync.get/message/body/richsync") {
+        return Ok(mxm_richsync_parse(rs));
+    }
+    // 2. Not included — need the track id from track.search to call the dedicated endpoint.
+    let track_id = resp
+        .pointer("/message/body/macro_calls/track.search/message/body/track_list/0/track/track_id")
+        .and_then(|v| {
+            v.as_i64()
+                .map(|i| i.to_string())
+                .or_else(|| v.as_str().map(str::to_owned))
+        });
+    let Some(track_id) = track_id else { return Ok(None) };
+    let Some(tok) = mxm_usertoken().await else { return Ok(None) };
+    let rs_resp: serde_json::Value = http()
+        .get(format!("{MXM_ROOT}/track.richsync.get"))
+        .query(&[
+            ("format", "json".to_string()),
+            ("track_id", track_id),
+            ("user_token", tok),
+            ("app_id", MXM_APP_ID.into()),
+        ])
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let rs = rs_resp.pointer("/message/body/richsync");
+    Ok(rs.and_then(mxm_richsync_parse))
+}
+
+// --- Apple Music (bring-your-own-token word-level provider) -----------------------------------
+//
+// Apple's AAML is the best word/syllable timing data available, but the API needs two tokens
+// extracted from a logged-in music.apple.com session: the `media-user-token` cookie value and
+// an iTunes Store storefront bearer (`developer-token` in the site's JS, or the `authorization`
+// header any web-player request carries). Both are pasted into Settings; both are stored in the
+// internal settings DB and never leave the machine. Requests go to Apple's catalog lookup by
+// ISRC (from... we don't have ISRC — so search) with term "title artist", pick the first hit,
+// and read its lyrics endpoint. Syllable-level spans are flattened to words.
+
+const APPLE_ROOT: &str = "https://amp-api.music.apple.com/v1/catalog";
+
+/// Ok(None) = no tokens configured / no Apple result. Err = transport trouble.
+async fn apple_get(state: &AppState, req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    // Both tokens must be present; either missing = provider silently off.
+    let (Some(media_token), Some(dev_token)) = (
+        state.db.get_setting("lyrics_apple_media_token"),
+        state.db.get_setting("lyrics_apple_dev_token"),
+    ) else {
+        return Ok(None);
+    };
+    if media_token.trim().is_empty() || dev_token.trim().is_empty() {
+        return Ok(None);
+    }
+    // Storefront: default US; overridable for users elsewhere.
+    let storefront = state
+        .db
+        .get_setting("lyrics_apple_storefront")
+        .unwrap_or_else(|| "us".into())
+        .to_lowercase();
+
+    let term = format!("{} {}", req.title, req.artists);
+    let search_url = format!("{APPLE_ROOT}/{storefront}/search");
+    let search: serde_json::Value = match http()
+        .get(search_url)
+        .query(&[
+            ("term", term.as_str()),
+            ("types", "songs"),
+            ("limit", "5"),
+        ])
+        .header("Authorization", format!("Bearer {dev_token}"))
+        .header("Media-User-Token", &media_token)
+        .header("Origin", "https://music.apple.com")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error = %e, "lyrics: apple search json failed");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error = %e, "lyrics: apple search failed");
+            return Ok(None);
+        }
+    };
+
+    // First song hit's id. Apple's own ranking is good enough given our title+artist term.
+    let Some(song_id) = search
+        .pointer("/results/songs/data")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|s| s.get("id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
+        return Ok(None);
+    };
+
+    let lyric_url = format!("{APPLE_ROOT}/{storefront}/songs/{song_id}/lyrics");
+    let lyric: serde_json::Value = match http()
+        .get(lyric_url)
+        .query(&[("l", "en-us"), ("extend", "syllableLyrics")])
+        .header("Authorization", format!("Bearer {dev_token}"))
+        .header("Media-User-Token", &media_token)
+        .header("Origin", "https://music.apple.com")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error = %e, "lyrics: apple lyrics json failed");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error = %e, "lyrics: apple lyrics failed");
+            return Ok(None);
+        }
+    };
+
+    let lines_val = lyric
+        .pointer("/data/0/relationships/lyrics/data/0/attributes/lines")
+        .and_then(|v| v.as_array());
+    let Some(lines_val) = lines_val else { return Ok(None) };
+
+    let mut out = Vec::new();
+    for line in lines_val {
+        // Apple lines: { begin, end } in seconds-floats (or ms strings), text, words[]:
+        // each word { string?, begin?, end? } — syllable extension nests them the same way.
+        let begin = line.get("begin").and_then(parse_time_val);
+        let end = line.get("end").and_then(parse_time_val);
+        let text = line.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let mut words = Vec::new();
+        if let Some(ws) = line.get("words").and_then(|v| v.as_array()) {
+            for w in ws {
+                let wt = w.get("string").or_else(|| w.get("text")).and_then(|v| v.as_str());
+                let Some(wt) = wt else { continue };
+                if wt.trim().is_empty() {
+                    continue;
+                }
+                let wb = w
+                    .get("begin")
+                    .and_then(parse_time_val)
+                    .or(begin)
+                    .unwrap_or(0);
+                let we = w
+                    .get("end")
+                    .and_then(parse_time_val)
+                    .or(end)
+                    .unwrap_or(wb + 500);
+                words.push(LyricWord { text: wt.to_string(), start_ms: wb, end_ms: we });
+            }
+        }
+        out.push(LyricLine {
+            time_ms: begin,
+            end_time_ms: end.or_else(|| words.last().map(|w| w.end_ms)),
+            text,
+            words: if words.is_empty() { None } else { Some(words) },
+            translation: None,
+        });
+    }
+    Ok(from_parsed("Apple Music", out))
 }
 
 // --- Genius (unauthenticated internal API + page scrape) --------------------------------------

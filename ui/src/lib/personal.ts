@@ -25,8 +25,14 @@ export type Pick = BrowseItem & {
 
 export type RecentEntry = BrowseItem & { at: number };
 
+/** A row in the local library: a BrowseItem plus its account-sync state. */
+export type Saved = BrowseItem & { synced?: boolean };
+
 export type Personal = {
 	picks: Pick[];
+	/** Playlists, albums and artists saved to *this machine's* library, newest first. `synced`
+	 * marks rows the Library sync button has pushed to the account. */
+	saved: Saved[];
 	/** Pinned sidebar playlists, at most MAX_PINS; array order is display order. */
 	pins: string[];
 	/** Last time each playlist/album/artist was played from, keyed by browseId. */
@@ -47,6 +53,7 @@ export type Personal = {
 
 export function empty(): Personal {
 	return {
+		saved: [],
 		picks: [],
 		pins: [],
 		recent: {},

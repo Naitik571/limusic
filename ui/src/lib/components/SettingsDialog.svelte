@@ -103,6 +103,19 @@
 	}
 
 	let tab = $state<TabId>('general');
+	// Bring-your-own-token lyrics (Apple Music). Stored in the internal settings DB; empty means off.
+	let appleMediaToken = $state('');
+	let appleDevToken = $state('');
+	let appleStorefront = $state('us');
+
+	function setAppleLyrics(media: string, dev: string, storefront: string) {
+		appleMediaToken = media;
+		appleDevToken = dev;
+		appleStorefront = storefront || 'us';
+		void api.setSetting('lyrics_apple_media_token', media.trim());
+		void api.setSetting('lyrics_apple_dev_token', dev.trim());
+		void api.setSetting('lyrics_apple_storefront', (storefront || 'us').trim().toLowerCase());
+	}
 	let settings = $state<Record<string, string>>({});
 	let ytdlp = $state<api.YtdlpInfo>({ enabled: true, installed: false, last_error: null });
 	let clients = $state<string[]>([]);
@@ -120,6 +133,13 @@
 	// it prunes a deleted font. Opening the modal is the only thing that should run it.
 	$effect(() => {
 		if (!ui.settingsOpen) return;
+		api.getSettings()
+			.then((s) => {
+				appleMediaToken = s['lyrics_apple_media_token'] ?? '';
+				appleDevToken = s['lyrics_apple_dev_token'] ?? '';
+				appleStorefront = s['lyrics_apple_storefront'] || 'us';
+			})
+			.catch(() => {});
 		if (ui.settingsTab) {
 			tab = ui.settingsTab as TabId;
 			ui.settingsTab = '';
@@ -403,6 +423,41 @@
 							</p>
 						</div>
 						<Switch checked={autostartOn} onCheckedChange={setAutostart} />
+					</div>
+					<div class="mt-4 border-t pt-3">
+						<div class="font-medium">Apple Music lyrics (bring your own token)</div>
+						<p class="mt-0.5 text-sm text-muted-foreground">
+							Optional. Paste two values from a logged-in music.apple.com session to unlock
+							Apple's word-level lyrics: the <b>media user token</b> and the <b>developer
+							bearer token</b> (both are in the site's request headers — any devtools network
+							tab shows them). Stored only on this machine. Leave empty to keep it off.
+						</p>
+						<div class="mt-2 grid gap-2">
+							<Input
+								placeholder="media-user-token (starts with a long base64 string)"
+								value={appleMediaToken}
+								oninput={(e) => (appleMediaToken = e.currentTarget.value)}
+							/>
+							<Input
+								placeholder="developer bearer token (eyJ… JWT)"
+								value={appleDevToken}
+								oninput={(e) => (appleDevToken = e.currentTarget.value)}
+							/>
+							<div class="flex items-center gap-2">
+								<Input
+									class="w-28"
+									placeholder="us"
+									value={appleStorefront}
+									oninput={(e) => (appleStorefront = e.currentTarget.value)}
+								/>
+								<Button
+									size="sm"
+									onclick={() => setAppleLyrics(appleMediaToken, appleDevToken, appleStorefront)}
+								>
+									Save tokens
+								</Button>
+							</div>
+						</div>
 					</div>
 				{:else if tab === 'themes'}
 					<div class="flex items-center justify-between gap-8 border-b py-3">

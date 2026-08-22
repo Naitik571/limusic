@@ -143,6 +143,24 @@
 		return (currentMs - word.start_ms) / dur;
 	}
 
+	// The Aurora headline ramp from .text-gradient — the exact colours line-mode karaoke shows,
+	// sampled at t so the word sweep and the line gradient read as one continuous system.
+	function sung(t: number): string {
+		const cs = getComputedStyle(document.documentElement);
+		const primary = parseOkLCH(cs.getPropertyValue('--primary').trim());
+		const stops: [number, number, number][] = [primary, [0.68, 0.19, 285], [0.65, 0.17, 335]];
+		const x = Math.min(1, Math.max(0, t)) * (stops.length - 1);
+		const i = Math.min(stops.length - 2, Math.floor(x));
+		const f = x - i;
+		const a = stops[i];
+		const b = stops[i + 1];
+		return `oklch(${(a[0] + (b[0] - a[0]) * f).toFixed(3)} ${(a[1] + (b[1] - a[1]) * f).toFixed(3)} ${(a[2] + (b[2] - a[2]) * f).toFixed(1)})`;
+	}
+	function parseOkLCH(v: string): [number, number, number] {
+		const m = v.match(/oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+		return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0.585, 0.233, 15.458];
+	}
+
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
@@ -181,8 +199,8 @@
 								? 'scale-[1.04]'
 								: 'text-gradient scale-[1.04] [filter:drop-shadow(0_2px_14px_color-mix(in_srgb,var(--primary)_30%,transparent))]'
 						: isPast
-							? 'text-muted-foreground/40'
-							: 'text-muted-foreground/70'}"
+							? (expanded ? 'text-muted-foreground/15 hover:text-muted-foreground/40' : 'text-muted-foreground/40 hover:text-muted-foreground/75')
+							: (expanded ? 'text-muted-foreground/25 hover:text-muted-foreground/60' : 'text-muted-foreground/70 hover:text-foreground/90')}"
 				>
 					{#if line.words && line.words.length > 0}
 						<!-- Word-by-word karaoke — the Aurora gradient sweeps across each word, with a gentle vertical float -->
@@ -205,12 +223,14 @@
 											: progress >= 1
 												? 'scale-[1.03] -translate-y-[1px]'
 												: ''}"
-										style="background-image: linear-gradient(90deg, var(--primary) {pct}%, color-mix(in oklab, var(--primary) 55%, var(--accent) 45%) {pct}%, var(--muted-foreground) {pct}%)"
+										style="background-image: linear-gradient(90deg, {sung(pct / 100)} {pct}%, color-mix(in srgb, {sung(pct / 100)} 22%, oklch(0.55 0.02 var(--hue)) {pct}%) {pct}%)"
 									>
 										{cleanText}
 									</span>
 								{:else}
-									<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast ? 'text-muted-foreground/40' : 'text-muted-foreground/70'}">
+									<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast
+										? (expanded ? 'text-muted-foreground/15' : 'text-muted-foreground/40')
+										: (expanded ? 'text-muted-foreground/25' : 'text-muted-foreground/70')}">
 										{cleanText}
 									</span>
 								{/if}

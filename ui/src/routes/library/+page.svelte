@@ -37,6 +37,8 @@
 		createLibraryPlaylist
 	} from '$lib/player.svelte';
 
+	const signedOut = $derived(!auth.account?.signedIn);
+
 	let dialogOpen = $state(false);
 	let newTitle = $state('');
 	let busy = $state(false);
