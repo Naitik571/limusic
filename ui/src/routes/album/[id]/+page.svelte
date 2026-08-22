@@ -350,7 +350,11 @@
                         {@attach toBody}
                     ></button>
                     <div
+<<<<<<< HEAD
                         class="fixed z-50 min-w-48 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+=======
+                        class="fixed z-50 min-w-48 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0"
+>>>>>>> 92580a0 (fix(menus): no motion, and nothing painted before the menu is placed)
                         style={anchor.style}
                         {@attach toBody}
                         {@attach fitMenu(anchor)}
