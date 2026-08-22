@@ -38,7 +38,7 @@
 		toggleNowPlayingLike,
 		type SleepTimerMode
 	} from '$lib/player.svelte';
-	import { anchorMenu, toBody, type Anchor } from '$lib/menu';
+	import { anchorMenu, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
@@ -79,7 +79,7 @@
 
 	// Sleep timer chip menu (same anchored-popup pattern as TrackMenu).
 	let sleepMenuOpen = $state(false);
-	let sleepAnchor = $state<Anchor>({ style: '', origin: '' });
+	let sleepAnchor = $state(NO_ANCHOR);
 
 	function openSleepMenu(e: MouseEvent) {
 		e.stopPropagation();
@@ -397,9 +397,10 @@
 					{@attach toBody}
 				></button>
 				<div
-					class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95 {sleepAnchor.origin}"
+					class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 					style={sleepAnchor.style}
 					{@attach toBody}
+					{@attach fitMenu(sleepAnchor)}
 				>
 					<button
 						class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"

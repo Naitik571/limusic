@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -64,7 +64,7 @@
 	// A random song's cover, used as a blurred hero backdrop (like the artist/album pages).
 	let bgImage = $state<string | null>(null);
 
-	// ⋯ options menu, positioned `fixed` at the button so it isn't clipped (matches TrackRow).
+	// â‹¯ options menu, positioned `fixed` at the button so it isn't clipped (matches TrackRow).
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
@@ -81,7 +81,7 @@
 
 	const id = $derived(page.params.id ?? '');
 	const nowId = $derived(playback.now?.videoId);
-	// The liked-music auto-playlist isn't a user playlist — no rename/delete, but shuffle is fine.
+	// The liked-music auto-playlist isn't a user playlist â€” no rename/delete, but shuffle is fine.
 	const isLiked = $derived(id === 'VLLM');
 	// On Repeat is built locally from play counts: no artwork, and no radio to seed autoplay from.
 	const isOnRepeat = $derived(id === ON_REPEAT_ID);
@@ -89,7 +89,7 @@
 	// Liked Music reports owned but can't be renamed/deleted, so exclude it explicitly.
 	const editable = $derived((pl?.owned ?? false) && !isLiked);
 
-	// ——— Sorting (the original repo's sorter: a view over `pl.items`) ————————————————
+	// â€”â€”â€” Sorting (the original repo's sorter: a view over `pl.items`) â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
 	// `pl.items` stays in YouTube's order; every optimistic mutation (add, remove, setVideoId
 	// backfill, loadMore) works against the real list, and switching back to Default costs nothing.
 	// The sort is a derived view on top, so it is never written back and never needs undoing.
@@ -121,7 +121,7 @@
 	const shown = $derived(sortedItems);
 	const sorting = $derived(sort !== 'default' || desc);
 
-	// ——— Search inside the playlist ———————————————————————————————
+	// â€”â€”â€” Search inside the playlist â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
 	// Filters the loaded rows by title OR artist (case-insensitive). Client-side and over what's
 	// loaded, exactly like sorting: on a long playlist the search covers what you can see, and
 	// scrolling still loads more. Each result keeps its index into `shown` so play/select map back
@@ -161,7 +161,7 @@
 		return loadAll();
 	}
 	// A sorted queue is built from whatever loaded; a page that failed is missing, and can't be
-	// fixed later — say so instead of silently handing over half a playlist.
+	// fixed later â€” say so instead of silently handing over half a playlist.
 	function warnPartial(what: string) {
 		toast.error(`Couldn't load all of this playlist, so only what loaded was ${what}.`);
 	}
@@ -186,7 +186,7 @@
 
 	async function downloadPlaylistHere() {
 		if (!pl) return;
-		toast('Downloading playlist…');
+		toast('Downloading playlistâ€¦');
 		api
 			.downloadPlaylist(id)
 			.then((r) => {
@@ -224,7 +224,7 @@
 		error = null;
 		try {
 			const fresh = await api.getPlaylist(pid);
-			if (pid !== id) return; // superseded by navigation — drop the stale response
+			if (pid !== id) return; // superseded by navigation â€” drop the stale response
 			pl = fresh;
 			bgImage = pickCover(fresh.items);
 			putCached(key, fresh);
@@ -236,23 +236,23 @@
 		}
 	}
 
-	// Reload whenever the route param changes (playlist → playlist navigation).
+	// Reload whenever the route param changes (playlist â†’ playlist navigation).
 	$effect(() => {
 		if (id) load(id);
 	});
 
-	// ——— "More like this" ——————————————————————————————————————————
+	// â€”â€”â€” "More like this" â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
 	// Once a playlist has a couple of songs, seed a radio on the first one (the same read-only
 	// watch/radio endpoint behind autoplay) and offer its tracks as one-tap additions. The shelf
 	// only makes sense where adding works: playlists the user owns, plus Liked Music. Cached per
 	// (playlist, seed) so revisits don't refetch.
 	let recs = $state<SongItem[] | null>(null);
-	let recPool = $state<SongItem[]>([]); // fetched backlog — tops the shelf up after an add
+	let recPool = $state<SongItem[]>([]); // fetched backlog â€” tops the shelf up after an add
 	let recsCache = new Map<string, SongItem[]>();
 	let recSeedIdx = $state(0); // which playlist track seeded the current batch
 	let recRefreshKey = $state(0); // bump to fetch a fresh batch (the shelf's refresh button)
 	let recRefreshing = $state(false);
-	let recsLoadedFor = ''; // `${id}:${recRefreshKey}` — set once a batch has been applied
+	let recsLoadedFor = ''; // `${id}:${recRefreshKey}` â€” set once a batch has been applied
 
 	// Dedupe against what's already in the playlist at apply time, so a song that just landed
 	// (optimistic add, backfill, picker) never shows up here as a suggestion.
@@ -264,7 +264,7 @@
 	}
 
 	// Loads on playlist change or refresh. The marker guards against the effect re-firing when
-	// the playlist items grow (every add re-runs it) — loaded once per (playlist, refresh).
+	// the playlist items grow (every add re-runs it) â€” loaded once per (playlist, refresh).
 	$effect(() => {
 		id; // navigation to another playlist resets the shelf before its fetch effect runs
 		recRefreshKey;
@@ -304,9 +304,9 @@
 		recRefreshKey++;
 	}
 
-	// One-tap add. Optimistic append, reverted on failure — same contract as the picker, except
+	// One-tap add. Optimistic append, reverted on failure â€” same contract as the picker, except
 	// rows land without set_video_id and the 0/2/4s backfill in `load` patches them in.
-	// One-tap add. Optimistic append, reverted on failure — same contract as the picker, except
+	// One-tap add. Optimistic append, reverted on failure â€” same contract as the picker, except
 	// rows land without set_video_id and the 0/2/4s backfill in `load` patches them in. On
 	// success the added song leaves the shelf and a fresh one takes its place (from the pool,
 	// or a radio seeded on the song just added), so the shelf never repeats and stays full.
@@ -358,7 +358,7 @@
 			return;
 		}
 		try {
-			// Pool exhausted — seed a radio on the song that was just added: "more like the one
+			// Pool exhausted â€” seed a radio on the song that was just added: "more like the one
 			// you liked", which is what a shelf should lean toward.
 			const batch = await api.getSimilarSongs(added.video_id, 16);
 			recsCache.set(`${id}:${added.video_id}`, batch);
@@ -395,7 +395,7 @@
 	});
 
 	// Optimistic rows lack set_video_id, so "Remove from playlist" is hidden on them. Refetch and
-	// patch the real ids into place (merge, not replace — keeps loadMore pages and any row YouTube
+	// patch the real ids into place (merge, not replace â€” keeps loadMore pages and any row YouTube
 	// hasn't reflected yet). Retries because the add is eventually-consistent on YouTube's side.
 	async function fillSetVideoIds() {
 		if (isLiked) return;
@@ -452,12 +452,12 @@
 			pl = {
 				...pl,
 				items: [...pl.items, ...more.items],
-				// An empty page would leave the sentinel in view with nothing to show — that's the end.
+				// An empty page would leave the sentinel in view with nothing to show â€” that's the end.
 				continuation: more.items.length ? more.continuation : undefined
 			};
 			cacheCurrent();
 		} catch {
-			// Stop auto-loading and offer a retry — auto-retrying a visible sentinel would spin.
+			// Stop auto-loading and offer a retry â€” auto-retrying a visible sentinel would spin.
 			moreError = true;
 		} finally {
 			loadingMore = false;
@@ -537,17 +537,14 @@
 
 	function shufflePlay() {
 		if (!pl?.items.length) return;
-		// Real order + shuffle flag — the backend owns shuffling, so the shuffle toggle can
+		// Real order + shuffle flag â€” the backend owns shuffling, so the shuffle toggle can
 		// restore the true playlist order and every re-shuffle is fresh. It also mixes each page
 		// it walks into the unplayed tail, so this stays a shuffle of the whole playlist rather
 		// than of the pages that happen to be loaded.
 		playFrom(asItem(), pl.items, null, isOnRepeat ? undefined : id, true, pl.continuation);
 	}
 
-	// Click on the ⋯ opens under the button; right-click on the header opens at the pointer.
 	function openMenu(e: MouseEvent) {
-		e.preventDefault(); // a right-click must not also raise WebKit's own menu
-		e.stopPropagation();
 		anchor = anchorMenu(e);
 		menuOpen = true;
 	}
@@ -578,7 +575,7 @@
 		}
 	}
 
-	// The liked-music auto-playlist can't be edited like a normal one — removing = un-liking.
+	// The liked-music auto-playlist can't be edited like a normal one â€” removing = un-liking.
 	async function removeTrack(track: SongItem) {
 		if (!pl) return;
 		if (!isLiked && !track.set_video_id) return;
@@ -631,7 +628,7 @@
 	}
 
 	// Capture phase: modifier clicks select instead of playing; anything else plays (and, once
-	// a selection exists, a plain click means "done with that" — clear it).
+	// a selection exists, a plain click means "done with that" â€” clear it).
 	function onRowClickCapture(e: MouseEvent, i: number) {
 		if (!pl) return;
 		const key = selKey(pl.items[i]);
@@ -767,7 +764,7 @@
 		<div class="p-6"><ErrorState message={error} onRetry={() => load(id)} /></div>
 	{:else if pl}
 		<!-- data-ctx on the header: right-click anywhere in it (artwork, title, buttons' surroundings)
-		     opens the playlist ⋯ menu at the pointer. -->
+		     opens the playlist â‹¯ menu at the pointer. -->
 		<div class="content-in relative flex min-h-[38vh] items-end gap-6 overflow-hidden border-b p-6" data-ctx>
 			{#if bgImage}
 				<img
@@ -904,11 +901,11 @@
 						onclick={doAddSel}
 						disabled={!selectedItems.length}
 					>
-						<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlist…
+						<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlistâ€¦
 					</Button>
 					{#if canMoveSel}
 						<Button variant="outline" size="sm" class="gap-1.5" onclick={doMoveSel}>
-							<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlist…
+							<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlistâ€¦
 						</Button>
 					{/if}
 					{#if canRemoveSel}
@@ -930,7 +927,7 @@
 					<HugeiconsIcon icon={Search01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
 					<Input
 						bind:value={search}
-						placeholder="Search songs, artists…"
+						placeholder="Search songs, artistsâ€¦"
 						class="h-8 flex-1"
 						aria-label="Search this playlist"
 					/>
@@ -971,7 +968,7 @@
 				{#if moreError}
 					<div class="p-3 text-center">
 						<Button variant="outline" size="sm" onclick={loadMore} disabled={loadingMore}>
-							{loadingMore ? 'Loading…' : 'Try again'}
+							{loadingMore ? 'Loadingâ€¦' : 'Try again'}
 						</Button>
 					</div>
 				{:else}
@@ -1033,7 +1030,7 @@
 						disabled={recRefreshing}
 					>
 						<HugeiconsIcon icon={RefreshIcon} class="h-4 w-4" />
-						{recRefreshing ? 'Finding more…' : 'Find more like this'}
+						{recRefreshing ? 'Finding moreâ€¦' : 'Find more like this'}
 					</Button>
 				</div>
 			{/if}
@@ -1117,14 +1114,14 @@
 			onclick={doAddSel}
 			disabled={!selectedItems.length}
 		>
-			<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlist…
+			<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlistâ€¦
 		</button>
 		{#if canMoveSel}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 				onclick={doMoveSel}
 			>
-				<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlist…
+				<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlistâ€¦
 			</button>
 		{/if}
 		{#if canRemoveSel}
@@ -1173,7 +1170,7 @@
 		>
 			<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
 		</button>
-		<!-- On Repeat is built from local play counts — there is no YouTube playlist to seed a
+		<!-- On Repeat is built from local play counts â€” there is no YouTube playlist to seed a
 		     radio from. -->
 		{#if !isOnRepeat}
 			<button

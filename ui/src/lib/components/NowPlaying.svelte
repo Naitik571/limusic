@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { fade, fly, scale } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { beforeNavigate } from '$app/navigation';
@@ -35,7 +35,7 @@
 	// it back. beforeNavigate (not a pathname effect) so clicking the tab you're already on counts.
 	beforeNavigate(() => (np.open = false));
 
-	// The playing track as a queue row, for the right-click menu on the artwork below. Null while
+	// The queue item matching what's actually playing — the track menu's song. Null when
 	// the queue and the player disagree about what is playing (mid-skip), same guard as PlayerBar.
 	const currentSong = $derived.by(() => {
 		const cur = playback.queue.items[playback.queue.currentIndex];
@@ -61,9 +61,9 @@
 		attempt = 0;
 		bgFailed = false;
 	});
-	// Aurora round: the hero art now tries full-res first — the 1080 token, `maxresdefault`
-	// on i.ytimg variants — then steps down through the sizes proven everywhere else (720 →
-	// 400 → the 120 the player bar already has loaded). Consecutive duplicates are dropped so
+	// Aurora round: the hero art now tries full-res first â€” the 1080 token, `maxresdefault`
+	// on i.ytimg variants â€” then steps down through the sizes proven everywhere else (720 â†’
+	// 400 â†’ the 120 the player bar already has loaded). Consecutive duplicates are dropped so
 	// an onerror can't land on the same URL twice and stall the step-down.
 	const srcs = $derived(
 		[thumbHQ(playback.now?.thumbnail), ...[720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px))].filter(
@@ -132,7 +132,7 @@
      z-20 matches the highest a page uses for its own chrome (home's sticky mood chips) and wins the
      tie on DOM order, since <main> is static and its z-indexes land in the same stacking context.
      The player bar and the queue/lyrics panels come later/higher, so they still paint above.
-     ponytail: left offsets mirror Sidebar's w-16/lg:w-60 — keep in sync if those change. -->
+     ponytail: left offsets mirror Sidebar's w-16/lg:w-60 â€” keep in sync if those change. -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
 	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10 {inset}"
