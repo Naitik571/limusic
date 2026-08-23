@@ -45,6 +45,12 @@ jobs:
           @("EXPORTS") + ($names | ForEach-Object { "    $_" }) | Set-Content -Path mpv.def -Encoding ascii
           & lib /def:mpv.def /name:libmpv-2.dll /out:mpv.lib /machine:x64
 
+      # tauri.windows.conf.json lists libmpv-2.dll under bundle.resources; tauri-build fails when
+      # it's missing, so every step that compiles the app needs the DLL in place.
+      - name: Place libmpv-2.dll for tauri-build
+        shell: pwsh
+        run: Copy-Item "$env:MPV_DIR\libmpv-2.dll" "$env:GITHUB_WORKSPACE\src-tauri\libmpv-2.dll" -Force
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
