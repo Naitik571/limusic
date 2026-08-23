@@ -13,6 +13,7 @@
 	import { getCached, putCached } from '$lib/pagecache';
 	import { playSong } from '$lib/player.svelte';
 	import { asSong } from '$lib/browse';
+	import { thumb } from '$lib/thumb';
 
 	let {
 		query,
@@ -66,7 +67,13 @@
 
 	type Sug =
 		| { kind: 'song'; label: string; sub: string; song: SongItem }
-		| { kind: 'artist' | 'album' | 'playlist'; label: string; sub: string; id: string };
+		| {
+				kind: 'artist' | 'album' | 'playlist';
+				label: string;
+				sub: string;
+				id: string;
+				thumb?: string;
+		  };
 
 	const artistLine = (i: BrowseItem) =>
 		(i.artistRuns ?? []).length ? i.artistRuns!.map((r) => r.text).join(', ') : i.subtitle ?? '';
@@ -79,8 +86,10 @@
 		for (const i of suggestions.songs.slice(0, 4))
 			out.push({ kind: 'song', label: i.title, sub: artistLine(i), song: asSong(i) });
 		for (const i of suggestions.artists.slice(0, 2)) out.push({ kind: 'artist', label: i.title, sub: 'Artist', id: i.id });
-		for (const i of suggestions.albums.slice(0, 2)) out.push({ kind: 'album', label: i.title, sub: 'Album', id: i.id });
-		for (const i of suggestions.playlists.slice(0, 2)) out.push({ kind: 'playlist', label: i.title, sub: 'Playlist', id: i.id });
+		for (const i of suggestions.albums.slice(0, 2))
+			out.push({ kind: 'album', label: i.title, sub: 'Album', id: i.id, thumb: i.thumbnail });
+		for (const i of suggestions.playlists.slice(0, 2))
+			out.push({ kind: 'playlist', label: i.title, sub: 'Playlist', id: i.id, thumb: i.thumbnail });
 		return out;
 	});
 
@@ -146,14 +155,28 @@
 						onpointerenter={() => (suggIdx = j)}
 						class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors {j === suggIdx ? 'bg-muted' : 'hover:bg-muted/50'}"
 					>
-						{#if s.kind === 'song'}
-							<HugeiconsIcon icon={MusicNote01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+						{#if (s.kind === 'song' ? s.song.thumbnail : s.kind === 'artist' ? undefined : s.thumb)}
+							<img
+								src={thumb(s.kind === 'song' ? s.song.thumbnail : s.kind === 'artist' ? undefined : s.thumb, 64)}
+								alt=""
+								loading="lazy"
+								class="h-9 w-9 shrink-0 rounded object-cover"
+							/>
 						{:else if s.kind === 'artist'}
-							<HugeiconsIcon icon={UserIcon} class="h-4 w-4 shrink-0 text-muted-foreground" />
-						{:else if s.kind === 'album'}
-							<HugeiconsIcon icon={Album01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+							<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted">
+								<HugeiconsIcon icon={UserIcon} class="h-4 w-4 text-muted-foreground" />
+							</span>
 						{:else}
-							<HugeiconsIcon icon={Playlist01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+							<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-muted">
+								<HugeiconsIcon
+									icon={s.kind === 'album'
+										? Album01Icon
+										: s.kind === 'playlist'
+											? Playlist01Icon
+											: MusicNote01Icon}
+									class="h-4 w-4 text-muted-foreground"
+								/>
+							</span>
 						{/if}
 						<span class="min-w-0 flex-1">
 							<span class="block truncate text-sm font-medium">{s.label}</span>

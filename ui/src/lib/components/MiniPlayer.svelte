@@ -156,7 +156,7 @@
 				     width is not zero, so without it the slider never actually collapses. -->
 				<input
 					type="range"
-					class="range on-art min-w-0 transition-[width,opacity] duration-150 {volOpen
+					class="range range-seek on-art min-w-0 transition-[width,opacity] duration-150 {volOpen
 						? 'w-20 opacity-100'
 						: 'w-0 opacity-0'}"
 					style="--pct:{playback.volume}%"
@@ -216,7 +216,7 @@
 			</button>
 			<input
 				type="range"
-				class="range on-art min-w-0 flex-1"
+				class="range range-seek on-art min-w-0 flex-1"
 				style="--pct:{playback.duration ? (shownPosition / playback.duration) * 100 : 0}%"
 				min="0"
 				max={playback.duration || 0}

@@ -328,7 +328,7 @@
 			<span class="tabular-nums">{fmt(shownPosition)}</span>
 			<input
 				type="range"
-				class="range flex-1"
+				class="range range-seek flex-1"
 				style="--pct:{playback.duration ? (shownPosition / playback.duration) * 100 : 0}%"
 				min="0"
 				max={playback.duration || 0}

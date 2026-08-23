@@ -1144,6 +1144,27 @@ input[type='range'].range::-webkit-slider-thumb {
 input[type='range'].range.on-art::-webkit-slider-runnable-track {
 	background: linear-gradient(to right, var(--primary) var(--pct, 0%), rgb(255 255 255 / 0.35) var(--pct, 0%));
 }
+
+/* The seek bar paints the Aurora headline ramp (the same teal->violet->pink family as
+   .text-gradient and the karaoke sweep) across its FULL width, then reveals it with progress
+   via background-size. So the colour under the thumb changes as the song plays: teal at the
+   start, blue-violet midway, pink by the end — instead of one flat primary. The muted layer
+   underneath is the unplayed remainder. Seek-only; the volume slider keeps flat primary. */
+input[type='range'].range.range-seek::-webkit-slider-runnable-track {
+	background:
+		linear-gradient(90deg, var(--primary), oklch(0.68 0.19 285) 55%, oklch(0.65 0.17 335) 95%)
+			no-repeat,
+		var(--muted);
+	background-size: var(--pct, 0%) 100%;
+}
+/* Same treatment over artwork (mini player): white remainder instead of muted. */
+input[type='range'].range.range-seek.on-art::-webkit-slider-runnable-track {
+	background:
+		linear-gradient(90deg, var(--primary), oklch(0.68 0.19 285) 55%, oklch(0.65 0.17 335) 95%)
+			no-repeat,
+		rgb(255 255 255 / 0.35);
+	background-size: var(--pct, 0%) 100%;
+}
 input[type='range'].range:hover::-webkit-slider-thumb,
 input[type='range'].range:focus-visible::-webkit-slider-thumb {
 	opacity: 1;
