@@ -10,9 +10,8 @@
   <a href="https://github.com/Naitik571/limusic/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/Naitik571/limusic?display_name=release&style=for-the-badge&color=a10935"></a>
   <img alt="License" src="https://img.shields.io/github/license/Naitik571/limusic?style=for-the-badge&color=1881cc">
   <br>
-  <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black">
   <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logoColor=white">
-  <img src="https://img.shields.io/badge/Tauri_2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white">
+  <img src="https://img.shields.io/badge/Tauri_2-24C8D8?style=for-the-badge&logoColor=white">
   <img src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
 </p>
 
@@ -38,13 +37,13 @@ YouTube Music client, and grew from there.
 - **Local Music** — play your own local files with all metadata intact
 - **Last.fm scrobbling** — connect once from the title bar, every play is scrobbled
 - **Discord Rich Presence** — artwork, live progress bar, one click to toggle
-- **OS media keys** and now-playing integration (MPRIS on Linux, SMTC on Windows)
+- **OS media keys** and now-playing integration (SMTC on Windows)
 - **System tray** — close the window, keep the music; play/pause and skip from the tray, optional start-on-login
 - **Listen Together** — synced listening rooms over a small self-hosted relay
 - **Gamepad** — full controller support (Xbox/PS/JoyCon): play/pause, next/prev, volume, seek, fast-scrub, mini-player toggle — works even when the app is tray-minimized (see Gamepad table below)
 - **Offline downloads** — save any track from its ⋮ menu; a **download manager** in the title bar shows live per-track progress. Playlists download in parallel (4 at a time, skips what's already on disk) and fall back to yt-dlp when a stream can't be resolved. **Downloaded tracks show a persistent indicator in their rows** and play straight from disk, offline.
 - **Themes with real personality** — five palette themes beyond the accent colours: **Pixel** (8-bit CRT scanlines, Press Start 2P), **Arcade** (Bungee + dual glow), **Synthwave** (Orbitron + neon grid + sunset wash), **Gruvbox** (JetBrains Mono + warm paper), **Nord** (icy calm, IBM Plex) — each with its own fonts, background treatment, focus ring and selection colour. All six new font families are also available as overrides for any theme.
-- **Self-updating builds** (AppImage on Linux, setup.exe on Windows) + **Ctrl/Cmd +/− zoom**
+- **Self-updating builds** (setup.exe on Windows) + **Ctrl/Cmd +/− zoom**
 - **Customization** — accent colour, hue, radius, font overrides and locally-loaded font files under Settings → Themes
 
 ---
@@ -134,17 +133,14 @@ All available in the latest release. Fork tracks upstream versioning — this re
 
 | Platform | File | Notes |
 |---|---|---|
-| Linux | `.AppImage` | Self-updating, libmpv bundled. Needs glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+) |
-| Linux (Fedora/RHEL) | `.rpm` | Needs `mpv-libs` installed (`sudo dnf install mpv-libs`) |
 | Windows | `-setup.exe` | Self-updating |
 | Windows | `.msi` | Plain installer, no auto-update |
-| macOS | none yet | Build from source, see [docs/BUILD-PLATFORMS.md](docs/BUILD-PLATFORMS.md) |
 
 ---
 
 ## Keyboard Shortcuts
 
-OS media keys (SMTC on Windows, MPRIS on Linux) work even while the window is
+OS media keys (SMTC on Windows) work even while the window is
 unfocused. Inside the app, the standard set follows YT Music's web conventions:
 
 | Key | Action |
@@ -250,16 +246,18 @@ suggestion.
 
 ## Building from Source
 
-Fedora:
+Windows:
 
-```bash
-sudo dnf install mpv-libs mpv-libs-devel webkit2gtk4.1-devel \
-  gcc gcc-c++ make openssl-devel librsvg2-devel
+```powershell
+# 1. libmpv dev package (shinchiro build) — put libmpv-2.dll + mpv.lib in .libmpv\ and point the
+#    linker at it. See docs/BUILD-PLATFORMS.md for the exact steps.
+$env:RUSTFLAGS = "-L native=C:\path\to\.libmpv"
+# 2. Frontend deps, then the build.
 cd ui && pnpm install && cd ..
 cargo tauri build
 ```
 
-Windows and macOS instructions live in [docs/BUILD-PLATFORMS.md](docs/BUILD-PLATFORMS.md).
+Full Windows instructions live in [docs/BUILD-PLATFORMS.md](docs/BUILD-PLATFORMS.md).
 
 ---
 

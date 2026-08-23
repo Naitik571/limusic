@@ -33,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["rpm", "appimage"],
+    "targets": ["msi", "nsis"],
     "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.png",

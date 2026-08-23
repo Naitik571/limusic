@@ -415,18 +415,12 @@ pub fn status(state: &AppState) -> serde_json::Value {
     serde_json::json!({ "connected": key.is_some(), "username": username })
 }
 
-/// Open a URL in the user's default browser. No opener plugin in the app; three lines cover the
-/// three platforms.
+/// Open a URL in the user's default browser. No opener plugin in the app.
 pub(crate) fn open_browser(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    let cmd = std::process::Command::new("xdg-open").arg(url).spawn();
-    #[cfg(target_os = "macos")]
-    let cmd = std::process::Command::new("open").arg(url).spawn();
     // cmd.exe re-parses its own command line, and `Command::arg` only quotes args containing
     // spaces — so an unquoted `&` in the URL split it into a second command and the browser got
     // `…/auth?api_key=X` with the token chopped off ("Invalid API key" once the user clicks Allow).
     // raw_arg passes the quoted URL through verbatim.
-    #[cfg(target_os = "windows")]
     let cmd = {
         use std::os::windows::process::CommandExt;
         std::process::Command::new("cmd")

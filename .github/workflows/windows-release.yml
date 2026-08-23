@@ -3,12 +3,9 @@ name: Windows release binaries
 # Builds and signs the Windows installers for a release that ALREADY EXISTS, attaches them to it,
 # and adds the `windows-x86_64` entry to latest.json so Windows installs get auto-updates.
 #
-# `scripts/release.sh` on Fedora creates the GitHub release and its .rpm. Publishing it fires this
-# workflow automatically — a few minutes later the Windows assets appear on the same release. Nobody
-# boots Windows. The Linux AppImage is built the same way, by linux-release.yml.
-#
-# It can also be run by hand against an older tag to backfill:
-#   Actions ▸ Windows release binaries ▸ Run workflow ▸ tag = v0.1.4
+# The GitHub Release object itself is created first (UI, or `gh release create v0.5.9`) —
+# this workflow only uploads assets onto it. Dispatch by hand:
+#   Actions ▸ Windows release binaries ▸ Run workflow ▸ tag = v0.5.9
 #
 # Requires repo secrets (Settings ▸ Secrets and variables ▸ Actions):
 #   TAURI_SIGNING_PRIVATE_KEY           contents of ~/.tauri/limusic.key
@@ -22,7 +19,7 @@ name: Windows release binaries
 # release wrote. This job was recompiling all of Rust from scratch every single time, 11m25s of a
 # 15m run, while dutifully saving a 0.55 GB cache nothing would ever read. A dispatched run executes
 # on master, so the cache is shared release to release; the checkout below still pins the build to
-# the tag. scripts/release.sh dispatches both workflows.
+# the tag.
 # Consequence: publishing a release from the GitHub UI builds nothing. Use the script.
 on:
   workflow_dispatch:

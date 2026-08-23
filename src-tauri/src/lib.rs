@@ -34,27 +34,6 @@ use orchestrator::Orchestrator;
 use potoken::PoTokenGenerator;
 use state::AppState;
 
-/// Hand glibc's freed-but-retained heap back to the OS every few minutes.
-///
-/// glibc gives each thread its own arena and never returns those pages on `free`, so this process
-/// (45 threads across tokio, GTK, mpv and souvlaki) accumulates empty heap it will never reuse.
-/// Measured against a running 0.3.2 build: `malloc_trim(0)` dropped it from 211 MiB to 160 MiB PSS
-/// and the slack came back at roughly 15 MiB per 15 minutes, so a periodic trim keeps it flat.
-///
-/// ponytail: trim only. `mallopt(M_ARENA_MAX, 2)` would cap the sprawl at the source, but it
-/// serialises allocation across all those threads for a win the trim already gets. Reach for it
-/// only if RSS starts climbing between trims.
-#[cfg(target_os = "linux")]
-fn spawn_heap_trimmer() {
-    tauri::async_runtime::spawn(async {
-        loop {
-            tokio::time::sleep(Duration::from_secs(180)).await;
-            // Safe: no arguments, no allocation, glibc walks its own arenas.
-            unsafe { libc::malloc_trim(0) };
-        }
-    });
-}
-
 /// 1 Hz sleep-timer tick. When the countdown deadline passes: pause playback, emit
 /// `sleep-timer-fired` so open windows clear their chip, and disarm. `EndOfSong` is handled in
 /// `AppState::on_track_ended`, not here. The thread outlives any window (tray/mini-player
@@ -79,117 +58,8 @@ fn spawn_sleep_timer(state: Arc<crate::state::AppState>) {
     });
 }
 
-/// Pull WebKitGTK off its full-browser defaults, which wry never touches.
-///
-/// **Caches.** WebKitGTK defaults to `WEBKIT_CACHE_MODEL_WEB_BROWSER` ("cache a very large number of
-/// resources and previously viewed content"), sized against total system RAM. A music client
-/// browsing YTM shelves fills that with thumbnails: measured 627 MiB of on-disk WebKitCache and a
-/// web process that would not give the memory back (`malloc_trim` there freed 1 MiB, so it is all
-/// live cache). `DocumentBrowser` keeps a working cache but drops dead resources instead of
-/// hoarding them. wry also hard-enables the back/forward page cache (`webkitgtk/mod.rs:438`), which
-/// keeps whole previous documents alive; this is a SvelteKit SPA doing client-side routing, so it
-/// never gets a back/forward navigation to restore and that memory is pure waste.
-///
-/// **Subsystems.** Audio is libmpv's job and the UI has no `<audio>`, `<video>`, `AudioContext`,
-/// `getUserMedia` or WebGL anywhere in it (only 2D canvas, in `theme.svelte.ts`), yet every web
-/// process boots the media and 3D stacks regardless: GStreamer, libLLVM and Mesa's gallium are all
-/// mapped into it. Measured A/B in `cargo tauri dev`, same build otherwise, home feed loaded:
-/// **259 MiB → 247 MiB** PSS at T+180s (236 → 223 at T+60s).
-///
-/// Applies to one webview, because WebKit settings are per-view: the main window and the mini
-/// player each cost their own web process, so each has to be told. The hidden cipher/PoToken
-/// webviews are deliberately left at the defaults, since the fingerprinting code they exist to run
-/// is entitled to probe whatever it likes.
-#[cfg(target_os = "linux")]
-fn tune_webview(win: &tauri::WebviewWindow) {
-    use webkit2gtk::{CacheModel, SettingsExt, WebContextExt, WebViewExt};
-
-    let label = win.label().to_owned();
-    let res = win.with_webview(|wv| {
-        let webview = wv.inner();
-        // Context-wide, so the second call is a no-op. Set here anyway: whichever window comes up
-        // first should not depend on the other existing.
-        if let Some(ctx) = WebViewExt::context(&webview) {
-            ctx.set_cache_model(CacheModel::DocumentBrowser);
-        }
-        if let Some(settings) = WebViewExt::settings(&webview) {
-            settings.set_enable_page_cache(false);
-            settings.set_enable_media(false);
-            settings.set_enable_mediasource(false);
-            settings.set_enable_media_stream(false);
-            settings.set_enable_media_capabilities(false);
-            settings.set_enable_encrypted_media(false);
-            settings.set_enable_webaudio(false);
-            settings.set_enable_webrtc(false);
-            settings.set_enable_webgl(false);
-            settings.set_enable_html5_database(false); // WebSQL. localStorage is a separate switch.
-            settings.set_enable_hyperlink_auditing(false);
-        }
-    });
-    match res {
-        Ok(()) => tracing::info!(
-            label,
-            "webkit: DocumentBrowser cache, page cache + media + webgl off"
-        ),
-        Err(e) => tracing::warn!(label, error = %e, "webkit tuning failed (continuing)"),
-    }
-}
-
-/// [`tune_webview`] for a window looked up by label. No-op if it isn't up.
-#[cfg(target_os = "linux")]
-pub(crate) fn tune_webview_labelled(app: &tauri::AppHandle, label: &str) {
-    if let Some(win) = app.get_webview_window(label) {
-        tune_webview(&win);
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // NVIDIA + Wayland: WebKitGTK's DMABUF renderer trips over NVIDIA's explicit
-    // sync (GBM buffer failures / blank window / Gdk Error 71). Disabling explicit
-    // sync keeps hardware-accelerated rendering, unlike the old
-    // WEBKIT_DISABLE_DMABUF_RENDERER=1 workaround which forced CPU software
-    // rendering on WebKitGTK 2.46+ and made the whole UI laggy. Harmless no-op on
-    // non-NVIDIA drivers. ponytail: blanket-set on Linux; probe driver/session if
-    // an X11/NVIDIA blank-window report ever comes in.
-    #[cfg(target_os = "linux")]
-    {
-        if std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none() {
-            std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
-        }
-        // AppImage + NVIDIA: the AppImage ships its own WebKitGTK/GTK stack, and inside
-        // that environment the DMABUF renderer fails GBM buffer allocation ("Failed to
-        // create GBM buffer … Invalid argument") → solid white window. The explicit-sync
-        // fix above does NOT cover this case — verified 2026-07-15: the raw binary renders
-        // on the system webkit (same 2.52.4) while the AppImage white-screens, and only
-        // disabling DMABUF makes the AppImage paint. Cost: CPU software rendering, so gate
-        // it tightly — rpm/dev builds and non-NVIDIA AppImages keep full GPU compositing.
-        //
-        // That cost is much larger than "no GPU compositing" implies. Measured on this
-        // WebKitGTK 2.52.5, same page of 300 cards, only the renderer differing:
-        //
-        //     GPU compositing      97 MiB idle → 135 MiB
-        //     software rendering   62 MiB idle → 245 MiB
-        //
-        // The gap grows with content, because every composited layer becomes a CPU-side
-        // backing store. It is the single biggest term in this app's memory use, far ahead
-        // of thumbnail sizes or DOM size (both measured, both made no difference).
-        //
-        // This workaround is also older than the fix that probably caused the failure:
-        // it went in 2026-07-15, and b4d98fa (2026-07-27) stopped the AppDir shadowing the
-        // host's libwayland-client, which broke Mesa's EGL vendor loading — the same class
-        // of failure, and its commit message notes it was "invisible on NVIDIA". Set
-        // LIMUSIC_FORCE_GPU=1 to skip the workaround and check whether the AppImage still
-        // white-screens. If it renders, delete this block.
-        if std::env::var_os("APPIMAGE").is_some()
-            && std::path::Path::new("/dev/nvidiactl").exists()
-            && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
-            && std::env::var_os("LIMUSIC_FORCE_GPU").is_none()
-        {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-    }
-
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -198,8 +68,8 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
-        // Must be the first plugin registered (its documented requirement). A second launch —
-        // e.g. clicking the app icon while we're hidden in the tray — re-shows this instance
+        // Must be the first plugin registered (its documented requirement). A second launch â€”
+        // e.g. clicking the app icon while we're hidden in the tray â€” re-shows this instance
         // instead of spawning a second one (which would fight over SQLite and mpv).
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             tray::show_main(app);
@@ -230,7 +100,7 @@ pub fn run() {
 
             // Session bootstrap (context/15 startup ordering): load the persisted login session
             // (cookie/dataSyncId/visitorData) from settings; fetch visitorData anonymously
-            // (context/04 §A) only if we've never stored one.
+            // (context/04 Â§A) only if we've never stored one.
             let proxy = db.get_setting("proxy");
             let cookie = db.get_setting("session_cookie").filter(|s| !s.is_empty());
             let data_sync_id = state::persisted_data_sync_id(&db);
@@ -292,16 +162,16 @@ pub fn run() {
             // actions; works while the app is backgrounded/tray-minimized.
             gamepad::start(handle.clone());
 
-            // Discord rich presence — off unless the user opted in; parks on its channel until then.
+            // Discord rich presence â€” off unless the user opted in; parks on its channel until then.
             let discord = discord::spawn(db.get_setting("discord_rpc").as_deref() == Some("true"));
 
-            // Last.fm scrobbler — parks until a session key exists (titlebar connect flow).
+            // Last.fm scrobbler â€” parks until a session key exists (titlebar connect flow).
             let lastfm = lastfm::spawn(
                 db.get_setting("lastfm_session_key")
                     .filter(|s| !s.is_empty()),
             );
 
-            // Listen Together session (context/19). Server URL is a DB setting so "home PC → VPS" is
+            // Listen Together session (context/19). Server URL is a DB setting so "home PC â†’ VPS" is
             // config, not a rebuild. The sync channel feeds the guest-playback bridge below.
             let lt_url = db
                 .get_setting("lt_server_url")
@@ -326,7 +196,7 @@ pub fn run() {
             app.manage(app_state.clone());
 
             // Local music artwork reaches the webview over the asset protocol, whose configured
-            // scope is empty — the folders it may read are the ones the user picked (local.rs).
+            // scope is empty â€” the folders it may read are the ones the user picked (local.rs).
             local::allow_music_paths(&handle, &app_state.db);
 
             // System tray: playback controls + show/quit while running in the background.
@@ -345,7 +215,7 @@ pub fn run() {
                 });
             }
 
-            // Restore the last session's queue (paused, not autoplaying). context/11 §state.
+            // Restore the last session's queue (paused, not autoplaying). context/11 Â§state.
             {
                 let st = app_state.clone();
                 tauri::async_runtime::spawn(async move {
@@ -355,7 +225,7 @@ pub fn run() {
 
             // First-run visitorData bootstrap, off the startup path. `set_visitor_data` writes
             // through the shared session (Arc<RwLock>), so the orchestrator's InnerTube clone sees
-            // it; resolves degrade gracefully (no PoToken) until it lands. context/04 §A.
+            // it; resolves degrade gracefully (no PoToken) until it lands. context/04 Â§A.
             if needs_visitor_bootstrap {
                 let st = app_state.clone();
                 let potoken = potoken.clone();
@@ -374,15 +244,15 @@ pub fn run() {
                 });
             }
 
-            // 1 Hz sleep-timer tick: pause + notify when the countdown expires. A plain thread —
+            // 1 Hz sleep-timer tick: pause + notify when the countdown expires. A plain thread â€”
             // the check is a few ns, `Player::pause` is sync, and the app already has several
             // std threads (media, discord, lastfm) for the same reason.
             spawn_sleep_timer(app_state.clone());
 
-            // Pump mpv events → UI events + queue advance. context/11 events, context/14 §TrackEnded.
+            // Pump mpv events â†’ UI events + queue advance. context/11 events, context/14 Â§TrackEnded.
             spawn_event_pump(app_state, handle, events);
 
-            // Prewarm the webviews off the first-play path (context/04 §startup). The delays let
+            // Prewarm the webviews off the first-play path (context/04 Â§startup). The delays let
             // the event loop come up first (run_on_main_thread needs it pumping).
             {
                 let cipher = cipher.clone();
@@ -409,11 +279,6 @@ pub fn run() {
                 });
             }
 
-            #[cfg(target_os = "linux")]
-            {
-                tune_webview_labelled(app.handle(), "main");
-                spawn_heap_trimmer();
-            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -508,7 +373,7 @@ pub fn run() {
             commands::open_external,
         ])
         .on_window_event(|window, event| {
-            // Close-to-tray: ✕ hides the main window and playback keeps running; real quit is
+            // Close-to-tray: âœ• hides the main window and playback keeps running; real quit is
             // the tray's Quit item (or the "close_to_tray=false" setting). Label-gated: the
             // hidden cipher/PoToken webviews are windows too and must close normally.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -525,7 +390,7 @@ pub fn run() {
                         }
                     }
                     // Nothing in the widget closes it, but a WM shortcut still can. Turn that into
-                    // the ordinary "back to the app" path — closing it on its own would leave the
+                    // the ordinary "back to the app" path â€” closing it on its own would leave the
                     // app running with no window at all.
                     mini::LABEL => {
                         api.prevent_close();
@@ -553,7 +418,7 @@ pub fn run() {
         });
 }
 
-/// ✕ hides to tray unless the user explicitly set close_to_tray=false (unset → default on).
+/// âœ• hides to tray unless the user explicitly set close_to_tray=false (unset â†’ default on).
 fn close_hides(setting: Option<&str>) -> bool {
     setting != Some("false")
 }
@@ -617,18 +482,18 @@ fn spawn_event_pump(
                         );
                     }
                     state.media_set_playing(playing);
-                    // Keep the tray's toggle label honest — this arm is the same chokepoint
+                    // Keep the tray's toggle label honest â€” this arm is the same chokepoint
                     // MPRIS uses, so tray state can't drift from media-key state.
                     tray::set_playing(&app, playing);
-                    state.lt_on_play_state(playing).await; // Listen Together host → broadcast
+                    state.lt_on_play_state(playing).await; // Listen Together host â†’ broadcast
                 }
                 PlayerEvent::TrackEnded => {
                     state.on_track_ended().await;
                 }
                 PlayerEvent::TrackFailed(msg) => {
                     // The track died (dead/403 URL etc). on_track_failed records a WEB_REMIX 403
-                    // (context/06 §2), evicts the poisoned cache, and retries the track once via
-                    // the fallback clients — only toast the error if it gave up and advanced.
+                    // (context/06 Â§2), evicts the poisoned cache, and retries the track once via
+                    // the fallback clients â€” only toast the error if it gave up and advanced.
                     tracing::warn!(error = %msg, "track failed");
                     if !state.on_track_failed().await {
                         let _ = app.emit("playback-error", serde_json::json!({ "message": msg }));
@@ -650,7 +515,7 @@ mod tests {
 
     #[test]
     fn close_hides_unless_explicitly_disabled() {
-        assert!(close_hides(None)); // fresh install → tray on
+        assert!(close_hides(None)); // fresh install â†’ tray on
         assert!(close_hides(Some("true")));
         assert!(close_hides(Some("garbage")));
         assert!(!close_hides(Some("false")));
@@ -660,12 +525,12 @@ mod tests {
     fn steady_playback_throttles_to_250ms() {
         let mut t = PositionThrottle::new();
         let base = Instant::now();
-        // First tick ever → emitted regardless of cadence.
+        // First tick ever â†’ emitted regardless of cadence.
         assert!(t.should_emit(0.0, base));
-        // 100ms later, small forward move → still within the 250ms window, suppressed.
+        // 100ms later, small forward move â†’ still within the 250ms window, suppressed.
         assert!(!t.should_emit(0.1, base + Duration::from_millis(100)));
         assert!(!t.should_emit(0.2, base + Duration::from_millis(200)));
-        // 250ms accumulated since last emit → emitted again.
+        // 250ms accumulated since last emit â†’ emitted again.
         assert!(t.should_emit(0.25, base + Duration::from_millis(250)));
     }
 
@@ -674,7 +539,7 @@ mod tests {
         let mut t = PositionThrottle::new();
         let base = Instant::now();
         assert!(t.should_emit(10.0, base));
-        // 50ms later but position jumped +30s (e.g. media-key seek) → emit despite short dt.
+        // 50ms later but position jumped +30s (e.g. media-key seek) â†’ emit despite short dt.
         assert!(t.should_emit(40.0, base + Duration::from_millis(50)));
     }
 
@@ -683,14 +548,14 @@ mod tests {
         let mut t = PositionThrottle::new();
         let base = Instant::now();
         assert!(t.should_emit(60.0, base));
-        // 50ms later but position jumped -30s → emit despite short dt.
+        // 50ms later but position jumped -30s â†’ emit despite short dt.
         assert!(t.should_emit(30.0, base + Duration::from_millis(50)));
     }
 
     #[test]
     fn first_tick_ever_emits() {
         let mut t = PositionThrottle::new();
-        // NaN last_pos (fresh throttle) → always emits on the very first tick, even at t=now.
+        // NaN last_pos (fresh throttle) â†’ always emits on the very first tick, even at t=now.
         assert!(t.should_emit(5.0, Instant::now()));
     }
 }

@@ -1,16 +1,8 @@
 //! System tray: app icon + menu (Show / Play-Pause / Next / Previous / Quit). Menu actions
 //! route into the same [`AppState`] methods the OS media keys use (see media.rs), so the tray
-//! can never behave differently from MPRIS.
+//! can never behave differently from SMTC.
 //!
-//! Two backends, because clicking the icon to restore the window is unreachable on Linux
-//! otherwise: Tauri's `tray-icon` talks to **libappindicator**, whose D-Bus item exposes no
-//! `Activate` method at all (only `SecondaryActivate`/`Scroll`), so a left-click has nothing to
-//! call and `TrayIconEvent` never fires — its GTK backend wires up zero signals. Electron apps
-//! get click-to-restore by implementing StatusNotifierItem directly and advertising
-//! `ItemIsMenu=false`; [`ksni`] does the same for us on Linux. Windows/macOS keep `tray-icon`.
-//!
-//! Both backends expose the same two entry points — [`init`] and [`set_playing`] — so lib.rs
-//! never learns which one is live.
+//! Built on Tauri's `tray-icon`: menu on right-click, double-click restores the window.
 
 use std::sync::Arc;
 
@@ -21,7 +13,7 @@ use crate::state::AppState;
 pub use imp::{init, set_playing};
 
 /// Bring the main window back from close-to-tray, minimize, or the mini player. Every "come back"
-/// path — tray menu, tray click, second launch, the widget's restore button — goes through here so
+/// path â€” tray menu, tray click, second launch, the widget's restore button â€” goes through here so
 /// they can't drift apart.
 pub fn show_main(app: &AppHandle) {
     crate::mini::close(app);
@@ -63,108 +55,6 @@ fn handle_menu(app: &AppHandle, id: &str) {
     }
 }
 
-#[cfg(target_os = "linux")]
-mod imp {
-    use std::sync::OnceLock;
-
-    use ksni::menu::{MenuItem, StandardItem};
-    use ksni::{Handle, Icon, Tray, TrayMethods};
-    use tauri::AppHandle;
-
-    use super::{handle_menu, show_main};
-
-    /// `Handle` isn't `Clone`, so it lives here rather than in Tauri's managed state — that also
-    /// keeps [`set_playing`] callable without borrowing across an await.
-    static HANDLE: OnceLock<Handle<LimusicTray>> = OnceLock::new();
-
-    struct LimusicTray {
-        app: AppHandle,
-        playing: bool,
-        icon: Vec<Icon>,
-    }
-
-    impl Tray for LimusicTray {
-        fn id(&self) -> String {
-            "limusic".into()
-        }
-
-        fn title(&self) -> String {
-            "Limusic".into()
-        }
-
-        fn icon_pixmap(&self) -> Vec<Icon> {
-            self.icon.clone()
-        }
-
-        /// The entire reason this backend exists: Plasma dispatches a left-click here.
-        fn activate(&mut self, _x: i32, _y: i32) {
-            show_main(&self.app);
-        }
-
-        fn menu(&self) -> Vec<MenuItem<Self>> {
-            let item = |label: &str, id: &'static str| {
-                MenuItem::from(StandardItem {
-                    label: label.into(),
-                    activate: Box::new(move |t: &mut Self| handle_menu(&t.app, id)),
-                    ..Default::default()
-                })
-            };
-            vec![
-                item("Show Limusic", "show"),
-                MenuItem::Separator,
-                item(if self.playing { "Pause" } else { "Play" }, "play_pause"),
-                item("Next", "next"),
-                item("Previous", "prev"),
-                MenuItem::Separator,
-                item("Quit", "quit"),
-            ]
-        }
-    }
-
-    /// Tauri hands us RGBA; StatusNotifierItem wants ARGB32 in network byte order.
-    fn icon_pixmap(app: &AppHandle) -> Vec<Icon> {
-        let Some(img) = app.default_window_icon() else {
-            return Vec::new();
-        };
-        let mut data = img.rgba().to_vec();
-        for px in data.chunks_exact_mut(4) {
-            px.rotate_right(1); // [R,G,B,A] -> [A,R,G,B]
-        }
-        vec![Icon {
-            width: img.width() as i32,
-            height: img.height() as i32,
-            data,
-        }]
-    }
-
-    pub fn init(app: &AppHandle) -> tauri::Result<()> {
-        let tray = LimusicTray {
-            app: app.clone(),
-            playing: false,
-            icon: icon_pixmap(app),
-        };
-        // Registering with the StatusNotifierWatcher is async and can outlive setup(); a failure
-        // here costs the tray, not the app, so it's logged rather than propagated.
-        tauri::async_runtime::spawn(async move {
-            match tray.spawn().await {
-                Ok(handle) => {
-                    let _ = HANDLE.set(handle);
-                }
-                Err(e) => tracing::error!("tray: StatusNotifierItem registration failed: {e}"),
-            }
-        });
-        Ok(())
-    }
-
-    pub fn set_playing(_app: &AppHandle, playing: bool) {
-        let Some(handle) = HANDLE.get() else { return };
-        tauri::async_runtime::spawn(async move {
-            handle.update(|t| t.playing = playing).await;
-        });
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
 mod imp {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
