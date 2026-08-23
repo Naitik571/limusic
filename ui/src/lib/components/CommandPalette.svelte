@@ -11,7 +11,6 @@
 	import { Search01Icon, MusicNote01Icon, UserIcon } from '@hugeicons/core-free-icons';
 	import * as Command from '$lib/components/ui/command/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import ExplicitIcon from './ExplicitIcon.svelte';
 	import type { BrowseItem } from '$lib/api';
 	import { openItem, searchPreview } from '$lib/browse';
 	import { ui } from '$lib/player.svelte';
@@ -129,9 +128,6 @@
 						<div class="min-w-0 flex-1">
 							<div class="truncate text-sm">{item.title}</div>
 							<div class="flex items-center gap-1 text-xs text-muted-foreground">
-								{#if item.explicit}
-									<ExplicitIcon class="h-3 w-3 shrink-0" />
-								{/if}
 								<span class="truncate">
 									{KIND[item.kind]}{item.subtitle ? ` • ${item.subtitle}` : ''}
 								</span>

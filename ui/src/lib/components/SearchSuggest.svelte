@@ -4,15 +4,18 @@
 	// falls through to `onsubmit` — the parent's full search. The input is controlled from
 	// `query` and reports keystrokes via `onchange`, so the same box works anywhere without
 	// fighting a parent form (and there's no bind-vs-event ordering race).
+	//
+	// The kbd chip advertises the Ctrl/Cmd-K palette (shortcuts.ts), which searches the same
+	// thing from anywhere in the app. It steps aside once there is a query to read.
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { MusicNote01Icon, Search01Icon, UserIcon, Album01Icon, Playlist01Icon } from '@hugeicons/core-free-icons';
 	import { Input } from '$lib/components/ui/input';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import ExplicitIcon from './ExplicitIcon.svelte';
-	import type { BrowseItem } from '$lib/api';
-	import { openItem, searchPreview } from '$lib/browse';
-	import { MOD } from '$lib/shortcuts';
+	import * as api from '$lib/api';
+	import type { BrowseItem, SearchResults, SongItem } from '$lib/api';
+	import { getCached, putCached } from '$lib/pagecache';
+	import { playSong } from '$lib/player.svelte';
+	import { asSong } from '$lib/browse';
 	import { MOD } from '$lib/shortcuts';
 	import { thumb } from '$lib/thumb';
 
@@ -140,52 +143,26 @@
 		/>
 	{/if}
 	<Input
-		bind:value
-		{placeholder}
-		class="pr-16 {inputClass}"
-		autocomplete="off"
-		role="combobox"
-		aria-expanded={open}
-		aria-controls="search-suggest"
-		oninput={onType}
-	import { MOD } from '$lib/shortcuts';
+		value={query}
+		oninput={(e) => onchange?.((e.currentTarget as HTMLInputElement).value)}
 		onkeydown={onKeydown}
 		{placeholder}
 		class="{inputClass}{icon ? ' pl-9' : ''}"
 	/>
-	<!-- Advertises the palette, which searches the same thing from anywhere in the app
-	     (shortcuts.ts). Out of the way once there is a query to read, and never a click target:
-	     the field behind it is the target. -->
-	{#if !value}
+	{#if !query}
+		<!-- Advertises the palette, which searches the same thing from anywhere in the app
+		     (shortcuts.ts). Out of the way once there is a query to read, and never a click
+		     target: the field behind it is the target. -->
 		<kbd
 			class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 font-mono text-[0.625rem] font-medium tracking-wide text-muted-foreground"
 		>
 			{MOD}K
 		</kbd>
 	{/if}
-	{#if open}
-		<div
-			id="search-suggest"
-			role="listbox"
-			aria-label="Search preview"
-			class="absolute top-full z-50 mt-2 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl animate-in fade-in-0 zoom-in-95 duration-150 {panelClass}"
-		>
-			{#if loading && !items.length}
-				{#each Array(4) as _, i (i)}
-					<div class="flex items-center gap-3 px-3 py-2">
-						<Skeleton class="h-10 w-10 shrink-0 rounded-md" />
-						<div class="min-w-0 flex-1">
-							<Skeleton class="h-3 w-40 rounded" />
-							<Skeleton class="mt-2 h-2.5 w-24 rounded" />
-						</div>
-					</div>
-				{/each}
-			{:else if !items.length}
-				<div class="px-4 py-3 text-sm text-muted-foreground">Nothing quick for that.</div>
-			{:else}
-				{#each items as item, i (item.id)}
-					{@const hero = i === 0}
-	import { MOD } from '$lib/shortcuts';
+	{#if suggOpen && entries.length}
+		<div class="absolute top-full right-0 left-0 z-50 mt-1.5 overflow-hidden rounded-xl glass-strong shadow-2xl">
+			<div class="max-h-80 overflow-y-auto p-1">
+				{#each entries as s, j (s.kind + s.label)}
 					<button
 						type="button"
 						onclick={() => activateSug(s)}

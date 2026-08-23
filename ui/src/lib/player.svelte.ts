@@ -460,21 +460,6 @@ export function nudgeVolume(delta: number) {
 	volSettle = setTimeout(() => commitVolume(playback.volume), 400);
 }
 
-/**
- * Tempo + pitch (the "Advanced" dialog). Applied live, reverted if mpv rejects it: the pitch
- * filter needs a libmpv built with librubberband, and Rust applies pitch first so a rejection
- * leaves neither of them set.
- */
-export function setTempoPitch(speed: number, semitones: number) {
-	const previous = { speed: playback.speed, semitones: playback.semitones };
-	playback.speed = speed;
-	playback.semitones = semitones;
-	api.setPlaybackParams(speed, semitones).catch((e) => {
-		Object.assign(playback, previous);
-		toast.error(String(e));
-	});
-}
-
 // Mute *is* volume 0 — no separate flag, so dragging the slider off zero un-mutes for free and the
 // icon can't disagree with what you hear. Remembers the level to come back to; falls back to 100
 // when the user dragged to zero themselves (nothing was remembered).
@@ -549,10 +534,9 @@ function onShortcut(e: KeyboardEvent) {
 	} else if (key.toLowerCase() === 'l') {
 		e.preventDefault();
 		api.seek(pos + 10);
-	} else if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'h') {
-		e.preventDefault();
-		ui.shortcutsOpen = true;
 	}
+	// Ctrl/Cmd chords (K, H, E, >/<) live in `shortcuts.ts`, which gates on the modifier first —
+	// this handler deliberately never sees them.
 }
 
 // --- Sleep timer -------------------------------------------------------------------------------
@@ -718,7 +702,6 @@ export const ui = $state({
 	moveFrom: '' as string,
 	toast: null as Toast | null,
 	settingsOpen: false,
-	shortcutsOpen: false, // the settings modal
 	settingsTab: '' as string, // when set, the settings modal opens on this tab (consumed on open)
 	ltOpen: false, // the Listen Together modal
 	linkOpen: false, // the "open a pasted link" modal

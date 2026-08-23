@@ -25,13 +25,12 @@
 	import AddToPlaylist from '$lib/components/AddToPlaylist.svelte';
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import KeyboardShortcutsDialog from '$lib/components/KeyboardShortcutsDialog.svelte';
-	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import ChannelPicker from '$lib/components/ChannelPicker.svelte';
 	import LinkDialog from '$lib/components/LinkDialog.svelte';
 	import MiniPlayer from '$lib/components/MiniPlayer.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
-	import KeyboardShortcuts from '$lib/components/KeyboardShortcuts.svelte';
+	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { auth, initApp, np, playback, ui } from '$lib/player.svelte';
 	import { win, initWin } from '$lib/win.svelte';
@@ -138,7 +137,6 @@
 	</div>
 
 	<CommandPalette />
-	<KeyboardShortcuts />
 	<AddToPlaylist />
 	<SettingsDialog />
 	<KeyboardShortcutsDialog />
