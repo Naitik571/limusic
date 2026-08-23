@@ -460,6 +460,17 @@ export function nudgeVolume(delta: number) {
 	volSettle = setTimeout(() => commitVolume(playback.volume), 400);
 }
 
+/**
+ * Mouse wheel as a volume gesture (sliders, the player bar, artwork). Same gesture as a run of
+ * key presses, so it reuses the nudge path — live per frame, persisted once the scrolling stops.
+ * preventDefault keeps the page from scrolling underneath: Svelte only forces passive listeners
+ * on touch events, not wheel.
+ */
+export function wheelVolume(e: WheelEvent) {
+	e.preventDefault();
+	nudgeVolume(e.deltaY < 0 ? 5 : -5);
+}
+
 // Mute *is* volume 0 — no separate flag, so dragging the slider off zero un-mutes for free and the
 // icon can't disagree with what you hear. Remembers the level to come back to; falls back to 100
 // when the user dragged to zero themselves (nothing was remembered).

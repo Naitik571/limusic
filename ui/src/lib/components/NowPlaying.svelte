@@ -13,7 +13,7 @@
 		Queue01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { dragVolume, np, playback } from '$lib/player.svelte';
+	import { dragVolume, np, playback, wheelVolume } from '$lib/player.svelte';
 	import { appearance } from '$lib/theme.svelte';
 	import { thumb, thumbHQ } from '$lib/thumb';
 	import * as api from '$lib/api';
@@ -111,17 +111,13 @@
 	}
 
 	// Wheel over the cover art in the maximized view steps the volume (same 5%/notch as the
-	// player bar) and pops a % badge over the artwork. The badge clears ~1s after the last notch.
-	const VOLUME_STEP = 5;
+	// player bar) and pops a % badge over the artwork. wheelVolume reuses nudgeVolume, so the
+	// level persists once the gesture stops. The badge clears ~1s after the last notch.
 	let volBadge = $state<number | null>(null);
 	let volBadgeTimer: ReturnType<typeof setTimeout> | undefined;
 	function onMaxWheel(e: WheelEvent) {
-		const v = Math.min(
-			100,
-			Math.max(0, playback.volume + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP))
-		);
-		dragVolume(v);
-		volBadge = v;
+		wheelVolume(e);
+		volBadge = playback.volume;
 		clearTimeout(volBadgeTimer);
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}

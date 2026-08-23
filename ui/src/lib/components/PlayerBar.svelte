@@ -36,6 +36,7 @@
 		sleepTimer,
 		toggleMute,
 		toggleNowPlayingLike,
+		wheelVolume,
 		type SleepTimerMode
 	} from '$lib/player.svelte';
 	import { anchorMenu, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
@@ -129,20 +130,16 @@
 	const onVolume = (e: Event) => dragVolume(Number((e.target as HTMLInputElement).value));
 	const onVolumeCommit = (e: Event) => commitVolume(Number((e.target as HTMLInputElement).value));
 
-	// Scroll-wheel volume: a wheel over the bar steps the volume (5% per notch, matching the
-	// shortcut arrows) and pops a % badge over the cover art while you scroll. The badge
-	// clears ~1s after the last notch.
-	const VOLUME_STEP = 5;
+	// Scroll-wheel volume: a wheel anywhere on the bar (sliders included) steps the volume, 5% per
+	// notch, matching the shortcut keys. wheelVolume reuses nudgeVolume, so a held scroll is one
+	// IPC per frame and persists once the gesture stops. A % badge over the cover art shows the
+	// level and clears ~1s after the last notch.
 	let volBadge = $state<number | null>(null);
 	let volBadgeTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function onBarWheel(e: WheelEvent) {
-		const v = Math.min(
-			100,
-			Math.max(0, playback.volume + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP))
-		);
-		dragVolume(v); // same throttled path as the slider's oninput
-		volBadge = v;
+		wheelVolume(e);
+		volBadge = playback.volume;
 		clearTimeout(volBadgeTimer);
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}
@@ -368,6 +365,7 @@
 				value={playback.volume}
 				oninput={onVolume}
 				onchange={onVolumeCommit}
+				onwheel={wheelVolume}
 				aria-label="Volume"
 			/>
 		</div>

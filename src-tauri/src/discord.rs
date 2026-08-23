@@ -432,6 +432,10 @@ impl Presence {
         if !track.artists.is_empty() {
             act = act.state(field(&track.artists));
         }
+        // The member-list line reads "Listening to <X>": State shows the artist there, matching
+        // what every other music app does, instead of the app name (#88). Falls back to the app
+        // name when a track has no artist (the state above stays unset).
+        act = act.status_display_type(activity::StatusDisplayType::State);
         // Unlike the Gateway, the IPC client accepts a plain https URL here and proxies it itself —
         // no `external-assets` round-trip. Artwork is best-effort: no thumbnail is just a
         // text-only presence.
