@@ -12,9 +12,11 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { BrowseItem } from '$lib/api';
-	import { openItem, searchPreview } from '$lib/browse';
+	import { asSong, openItem, searchPreview } from '$lib/browse';
 	import { ui } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
+	import TrackMenu from './TrackMenu.svelte';
+	import PlaylistMenu from './PlaylistMenu.svelte';
 
 	const KIND = { song: 'Song', album: 'Album', artist: 'Artist', playlist: 'Playlist' };
 
@@ -100,7 +102,9 @@
 		{:else}
 			<Command.Group heading="Results">
 				{#each items as item (item.id)}
-					<Command.Item value={item.id} onSelect={() => choose(item)} class="gap-3 px-2 py-1.5">
+					<!-- data-ctx: right-clicking the row opens the same ⋯ menu every other surface offers
+					     (ctxHost on the hidden menu trigger below finds this host). -->
+					<Command.Item value={item.id} onSelect={() => choose(item)} data-ctx class="gap-3 px-2 py-1.5">
 						{#if item.thumbnail}
 							<!-- 400, the same size the cards ask for: the CDN doesn't serve every rewritten
 							     size, that one is verified, and the row lands on an image the grid already
@@ -133,6 +137,13 @@
 								</span>
 							</div>
 						</div>
+						<!-- The right-click menu itself: trigger hidden (display:none keeps it out of the
+						     layout and the a11y tree), ctxHost still finds [data-ctx] on the row. -->
+						{#if item.kind === 'song'}
+							<TrackMenu song={asSong(item)} triggerClass="hidden" />
+						{:else}
+							<PlaylistMenu {item} triggerClass="hidden" />
+						{/if}
 					</Command.Item>
 				{/each}
 			</Command.Group>
