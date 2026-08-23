@@ -77,11 +77,25 @@
 	// Auto-scroll pauses while the user is scrolling (wheel/touch/scrollbar), resumes after 3s.
 	// Tracked via input events, not `scroll`, so our own smooth scrolls don't trip it.
 	let userScrollUntil = 0;
+	// Idea 8: gentle idle dim in fullscreen — after 30s without interaction the panel breathes
+	// down to 60% opacity so it doubles as ambient art rather than a bright wall.
+	let idleDim = $state(false);
+	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	function resetIdle() {
+		idleDim = false;
+		clearTimeout(idleTimer);
+		if (expanded) idleTimer = setTimeout(() => (idleDim = true), 30000);
+	}
 	let hasScrolled = false;
 	function onUserScroll() {
 		userScrollUntil = Date.now() + 3000;
+		resetIdle();
 	}
 
+	$effect(() => {
+		expanded; // track — restarting the idle dim on enter/leave fullscreen
+		resetIdle();
+	});
 	let wasExpanded: boolean | undefined;
 
 	$effect(() => {
@@ -173,7 +187,7 @@
 		? 'px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 		: expanded
 			? 'px-10 py-6'
-			: 'px-5 py-6'}"
+			: 'px-5 py-6'} {idleDim ? 'opacity-60 transition-opacity duration-1000' : ''}"
 >
 	{#if loading}
 		<div class="space-y-3">
@@ -199,8 +213,8 @@
 								? 'scale-[1.04]'
 								: 'text-gradient scale-[1.04] [filter:drop-shadow(0_2px_14px_color-mix(in_srgb,var(--primary)_30%,transparent))]'
 						: isPast
-							? (expanded ? 'text-muted-foreground/15 hover:text-muted-foreground/40' : 'text-muted-foreground/40 hover:text-muted-foreground/75')
-							: (expanded ? 'text-muted-foreground/25 hover:text-muted-foreground/60' : 'text-muted-foreground/70 hover:text-foreground/90')}"
+							? (expanded ? 'text-muted-foreground/15 blur-[1.5px] opacity-80 hover:blur-0 hover:text-muted-foreground/50 hover:blur-none transition-[filter]' : 'text-muted-foreground/40 hover:text-muted-foreground/75')
+							: (expanded ? 'text-muted-foreground/25 blur-[1px] opacity-90 hover:blur-0 hover:text-muted-foreground/60 transition-[filter] scale-[0.97]' : 'text-muted-foreground/70 hover:text-foreground/90')}"
 				>
 					{#if line.words && line.words.length > 0}
 						<!-- Word-by-word karaoke — the Aurora gradient sweeps across each word, with a gentle vertical float -->
@@ -218,7 +232,7 @@
 									     colours are theme tokens: the sung half was hardcoded white, which is
 									     invisible on every light theme. -->
 									<span
-										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform duration-150 ease-out will-change-transform {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
+										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform will-change-transform [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] duration-200 {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
 											? 'scale-[1.08] -translate-y-[3px]'
 											: progress >= 1
 												? 'scale-[1.03] -translate-y-[1px]'
@@ -234,6 +248,16 @@
 										{cleanText}
 									</span>
 								{/if}
+							{/each}
+						</span>
+					{:else if isActive && !line.text}
+						<!-- Instrumental break: three breathing dots instead of blank space. -->
+						<span class="inline-flex items-center gap-1.5 py-2" aria-hidden="true">
+							{#each [0, 1, 2] as d (d)}
+								<span
+									class="h-1.5 w-1.5 rounded-full bg-primary/70"
+									style="animation: karaoke-breathe 1.6s ease-in-out infinite; animation-delay: {d * 0.25}s"
+								></span>
 							{/each}
 						</span>
 					{:else}
@@ -281,6 +305,10 @@
 {/if}
 
 <style>
+@keyframes karaoke-breathe {
+	0%, 100% { opacity: 0.35; transform: translateY(0); }
+	50% { opacity: 1; transform: translateY(-2px); }
+}
 @keyframes karaoke-float {
 	from { transform: translateY(-2.5px); }
 	to { transform: translateY(2.5px); }

@@ -503,6 +503,9 @@ function onShortcut(e: KeyboardEvent) {
 	} else if (key.toLowerCase() === 'l') {
 		e.preventDefault();
 		api.seek(pos + 10);
+	} else if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'h') {
+		e.preventDefault();
+		ui.shortcutsOpen = true;
 	}
 }
 
@@ -668,7 +671,8 @@ export const ui = $state({
 	// a true move, not a copy. Cleared on open so it never leaks between sessions.
 	moveFrom: '' as string,
 	toast: null as Toast | null,
-	settingsOpen: false, // the settings modal
+	settingsOpen: false,
+	shortcutsOpen: false, // the settings modal
 	settingsTab: '' as string, // when set, the settings modal opens on this tab (consumed on open)
 	ltOpen: false, // the Listen Together modal
 	linkOpen: false, // the "open a pasted link" modal

@@ -24,6 +24,7 @@
 	import LyricsPanel from '$lib/components/LyricsPanel.svelte';
 	import AddToPlaylist from '$lib/components/AddToPlaylist.svelte';
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
+	import KeyboardShortcutsDialog from '$lib/components/KeyboardShortcutsDialog.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import ChannelPicker from '$lib/components/ChannelPicker.svelte';
 	import LinkDialog from '$lib/components/LinkDialog.svelte';
@@ -133,6 +134,7 @@
 
 	<AddToPlaylist />
 	<SettingsDialog />
+	<KeyboardShortcutsDialog />
 	<ListenTogether />
 	<ChannelPicker />
 	<LinkDialog />
