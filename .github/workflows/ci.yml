@@ -1,0 +1,70 @@
+# PR/push CI: run the test suite that already exists instead of letting it rot.
+# Rust tests need libmpv headers/lib to link (the player crate links mpv directly), so the Linux
+# runner installs libmpv-dev; the release workflows do their own heavier Windows-specific dance
+# and are not duplicated here.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust — test · clippy · fmt
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libmpv
+        run: sudo apt-get update && sudo apt-get install -y libmpv-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  ui:
+    name: UI — svelte-check · assertion scripts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Assertion scripts (sort / dnd / ytlink / localsearch / queue / personal)
+        run: |
+          for f in src/lib/*.check.ts; do
+            echo "::group::$f"
+            node --experimental-strip-types "$f"
+            echo "::endgroup::"
+          done

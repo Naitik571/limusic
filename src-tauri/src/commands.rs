@@ -1256,6 +1256,23 @@ fn duration_secs(s: Option<&str>) -> i64 {
     }
 }
 
+#[cfg(test)]
+mod duration_tests {
+    use super::duration_secs;
+
+    #[test]
+    fn parses_every_shape_the_ui_sends() {
+        assert_eq!(duration_secs(Some("3:21")), 201);
+        assert_eq!(duration_secs(Some("1:02:03")), 3723);
+        assert_eq!(duration_secs(Some("45")), 45);
+        // Garbage and absences are catalogue metadata only — zero, never an error.
+        assert_eq!(duration_secs(None), 0);
+        assert_eq!(duration_secs(Some("")), 0);
+        assert_eq!(duration_secs(Some("not:a:time")), 0);
+        assert_eq!(duration_secs(Some("3:xx")), 3, "parseable segments still count");
+    }
+}
+
 /// Download every (non-local, not-yet-saved) track in a playlist or album. Walks ALL pages so a
 /// long playlist downloads in full — the old behaviour stopped at the first ~100 tracks — then
 /// pulls the missing ones DOWNLOAD_CONCURRENCY at a time. Reports a full summary

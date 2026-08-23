@@ -174,10 +174,14 @@ async fn resolve_stream(
     None
 }
 
-/// Safely append `ratebypass=yes` ONLY to googlevideo URLs that don't already have it.
-/// This defeats YouTube's ~50-200 KB/s throttle without breaking signed URLs.
+/// Safely append `ratebypass=yes` ONLY to bare googlevideo URLs — never to already-parameterised
+/// signed ones (a `signature=` param means YouTube computed it against the exact query; changing
+/// it 403s) and never when the parameter is already there.
 fn with_ratebypass(url: &str) -> String {
-    if url.contains("googlevideo.com") && !url.contains("ratebypass=") {
+    if url.contains("googlevideo.com")
+        && !url.contains("ratebypass=")
+        && !url.contains("signature=")
+    {
         format!(
             "{}{}ratebypass=yes",
             url,
@@ -508,4 +512,53 @@ pub async fn download_many(
         }
     }
     (completed, failed, cancelled_before_start)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_filename_strips_reserved_and_control_characters() {
+        assert_eq!(sanitize_filename("AC/DC: Back In Black"), "ACDC Back In Black");
+        assert_eq!(sanitize_filename("what? *\"<>|"), "what", "reserved chars dropped, trimmed");
+        assert_eq!(
+            sanitize_filename("sig\u{0001}nature \u{001f}track"),
+            "signature track"
+            // control chars dropped, text preserved
+        );
+        // Unicode song titles survive untouched.
+        assert_eq!(sanitize_filename("命に嫌われている。"), "命に嫌われている。");
+    }
+
+    #[test]
+    fn sanitize_filename_caps_length_and_trims() {
+        let long = "x".repeat(400);
+        assert_eq!(sanitize_filename(&long).chars().count(), 180);
+        assert_eq!(sanitize_filename("  padded  "), "padded");
+    }
+
+    #[test]
+    fn with_ratebypass_only_touches_bare_googlevideo_urls() {
+        // Bare googlevideo URL gets the parameter.
+        let bare = "https://rr3---sn-a.googlevideo.com/videoplayback?id=o-x";
+        assert_eq!(
+            with_ratebypass(bare),
+            format!("{bare}&ratebypass=yes"),
+            "already has a query, so &"
+        );
+        let no_query = "https://rr3---sn-a.googlevideo.com/videoplayback";
+        assert_eq!(with_ratebypass(no_query), format!("{no_query}?ratebypass=yes"));
+
+        // Already has it — untouched.
+        assert_eq!(
+            with_ratebypass("https://x.googlevideo.com/v?ratebypass=yes"),
+            "https://x.googlevideo.com/v?ratebypass=yes"
+        );
+
+        // Signed URLs and non-googlevideo hosts are never modified.
+        let signed = "https://rr1---sn.googlevideo.com/videoplayback?signature=SIGNED&rate=yes";
+        assert_eq!(with_ratebypass(signed), signed);
+        assert_eq!(with_ratebypass("https://example.com/video?id=1"), "https://example.com/video?id=1");
+    }
 }

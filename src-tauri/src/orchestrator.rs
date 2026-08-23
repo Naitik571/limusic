@@ -436,3 +436,88 @@ fn best_thumbnail(resp: &PlayerResponse) -> Option<String> {
         .and_then(|t| t.thumbnails.last())
         .map(|t| t.url.clone())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use innertube::models::player::{Format, PlayerResponse};
+
+    /// Build a Format from the wire shape — serde fills every optional field, so the helper
+    /// stays valid as the model grows.
+    fn fmt(quality: Option<&str>, channels: Option<i32>, mime: &str, bitrate: i64) -> Format {
+        let json = serde_json::json!({
+            "itag": 140,
+            "mimeType": mime,
+            "bitrate": bitrate,
+            "audioQuality": quality,
+            "audioChannels": channels,
+        });
+        serde_json::from_value(json).unwrap()
+    }
+
+    #[test]
+    fn is_high_only_accepts_the_high_constant() {
+        assert!(is_high(&fmt(Some("AUDIO_QUALITY_HIGH"), None, "audio/mp4", 0)));
+        assert!(!is_high(&fmt(Some("AUDIO_QUALITY_MEDIUM"), None, "audio/mp4", 0)));
+        assert!(!is_high(&fmt(None, None, "audio/mp4", 0)));
+    }
+
+    #[test]
+    fn better_ranks_quality_then_channels_then_codec_then_bitrate() {
+        // Quality dominates everything else.
+        let high = fmt(Some("AUDIO_QUALITY_HIGH"), Some(2), "audio/mp4", 100);
+        let med_loud = fmt(Some("AUDIO_QUALITY_MEDIUM"), Some(6), "audio/opus", 999);
+        assert!(better(&high, Some(&med_loud)), "high beats medium at any channel/bitrate");
+
+        // Same quality: more channels win.
+        let stereo = fmt(Some("AUDIO_QUALITY_HIGH"), Some(2), "audio/opus", 100);
+        let multich = fmt(Some("AUDIO_QUALITY_HIGH"), Some(6), "audio/mp4", 50);
+        assert!(better(&multich, Some(&stereo)));
+
+        // Same quality + channels: opus beats mp4a.
+        let opus = fmt(Some("AUDIO_QUALITY_HIGH"), Some(2), "audio/opus", 100);
+        let mp4a = fmt(Some("AUDIO_QUALITY_HIGH"), Some(2), "audio/mp4", 200);
+        assert!(better(&opus, Some(&mp4a)), "opus wins even at lower bitrate");
+
+        // Everything equal: the higher bitrate wins, and nothing beats a first candidate.
+        let a = fmt(Some("AUDIO_QUALITY_HIGH"), Some(2), "audio/opus", 300);
+        assert!(better(&a, None));
+        assert!(!better(
+            &a,
+            Some(&fmt(Some("AUDIO_QUALITY_HIGH"), Some(2), "audio/opus", 400))
+        ));
+    }
+
+    #[test]
+    fn main_loudness_reads_the_audio_config_and_tolerates_its_absence() {
+        let json = serde_json::json!({
+            "videoId": "abc",
+            "playabilityStatus": { "status": "OK" },
+            "playerConfig": { "audioConfig": { "loudnessDb": -3.5 } }
+        });
+        let resp: PlayerResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(main_loudness(&resp), Some(-3.5));
+
+        let bare: PlayerResponse =
+            serde_json::from_value(serde_json::json!({ "videoId": "abc", "playabilityStatus": { "status": "OK" } }))
+                .unwrap();
+        assert_eq!(main_loudness(&bare), None);
+    }
+
+    #[test]
+    fn best_thumbnail_takes_the_last_largest_variant() {
+        let json = serde_json::json!({
+            "videoId": "abc",
+            "playabilityStatus": { "status": "OK" },
+            "videoDetails": { "videoId": "abc", "thumbnail": { "thumbnails": [
+                { "url": "https://i.ytimg.com/vi/abc/default.jpg", "width": 120, "height": 90 },
+                { "url": "https://i.ytimg.com/vi/abc/maxres.jpg", "width": 1280, "height": 720 }
+            ]}}
+        });
+        let resp: PlayerResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            best_thumbnail(&resp).as_deref(),
+            Some("https://i.ytimg.com/vi/abc/maxres.jpg")
+        );
+    }
+}
