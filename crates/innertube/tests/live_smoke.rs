@@ -21,7 +21,10 @@ async fn direct_clients_resolve_and_stream() {
     let it = InnerTube::new(Session::default(), None).unwrap();
     let vd = it.fetch_visitor_data().await.ok();
     let it = InnerTube::new(
-        Session { visitor_data: vd, ..Session::default() },
+        Session {
+            visitor_data: vd,
+            ..Session::default()
+        },
         None,
     )
     .unwrap();
@@ -57,7 +60,10 @@ async fn direct_clients_resolve_and_stream() {
             any_ok = true;
         }
     }
-    assert!(any_ok, "no direct client produced a playable (HTTP 2xx) stream URL");
+    assert!(
+        any_ok,
+        "no direct client produced a playable (HTTP 2xx) stream URL"
+    );
 }
 
 /// Live regression for the "load more duplicates tracks" bug: an owned playlist's continuation
@@ -66,21 +72,44 @@ async fn direct_clients_resolve_and_stream() {
 #[tokio::test]
 #[ignore]
 async fn owned_continuation_not_doubled() {
-    let Some(cookie) = std::env::var("LIMUSIC_COOKIE").ok().filter(|s| !s.is_empty()) else {
+    let Some(cookie) = std::env::var("LIMUSIC_COOKIE")
+        .ok()
+        .filter(|s| !s.is_empty())
+    else {
         eprintln!("skipped: set LIMUSIC_COOKIE (+LIMUSIC_VISITOR) to run");
         return;
     };
-    let visitor = std::env::var("LIMUSIC_VISITOR").ok().filter(|s| !s.is_empty());
-    let it = InnerTube::new(Session { cookie: Some(cookie), visitor_data: visitor, ..Session::default() }, None).unwrap();
+    let visitor = std::env::var("LIMUSIC_VISITOR")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let it = InnerTube::new(
+        Session {
+            cookie: Some(cookie),
+            visitor_data: visitor,
+            ..Session::default()
+        },
+        None,
+    )
+    .unwrap();
     let clients = Clients::bundled();
     let client = clients.get("WEB_REMIX").expect("WEB_REMIX client");
 
-    let libs = it.library_playlists(client).await.expect("library playlists");
+    let libs = it
+        .library_playlists(client)
+        .await
+        .expect("library playlists");
     let mut checked = 0;
     for c in &libs {
-        let Ok(page) = it.playlist(client, &c.id).await else { continue };
-        let Some(tok) = page.continuation.clone() else { continue };
-        let cont = it.playlist_continuation(client, &tok).await.expect("continuation");
+        let Ok(page) = it.playlist(client, &c.id).await else {
+            continue;
+        };
+        let Some(tok) = page.continuation.clone() else {
+            continue;
+        };
+        let cont = it
+            .playlist_continuation(client, &tok)
+            .await
+            .expect("continuation");
         if cont.items.is_empty() {
             continue; // a suggestions carousel, not more tracks
         }
@@ -96,7 +125,10 @@ async fn owned_continuation_not_doubled() {
             );
         }
     }
-    assert!(checked > 0, "no playlist with a track continuation found to verify");
+    assert!(
+        checked > 0,
+        "no playlist with a track continuation found to verify"
+    );
     eprintln!("verified {checked} track continuations, no doubling");
 }
 
@@ -106,13 +138,22 @@ async fn owned_continuation_not_doubled() {
 #[tokio::test]
 #[ignore]
 async fn library_grids_page_past_the_first_response() {
-    let Some(cookie) = std::env::var("LIMUSIC_COOKIE").ok().filter(|s| !s.is_empty()) else {
+    let Some(cookie) = std::env::var("LIMUSIC_COOKIE")
+        .ok()
+        .filter(|s| !s.is_empty())
+    else {
         eprintln!("skipped: set LIMUSIC_COOKIE (+LIMUSIC_VISITOR) to run");
         return;
     };
-    let visitor = std::env::var("LIMUSIC_VISITOR").ok().filter(|s| !s.is_empty());
+    let visitor = std::env::var("LIMUSIC_VISITOR")
+        .ok()
+        .filter(|s| !s.is_empty());
     let it = InnerTube::new(
-        Session { cookie: Some(cookie), visitor_data: visitor, ..Session::default() },
+        Session {
+            cookie: Some(cookie),
+            visitor_data: visitor,
+            ..Session::default()
+        },
         None,
     )
     .unwrap();
@@ -121,20 +162,38 @@ async fn library_grids_page_past_the_first_response() {
 
     let mut paged = 0;
     for (name, items) in [
-        ("playlists", it.library_playlists(client).await.expect("library playlists")),
-        ("albums", it.library_albums(client).await.expect("library albums")),
-        ("artists", it.library_artists(client).await.expect("library artists")),
+        (
+            "playlists",
+            it.library_playlists(client)
+                .await
+                .expect("library playlists"),
+        ),
+        (
+            "albums",
+            it.library_albums(client).await.expect("library albums"),
+        ),
+        (
+            "artists",
+            it.library_artists(client).await.expect("library artists"),
+        ),
     ] {
         eprintln!("{name}: {} items", items.len());
         let mut seen = std::collections::HashSet::new();
         for i in &items {
-            assert!(seen.insert(i.id.clone()), "{name} grid repeated {} across pages", i.id);
+            assert!(
+                seen.insert(i.id.clone()),
+                "{name} grid repeated {} across pages",
+                i.id
+            );
         }
         if items.len() > 25 {
             paged += 1;
         }
     }
-    assert!(paged > 0, "no library grid exceeded one page — test this on a fuller account");
+    assert!(
+        paged > 0,
+        "no library grid exceeded one page — test this on a fuller account"
+    );
 }
 
 /// The playlist sort is YouTube's, not ours: the app asks for an order and renders what comes back
@@ -148,13 +207,22 @@ async fn library_grids_page_past_the_first_response() {
 #[tokio::test]
 #[ignore]
 async fn playlist_sort_params_still_order_the_server_side_list() {
-    let Some(cookie) = std::env::var("LIMUSIC_COOKIE").ok().filter(|s| !s.is_empty()) else {
+    let Some(cookie) = std::env::var("LIMUSIC_COOKIE")
+        .ok()
+        .filter(|s| !s.is_empty())
+    else {
         eprintln!("skipped: set LIMUSIC_COOKIE (+LIMUSIC_VISITOR) to run");
         return;
     };
-    let visitor = std::env::var("LIMUSIC_VISITOR").ok().filter(|s| !s.is_empty());
+    let visitor = std::env::var("LIMUSIC_VISITOR")
+        .ok()
+        .filter(|s| !s.is_empty());
     let it = InnerTube::new(
-        Session { cookie: Some(cookie), visitor_data: visitor, ..Session::default() },
+        Session {
+            cookie: Some(cookie),
+            visitor_data: visitor,
+            ..Session::default()
+        },
         None,
     )
     .unwrap();
@@ -163,28 +231,62 @@ async fn playlist_sort_params_still_order_the_server_side_list() {
 
     // Liked Music is the one list every account has, and YouTube sorts it without being asked to
     // store anything on a playlist.
-    let plain = it.playlist(client, "VLLM", None).await.expect("liked music");
-    let menu = plain.sort_menu.clone().expect("Liked Music still offers a sort menu");
-    assert!(!menu.editable, "Liked Music sorts through browse params, not a playlist edit");
-    assert!(plain.items.len() > 1, "need more than one track to tell an order from another");
+    let plain = it
+        .playlist(client, "VLLM", None)
+        .await
+        .expect("liked music");
+    let menu = plain
+        .sort_menu
+        .clone()
+        .expect("Liked Music still offers a sort menu");
+    assert!(
+        !menu.editable,
+        "Liked Music sorts through browse params, not a playlist edit"
+    );
+    assert!(
+        plain.items.len() > 1,
+        "need more than one track to tell an order from another"
+    );
 
     let titles = |p: &innertube::PlaylistPage| -> Vec<String> {
         p.items.iter().map(|i| i.title.clone()).collect()
     };
-    let asc = it.playlist(client, "VLLM", Some((PlaylistSort::Title, false))).await.expect("A-Z");
-    let desc = it.playlist(client, "VLLM", Some((PlaylistSort::Title, true))).await.expect("Z-A");
+    let asc = it
+        .playlist(client, "VLLM", Some((PlaylistSort::Title, false)))
+        .await
+        .expect("A-Z");
+    let desc = it
+        .playlist(client, "VLLM", Some((PlaylistSort::Title, true)))
+        .await
+        .expect("Z-A");
     assert_eq!(
         asc.sort_menu.as_ref().and_then(|m| m.selected),
         Some(PlaylistSort::Title),
         "the menu has to report back the order we asked for"
     );
-    assert_ne!(titles(&asc), titles(&desc), "descending params must not return the same page");
-    assert_ne!(titles(&asc), titles(&plain), "a title sort must not return the stored order");
+    assert_ne!(
+        titles(&asc),
+        titles(&desc),
+        "descending params must not return the same page"
+    );
+    assert_ne!(
+        titles(&asc),
+        titles(&plain),
+        "a title sort must not return the stored order"
+    );
 
     // Put Liked Music back: asking for an order is what persists it on this one list.
-    let restored = it.playlist(client, "VLLM", Some((PlaylistSort::Default, false))).await;
-    assert!(restored.is_ok(), "failed to restore Liked Music to its stored order");
-    eprintln!("title sort verified against {} tracks, Liked Music restored", plain.items.len());
+    let restored = it
+        .playlist(client, "VLLM", Some((PlaylistSort::Default, false)))
+        .await;
+    assert!(
+        restored.is_ok(),
+        "failed to restore Liked Music to its stored order"
+    );
+    eprintln!(
+        "title sort verified against {} tracks, Liked Music restored",
+        plain.items.len()
+    );
 }
 
 /// Every surface has to hand the queue an artist that is a *name*. That string is the player bar,
@@ -201,16 +303,27 @@ async fn every_surface_yields_a_scrobbleable_artist() {
     fn bad(artist: &str) -> Option<&'static str> {
         match artist {
             a if a.trim().is_empty() => Some("no artist (would never scrobble)"),
-            a if a.contains('•') => Some("display subtitle, not an artist (would scrobble wrong)"),
+            a if a.contains('•') => {
+                Some("display subtitle, not an artist (would scrobble wrong)")
+            }
             _ => None,
         }
     }
 
     let it = InnerTube::new(Session::default(), None).unwrap();
     let vd = it.fetch_visitor_data().await.ok();
-    let it = InnerTube::new(Session { visitor_data: vd, ..Session::default() }, None).unwrap();
+    let it = InnerTube::new(
+        Session {
+            visitor_data: vd,
+            ..Session::default()
+        },
+        None,
+    )
+    .unwrap();
     let clients = Clients::bundled();
-    let c = clients.get(innertube::METADATA_CLIENT).expect("metadata client");
+    let c = clients
+        .get(innertube::METADATA_CLIENT)
+        .expect("metadata client");
 
     let mut problems: Vec<String> = Vec::new();
     let mut checked = 0usize;
@@ -222,7 +335,11 @@ async fn every_surface_yields_a_scrobbleable_artist() {
 
     // Single-artist albums: the case that shipped broken. Compilations keep a per-row artist, so
     // these are deliberately all one-artist records.
-    for q in ["Rumours Fleetwood Mac", "Midnights Taylor Swift", "IGOR Tyler The Creator"] {
+    for q in [
+        "Rumours Fleetwood Mac",
+        "Midnights Taylor Swift",
+        "IGOR Tyler The Creator",
+    ] {
         let cards = it.search_cards(c, q, "albums").await.expect("album search");
         let Some(card) = cards.iter().find(|b| b.kind == "album") else {
             problems.push(format!("album search {q:?} returned no album card"));
@@ -232,19 +349,34 @@ async fn every_surface_yields_a_scrobbleable_artist() {
         assert!(!album.items.is_empty(), "album {q:?} parsed with no tracks");
         for t in &album.items {
             checked += 1;
-            note(&mut problems, &format!("album {:?}", card.title), &t.title, &t.artists);
+            note(
+                &mut problems,
+                &format!("album {:?}", card.title),
+                &t.title,
+                &t.artists,
+            );
         }
     }
 
     // Search rows, the up-next queue, and an artist page (top songs + every song card in its
     // carousels, which is where the "• 1.7B views" strings came from).
-    let songs = it.search_songs(c, "Barbie Girl Aqua").await.expect("search");
+    let songs = it
+        .search_songs(c, "Barbie Girl Aqua")
+        .await
+        .expect("search");
     for t in songs.items.iter().take(5) {
         checked += 1;
         note(&mut problems, "search", &t.title, &t.artists);
     }
     if let Some(first) = songs.items.first() {
-        for t in it.next(c, Some(&first.video_id), None).await.expect("next").items.iter().take(5) {
+        for t in it
+            .next(c, Some(&first.video_id), None)
+            .await
+            .expect("next")
+            .items
+            .iter()
+            .take(5)
+        {
             checked += 1;
             note(&mut problems, "queue", &t.title, &t.artists);
         }
@@ -260,13 +392,26 @@ async fn every_surface_yields_a_scrobbleable_artist() {
             for card in carousel.items.iter().filter(|i| i.kind == "song") {
                 checked += 1;
                 let sub = card.subtitle.clone().unwrap_or_default();
-                note(&mut problems, &format!("card {:?}", carousel.title), &card.title, &sub);
+                note(
+                    &mut problems,
+                    &format!("card {:?}", carousel.title),
+                    &card.title,
+                    &sub,
+                );
             }
         }
     }
 
-    assert!(checked > 40, "only {checked} tracks reached the check, so the surfaces came back empty");
-    assert!(problems.is_empty(), "{checked} tracks checked, {} unscrobbleable:\n  {}", problems.len(), problems.join("\n  "));
+    assert!(
+        checked > 40,
+        "only {checked} tracks reached the check, so the surfaces came back empty"
+    );
+    assert!(
+        problems.is_empty(),
+        "{checked} tracks checked, {} unscrobbleable:\n  {}",
+        problems.len(),
+        problems.join("\n  ")
+    );
     eprintln!("{checked} tracks across album / search / queue / artist surfaces, all with a usable artist");
 }
 
@@ -296,8 +441,18 @@ async fn rustypipe_url_is_fetchable() {
 async fn radio_seeds_resolve() {
     let it = InnerTube::new(Session::default(), None).unwrap();
     let vd = it.fetch_visitor_data().await.ok();
-    let it = InnerTube::new(Session { visitor_data: vd, ..Session::default() }, None).unwrap();
-    let client = Clients::bundled().get(innertube::METADATA_CLIENT).unwrap().clone();
+    let it = InnerTube::new(
+        Session {
+            visitor_data: vd,
+            ..Session::default()
+        },
+        None,
+    )
+    .unwrap();
+    let client = Clients::bundled()
+        .get(innertube::METADATA_CLIENT)
+        .unwrap()
+        .clone();
 
     // 1. Song radio.
     let song = it
@@ -305,22 +460,43 @@ async fn radio_seeds_resolve() {
         .await
         .expect("song radio /next");
     eprintln!("RDAMVM{VIDEO_ID}: {} tracks", song.items.len());
-    assert!(song.items.len() > 1, "song radio came back with only the seed");
+    assert!(
+        song.items.len() > 1,
+        "song radio came back with only the seed"
+    );
 
     // 2. + 3. Artist radio: the id off the page, then a videoId-less /next with it.
-    let artist_id = song.items[0].artist_id.clone().expect("radio rows link their artist");
+    let artist_id = song.items[0]
+        .artist_id
+        .clone()
+        .expect("radio rows link their artist");
     let page = it.artist(&client, &artist_id).await.expect("artist page");
-    let radio = page.radio_playlist_id.expect("artist header has no start-radio button");
+    let radio = page
+        .radio_playlist_id
+        .expect("artist header has no start-radio button");
     eprintln!("artist {:?} radio: {radio}", page.name);
-    let artist_radio = it.next(&client, None, Some(&radio)).await.expect("artist radio /next");
+    let artist_radio = it
+        .next(&client, None, Some(&radio))
+        .await
+        .expect("artist radio /next");
     eprintln!("{radio}: {} tracks", artist_radio.items.len());
-    assert!(artist_radio.items.len() > 1, "playlist-only /next returned nothing");
+    assert!(
+        artist_radio.items.len() > 1,
+        "playlist-only /next returned nothing"
+    );
 
     // 4. Album radio: `RDAMPL` over the album's *audio* playlist, again with no videoId.
-    let album_id = song.items.iter().find_map(|i| i.album_id.clone()).expect("a radio row with an album");
+    let album_id = song
+        .items
+        .iter()
+        .find_map(|i| i.album_id.clone())
+        .expect("a radio row with an album");
     let album = it.album(&client, &album_id).await.expect("album page");
     let pl = album.playlist_id.expect("album has no audio playlist");
-    let album_radio = it.next(&client, None, Some(&format!("RDAMPL{pl}"))).await.expect("album radio /next");
+    let album_radio = it
+        .next(&client, None, Some(&format!("RDAMPL{pl}")))
+        .await
+        .expect("album radio /next");
     eprintln!("RDAMPL{pl}: {} tracks", album_radio.items.len());
     assert!(album_radio.items.len() > 1, "album radio came back empty");
 }
@@ -333,20 +509,32 @@ async fn radio_seeds_resolve() {
 #[tokio::test]
 #[ignore]
 async fn library_songs_browse_returns_tracks() {
-    let Some(cookie) = std::env::var("LIMUSIC_COOKIE").ok().filter(|s| !s.is_empty()) else {
+    let Some(cookie) = std::env::var("LIMUSIC_COOKIE")
+        .ok()
+        .filter(|s| !s.is_empty())
+    else {
         eprintln!("skipped: set LIMUSIC_COOKIE (+LIMUSIC_VISITOR) to run");
         return;
     };
-    let visitor = std::env::var("LIMUSIC_VISITOR").ok().filter(|s| !s.is_empty());
+    let visitor = std::env::var("LIMUSIC_VISITOR")
+        .ok()
+        .filter(|s| !s.is_empty());
     let it = InnerTube::new(
-        Session { cookie: Some(cookie), visitor_data: visitor, ..Session::default() },
+        Session {
+            cookie: Some(cookie),
+            visitor_data: visitor,
+            ..Session::default()
+        },
         None,
     )
     .unwrap();
     let clients = Clients::bundled();
     let client = clients.get("WEB_REMIX").expect("WEB_REMIX client");
 
-    let page = it.playlist(client, "FEmusic_liked_videos", None).await.expect("library songs");
+    let page = it
+        .playlist(client, "FEmusic_liked_videos", None)
+        .await
+        .expect("library songs");
     eprintln!(
         "{} songs, continuation: {}, sort menu: {:?}, title: {:?}, subtitle: {:?}",
         page.items.len(),
@@ -355,17 +543,30 @@ async fn library_songs_browse_returns_tracks() {
         page.title,
         page.subtitle
     );
-    assert!(!page.items.is_empty(), "no tracks came back — is the account's library empty?");
+    assert!(
+        !page.items.is_empty(),
+        "no tracks came back — is the account's library empty?"
+    );
     for i in &page.items {
         assert!(!i.video_id.is_empty(), "row {:?} has no videoId", i.title);
     }
     let mut seen = std::collections::HashSet::new();
     for i in &page.items {
-        assert!(seen.insert(i.video_id.clone()), "first page repeated {}", i.video_id);
+        assert!(
+            seen.insert(i.video_id.clone()),
+            "first page repeated {}",
+            i.video_id
+        );
     }
     if let Some(t) = &page.continuation {
-        let more = it.playlist_continuation(client, t).await.expect("continuation");
+        let more = it
+            .playlist_continuation(client, t)
+            .await
+            .expect("continuation");
         eprintln!("continuation: {} more songs", more.items.len());
-        assert!(!more.items.is_empty(), "the paging token resolved to nothing");
+        assert!(
+            !more.items.is_empty(),
+            "the paging token resolved to nothing"
+        );
     }
 }

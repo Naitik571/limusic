@@ -13,7 +13,10 @@ pub struct Locale {
 
 impl Default for Locale {
     fn default() -> Self {
-        Locale { gl: "US".into(), hl: "en".into() }
+        Locale {
+            gl: "US".into(),
+            hl: "en".into(),
+        }
     }
 }
 
@@ -68,7 +71,10 @@ pub struct Request {
 
 impl Default for Request {
     fn default() -> Self {
-        Request { internal_experiment_flags: Vec::new(), use_ssl: true }
+        Request {
+            internal_experiment_flags: Vec::new(),
+            use_ssl: true,
+        }
     }
 }
 

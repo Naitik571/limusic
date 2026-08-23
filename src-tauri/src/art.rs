@@ -59,9 +59,7 @@ pub async fn lookup(artist: &str, title: &str) -> Result<Option<String>, String>
         .and_then(|v| v.as_str())
         .map(|u| u.replace("100x100bb", "100000x100000-999"))
         // Some artwork URLs use a different size token; normalize anything we didn't match.
-        .map(|u| {
-            if u.contains("100000x100000") { u } else { u }
-        });
+        .map(|u| if u.contains("100000x100000") { u } else { u });
 
     cache_put(key, art.clone());
     Ok(art)

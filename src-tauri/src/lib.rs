@@ -127,7 +127,10 @@ fn tune_webview(win: &tauri::WebviewWindow) {
         }
     });
     match res {
-        Ok(()) => tracing::info!(label, "webkit: DocumentBrowser cache, page cache + media + webgl off"),
+        Ok(()) => tracing::info!(
+            label,
+            "webkit: DocumentBrowser cache, page cache + media + webgl off"
+        ),
         Err(e) => tracing::warn!(label, error = %e, "webkit tuning failed (continuing)"),
     }
 }
@@ -213,7 +216,10 @@ pub fn run() {
             let handle = app.handle().clone();
 
             // App data dir for the SQLite file and mpv's on-disk audio cache.
-            let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir());
             std::fs::create_dir_all(&data_dir).ok();
             let cache_dir = data_dir.join("audio-cache");
             std::fs::create_dir_all(&cache_dir).ok();
@@ -260,7 +266,9 @@ pub fn run() {
             // settings toggle flips it live.
             let ytdlp = Arc::new(ytdlp::YtDlp::new(
                 handle.clone(),
-                db.get_setting("ytdlp_enabled").as_deref().map_or(true, |v| v == "true"),
+                db.get_setting("ytdlp_enabled")
+                    .as_deref()
+                    .map_or(true, |v| v == "true"),
             ));
             {
                 let y = ytdlp.clone();
@@ -288,7 +296,10 @@ pub fn run() {
             let discord = discord::spawn(db.get_setting("discord_rpc").as_deref() == Some("true"));
 
             // Last.fm scrobbler — parks until a session key exists (titlebar connect flow).
-            let lastfm = lastfm::spawn(db.get_setting("lastfm_session_key").filter(|s| !s.is_empty()));
+            let lastfm = lastfm::spawn(
+                db.get_setting("lastfm_session_key")
+                    .filter(|s| !s.is_empty()),
+            );
 
             // Listen Together session (context/19). Server URL is a DB setting so "home PC → VPS" is
             // config, not a rebuild. The sync channel feeds the guest-playback bridge below.
@@ -356,7 +367,9 @@ pub fn run() {
                             tracing::info!("visitorData bootstrapped (background)");
                             potoken.prewarm(&vd).await;
                         }
-                        Err(e) => tracing::warn!(error = %e, "visitorData bootstrap failed (continuing)"),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "visitorData bootstrap failed (continuing)")
+                        }
                     }
                 });
             }
@@ -444,9 +457,9 @@ pub fn run() {
             commands::switch_account,
             commands::sign_out,
             commands::login_webview,
-                        commands::open_mini,
-                        commands::close_mini,
-                        commands::get_home,
+            commands::open_mini,
+            commands::close_mini,
+            commands::get_home,
             commands::get_home_more,
             commands::get_library,
             commands::get_library_albums,
@@ -564,7 +577,8 @@ impl PositionThrottle {
     fn should_emit(&mut self, pos: f64, now: std::time::Instant) -> bool {
         let dt = now.duration_since(self.last_emit);
         // A jump is any move that couldn't be normal playback since the last emit (+0.75s slack).
-        let jumped = self.last_pos.is_nan() || (pos - self.last_pos).abs() > dt.as_secs_f64() + 0.75;
+        let jumped =
+            self.last_pos.is_nan() || (pos - self.last_pos).abs() > dt.as_secs_f64() + 0.75;
         if jumped || dt >= std::time::Duration::from_millis(250) {
             self.last_emit = now;
             self.last_pos = pos;
@@ -597,8 +611,10 @@ fn spawn_event_pump(
                     let _ = app.emit("playback-state", if playing { "playing" } else { "paused" });
                     if !playing {
                         state.flush_position(); // persist exact resume position on pause
-                        let _ = app
-                            .emit("position", serde_json::json!({ "position": state.current_position() }));
+                        let _ = app.emit(
+                            "position",
+                            serde_json::json!({ "position": state.current_position() }),
+                        );
                     }
                     state.media_set_playing(playing);
                     // Keep the tray's toggle label honest — this arm is the same chokepoint

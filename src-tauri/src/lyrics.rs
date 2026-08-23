@@ -117,7 +117,11 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     } else {
         match state
             .it
-            .next(state.clients.get(innertube::METADATA_CLIENT).unwrap(), Some(&req.video_id), None)
+            .next(
+                state.clients.get(innertube::METADATA_CLIENT).unwrap(),
+                Some(&req.video_id),
+                None,
+            )
             .await
         {
             Ok(n) => Some(n),
@@ -183,9 +187,10 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     if next.is_some() {
         definitive = true; // a next() answer with no lyrics tab IS "YT has no lyrics"
     }
-    if let (Some(bid), Some(client)) =
-        (&browse_id, state.clients.get(innertube::LYRICS_TIMED_CLIENT))
-    {
+    if let (Some(bid), Some(client)) = (
+        &browse_id,
+        state.clients.get(innertube::LYRICS_TIMED_CLIENT),
+    ) {
         match state.it.lyrics_timed(client, bid).await {
             Ok(lines) if !lines.is_empty() => {
                 return (
@@ -328,7 +333,11 @@ async fn lrclib_get(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest:
     if let Some(d) = req.duration.filter(|d| *d > 0.0) {
         q.push(("duration", format!("{}", d.round() as i64)));
     }
-    let resp = http().get(format!("{LRCLIB_ROOT}/get")).query(&q).send().await?;
+    let resp = http()
+        .get(format!("{LRCLIB_ROOT}/get"))
+        .query(&q)
+        .send()
+        .await?;
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
         return Ok(None);
     }
@@ -357,7 +366,11 @@ async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwe
         _ => f64::INFINITY,
     };
     let close = |t: &LrclibTrack| ours.is_none() || dist(t) <= 5.0;
-    let synced = |t: &LrclibTrack| t.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty());
+    let synced = |t: &LrclibTrack| {
+        t.synced_lyrics
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty())
+    };
     // Prefer the synced candidate whose duration is CLOSEST to ours — LRCLIB carries multiple
     // cuts of popular tracks, and a 4s-different cut plays lyrics 4s off the audio.
     let mut best_synced: Option<(f64, LrclibTrack)> = None;
@@ -463,7 +476,10 @@ async fn mxm_usertoken() -> Option<String> {
         .json()
         .await
         .ok()?;
-    let tok = resp.pointer("/message/body/user_token")?.as_str()?.to_owned();
+    let tok = resp
+        .pointer("/message/body/user_token")?
+        .as_str()?
+        .to_owned();
     *mxm_token_cell().lock().await = Some(tok.clone());
     Some(tok)
 }
@@ -568,12 +584,19 @@ fn mxm_richsync_parse(rs: &serde_json::Value) -> Option<Vec<LyricLine>> {
         // ts/te are milliseconds (numbers or numeric strings depending on API mood).
         let ts = line.get("ts").and_then(parse_time_val)?;
         let te = line.get("te").and_then(parse_time_val);
-        let text = line.get("line").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let text = line
+            .get("line")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let mut words = Vec::new();
         if let Some(ws) = line.get("words").and_then(|v| v.as_array()) {
             for w in ws {
                 // lrc is the word text; start/end are seconds as floats (or strings).
-                let wt = w.get("word").or_else(|| w.get("lrc")).and_then(|v| v.as_str());
+                let wt = w
+                    .get("word")
+                    .or_else(|| w.get("lrc"))
+                    .and_then(|v| v.as_str());
                 let Some(wt) = wt else { continue };
                 if wt.trim().is_empty() {
                     continue;
@@ -599,7 +622,15 @@ fn mxm_richsync_parse(rs: &serde_json::Value) -> Option<Vec<LyricLine>> {
         out.push(LyricLine {
             time_ms: Some(ts),
             end_time_ms: te.or_else(|| words.last().map(|w| w.end_ms)),
-            text: if text.is_empty() { words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join("") } else { text },
+            text: if text.is_empty() {
+                words
+                    .iter()
+                    .map(|w| w.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("")
+            } else {
+                text
+            },
             words: if words.is_empty() { None } else { Some(words) },
             translation: None,
         });
@@ -613,7 +644,9 @@ fn mxm_richsync_parse(rs: &serde_json::Value) -> Option<Vec<LyricLine>> {
 /// this path — cheap compared with losing word timings for Musixmatch's whole catalog).
 async fn mxm_richsync(resp: &serde_json::Value) -> Result<Option<Vec<LyricLine>>, reqwest::Error> {
     // 1. Already inside the macro response?
-    if let Some(rs) = resp.pointer("/message/body/macro_calls/track.richsync.get/message/body/richsync") {
+    if let Some(rs) =
+        resp.pointer("/message/body/macro_calls/track.richsync.get/message/body/richsync")
+    {
         return Ok(mxm_richsync_parse(rs));
     }
     // 2. Not included — need the track id from track.search to call the dedicated endpoint.
@@ -624,8 +657,12 @@ async fn mxm_richsync(resp: &serde_json::Value) -> Result<Option<Vec<LyricLine>>
                 .map(|i| i.to_string())
                 .or_else(|| v.as_str().map(str::to_owned))
         });
-    let Some(track_id) = track_id else { return Ok(None) };
-    let Some(tok) = mxm_usertoken().await else { return Ok(None) };
+    let Some(track_id) = track_id else {
+        return Ok(None);
+    };
+    let Some(tok) = mxm_usertoken().await else {
+        return Ok(None);
+    };
     let rs_resp: serde_json::Value = http()
         .get(format!("{MXM_ROOT}/track.richsync.get"))
         .query(&[
@@ -656,7 +693,10 @@ async fn mxm_richsync(resp: &serde_json::Value) -> Result<Option<Vec<LyricLine>>
 const APPLE_ROOT: &str = "https://amp-api.music.apple.com/v1/catalog";
 
 /// Ok(None) = no tokens configured / no Apple result. Err = transport trouble.
-async fn apple_get(state: &AppState, req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+async fn apple_get(
+    state: &AppState,
+    req: &LyricsRequest,
+) -> Result<Option<Lyrics>, reqwest::Error> {
     // Both tokens must be present; either missing = provider silently off.
     let (Some(media_token), Some(dev_token)) = (
         state.db.get_setting("lyrics_apple_media_token"),
@@ -678,11 +718,7 @@ async fn apple_get(state: &AppState, req: &LyricsRequest) -> Result<Option<Lyric
     let search_url = format!("{APPLE_ROOT}/{storefront}/search");
     let search: serde_json::Value = match http()
         .get(search_url)
-        .query(&[
-            ("term", term.as_str()),
-            ("types", "songs"),
-            ("limit", "5"),
-        ])
+        .query(&[("term", term.as_str()), ("types", "songs"), ("limit", "5")])
         .header("Authorization", format!("Bearer {dev_token}"))
         .header("Media-User-Token", &media_token)
         .header("Origin", "https://music.apple.com")
@@ -742,7 +778,9 @@ async fn apple_get(state: &AppState, req: &LyricsRequest) -> Result<Option<Lyric
     let lines_val = lyric
         .pointer("/data/0/relationships/lyrics/data/0/attributes/lines")
         .and_then(|v| v.as_array());
-    let Some(lines_val) = lines_val else { return Ok(None) };
+    let Some(lines_val) = lines_val else {
+        return Ok(None);
+    };
 
     let mut out = Vec::new();
     for line in lines_val {
@@ -750,11 +788,18 @@ async fn apple_get(state: &AppState, req: &LyricsRequest) -> Result<Option<Lyric
         // each word { string?, begin?, end? } — syllable extension nests them the same way.
         let begin = line.get("begin").and_then(parse_time_val);
         let end = line.get("end").and_then(parse_time_val);
-        let text = line.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let text = line
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let mut words = Vec::new();
         if let Some(ws) = line.get("words").and_then(|v| v.as_array()) {
             for w in ws {
-                let wt = w.get("string").or_else(|| w.get("text")).and_then(|v| v.as_str());
+                let wt = w
+                    .get("string")
+                    .or_else(|| w.get("text"))
+                    .and_then(|v| v.as_str());
                 let Some(wt) = wt else { continue };
                 if wt.trim().is_empty() {
                     continue;
@@ -769,7 +814,11 @@ async fn apple_get(state: &AppState, req: &LyricsRequest) -> Result<Option<Lyric
                     .and_then(parse_time_val)
                     .or(end)
                     .unwrap_or(wb + 500);
-                words.push(LyricWord { text: wt.to_string(), start_ms: wb, end_ms: we });
+                words.push(LyricWord {
+                    text: wt.to_string(),
+                    start_ms: wb,
+                    end_ms: we,
+                });
             }
         }
         out.push(LyricLine {
@@ -1070,7 +1119,6 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-
 // --- Boidu (word-level karaoke provider) ----------------------------------------------------
 //
 // lyrics-api.boidu.dev (the Better Lyrics API) is the only free, keyless provider that returns
@@ -1136,12 +1184,15 @@ async fn boidu_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
 
     let hit = lrc_str.and_then(|lrc| from_parsed("Boidu", parse_lrc_or_ttml(&lrc)));
     match &hit {
-        Some(l) => tracing::debug!(count = l.lines.len(), synced = l.synced, "lyrics: Boidu hit"),
+        Some(l) => tracing::debug!(
+            count = l.lines.len(),
+            synced = l.synced,
+            "lyrics: Boidu hit"
+        ),
         None => tracing::debug!("lyrics: Boidu returned no lines"),
     }
     Ok(hit)
 }
-
 
 /// Kugou KRC — free, no key, huge pool. search -> candidates (id+accesskey) -> download fmt=krc.
 /// KRC is base64 + xor with key 'krc1' (0x6b,0x72,0x63,0x31). Decodes to LRC with per-word <start,dur,0>word blocks.
@@ -1149,44 +1200,116 @@ async fn kugou_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
     let q = format!("{} {}", req.title, req.artists);
     let search: serde_json::Value = match web_http()
         .get("https://lyrics.kugou.com/search")
-        .query(&[("ver", "1"), ("man", "yes"), ("client", "pc"), ("keyword", &q)])
-        .timeout(Duration::from_secs(8)).send().await {
-        Ok(r) => match r.json().await { Ok(j) => j, Err(e) => { tracing::debug!(error=%e, "lyrics: Kugou json"); return Ok(None); } },
-        Err(e) => { tracing::debug!(error=%e, "lyrics: Kugou search"); return Ok(None); }
+        .query(&[
+            ("ver", "1"),
+            ("man", "yes"),
+            ("client", "pc"),
+            ("keyword", &q),
+        ])
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "lyrics: Kugou json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "lyrics: Kugou search");
+            return Ok(None);
+        }
     };
-    let cands = search.get("candidates").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    if cands.is_empty() { return Ok(None); }
-    let mut best: Option<(f64,String,String)> = None;
+    let cands = search
+        .get("candidates")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if cands.is_empty() {
+        return Ok(None);
+    }
+    let mut best: Option<(f64, String, String)> = None;
     for c in &cands {
         let ct = c.get("song").and_then(|v| v.as_str()).unwrap_or("");
         let ca = c.get("singer").and_then(|v| v.as_str()).unwrap_or("");
         let ak = c.get("accesskey").and_then(|v| v.as_str()).unwrap_or("");
         let id = c.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        if ak.is_empty() || id.is_empty() { continue; }
+        if ak.is_empty() || id.is_empty() {
+            continue;
+        }
         let ts = overlap(&req.title, ct);
-        let asc = req.artists.split(',').map(|s| s.trim()).map(|a| overlap(a, ca)).fold(0.0, f64::max);
-        if ts < 0.35 || asc < 0.30 { continue; }
+        let asc = req
+            .artists
+            .split(',')
+            .map(|s| s.trim())
+            .map(|a| overlap(a, ca))
+            .fold(0.0, f64::max);
+        if ts < 0.35 || asc < 0.30 {
+            continue;
+        }
         let sc = (ts + asc) / 2.0;
-        if best.as_ref().is_none_or(|(bs,_,_)| sc > *bs) { best = Some((sc, id.to_string(), ak.to_string())); }
+        if best.as_ref().is_none_or(|(bs, _, _)| sc > *bs) {
+            best = Some((sc, id.to_string(), ak.to_string()));
+        }
     }
     let (id, ak) = match best {
         Some((_, id, ak)) => (id, ak),
-        None => { let top=&cands[0]; let ak=top.get("accesskey").and_then(|v| v.as_str()).unwrap_or(""); let id=top.get("id").and_then(|v| v.as_str()).unwrap_or(""); if ak.is_empty() || id.is_empty() { return Ok(None); } (id.to_string(), ak.to_string()) }
+        None => {
+            let top = &cands[0];
+            let ak = top.get("accesskey").and_then(|v| v.as_str()).unwrap_or("");
+            let id = top.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if ak.is_empty() || id.is_empty() {
+                return Ok(None);
+            }
+            (id.to_string(), ak.to_string())
+        }
     };
-    let raw: serde_json::Value = match web_http().get("http://lyrics.kugou.com/download").query(&[("ver","1"),("client","pc"),("id",&id),("accesskey",&ak),("fmt","krc"),("charset","utf8")]).timeout(Duration::from_secs(8)).send().await {
-        Ok(r) => match r.json().await { Ok(j)=> j, Err(e)=> { tracing::debug!(error=%e, "Kugou dl json"); return Ok(None); } },
-        Err(e)=> { tracing::debug!(error=%e, "Kugou dl"); return Ok(None); }
+    let raw: serde_json::Value = match web_http()
+        .get("http://lyrics.kugou.com/download")
+        .query(&[
+            ("ver", "1"),
+            ("client", "pc"),
+            ("id", &id),
+            ("accesskey", &ak),
+            ("fmt", "krc"),
+            ("charset", "utf8"),
+        ])
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "Kugou dl json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "Kugou dl");
+            return Ok(None);
+        }
     };
     let b64 = raw.get("content").and_then(|v| v.as_str()).unwrap_or("");
-    if b64.is_empty() { return Ok(None); }
-    let decoded = decode_krc_content(b64).or_else(|| base64_decode_fallback(b64)).unwrap_or_else(|| b64.to_string());
-    if decoded.trim().is_empty() { return Ok(None); }
+    if b64.is_empty() {
+        return Ok(None);
+    }
+    let decoded = decode_krc_content(b64)
+        .or_else(|| base64_decode_fallback(b64))
+        .unwrap_or_else(|| b64.to_string());
+    if decoded.trim().is_empty() {
+        return Ok(None);
+    }
     let lines = parse_lrc_or_ttml(&decoded);
     if !lines.is_empty() {
         let has = lines.iter().any(|l| l.words.is_some());
         if !has && decoded.contains('<') && decoded.contains(',') {
             let kw = parse_krc_words(&decoded);
-            if !kw.is_empty() { return Ok(from_parsed("Kugou", kw)); }
+            if !kw.is_empty() {
+                return Ok(from_parsed("Kugou", kw));
+            }
         }
         return Ok(from_parsed("Kugou", lines));
     }
@@ -1195,122 +1318,293 @@ async fn kugou_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
 }
 async fn netease_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     let q = format!("{} {}", req.title, req.artists);
-    let search: serde_json::Value = match web_http().get("https://music.163.com/api/search/pc").query(&[("s", q.as_str()), ("type", "1"), ("limit", "10")]).header("Referer","https://music.163.com/").timeout(Duration::from_secs(8)).send().await {
-        Ok(r)=> match r.json().await { Ok(j)=> j, Err(e)=> { tracing::debug!(error=%e, "NetEase json"); return Ok(None); } },
-        Err(e)=> { tracing::debug!(error=%e, "NetEase search"); return Ok(None); }
+    let search: serde_json::Value = match web_http()
+        .get("https://music.163.com/api/search/pc")
+        .query(&[("s", q.as_str()), ("type", "1"), ("limit", "10")])
+        .header("Referer", "https://music.163.com/")
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "NetEase json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "NetEase search");
+            return Ok(None);
+        }
     };
-    let songs = search.pointer("/result/songs").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    if songs.is_empty() { return Ok(None); }
-    let mut best: Option<(f64,i64)> = None;
+    let songs = search
+        .pointer("/result/songs")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if songs.is_empty() {
+        return Ok(None);
+    }
+    let mut best: Option<(f64, i64)> = None;
     for s in &songs {
         let gt = s.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        let ga = s.get("artists").and_then(|v| v.as_array()).and_then(|a| a.first()).and_then(|a| a.get("name")).and_then(|v| v.as_str()).unwrap_or("");
+        let ga = s
+            .get("artists")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|a| a.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let id = s.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-        if id==0 { continue; }
+        if id == 0 {
+            continue;
+        }
         let ts = overlap(&req.title, gt);
-        let asc = req.artists.split(',').map(|x| x.trim()).map(|a| overlap(a, ga)).fold(0.0, f64::max);
-        if ts < 0.35 || asc < 0.30 { continue; }
-        let sc = (ts + asc)/2.0;
-        if best.as_ref().is_none_or(|(bs,_)| sc > *bs) { best = Some((sc,id)); }
+        let asc = req
+            .artists
+            .split(',')
+            .map(|x| x.trim())
+            .map(|a| overlap(a, ga))
+            .fold(0.0, f64::max);
+        if ts < 0.35 || asc < 0.30 {
+            continue;
+        }
+        let sc = (ts + asc) / 2.0;
+        if best.as_ref().is_none_or(|(bs, _)| sc > *bs) {
+            best = Some((sc, id));
+        }
     }
-    let sid = match best { Some((_,id))=> id, None=> songs.first().and_then(|s| s.get("id")).and_then(|v| v.as_i64()).unwrap_or(0) };
-    if sid==0 { return Ok(None); }
-    let resp: serde_json::Value = match web_http().get("https://music.163.com/api/song/lyric").query(&[("id", sid.to_string()), ("lv", "-1".to_string()), ("kv", "-1".to_string()), ("tv", "-1".to_string())]).header("Referer","https://music.163.com/").timeout(Duration::from_secs(8)).send().await {
-        Ok(r)=> match r.json().await { Ok(j)=> j, Err(e)=> { tracing::debug!(error=%e, "NetEase lyric json"); return Ok(None); } },
-        Err(e)=> { tracing::debug!(error=%e, "NetEase lyric"); return Ok(None); }
+    let sid = match best {
+        Some((_, id)) => id,
+        None => songs
+            .first()
+            .and_then(|s| s.get("id"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0),
     };
-    let yrc = resp.get("yrc").and_then(|v| v.get("lyric")).and_then(|v| v.as_str()).unwrap_or("");
+    if sid == 0 {
+        return Ok(None);
+    }
+    let resp: serde_json::Value = match web_http()
+        .get("https://music.163.com/api/song/lyric")
+        .query(&[
+            ("id", sid.to_string()),
+            ("lv", "-1".to_string()),
+            ("kv", "-1".to_string()),
+            ("tv", "-1".to_string()),
+        ])
+        .header("Referer", "https://music.163.com/")
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "NetEase lyric json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "NetEase lyric");
+            return Ok(None);
+        }
+    };
+    let yrc = resp
+        .get("yrc")
+        .and_then(|v| v.get("lyric"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if !yrc.trim().is_empty() {
         let yw = parse_krc_words(yrc);
-        if !yw.is_empty() { return Ok(from_parsed("NetEase", yw)); }
+        if !yw.is_empty() {
+            return Ok(from_parsed("NetEase", yw));
+        }
         let lines = parse_lrc_or_ttml(yrc);
-        if !lines.is_empty() && lines.iter().any(|l| l.words.is_some() || l.time_ms.is_some()) { return Ok(from_parsed("NetEase", lines)); }
+        if !lines.is_empty()
+            && lines
+                .iter()
+                .any(|l| l.words.is_some() || l.time_ms.is_some())
+        {
+            return Ok(from_parsed("NetEase", lines));
+        }
     }
-    let lrc = resp.get("lrc").and_then(|v| v.get("lyric")).and_then(|v| v.as_str()).unwrap_or("");
-    if lrc.trim().is_empty() { return Ok(None); }
+    let lrc = resp
+        .get("lrc")
+        .and_then(|v| v.get("lyric"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if lrc.trim().is_empty() {
+        return Ok(None);
+    }
     let lines = parse_lrc_or_ttml(lrc);
-    if lines.is_empty() { return Ok(None); }
+    if lines.is_empty() {
+        return Ok(None);
+    }
     Ok(from_parsed("NetEase", lines))
 }
 fn decode_krc_content(b64: &str) -> Option<String> {
     let s = base64_decode_fallback(b64)?;
-    if s.len() < 4 { return None; }
+    if s.len() < 4 {
+        return None;
+    }
     let bytes = s.into_bytes();
-    let key:[u8;4]=[0x6b,0x72,0x63,0x31];
-    let xored: Vec<u8> = bytes.iter().enumerate().map(|(i,&b)| b ^ key[i%4]).collect();
+    let key: [u8; 4] = [0x6b, 0x72, 0x63, 0x31];
+    let xored: Vec<u8> = bytes
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| b ^ key[i % 4])
+        .collect();
     let out = String::from_utf8(xored).ok()?;
     Some(out.strip_prefix("krc1").unwrap_or(&out).to_string())
 }
 fn base64_decode_fallback(s: &str) -> Option<String> {
     let c: String = s.chars().filter(|c| !c.is_whitespace()).collect();
-    let p = match c.len()%4 { 0=> c, 2=> format!("{c}=="), 3=> format!("{c}="), _=> c };
+    let p = match c.len() % 4 {
+        0 => c,
+        2 => format!("{c}=="),
+        3 => format!("{c}="),
+        _ => c,
+    };
     let b = base64_decode_bytes(&p)?;
     String::from_utf8(b).ok()
 }
 fn base64_decode_bytes(s: &str) -> Option<Vec<u8>> {
-    let table = {
-build_b64_table()
-    };
-    if s.len()%4!=0{ return None; }
-    let mut out=Vec::with_capacity(s.len()*3/4);
-    let b=s.as_bytes(); let mut i=0;
-    while i < s.len(){
-        let a=table[b[i]as usize]; let bb=table[b[i+1]as usize]; let cc=table[b[i+2]as usize]; let d=table[b[i+3]as usize];
-        if a<0||bb<0||cc<0||d<0{ return None; }
-        out.push(((a as u8)<<2)|((bb as u8)>>4));
-        if b[i+2]!=b'=' { out.push(((bb as u8 & 0x0f)<<4)|((cc as u8)>>2)); }
-        if b[i+3]!=b'=' { out.push(((cc as u8 & 0x03)<<6)|(d as u8)); }
-        i+=4;
+    let table = { build_b64_table() };
+    if s.len() % 4 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < s.len() {
+        let a = table[b[i] as usize];
+        let bb = table[b[i + 1] as usize];
+        let cc = table[b[i + 2] as usize];
+        let d = table[b[i + 3] as usize];
+        if a < 0 || bb < 0 || cc < 0 || d < 0 {
+            return None;
+        }
+        out.push(((a as u8) << 2) | ((bb as u8) >> 4));
+        if b[i + 2] != b'=' {
+            out.push(((bb as u8 & 0x0f) << 4) | ((cc as u8) >> 2));
+        }
+        if b[i + 3] != b'=' {
+            out.push(((cc as u8 & 0x03) << 6) | (d as u8));
+        }
+        i += 4;
     }
     Some(out)
 }
 
 fn build_b64_table() -> [i8; 256] {
     let mut t = [-1i8; 256];
-    let mut i = 0u8; while i < 26 { t[(b'A' + i) as usize] = i as i8; i += 1; }
-    i = 0; while i < 26 { t[(b'a' + i) as usize] = (26 + i) as i8; i += 1; }
-    i = 0; while i < 10 { t[(b'0' + i) as usize] = (52 + i) as i8; i += 1; }
-    t[b'+' as usize] = 62; t[b'/' as usize] = 63; t[b'=' as usize] = 0;
+    let mut i = 0u8;
+    while i < 26 {
+        t[(b'A' + i) as usize] = i as i8;
+        i += 1;
+    }
+    i = 0;
+    while i < 26 {
+        t[(b'a' + i) as usize] = (26 + i) as i8;
+        i += 1;
+    }
+    i = 0;
+    while i < 10 {
+        t[(b'0' + i) as usize] = (52 + i) as i8;
+        i += 1;
+    }
+    t[b'+' as usize] = 62;
+    t[b'/' as usize] = 63;
+    t[b'=' as usize] = 0;
     t
 }
 fn parse_krc_words(text: &str) -> Vec<LyricLine> {
-    let mut out=Vec::new();
-    for raw in text.lines(){
-        let trimmed=raw.trim(); if trimmed.is_empty(){ continue; }
-        let mut rest=trimmed; let mut times:Vec<u64>=Vec::new();
-        while let Some(after)=rest.strip_prefix('['){
-            if let Some(end)=after.find(']'){
-                if let Some(ms)=parse_lrc_time(&after[..end]){ times.push(ms); rest=after[end+1..].trim_start(); } else { break; }
-            } else { break; }
-        }
-        if times.is_empty(){ continue; }
-        let mut words:Vec<LyricWord>=Vec::new();
-        let mut pos=0; let bytes=rest.as_bytes();
-        while pos < bytes.len(){
-            if bytes[pos]==b'<'{
-                if let Some(end)=rest[pos..].find('>'){
-                    let tag=&rest[pos+1..pos+end];
-                    let parts:Vec<&str>=tag.split(',').collect();
-                    if parts.len()>=2{
-                        if let (Ok(start),Ok(dur))=(parts[0].parse::<u64>(),parts[1].parse::<u64>()){
-                            let nxt=rest[pos+end+1..].find('<').map(|i| pos+end+1+i).unwrap_or(rest.len());
-                            let wtext=&rest[pos+end+1..nxt];
-                            if !wtext.is_empty(){ words.push(LyricWord{ text:wtext.to_string(), start_ms:start, end_ms:start+dur }); }
-                            pos=nxt; continue;
-                        }
-                    }
-                    pos+=end+1; continue;
-                }
-            }
-            pos+=rest[pos..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
-        }
-        if words.is_empty(){
-            let lt=rest.trim().to_string();
-            for &ms in &times { out.push(LyricLine{ time_ms:Some(ms), end_time_ms:None, text:lt.clone(), words:None, translation:None }); }
+    let mut out = Vec::new();
+    for raw in text.lines() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
             continue;
         }
-        let full: String=words.iter().map(|w| w.text.as_str()).collect();
-        for &ms in &times { out.push(LyricLine{ time_ms:Some(ms), end_time_ms:words.last().map(|w| w.end_ms), text:full.clone(), words:Some(words.clone()), translation:None }); }
+        let mut rest = trimmed;
+        let mut times: Vec<u64> = Vec::new();
+        while let Some(after) = rest.strip_prefix('[') {
+            if let Some(end) = after.find(']') {
+                if let Some(ms) = parse_lrc_time(&after[..end]) {
+                    times.push(ms);
+                    rest = after[end + 1..].trim_start();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        if times.is_empty() {
+            continue;
+        }
+        let mut words: Vec<LyricWord> = Vec::new();
+        let mut pos = 0;
+        let bytes = rest.as_bytes();
+        while pos < bytes.len() {
+            if bytes[pos] == b'<' {
+                if let Some(end) = rest[pos..].find('>') {
+                    let tag = &rest[pos + 1..pos + end];
+                    let parts: Vec<&str> = tag.split(',').collect();
+                    if parts.len() >= 2 {
+                        if let (Ok(start), Ok(dur)) =
+                            (parts[0].parse::<u64>(), parts[1].parse::<u64>())
+                        {
+                            let nxt = rest[pos + end + 1..]
+                                .find('<')
+                                .map(|i| pos + end + 1 + i)
+                                .unwrap_or(rest.len());
+                            let wtext = &rest[pos + end + 1..nxt];
+                            if !wtext.is_empty() {
+                                words.push(LyricWord {
+                                    text: wtext.to_string(),
+                                    start_ms: start,
+                                    end_ms: start + dur,
+                                });
+                            }
+                            pos = nxt;
+                            continue;
+                        }
+                    }
+                    pos += end + 1;
+                    continue;
+                }
+            }
+            pos += rest[pos..]
+                .chars()
+                .next()
+                .map(|c| c.len_utf8())
+                .unwrap_or(1);
+        }
+        if words.is_empty() {
+            let lt = rest.trim().to_string();
+            for &ms in &times {
+                out.push(LyricLine {
+                    time_ms: Some(ms),
+                    end_time_ms: None,
+                    text: lt.clone(),
+                    words: None,
+                    translation: None,
+                });
+            }
+            continue;
+        }
+        let full: String = words.iter().map(|w| w.text.as_str()).collect();
+        for &ms in &times {
+            out.push(LyricLine {
+                time_ms: Some(ms),
+                end_time_ms: words.last().map(|w| w.end_ms),
+                text: full.clone(),
+                words: Some(words.clone()),
+                translation: None,
+            });
+        }
     }
     out.sort_by_key(|l| l.time_ms);
     out
@@ -1389,7 +1683,11 @@ fn parse_lrc_or_ttml(text: &str) -> Vec<LyricLine> {
                                 .and_then(parse_time_val)
                                 .or_else(|| w_start.map(|s| s + 500));
                             if let (Some(b), Some(e)) = (w_start, w_end) {
-                                words.push(LyricWord { text: w_text, start_ms: b, end_ms: e });
+                                words.push(LyricWord {
+                                    text: w_text,
+                                    start_ms: b,
+                                    end_ms: e,
+                                });
                             }
                         }
                     }
@@ -1430,11 +1728,15 @@ fn parse_ttml_aaml(xml: &str) -> Vec<LyricLine> {
     let mut pos = 0;
     while let Some(p_start) = xml[pos..].find("<p") {
         let abs_p_start = pos + p_start;
-        let Some(p_tag_end) = xml[abs_p_start..].find('>') else { break };
+        let Some(p_tag_end) = xml[abs_p_start..].find('>') else {
+            break;
+        };
         let abs_p_tag_end = abs_p_start + p_tag_end;
         let p_tag_str = &xml[abs_p_start..abs_p_tag_end + 1];
 
-        let Some(p_close) = xml[abs_p_tag_end..].find("</p>") else { break };
+        let Some(p_close) = xml[abs_p_tag_end..].find("</p>") else {
+            break;
+        };
         let abs_p_close = abs_p_tag_end + p_close;
         let inner_str = &xml[abs_p_tag_end + 1..abs_p_close];
 
@@ -1449,7 +1751,9 @@ fn parse_ttml_aaml(xml: &str) -> Vec<LyricLine> {
 
         while let Some(s_start) = inner_str[span_pos..].find("<span") {
             let abs_s_start = span_pos + s_start;
-            let Some(s_tag_end) = inner_str[abs_s_start..].find('>') else { break };
+            let Some(s_tag_end) = inner_str[abs_s_start..].find('>') else {
+                break;
+            };
             let abs_s_tag_end = abs_s_start + s_tag_end;
             let s_tag_str = &inner_str[abs_s_start..abs_s_tag_end + 1];
 
@@ -1461,18 +1765,26 @@ fn parse_ttml_aaml(xml: &str) -> Vec<LyricLine> {
                 }
             }
 
-            let Some(s_close) = inner_str[abs_s_tag_end..].find("</span>") else { break };
+            let Some(s_close) = inner_str[abs_s_tag_end..].find("</span>") else {
+                break;
+            };
             let abs_s_close = abs_s_tag_end + s_close;
             let w_text = strip_xml_tags(&inner_str[abs_s_tag_end + 1..abs_s_close]);
 
-            let w_begin =
-                parse_xml_attr(s_tag_str, "begin").and_then(|s| parse_ttml_time(&s)).or(line_begin);
-            let w_end =
-                parse_xml_attr(s_tag_str, "end").and_then(|s| parse_ttml_time(&s)).or(line_end);
+            let w_begin = parse_xml_attr(s_tag_str, "begin")
+                .and_then(|s| parse_ttml_time(&s))
+                .or(line_begin);
+            let w_end = parse_xml_attr(s_tag_str, "end")
+                .and_then(|s| parse_ttml_time(&s))
+                .or(line_end);
 
             if let (Some(b), Some(e)) = (w_begin, w_end) {
                 if !w_text.is_empty() {
-                    words.push(LyricWord { text: w_text.clone(), start_ms: b, end_ms: e });
+                    words.push(LyricWord {
+                        text: w_text.clone(),
+                        start_ms: b,
+                        end_ms: e,
+                    });
                 }
             }
             plain_text_buf.push_str(&w_text);

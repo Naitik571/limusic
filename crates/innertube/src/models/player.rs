@@ -176,7 +176,10 @@ impl Format {
     }
     /// Not an auto-dubbed foreign-language track. context/03.
     pub fn is_original(&self) -> bool {
-        self.audio_track.as_ref().and_then(|t| t.is_auto_dubbed).is_none()
+        self.audio_track
+            .as_ref()
+            .and_then(|t| t.is_auto_dubbed)
+            .is_none()
     }
     /// Direct, playable URL with no cipher required (present on the non-web fallback clients).
     pub fn direct_url(&self) -> Option<&str> {
@@ -220,7 +223,11 @@ pub enum AudioQuality {
 /// Pick the best audio format for the requested quality. Port of `YTPlayerUtils.findFormat`,
 /// context/03. Returns a reference into `adaptive_formats`.
 pub fn find_format(data: &StreamingData, quality: AudioQuality) -> Option<&Format> {
-    let audio: Vec<&Format> = data.adaptive_formats.iter().filter(|f| f.is_audio()).collect();
+    let audio: Vec<&Format> = data
+        .adaptive_formats
+        .iter()
+        .filter(|f| f.is_audio())
+        .collect();
     if audio.is_empty() {
         return None;
     }
@@ -228,17 +235,27 @@ pub fn find_format(data: &StreamingData, quality: AudioQuality) -> Option<&Forma
         AudioQuality::High | AudioQuality::Auto => audio.into_iter().max_by(|a, b| {
             a.quality_rank()
                 .cmp(&b.quality_rank())
-                .then(a.audio_channels.unwrap_or(2).cmp(&b.audio_channels.unwrap_or(2)))
+                .then(
+                    a.audio_channels
+                        .unwrap_or(2)
+                        .cmp(&b.audio_channels.unwrap_or(2)),
+                )
                 .then(a.codec_score().cmp(&b.codec_score()))
                 .then(a.bitrate.cmp(&b.bitrate))
         }),
         AudioQuality::Low => {
             let capped: Vec<&&Format> = audio.iter().filter(|f| f.bitrate <= 128_000).collect();
-            let pool = if capped.is_empty() { audio.iter().collect() } else { capped };
+            let pool = if capped.is_empty() {
+                audio.iter().collect()
+            } else {
+                capped
+            };
             // Prefer original (non-dubbed), then highest bitrate under the cap.
             pool.into_iter()
                 .max_by(|a, b| {
-                    a.is_original().cmp(&b.is_original()).then(a.bitrate.cmp(&b.bitrate))
+                    a.is_original()
+                        .cmp(&b.is_original())
+                        .then(a.bitrate.cmp(&b.bitrate))
                 })
                 .copied()
         }

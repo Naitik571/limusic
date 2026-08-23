@@ -9,7 +9,9 @@ use crate::models::browse::{
 };
 use crate::models::context::Context;
 use crate::models::lyrics::{self, PlainLyrics, TimedLyricLine};
-use crate::models::metadata::{self, AccountIdentity, AccountInfo, NextResult, SearchResult, SongItem};
+use crate::models::metadata::{
+    self, AccountIdentity, AccountInfo, NextResult, SearchResult, SongItem,
+};
 use crate::models::player::{
     ContentPlaybackContext, PlaybackContext, PlayerBody, PlayerResponse, ServiceIntegrityDimensions,
 };
@@ -46,7 +48,9 @@ impl InnerTube {
             video_id: video_id.to_owned(),
             playlist_id: playlist_id.map(str::to_owned),
             playback_context: sts.map(|signature_timestamp| PlaybackContext {
-                content_playback_context: ContentPlaybackContext { signature_timestamp },
+                content_playback_context: ContentPlaybackContext {
+                    signature_timestamp,
+                },
             }),
             service_integrity_dimensions: po_token.map(|t| ServiceIntegrityDimensions {
                 po_token: t.to_owned(),
@@ -54,7 +58,9 @@ impl InnerTube {
             content_check_ok: true,
             racy_check_ok: true,
         };
-        let value = self.post("player", client, &body, /* set_login */ true).await?;
+        let value = self
+            .post("player", client, &body, /* set_login */ true)
+            .await?;
         Ok(serde_json::from_value(value)?)
     }
 
@@ -105,7 +111,9 @@ impl InnerTube {
         metadata_client: &YouTubeClient,
         query: &str,
     ) -> Result<SearchResult, Error> {
-        let value = self.search_raw(metadata_client, query, Some(FILTER_SONG)).await?;
+        let value = self
+            .search_raw(metadata_client, query, Some(FILTER_SONG))
+            .await?;
         let mut r = metadata::parse_search(&value);
         self.drop_video_songs(&mut r.items);
         Ok(r)
@@ -172,7 +180,8 @@ impl InnerTube {
         // The seed itself survives: "start radio from this video" must still open on that video,
         // and the track already playing is never yanked out from under the user.
         if self.hide_videos() {
-            next.items.retain(|i| !i.is_video || Some(i.video_id.as_str()) == video_id);
+            next.items
+                .retain(|i| !i.is_video || Some(i.video_id.as_str()) == video_id);
         }
         Ok(next)
     }
@@ -185,8 +194,12 @@ impl InnerTube {
         struct AccountMenuBody {
             context: Context,
         }
-        let body = AccountMenuBody { context: self.context_for(client) };
-        let value = self.post("account/account_menu", client, &body, true).await?;
+        let body = AccountMenuBody {
+            context: self.context_for(client),
+        };
+        let value = self
+            .post("account/account_menu", client, &body, true)
+            .await?;
         Ok(metadata::parse_account_menu(&value))
     }
 
@@ -202,8 +215,12 @@ impl InnerTube {
         struct AccountMenuBody {
             context: Context,
         }
-        let body = AccountMenuBody { context: self.context_for_identity(client, data_sync_id) };
-        let value = self.post("account/account_menu", client, &body, true).await?;
+        let body = AccountMenuBody {
+            context: self.context_for_identity(client, data_sync_id),
+        };
+        let value = self
+            .post("account/account_menu", client, &body, true)
+            .await?;
         Ok(metadata::parse_account_menu(&value))
     }
 
@@ -219,8 +236,12 @@ impl InnerTube {
         struct AccountsListBody {
             context: Context,
         }
-        let body = AccountsListBody { context: self.context_for(client) };
-        let value = self.post("account/accounts_list", client, &body, true).await?;
+        let body = AccountsListBody {
+            context: self.context_for(client),
+        };
+        let value = self
+            .post("account/accounts_list", client, &body, true)
+            .await?;
         Ok(metadata::parse_account_identities(&value))
     }
 
@@ -268,7 +289,9 @@ impl InnerTube {
         struct ContinuationBody {
             context: Context,
         }
-        let body = ContinuationBody { context: self.context_for(client) };
+        let body = ContinuationBody {
+            context: self.context_for(client),
+        };
         let enc = urlencoding::encode(token);
         let path = format!("browse?ctoken={enc}&continuation={enc}&type=next");
         self.post(&path, client, &body, true).await
@@ -362,7 +385,8 @@ impl InnerTube {
     /// albums in your library, which is what YouTube Music's own Artists tab shows (subscriptions
     /// live under `FEmusic_library_corpus_artists`). context/08. Needs login.
     pub async fn library_artists(&self, client: &YouTubeClient) -> Result<Vec<BrowseItem>, Error> {
-        self.library_grid(client, "FEmusic_library_corpus_track_artists").await
+        self.library_grid(client, "FEmusic_library_corpus_track_artists")
+            .await
     }
 
     /// A playlist or album page by browseId (`VL…` / `MPRE…`). context/08.
@@ -493,10 +517,16 @@ impl InnerTube {
         struct Target {
             video_id: String,
         }
-        let path = if liked { "like/like" } else { "like/removelike" };
+        let path = if liked {
+            "like/like"
+        } else {
+            "like/removelike"
+        };
         let body = LikeBody {
             context: self.context_for(client),
-            target: Target { video_id: video_id.to_owned() },
+            target: Target {
+                video_id: video_id.to_owned(),
+            },
         };
         self.post(path, client, &body, true).await?;
         Ok(())
@@ -521,10 +551,16 @@ impl InnerTube {
         struct Target {
             playlist_id: String,
         }
-        let path = if liked { "like/like" } else { "like/removelike" };
+        let path = if liked {
+            "like/like"
+        } else {
+            "like/removelike"
+        };
         let body = LikeBody {
             context: self.context_for(client),
-            target: Target { playlist_id: strip_vl(playlist_id).to_owned() },
+            target: Target {
+                playlist_id: strip_vl(playlist_id).to_owned(),
+            },
         };
         self.post(path, client, &body, true).await?;
         Ok(())
@@ -607,7 +643,8 @@ impl InnerTube {
         if actions.is_empty() {
             return Ok(());
         }
-        self.edit_playlist_actions(client, playlist_id, actions).await
+        self.edit_playlist_actions(client, playlist_id, actions)
+            .await
     }
 
     /// Give a playlist you own a cover of your own, the way YouTube Music's web client does it:
@@ -631,7 +668,10 @@ impl InnerTube {
                 &[
                     ("x-goog-upload-command", "start".to_owned()),
                     ("x-goog-upload-protocol", "resumable".to_owned()),
-                    ("x-goog-upload-header-content-length", image.len().to_string()),
+                    (
+                        "x-goog-upload-header-content-length",
+                        image.len().to_string(),
+                    ),
                 ],
                 Vec::new(),
             )
@@ -709,7 +749,8 @@ impl InnerTube {
         playlist_id: &str,
         action: serde_json::Value,
     ) -> Result<(), Error> {
-        self.edit_playlist_actions(client, playlist_id, vec![action]).await
+        self.edit_playlist_actions(client, playlist_id, vec![action])
+            .await
     }
 
     async fn edit_playlist_actions(
@@ -718,7 +759,9 @@ impl InnerTube {
         playlist_id: &str,
         actions: Vec<serde_json::Value>,
     ) -> Result<(), Error> {
-        self.edit_playlist_value(client, playlist_id, actions).await.map(|_| ())
+        self.edit_playlist_value(client, playlist_id, actions)
+            .await
+            .map(|_| ())
     }
 
     async fn edit_playlist_value(
@@ -739,7 +782,9 @@ impl InnerTube {
             playlist_id: strip_vl(playlist_id).to_owned(),
             actions,
         };
-        let value = self.post("browse/edit_playlist", client, &body, true).await?;
+        let value = self
+            .post("browse/edit_playlist", client, &body, true)
+            .await?;
         match edit_rejection(&value) {
             Some(e) => Err(e),
             None => Ok(value),
@@ -802,9 +847,15 @@ impl InnerTube {
             context: Context,
             channel_ids: Vec<String>,
         }
-        let path = if subscribed { "subscription/subscribe" } else { "subscription/unsubscribe" };
-        let body =
-            SubBody { context: self.context_for(client), channel_ids: vec![channel_id.to_owned()] };
+        let path = if subscribed {
+            "subscription/subscribe"
+        } else {
+            "subscription/unsubscribe"
+        };
+        let body = SubBody {
+            context: self.context_for(client),
+            channel_ids: vec![channel_id.to_owned()],
+        };
         self.post(path, client, &body, true).await?;
         Ok(())
     }
@@ -838,7 +889,9 @@ fn cover_refusal(e: Error) -> Error {
 /// actions answer with one, and after a removal it is the only way to learn the collage YouTube
 /// rebuilt out of the tracks. Scoped to `newHeader` so an unrelated avatar can't stand in for it.
 fn edited_thumbnail(response: &serde_json::Value) -> Option<String> {
-    metadata::find_all(response, "newHeader").into_iter().find_map(metadata::last_thumbnail)
+    metadata::find_all(response, "newHeader")
+        .into_iter()
+        .find_map(metadata::last_thumbnail)
 }
 
 /// The single image slot a playlist has. Square by name and by what YouTube does with it.
@@ -877,19 +930,28 @@ mod tests {
     /// out as "your session expired", which is what a 403 means anywhere else in this crate.
     #[test]
     fn a_refused_cover_never_reads_as_a_dead_session() {
-        assert!(matches!(cover_refusal(Error::SessionExpired), Error::CoverRefused));
+        assert!(matches!(
+            cover_refusal(Error::SessionExpired),
+            Error::CoverRefused
+        ));
         // `edit_playlist`'s STATUS_FAILED rejection, which is how a 200 says no.
         assert!(matches!(
             cover_refusal(Error::Other("YouTube refused the playlist edit.".into())),
             Error::CoverRefused
         ));
         // Nothing reached YouTube at all: still worth a retry, so leave it be.
-        assert!(matches!(cover_refusal(Error::VisitorDataNotFound), Error::VisitorDataNotFound));
+        assert!(matches!(
+            cover_refusal(Error::VisitorDataNotFound),
+            Error::VisitorDataNotFound
+        ));
     }
 
     #[test]
     fn create_playlist_id_parsed() {
         let resp = json!({ "playlistId": "PLnew123", "status": "STATUS_SUCCEEDED" });
-        assert_eq!(metadata::find_first_str(&resp, "playlistId").as_deref(), Some("PLnew123"));
+        assert_eq!(
+            metadata::find_first_str(&resp, "playlistId").as_deref(),
+            Some("PLnew123")
+        );
     }
 }

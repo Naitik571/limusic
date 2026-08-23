@@ -46,7 +46,10 @@ struct State {
 
 impl Default for State {
     fn default() -> Self {
-        State { busy: false, last_error: None }
+        State {
+            busy: false,
+            last_error: None,
+        }
     }
 }
 
@@ -87,7 +90,11 @@ impl YtDlp {
     }
 
     pub fn bin_path(&self) -> PathBuf {
-        let name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
+        let name = if cfg!(windows) {
+            "yt-dlp.exe"
+        } else {
+            "yt-dlp"
+        };
         self.bin_dir().join(name)
     }
 
@@ -131,10 +138,12 @@ impl YtDlp {
             let due = std::fs::read_to_string(&stamp)
                 .ok()
                 .and_then(|s| s.trim().parse::<u64>().ok())
-                .map(|t| std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs().saturating_sub(t) >= UPDATE_INTERVAL_SECS)
-                    .unwrap_or(true))
+                .map(|t| {
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs().saturating_sub(t) >= UPDATE_INTERVAL_SECS)
+                        .unwrap_or(true)
+                })
                 .unwrap_or(true);
             if due {
                 let _ = self.run_update(&bin).await;
@@ -174,7 +183,10 @@ impl YtDlp {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755));
         }
-        let _ = std::fs::write(self.bin_dir().join("ytdlp-update-stamp"), format!("{}", now_secs()));
+        let _ = std::fs::write(
+            self.bin_dir().join("ytdlp-update-stamp"),
+            format!("{}", now_secs()),
+        );
         tracing::info!("yt-dlp installed at {}", bin.display());
         Ok(())
     }

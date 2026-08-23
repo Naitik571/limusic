@@ -97,7 +97,10 @@ impl Player {
             .spawn(move || event_loop(ev, tx))
             .expect("spawn mpv event thread");
 
-        Ok(Player { mpv, events: Some(rx) })
+        Ok(Player {
+            mpv,
+            events: Some(rx),
+        })
     }
 
     /// Take the event receiver (once).
@@ -159,7 +162,8 @@ impl Player {
     /// Loop the current file seamlessly (repeat-one). mpv restarts the file at EOF *without*
     /// emitting end-file, so the queue logic upstream never advances while this is on — by design.
     pub fn set_loop_file(&self, on: bool) -> Result<(), Error> {
-        self.mpv.set_property("loop-file", if on { "inf" } else { "no" })?;
+        self.mpv
+            .set_property("loop-file", if on { "inf" } else { "no" })?;
         Ok(())
     }
 
@@ -181,7 +185,10 @@ impl Player {
 
     fn apply_headers(&self, headers: &HashMap<String, String>) -> Result<(), Error> {
         // User-Agent has its own mpv property; everything else joins http-header-fields.
-        if let Some(ua) = headers.get("User-Agent").or_else(|| headers.get("user-agent")) {
+        if let Some(ua) = headers
+            .get("User-Agent")
+            .or_else(|| headers.get("user-agent"))
+        {
             self.mpv.set_property("user-agent", ua.as_str())?;
         }
         let fields: String = headers
@@ -190,7 +197,8 @@ impl Player {
             .map(|(k, v)| format!("{k}: {v}"))
             .collect::<Vec<_>>()
             .join(",");
-        self.mpv.set_property("http-header-fields", fields.as_str())?;
+        self.mpv
+            .set_property("http-header-fields", fields.as_str())?;
         Ok(())
     }
 
@@ -224,17 +232,29 @@ fn event_loop(mut ev: EventContext, tx: tokio::sync::mpsc::UnboundedSender<Playe
         match ev.wait_event(1.0) {
             Some(Ok(event)) => {
                 let out = match event {
-                    Event::PropertyChange { name: "time-pos", change: PropertyData::Double(p), .. } => {
-                        Some(PlayerEvent::Position(p))
-                    }
-                    Event::PropertyChange { name: "duration", change: PropertyData::Double(d), .. } => {
-                        Some(PlayerEvent::Duration(d))
-                    }
-                    Event::PropertyChange { name: "pause", change: PropertyData::Flag(p), .. } => {
+                    Event::PropertyChange {
+                        name: "time-pos",
+                        change: PropertyData::Double(p),
+                        ..
+                    } => Some(PlayerEvent::Position(p)),
+                    Event::PropertyChange {
+                        name: "duration",
+                        change: PropertyData::Double(d),
+                        ..
+                    } => Some(PlayerEvent::Duration(d)),
+                    Event::PropertyChange {
+                        name: "pause",
+                        change: PropertyData::Flag(p),
+                        ..
+                    } => {
                         paused = p;
                         None
                     }
-                    Event::PropertyChange { name: "idle-active", change: PropertyData::Flag(i), .. } => {
+                    Event::PropertyChange {
+                        name: "idle-active",
+                        change: PropertyData::Flag(i),
+                        ..
+                    } => {
                         idle = i;
                         None
                     }
@@ -267,7 +287,10 @@ fn event_loop(mut ev: EventContext, tx: tokio::sync::mpsc::UnboundedSender<Playe
                 // libmpv2 routes MPV_EVENT_END_FILE with an error (dead URL, 403, bad format)
                 // through here instead of Event::EndFile — in our usage (no async get/set/command
                 // replies) an Err from wait_event *is* a failed track.
-                if tx.send(PlayerEvent::TrackFailed(friendly_error(&e))).is_err() {
+                if tx
+                    .send(PlayerEvent::TrackFailed(friendly_error(&e)))
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -305,7 +328,10 @@ mod tests {
     #[test]
     fn paths_survive_mpvs_command_parser() {
         // The bug this exists for: a space used to end the argument.
-        assert_eq!(quoted("/music/My music/a, b.mp3"), "\"/music/My music/a, b.mp3\"");
+        assert_eq!(
+            quoted("/music/My music/a, b.mp3"),
+            "\"/music/My music/a, b.mp3\""
+        );
         // Only backslash and double quote mean anything inside the quotes.
         assert_eq!(quoted(r#"/m/say "hi".mp3"#), r#""/m/say \"hi\".mp3""#);
         assert_eq!(quoted(r"C:\Music\x.mp3"), r#""C:\\Music\\x.mp3""#);

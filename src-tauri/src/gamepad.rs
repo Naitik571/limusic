@@ -91,7 +91,11 @@ fn run(app: AppHandle) {
                     const DEAD: f32 = 0.35;
                     if v.abs() > DEAD && last_right_x.elapsed() >= Duration::from_millis(100) {
                         last_right_x = std::time::Instant::now();
-                        Some(if v > 0.0 { "seekfwd_fast" } else { "seekback_fast" })
+                        Some(if v > 0.0 {
+                            "seekfwd_fast"
+                        } else {
+                            "seekback_fast"
+                        })
                     } else {
                         None
                     }

@@ -120,7 +120,9 @@ fn download_format(db: &Db) -> String {
 /// Windows characters so the file lands on disk instead of erroring.
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .filter(|c| !c.is_control() && !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .filter(|c| {
+            !c.is_control() && !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
         .collect::<String>()
         .trim()
         .to_string()
@@ -214,7 +216,10 @@ pub async fn download_track(
     // Register before any work so a click on Cancel during resolve already lands. The guard
     // removes the entry on every exit path.
     let cancel_flag = Arc::new(AtomicBool::new(false));
-    active().lock().unwrap().insert(video_id.to_owned(), cancel_flag.clone());
+    active()
+        .lock()
+        .unwrap()
+        .insert(video_id.to_owned(), cancel_flag.clone());
     struct RemoveOnDrop<'a>(&'a str);
     impl Drop for RemoveOnDrop<'_> {
         fn drop(&mut self) {
@@ -284,13 +289,12 @@ pub async fn download_track(
 
     // Use the resolved stream URL with safe ratebypass append for googlevideo URLs.
     let stream_url = with_ratebypass(&stream.url);
-    let resp = client()
-        .get(&stream_url)
-        .headers(
-            stream
-                .headers
-                .iter()
-                .fold(reqwest::header::HeaderMap::new(), |mut m, (k, v)| {
+    let resp =
+        client()
+            .get(&stream_url)
+            .headers(stream.headers.iter().fold(
+                reqwest::header::HeaderMap::new(),
+                |mut m, (k, v)| {
                     if let (Ok(name), Ok(value)) = (
                         reqwest::header::HeaderName::from_bytes(k.as_bytes()),
                         reqwest::header::HeaderValue::from_bytes(v.as_bytes()),
@@ -298,11 +302,11 @@ pub async fn download_track(
                         m.insert(name, value);
                     }
                     m
-                }),
-        )
-        .send()
-        .await
-        .map_err(|e| format!("download request failed: {e}"))?;
+                },
+            ))
+            .send()
+            .await
+            .map_err(|e| format!("download request failed: {e}"))?;
     if !resp.status().is_success() {
         let msg = format!("download HTTP {}", resp.status());
         let _ = app.emit(
@@ -520,15 +524,24 @@ mod tests {
 
     #[test]
     fn sanitize_filename_strips_reserved_and_control_characters() {
-        assert_eq!(sanitize_filename("AC/DC: Back In Black"), "ACDC Back In Black");
-        assert_eq!(sanitize_filename("what? *\"<>|"), "what", "reserved chars dropped, trimmed");
+        assert_eq!(
+            sanitize_filename("AC/DC: Back In Black"),
+            "ACDC Back In Black"
+        );
+        assert_eq!(
+            sanitize_filename("what? *\"<>|"),
+            "what",
+            "reserved chars dropped, trimmed"
+        );
         assert_eq!(
             sanitize_filename("sig\u{0001}nature \u{001f}track"),
-            "signature track"
-            // control chars dropped, text preserved
+            "signature track" // control chars dropped, text preserved
         );
         // Unicode song titles survive untouched.
-        assert_eq!(sanitize_filename("命に嫌われている。"), "命に嫌われている。");
+        assert_eq!(
+            sanitize_filename("命に嫌われている。"),
+            "命に嫌われている。"
+        );
     }
 
     #[test]
@@ -548,7 +561,10 @@ mod tests {
             "already has a query, so &"
         );
         let no_query = "https://rr3---sn-a.googlevideo.com/videoplayback";
-        assert_eq!(with_ratebypass(no_query), format!("{no_query}?ratebypass=yes"));
+        assert_eq!(
+            with_ratebypass(no_query),
+            format!("{no_query}?ratebypass=yes")
+        );
 
         // Already has it — untouched.
         assert_eq!(
@@ -559,6 +575,9 @@ mod tests {
         // Signed URLs and non-googlevideo hosts are never modified.
         let signed = "https://rr1---sn.googlevideo.com/videoplayback?signature=SIGNED&rate=yes";
         assert_eq!(with_ratebypass(signed), signed);
-        assert_eq!(with_ratebypass("https://example.com/video?id=1"), "https://example.com/video?id=1");
+        assert_eq!(
+            with_ratebypass("https://example.com/video?id=1"),
+            "https://example.com/video?id=1"
+        );
     }
 }

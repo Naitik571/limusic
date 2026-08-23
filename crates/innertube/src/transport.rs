@@ -49,7 +49,10 @@ pub struct Session {
 impl Session {
     /// Pull the `SAPISID` value out of the cookie string, if present.
     fn sapisid(&self) -> Option<String> {
-        self.cookie.as_deref().and_then(cookie_sapisid).map(str::to_owned)
+        self.cookie
+            .as_deref()
+            .and_then(cookie_sapisid)
+            .map(str::to_owned)
     }
 }
 
@@ -199,8 +202,7 @@ impl InnerTube {
                 // stored cookie has gone stale. Raw reqwest text here reads as a broken app and
                 // hands the user a URL instead of the one thing that fixes it.
                 Err(e)
-                    if self.is_logged_in()
-                        && e.status().is_some_and(|s| s == 401 || s == 403) =>
+                    if self.is_logged_in() && e.status().is_some_and(|s| s == 401 || s == 403) =>
                 {
                     tracing::warn!(status = ?e.status(), "InnerTube {path} rejected the session");
                     return Err(Error::SessionExpired);
@@ -288,7 +290,14 @@ impl InnerTube {
 
     /// Bootstrap `visitorData` anonymously by scraping `sw.js_data`. context/04 §A.
     pub async fn fetch_visitor_data(&self) -> Result<String, Error> {
-        let text = self.http.get(SW_JS_DATA_URL).send().await?.error_for_status()?.text().await?;
+        let text = self
+            .http
+            .get(SW_JS_DATA_URL)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
         parse_visitor_data(&text)
     }
 
@@ -305,7 +314,12 @@ impl InnerTube {
     ) -> Result<(), Error> {
         let url = build_playback_url(base_url, &client.client_name, cpn, playlist_id);
         let headers = self.headers(client, true);
-        self.http.get(&url).headers(headers).send().await?.error_for_status()?;
+        self.http
+            .get(&url)
+            .headers(headers)
+            .send()
+            .await?
+            .error_for_status()?;
         Ok(())
     }
 
@@ -317,7 +331,12 @@ impl InnerTube {
 
 /// Build the playback-tracking GET URL. context/01 §registerPlayback. Pure — unit-tested. The
 /// `base_url` already carries YouTube's own query params, so we chain onto it.
-fn build_playback_url(base_url: &str, client_name: &str, cpn: &str, playlist_id: Option<&str>) -> String {
+fn build_playback_url(
+    base_url: &str,
+    client_name: &str,
+    cpn: &str,
+    playlist_id: Option<&str>,
+) -> String {
     let sep = if base_url.contains('?') { '&' } else { '?' };
     let mut url = format!(
         "{base_url}{sep}c={}&cpn={}&ver=2",
@@ -344,7 +363,9 @@ pub fn generate_cpn() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
-    let bump = COUNTER.fetch_add(1, Ordering::Relaxed).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let bump = COUNTER
+        .fetch_add(1, Ordering::Relaxed)
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15);
     let mut state = (nanos ^ bump).wrapping_add(0x1234_567);
     if state == 0 {
         state = 0xDEAD_BEEF;
@@ -365,7 +386,10 @@ pub fn sapisid_hash(sapisid: &str, origin: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    format!("SAPISIDHASH {epoch}_{}", sha1_hex(&format!("{epoch} {sapisid} {origin}")))
+    format!(
+        "SAPISIDHASH {epoch}_{}",
+        sha1_hex(&format!("{epoch} {sapisid} {origin}"))
+    )
 }
 
 fn sha1_hex(input: &str) -> String {
@@ -449,13 +473,23 @@ mod tests {
     fn on_behalf_of_user_needs_a_cookie() {
         let clients = crate::clients::Clients::bundled();
         let web = clients.get(crate::clients::METADATA_CLIENT).unwrap();
-        let session = Session { data_sync_id: Some("abc123".into()), ..Default::default() };
+        let session = Session {
+            data_sync_id: Some("abc123".into()),
+            ..Default::default()
+        };
 
         let it = InnerTube::new(session, None).unwrap();
-        assert_eq!(it.context_for(web).user.on_behalf_of_user, None, "no cookie ⇒ no obo (401)");
+        assert_eq!(
+            it.context_for(web).user.on_behalf_of_user,
+            None,
+            "no cookie ⇒ no obo (401)"
+        );
 
         it.set_cookie(Some("SAPISID=secret".into()));
-        assert_eq!(it.context_for(web).user.on_behalf_of_user.as_deref(), Some("abc123"));
+        assert_eq!(
+            it.context_for(web).user.on_behalf_of_user.as_deref(),
+            Some("abc123")
+        );
     }
 
     #[test]
@@ -479,9 +513,15 @@ mod tests {
         let it = InnerTube::new(session, None).unwrap();
 
         assert_eq!(
-            it.context_for_identity(web, "candidate-id").user.on_behalf_of_user.as_deref(),
+            it.context_for_identity(web, "candidate-id")
+                .user
+                .on_behalf_of_user
+                .as_deref(),
             Some("candidate-id")
         );
-        assert_eq!(it.context_for(web).user.on_behalf_of_user.as_deref(), Some("committed-id"));
+        assert_eq!(
+            it.context_for(web).user.on_behalf_of_user.as_deref(),
+            Some("committed-id")
+        );
     }
 }

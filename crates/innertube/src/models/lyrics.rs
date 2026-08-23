@@ -30,10 +30,14 @@ pub struct PlainLyrics {
 pub fn parse_lyrics_timed(root: &Value) -> Vec<TimedLyricLine> {
     let mut out = Vec::new();
     for data in find_all(root, "timedLyricsData") {
-        let Some(entries) = data.as_array() else { continue };
+        let Some(entries) = data.as_array() else {
+            continue;
+        };
         for e in entries {
             // Credit/footer entries carry no cueRange — skip them, keep only real cue lines.
-            let Some(text) = e.get("lyricLine").and_then(Value::as_str) else { continue };
+            let Some(text) = e.get("lyricLine").and_then(Value::as_str) else {
+                continue;
+            };
             let Some(ms) = e
                 .get("cueRange")
                 .and_then(|c| c.get("startTimeMilliseconds"))
@@ -42,7 +46,10 @@ pub fn parse_lyrics_timed(root: &Value) -> Vec<TimedLyricLine> {
             else {
                 continue;
             };
-            out.push(TimedLyricLine { time_ms: ms, text: text.to_owned() });
+            out.push(TimedLyricLine {
+                time_ms: ms,
+                text: text.to_owned(),
+            });
         }
         if !out.is_empty() {
             break; // first populated block is the lyrics; don't merge duplicates
@@ -54,7 +61,9 @@ pub fn parse_lyrics_timed(root: &Value) -> Vec<TimedLyricLine> {
 /// Pull plain lyrics out of a WEB_REMIX lyrics browse response. `None` when the track has none
 /// (the shelf is absent or empty).
 pub fn parse_lyrics_plain(root: &Value) -> Option<PlainLyrics> {
-    let shelf = find_all(root, "musicDescriptionShelfRenderer").into_iter().next()?;
+    let shelf = find_all(root, "musicDescriptionShelfRenderer")
+        .into_iter()
+        .next()?;
     let text = runs_text(shelf.get("description"))?;
     let footer = runs_text(shelf.get("footer"));
     Some(PlainLyrics { text, footer })
@@ -78,8 +87,14 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                TimedLyricLine { time_ms: 1200, text: "First line".into() },
-                TimedLyricLine { time_ms: 3400, text: "Second line".into() },
+                TimedLyricLine {
+                    time_ms: 1200,
+                    text: "First line".into()
+                },
+                TimedLyricLine {
+                    time_ms: 3400,
+                    text: "Second line".into()
+                },
             ]
         );
     }

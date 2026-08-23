@@ -106,7 +106,9 @@ pub(crate) fn is_video_row(node: &Value) -> bool {
         .and_then(|p| p.get("playNavigationEndpoint"));
     match overlay {
         Some(ep) if endpoint_video_type(ep).is_some() => is_video_endpoint(ep),
-        _ => node.get("navigationEndpoint").is_some_and(is_video_endpoint),
+        _ => node
+            .get("navigationEndpoint")
+            .is_some_and(is_video_endpoint),
     }
 }
 
@@ -209,14 +211,20 @@ pub fn parse_next(root: &Value) -> NextResult {
 fn lyrics_browse_id(root: &Value) -> Option<String> {
     find_all(root, "browseEndpoint").into_iter().find_map(|be| {
         (find_first_str(be, "pageType").as_deref() == Some("MUSIC_PAGE_TYPE_TRACK_LYRICS"))
-            .then(|| be.get("browseId").and_then(Value::as_str).map(str::to_owned))
+            .then(|| {
+                be.get("browseId")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
             .flatten()
     })
 }
 
 /// Parse an `account/account_menu` response into an account summary. context/01, context/15.
 pub fn parse_account_menu(root: &Value) -> AccountInfo {
-    let header = find_all(root, "activeAccountHeaderRenderer").into_iter().next();
+    let header = find_all(root, "activeAccountHeaderRenderer")
+        .into_iter()
+        .next();
     let name = header.and_then(|h| account_text(h.get("accountName")));
     let handle = header.and_then(|h| account_text(h.get("channelHandle")));
     let email = header.and_then(|h| account_text(h.get("email")));
@@ -232,7 +240,15 @@ pub fn parse_account_menu(root: &Value) -> AccountInfo {
         .filter(|s| !s.is_empty())
         .map(str::to_owned);
 
-    AccountInfo { name, handle, email, thumbnail, channel_id, data_sync_id, visitor_data }
+    AccountInfo {
+        name,
+        handle,
+        email,
+        thumbnail,
+        channel_id,
+        data_sync_id,
+        visitor_data,
+    }
 }
 
 /// Parse every selectable channel from `account/accounts_list`.
@@ -260,7 +276,12 @@ pub fn parse_account_identities(root: &Value) -> Vec<AccountIdentity> {
             .into_iter()
             .find_map(|h| account_text(h.get("email")));
         for item in find_all(section, "accountItem") {
-            push_account_identity(&mut identities, item, email.as_deref(), response_id.as_deref());
+            push_account_identity(
+                &mut identities,
+                item,
+                email.as_deref(),
+                response_id.as_deref(),
+            );
         }
     }
     identities
@@ -272,8 +293,13 @@ fn push_account_identity(
     email: Option<&str>,
     response_id: Option<&str>,
 ) {
-    let Some(identity) = parse_account_identity(item, email, response_id) else { return };
-    if identities.iter().all(|i| i.data_sync_id != identity.data_sync_id) {
+    let Some(identity) = parse_account_identity(item, email, response_id) else {
+        return;
+    };
+    if identities
+        .iter()
+        .all(|i| i.data_sync_id != identity.data_sync_id)
+    {
         identities.push(identity);
     }
 }
@@ -289,7 +315,9 @@ fn parse_account_identity(
         return None;
     }
     let name = account_text(item.get("accountName"))?;
-    let endpoint = item.get("serviceEndpoint")?.get("selectActiveIdentityEndpoint")?;
+    let endpoint = item
+        .get("serviceEndpoint")?
+        .get("selectActiveIdentityEndpoint")?;
     let tokens = endpoint
         .get("supportedTokens")
         .and_then(Value::as_array)
@@ -300,7 +328,9 @@ fn parse_account_identity(
     // that is still an explicit server-issued identity token and is the value YouTube's web
     // switcher uses for onBehalfOfUser. A `UC…` browse id is never substituted here.
     let token_data_sync_id = tokens.iter().find_map(|token| {
-        let value = token.get("datasyncIdToken").or_else(|| token.get("dataSyncIdToken"))?;
+        let value = token
+            .get("datasyncIdToken")
+            .or_else(|| token.get("dataSyncIdToken"))?;
         value
             .get("datasyncIdToken")
             .or_else(|| value.get("datasyncId"))
@@ -315,8 +345,14 @@ fn parse_account_identity(
             .and_then(Value::as_str)
             .and_then(nonempty_string)
     });
-    let is_selected = item.get("isSelected").and_then(Value::as_bool).unwrap_or(false);
-    let selected_response_id = is_selected.then_some(response_id).flatten().map(str::to_owned);
+    let is_selected = item
+        .get("isSelected")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let selected_response_id = is_selected
+        .then_some(response_id)
+        .flatten()
+        .map(str::to_owned);
     let data_sync_id = token_data_sync_id.or(page_id).or(selected_response_id)?;
 
     Some(AccountIdentity {
@@ -333,19 +369,25 @@ fn parse_account_identity(
 fn account_text(value: Option<&Value>) -> Option<String> {
     value.and_then(|v| {
         runs_text_opt(v)
-            .or_else(|| v.get("simpleText").and_then(Value::as_str).and_then(nonempty_string))
+            .or_else(|| {
+                v.get("simpleText")
+                    .and_then(Value::as_str)
+                    .and_then(nonempty_string)
+            })
             .or_else(|| v.as_str().and_then(nonempty_string))
     })
 }
 
 fn channel_browse_id(node: &Value) -> Option<String> {
-    find_all(node, "browseEndpoint").into_iter().find_map(|endpoint| {
-        endpoint
-            .get("browseId")
-            .and_then(Value::as_str)
-            .filter(|id| id.starts_with("UC"))
-            .map(str::to_owned)
-    })
+    find_all(node, "browseEndpoint")
+        .into_iter()
+        .find_map(|endpoint| {
+            endpoint
+                .get("browseId")
+                .and_then(Value::as_str)
+                .filter(|id| id.starts_with("UC"))
+                .map(str::to_owned)
+        })
 }
 
 fn response_data_sync_id(root: &Value) -> Option<String> {
@@ -462,7 +504,11 @@ pub(crate) fn artist_runs(runs: &[Value]) -> Vec<ArtistRun> {
 /// First run that links an artist channel (`browseEndpoint.browseId` starting with `UC`). context/08.
 pub(crate) fn first_artist_id(runs: &[Value]) -> Option<String> {
     runs.iter().find_map(|r| {
-        let id = r.get("navigationEndpoint")?.get("browseEndpoint")?.get("browseId")?.as_str()?;
+        let id = r
+            .get("navigationEndpoint")?
+            .get("browseEndpoint")?
+            .get("browseId")?
+            .as_str()?;
         id.starts_with("UC").then(|| id.to_owned())
     })
 }
@@ -476,7 +522,9 @@ fn like_status(node: &Value) -> Option<bool> {
 fn parse_panel_video(node: &Value) -> Option<SongItem> {
     let video_id = node.get("videoId").and_then(Value::as_str)?.to_owned();
     let title = runs_text(node.get("title"))?;
-    let byline = node.get("longBylineText").or_else(|| node.get("shortBylineText"));
+    let byline = node
+        .get("longBylineText")
+        .or_else(|| node.get("shortBylineText"));
     let byline_runs = byline.and_then(|b| b.get("runs")).and_then(Value::as_array);
     // The byline is a full descriptor ("Delara • Sjelen • 2026"), not a name: take its artist
     // field only, or the queue (and the scrobbler behind it) gets the whole string as the artist.
@@ -539,7 +587,9 @@ pub(crate) fn list_item_video_id(node: &Value) -> Option<String> {
     match direct {
         Some(id) => Some(id.to_owned()),
         // Last resort: the play-button overlay's watchEndpoint videoId.
-        None => node.get("overlay").and_then(|o| find_first_str(o, "videoId")),
+        None => node
+            .get("overlay")
+            .and_then(|o| find_first_str(o, "videoId")),
     }
 }
 
@@ -571,7 +621,10 @@ pub(crate) fn runs_text(v: Option<&Value>) -> Option<String> {
 /// Join all `runs[].text` in a `{ runs: [...] }` object.
 pub(crate) fn runs_text_opt(v: &Value) -> Option<String> {
     let runs = v.get("runs").and_then(Value::as_array)?;
-    let s: String = runs.iter().filter_map(|r| r.get("text").and_then(Value::as_str)).collect();
+    let s: String = runs
+        .iter()
+        .filter_map(|r| r.get("text").and_then(Value::as_str))
+        .collect();
     (!s.is_empty()).then_some(s)
 }
 
@@ -584,14 +637,20 @@ struct Group {
 /// Cut a subtitle run list at its "•" separators, keeping each field's artist link.
 fn subtitle_groups(runs: &[Value]) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
-    let mut cur = Group { text: String::new(), artist_link: false };
+    let mut cur = Group {
+        text: String::new(),
+        artist_link: false,
+    };
     for run in runs {
         let t = run.get("text").and_then(Value::as_str).unwrap_or("");
         if t.trim() == "•" {
-            groups.push(std::mem::replace(&mut cur, Group {
-                text: String::new(),
-                artist_link: false,
-            }));
+            groups.push(std::mem::replace(
+                &mut cur,
+                Group {
+                    text: String::new(),
+                    artist_link: false,
+                },
+            ));
         } else {
             cur.text.push_str(t);
             cur.artist_link |= first_artist_id(std::slice::from_ref(run)).is_some();
@@ -609,13 +668,23 @@ fn subtitle_groups(runs: &[Value]) -> Vec<Group> {
 fn is_type_label(s: &str) -> bool {
     matches!(
         s,
-        "Song" | "Video" | "Album" | "Single" | "EP" | "Playlist" | "Artist" | "Episode" | "Podcast"
+        "Song"
+            | "Video"
+            | "Album"
+            | "Single"
+            | "EP"
+            | "Playlist"
+            | "Artist"
+            | "Episode"
+            | "Podcast"
     )
 }
 
 /// Split a "• "-separated subtitle run list into (artists, album, duration). context/08.
 fn split_subtitle(runs: Option<&Vec<Value>>) -> (String, Option<String>, Option<String>) {
-    let Some(runs) = runs else { return (String::new(), None, None) };
+    let Some(runs) = runs else {
+        return (String::new(), None, None);
+    };
     let mut groups = subtitle_groups(runs);
     // Drop a leading type label so artist/album don't both shift one field to the right. A later
     // field linking an artist channel proves the first one isn't the artist; the word list covers
@@ -630,7 +699,10 @@ fn split_subtitle(runs: Option<&Vec<Value>>) -> (String, Option<String>, Option<
     let artists = groups.first().cloned().unwrap_or_default();
     // Last group that looks like a duration (contains ':') is the duration; the middle is album.
     let duration = groups.iter().rev().find(|g| g.contains(':')).cloned();
-    let album = groups.get(1).filter(|g| Some(*g) != duration.as_ref()).cloned();
+    let album = groups
+        .get(1)
+        .filter(|g| Some(*g) != duration.as_ref())
+        .cloned();
     (artists, album, duration)
 }
 
@@ -646,7 +718,10 @@ pub(crate) fn last_thumbnail(node: &Value) -> Option<String> {
         match v {
             Value::Object(map) => {
                 if let Some(arr) = map.get("thumbnails").and_then(Value::as_array) {
-                    if let Some(url) = arr.last().and_then(|t| t.get("url")).and_then(Value::as_str)
+                    if let Some(url) = arr
+                        .last()
+                        .and_then(|t| t.get("url"))
+                        .and_then(Value::as_str)
                     {
                         return Some(url.to_owned());
                     }
@@ -748,9 +823,15 @@ mod tests {
         };
 
         // Queue-panel row (`/next`): no overlay, the tag sits on the row's own endpoint.
-        assert!(is_video_row(&json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_OMV") })));
-        assert!(is_video_row(&json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_UGC") })));
-        assert!(!is_video_row(&json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_ATV") })));
+        assert!(is_video_row(
+            &json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_OMV") })
+        ));
+        assert!(is_video_row(
+            &json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_UGC") })
+        ));
+        assert!(!is_video_row(
+            &json!({ "navigationEndpoint": cfg("MUSIC_VIDEO_TYPE_ATV") })
+        ));
 
         // List row: `overlay` wins over the row endpoint. Card: same, under `thumbnailOverlay`.
         assert!(is_video_row(&json!({
@@ -763,7 +844,9 @@ mod tests {
         })));
 
         // Fail open: no tag (or an overlay carrying none) means audio, never hide.
-        assert!(!is_video_row(&json!({ "navigationEndpoint": { "watchEndpoint": { "videoId": "v" } } })));
+        assert!(!is_video_row(
+            &json!({ "navigationEndpoint": { "watchEndpoint": { "videoId": "v" } } })
+        ));
         assert!(!is_video_row(&json!({})));
     }
 
@@ -833,8 +916,15 @@ mod tests {
         assert_eq!(s.artist_id.as_deref(), Some("UCartist1"));
         // Each artist keeps its own link; the run list stops at the first "•" (album/duration).
         assert_eq!(
-            s.artist_runs.iter().map(|r| (r.text.as_str(), r.id.as_deref())).collect::<Vec<_>>(),
-            vec![("The Artist", Some("UCartist1")), (" & ", None), ("Guest", Some("UCartist2"))]
+            s.artist_runs
+                .iter()
+                .map(|r| (r.text.as_str(), r.id.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("The Artist", Some("UCartist1")),
+                (" & ", None),
+                ("Guest", Some("UCartist2"))
+            ]
         );
         assert_eq!(s.album.as_deref(), Some("The Album"));
         assert_eq!(s.album_id.as_deref(), Some("MPREalbum1"));
@@ -893,7 +983,10 @@ mod tests {
         assert_eq!(s.duration.as_deref(), Some("3:02"));
         // The links describe the same field as `artists` — never the "Song" label in front of it.
         assert_eq!(
-            s.artist_runs.iter().map(|r| (r.text.as_str(), r.id.as_deref())).collect::<Vec<_>>(),
+            s.artist_runs
+                .iter()
+                .map(|r| (r.text.as_str(), r.id.as_deref()))
+                .collect::<Vec<_>>(),
             [("Delara", Some("UCdelara"))]
         );
     }
@@ -949,7 +1042,10 @@ mod tests {
         assert_eq!(a.name.as_deref(), Some("Personal channel"));
         assert_eq!(a.handle.as_deref(), Some("@personal"));
         assert_eq!(a.email.as_deref(), Some("listener@example.invalid"));
-        assert_eq!(a.thumbnail.as_deref(), Some("https://example.invalid/avatar-large.jpg"));
+        assert_eq!(
+            a.thumbnail.as_deref(),
+            Some("https://example.invalid/avatar-large.jpg")
+        );
         assert_eq!(a.channel_id.as_deref(), Some("UCSANITIZEDPERSONAL"));
         assert_eq!(a.data_sync_id.as_deref(), Some("personal-sync"));
         assert_eq!(a.visitor_data.as_deref(), Some("CgtSANITIZEDVISITOR"));
@@ -1032,7 +1128,10 @@ mod tests {
         assert!(identities[0].is_selected);
 
         // The app restores by server-issued id, not YouTube's current/default marker.
-        let persisted = identities.iter().find(|i| i.data_sync_id == "brand-page-id").unwrap();
+        let persisted = identities
+            .iter()
+            .find(|i| i.data_sync_id == "brand-page-id")
+            .unwrap();
         assert_eq!(persisted.name, "Brand channel");
         assert_eq!(persisted.channel_id.as_deref(), Some("UCSANITIZEDBRAND"));
         assert!(!persisted.is_selected);
