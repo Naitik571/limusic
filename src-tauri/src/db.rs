@@ -7,6 +7,17 @@ use rusqlite::Connection;
 
 pub struct Db(Mutex<Connection>);
 
+/// Log a failed write instead of dropping it on the floor. These used to be `let _ =`, which
+/// turned a full disk or a locked file into silently lost data with no trace anywhere. Cache
+/// tables degrade gracefully when this fires; settings/history losses are worth shouting about.
+/// Returns 0 so it slots into `execute(...).unwrap_or_else(...)` (whose Ok type is row count).
+fn warn_write(what: &'static str, table: &'static str) -> impl Fn(rusqlite::Error) -> usize {
+    move |e| {
+        tracing::warn!(error = %e, table, "sqlite write failed: {what}");
+        0
+    }
+}
+
 /// Unix seconds. Lives here because every wall-clock value in the app is a column in this file
 /// (`expires_at`, `played_at`, `fetched_at`) or something stored alongside them.
 pub fn now_secs() -> i64 {
@@ -28,6 +39,13 @@ pub struct CachedStream {
 impl Db {
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
+        // WAL + NORMAL sync: a commit stops taking the file's full rollback journal plus an fsync.
+        // A power cut can now lose the last transaction instead of corrupting the file either
+        // way — for this data (a cache, play counts, settings) that trade is right, and it makes
+        // every write in this file dramatically cheaper. `journal_mode` answers with a row, so
+        // it goes through query_row; the pragma persists across restarts once set.
+        let _ = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0));
+        let _ = conn.execute_batch("PRAGMA synchronous = NORMAL;");
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS settings (
@@ -99,16 +117,18 @@ impl Db {
 
     pub fn set_setting(&self, key: &str, value: &str) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
+        conn.execute(
             "INSERT INTO settings(key, value) VALUES(?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             [key, value],
-        );
+        )
+        .unwrap_or_else(warn_write("set_setting", "settings"));
     }
 
     pub fn delete_setting(&self, key: &str) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute("DELETE FROM settings WHERE key = ?1", [key]);
+        conn.execute("DELETE FROM settings WHERE key = ?1", [key])
+            .unwrap_or_else(warn_write("delete_setting", "settings"));
     }
 
     /// Persist the canonical selected identity and its two legacy projections atomically. Older
@@ -218,7 +238,8 @@ impl Db {
     /// Drop a cached URL (e.g. it 403'd on the real GET). context/06 §2.
     pub fn evict_stream(&self, video_id: &str) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute("DELETE FROM stream_url_cache WHERE video_id = ?1", [video_id]);
+        conn.execute("DELETE FROM stream_url_cache WHERE video_id = ?1", [video_id])
+            .unwrap_or_else(warn_write("evict_stream", "stream_url_cache"));
     }
 
     pub fn put_stream(
@@ -230,18 +251,21 @@ impl Db {
         loudness_db: Option<f64>,
     ) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
+        conn.execute(
             "INSERT INTO stream_url_cache(video_id, url, itag, expires_at, loudness_db) VALUES(?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(video_id) DO UPDATE SET url = excluded.url, itag = excluded.itag, expires_at = excluded.expires_at, loudness_db = excluded.loudness_db",
             rusqlite::params![video_id, url, itag, expires_at, loudness_db],
-        );
+        )
+        .unwrap_or_else(warn_write("put_stream", "stream_url_cache"));
     }
 
     /// Wipe the whole URL cache (settings "Clear caches"). context/11.
     pub fn clear_stream_cache(&self) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute("DELETE FROM stream_url_cache", []);
-        let _ = conn.execute("DELETE FROM lyrics_cache", []);
+        conn.execute("DELETE FROM stream_url_cache", [])
+            .unwrap_or_else(warn_write("clear_stream_cache", "stream_url_cache"));
+        conn.execute("DELETE FROM lyrics_cache", [])
+            .unwrap_or_else(warn_write("clear_stream_cache", "lyrics_cache"));
     }
 
     // --- lyrics cache -----------------------------------------------------------------------
@@ -266,11 +290,12 @@ impl Db {
     /// `lyrics = None` records a "no lyrics found" verdict.
     pub fn put_lyrics(&self, video_id: &str, lyrics: Option<&str>, now: i64) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
+        conn.execute(
             "INSERT INTO lyrics_cache(video_id, lyrics, fetched_at) VALUES(?1, ?2, ?3)
              ON CONFLICT(video_id) DO UPDATE SET lyrics = excluded.lyrics, fetched_at = excluded.fetched_at",
             rusqlite::params![video_id, lyrics, now],
-        );
+        )
+        .unwrap_or_else(warn_write("put_lyrics", "lyrics_cache"));
     }
 
     // --- play history (the On Repeat playlist) ------------------------------------------------
@@ -281,11 +306,13 @@ impl Db {
     /// rebuilt without asking YouTube for metadata it already gave us.
     pub fn record_play(&self, video_id: &str, song_json: &str, now: i64, window: i64) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
+        conn.execute(
             "INSERT INTO plays(video_id, played_at, song_json) VALUES(?1, ?2, ?3)",
             rusqlite::params![video_id, now, song_json],
-        );
-        let _ = conn.execute("DELETE FROM plays WHERE played_at < ?1", [now - window]);
+        )
+        .unwrap_or_else(warn_write("record_play", "plays"));
+        conn.execute("DELETE FROM plays WHERE played_at < ?1", [now - window])
+            .unwrap_or_else(warn_write("record_play/prune", "plays"));
     }
 
     /// The most-played songs since `since`, as `(song_json, play_count)` ranked by plays and then
@@ -349,15 +376,18 @@ impl Db {
         let mut conn = self.0.lock().unwrap();
         let Ok(tx) = conn.transaction() else { return };
         for t in tracks {
-            let _ = tx.execute(
+            tx.execute(
                 LOCAL_TRACK_UPSERT,
                 rusqlite::params![
                     t.path, t.title, t.artist, t.album, t.album_key, t.track_no, t.duration_secs,
                     t.cover, t.mtime
                 ],
-            );
+            )
+            .unwrap_or_else(warn_write("put_local_tracks", "local_tracks"));
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            tracing::warn!(error = %e, "sqlite write failed: put_local_tracks commit");
+        }
     }
 
     /// Forget files that are no longer on disk (the user deleted or moved them).
@@ -368,9 +398,12 @@ impl Db {
         let mut conn = self.0.lock().unwrap();
         let Ok(tx) = conn.transaction() else { return };
         for p in paths {
-            let _ = tx.execute("DELETE FROM local_tracks WHERE path = ?1", [p]);
+            tx.execute("DELETE FROM local_tracks WHERE path = ?1", [p])
+                .unwrap_or_else(warn_write("delete_local_tracks", "local_tracks"));
         }
-        let _ = tx.commit();
+        if let Err(e) = tx.commit() {
+            tracing::warn!(error = %e, "sqlite write failed: delete_local_tracks commit");
+        }
     }
 
     /// All tracks, or one album's, in album order. ponytail: loads the whole table — a personal
@@ -434,10 +467,23 @@ impl Db {
         .ok()
     }
 
+    /// Which video owns `path`, if any. Two distinct tracks can share a `Title - Artist` name;
+    /// the writer consults this before renaming so the second one disambiguates instead of
+    /// silently overwriting the first one's audio.
+    pub fn video_id_for_path(&self, path: &str) -> Option<String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT video_id FROM downloads WHERE file_path = ?1",
+            [path],
+            |r| r.get(0),
+        )
+        .ok()
+    }
+
     /// Record a finished download (replaces any prior entry for the same video id).
     pub fn put_download(&self, d: &DownloadTrack) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute(
+        conn.execute(
             "INSERT INTO downloads(video_id, file_path, title, artists, album, duration, thumb, quality, format, size_bytes, added_at)
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
              ON CONFLICT(video_id) DO UPDATE SET file_path=excluded.file_path, title=excluded.title,
@@ -447,7 +493,8 @@ impl Db {
                 d.video_id, d.file_path, d.title, d.artists, d.album, d.duration, d.thumb,
                 d.quality, d.format, d.size_bytes, d.added_at
             ],
-        );
+        )
+        .unwrap_or_else(warn_write("put_download", "downloads"));
     }
 
     /// All downloaded tracks, newest first.
@@ -482,7 +529,8 @@ impl Db {
     /// Remove one download's row (the file itself is deleted by the caller).
     pub fn delete_download(&self, video_id: &str) {
         let conn = self.0.lock().unwrap();
-        let _ = conn.execute("DELETE FROM downloads WHERE video_id = ?1", [video_id]);
+        conn.execute("DELETE FROM downloads WHERE video_id = ?1", [video_id])
+            .unwrap_or_else(warn_write("delete_download", "downloads"));
     }
 
     /// How much disk the offline library currently occupies.

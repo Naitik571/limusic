@@ -196,7 +196,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 15] = [
+const UI_SETTINGS: [&str; 19] = [
     "proxy",
     "quality",
     "enable_history",
@@ -212,6 +212,13 @@ const UI_SETTINGS: [&str; 15] = [
     "download_quality",
     "download_format",
     "use_offline",
+    // Apple Music bring-your-own-token lyrics (Settings → General). Not session-secret — the
+    // user pasted them into this very UI — but they are credentials, so they live in the settings
+    // DB and round-trip through this same allowlist. `lyrics_boidu` toggles the Boidu provider.
+    "lyrics_apple_media_token",
+    "lyrics_apple_dev_token",
+    "lyrics_apple_storefront",
+    "lyrics_boidu",
 ];
 
 #[tauri::command]
@@ -1311,7 +1318,7 @@ pub async fn download_playlist(
     }
 
     let total = candidates.len() as u32 + skipped;
-    let (completed, failed) = crate::downloads::download_many(
+    let (completed, failed, cancelled) = crate::downloads::download_many(
         &app,
         &state,
         &state.orchestrator,
@@ -1324,7 +1331,21 @@ pub async fn download_playlist(
         "skipped": skipped,
         "downloaded": completed as u32,
         "failed": failed as u32,
+        "cancelled": cancelled as u32,
     }))
+}
+
+/// Stop one in-flight (or queued) download. The writer drops its partial file and reports
+/// `download-cancelled`; the manager row resolves to "Cancelled".
+#[tauri::command]
+pub async fn cancel_download(_state: St<'_>, video_id: String) -> Result<bool, String> {
+    Ok(crate::downloads::cancel_download(&video_id))
+}
+
+/// Stop everything: every in-flight track and any batch that hasn't started them yet.
+#[tauri::command]
+pub async fn cancel_all_downloads(_state: St<'_>) -> Result<u32, String> {
+    Ok(crate::downloads::cancel_all_downloads() as u32)
 }
 
 /// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings

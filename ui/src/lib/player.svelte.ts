@@ -31,7 +31,7 @@ export type DownloadItem = {
 	artists?: string;
 	thumb?: string | null;
 	percent: number; // 0–100
-	state: 'downloading' | 'done' | 'error';
+	state: 'downloading' | 'done' | 'error' | 'cancelled';
 	message?: string;
 };
 export const downloads = $state<{ items: DownloadItem[]; active: number; done: number; errored: number }>(
@@ -97,6 +97,21 @@ export function startDownloadMonitor() {
 		downloads.active = Math.max(0, downloads.active - 1);
 		downloads.errored += 1;
 	});
+	api.onDownloadCancelled((p: any) => {
+		const id = p.video_id as string;
+		const it = downloads.items.find((x) => x.id === id);
+		if (it) { it.state = 'cancelled'; it.message = undefined; }
+		downloads.active = Math.max(0, downloads.active - 1);
+	});
+}
+
+/** Cancel one in-flight or queued download; the manager row resolves to "Cancelled". */
+export async function cancelDownload(id: string) {
+	await api.cancelDownload(id).catch(() => {});
+}
+/** Stop everything downloading plus any batch that hasn't started its remaining tracks. */
+export async function cancelAllDownloads() {
+	await api.cancelAllDownloads().catch(() => {});
 }
 
 /**

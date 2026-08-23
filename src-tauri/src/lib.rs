@@ -405,6 +405,8 @@ pub fn run() {
             commands::list_downloads,
             commands::download_track,
             commands::download_playlist,
+            commands::cancel_download,
+            commands::cancel_all_downloads,
             commands::delete_download,
             commands::clear_downloads,
             commands::get_account,

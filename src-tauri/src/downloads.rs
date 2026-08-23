@@ -16,8 +16,10 @@
 //! - Resolution mirrors playback: try the orchestrator, then fall back to yt-dlp (the same net
 //!   playback uses) so a track that plays also downloads.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use tauri::{AppHandle, Emitter, Manager};
@@ -26,6 +28,55 @@ use crate::db::{Db, DownloadTrack};
 use crate::orchestrator::Orchestrator;
 use crate::state::AppState;
 use innertube::AudioQuality;
+
+// --- cancellation ------------------------------------------------------------------------------
+
+/// Live downloads keyed by video id → cancel flag. `cancel_download` flips the flag; the writer
+/// checks it between chunks, deletes its `.part` file and reports `download-cancelled`. A flag
+/// (checked cooperatively) rather than a task abort, so the writer always gets to clean up.
+static ACTIVE: std::sync::OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    std::sync::OnceLock::new();
+
+/// Cancel requests for tracks that haven't started yet (queued behind the concurrency window in
+/// a batch). Drained by whichever side sees the id first — the batch feeder or the task itself.
+static REQUESTED: std::sync::OnceLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::OnceLock::new();
+
+fn active() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    ACTIVE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn requested() -> &'static Mutex<std::collections::HashSet<String>> {
+    REQUESTED.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+/// Set when `cancel_all_downloads` fires. A batch (`download_many`) checks it before feeding
+/// each new track to the pool, so a pending 500-track playlist stops immediately instead of
+/// finishing every not-yet-started entry. Cleared at the start of each batch.
+static BATCH_STOP: AtomicBool = AtomicBool::new(false);
+
+/// Request cancellation of one download — in-flight or still queued. Always succeeds; the
+/// relevant side observes the request at its next checkpoint.
+pub fn cancel_download(video_id: &str) -> bool {
+    if let Some(flag) = active().lock().unwrap().get(video_id) {
+        flag.store(true, Ordering::SeqCst);
+        return true;
+    }
+    requested().lock().unwrap().insert(video_id.to_owned());
+    false
+}
+
+/// Cancel everything: every in-flight track plus any batch that hasn't started them yet.
+pub fn cancel_all_downloads() -> usize {
+    BATCH_STOP.store(true, Ordering::SeqCst);
+    let mut n = 0;
+    for flag in active().lock().unwrap().values() {
+        flag.store(true, Ordering::SeqCst);
+        n += 1;
+    }
+    n += requested().lock().unwrap().len();
+    n
+}
 
 /// A resolved stream ready to download.
 struct Stream {
@@ -156,6 +207,27 @@ pub async fn download_track(
         return Ok(());
     }
 
+    // Register before any work so a click on Cancel during resolve already lands. The guard
+    // removes the entry on every exit path.
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    active().lock().unwrap().insert(video_id.to_owned(), cancel_flag.clone());
+    struct RemoveOnDrop<'a>(&'a str);
+    impl Drop for RemoveOnDrop<'_> {
+        fn drop(&mut self) {
+            active().lock().unwrap().remove(self.0);
+        }
+    }
+    let _remove = RemoveOnDrop(video_id);
+
+    // A cancel that arrived while this track sat queued behind the batch window.
+    if requested().lock().unwrap().remove(video_id) {
+        let _ = app.emit(
+            "download-cancelled",
+            serde_json::json!({ "video_id": video_id, "title": title }),
+        );
+        return Err("cancelled".to_owned());
+    }
+
     let format = download_format(&state.db);
     let stream = match resolve_stream(state, orchestrator, video_id).await {
         Some(s) => s,
@@ -184,8 +256,27 @@ pub async fn download_track(
     } else {
         base_name
     };
-    let file_path = dir.join(format!("{base_name}.{format}"));
-    let tmp_path = dir.join(format!(".{base_name}.{format}.part"));
+    // Two distinct tracks can share a `Title - Artist` name; the catalogue is keyed by video id,
+    // so a second one must disambiguate with an id suffix instead of overwriting the first one's
+    // audio while both rows persist. A stray untracked file with the same name is left alone too.
+    let id8 = &video_id[..video_id.len().min(8)];
+    let mut file_name = format!("{base_name}.{format}");
+    let target = dir.join(&file_name);
+    let owner = state.db.video_id_for_path(&target.to_string_lossy());
+    let taken = match owner {
+        // Another track already owns this exact path — disambiguate.
+        Some(ref o) if o != video_id => true,
+        // Untracked stray file (interrupted run, user drop) — don't clobber it either.
+        None if target.exists() => true,
+        _ => false,
+    };
+    if taken {
+        file_name = format!("{base_name} [{id8}].{format}");
+    }
+    let file_path = dir.join(&file_name);
+    // The temp name carries the id too: two same-named tracks downloading concurrently would
+    // otherwise write into the same .part file.
+    let tmp_path = dir.join(format!(".{base_name}.{id8}.{format}.part"));
 
     // Use the resolved stream URL with safe ratebypass append for googlevideo URLs.
     let stream_url = with_ratebypass(&stream.url);
@@ -240,6 +331,17 @@ pub async fn download_track(
     // Throttle progress emissions to ~10/sec (every 100ms) so the event bus doesn't flood.
     let mut last_emit = std::time::Instant::now();
     while let Some(chunk) = stream_body.next().await {
+        // Cancel check between chunks: the flag is only set by cancel_download, and on fire we
+        // drop the .part file so no half-written audio is left behind.
+        if cancel_flag.load(Ordering::SeqCst) {
+            drop(file);
+            let _ = std::fs::remove_file(&tmp_path);
+            let _ = app.emit(
+                "download-cancelled",
+                serde_json::json!({ "video_id": video_id, "title": title }),
+            );
+            return Err("cancelled".to_owned());
+        }
         let chunk = chunk.map_err(|e| format!("download body failed: {e}"))?;
         downloaded += chunk.len() as u64;
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
@@ -345,18 +447,34 @@ pub fn is_downloaded(state: &AppState, video_id: &str) -> bool {
 /// Download a batch of tracks with at most [`DOWNLOAD_CONCURRENCY`] streams in flight at once.
 /// Already-downloaded tracks are skipped (the caller counts them; this also re-checks), each
 /// success/error still rides the usual `download-*` events, and the whole batch resolves even if
-/// individual tracks fail. Returns `(completed, failed)`.
+/// individual tracks fail. `cancel_all_downloads` stops new tracks from starting mid-batch.
+/// Returns `(completed, failed, cancelled)`.
 pub async fn download_many(
     app: &AppHandle,
     state: &Arc<AppState>,
     orchestrator: &Arc<Orchestrator>,
     candidates: Vec<DownloadCandidate>,
-) -> (usize, usize) {
+) -> (usize, usize, usize) {
+    // A fresh batch clears any stale stop from a previous "cancel all" — otherwise the first
+    // playlist download after one cancellation would refuse to start.
+    BATCH_STOP.store(false, Ordering::SeqCst);
     // Acquire before spawn: the loop only starts a new task once a permit frees, so at most
     // DOWNLOAD_CONCURRENCY tasks ever exist (no pile of idle tasks on a 1000-track playlist).
     let sem = Arc::new(tokio::sync::Semaphore::new(DOWNLOAD_CONCURRENCY));
     let mut handles = Vec::with_capacity(candidates.len());
+    let mut cancelled_before_start = 0usize;
     for c in candidates {
+        // Either an explicit "cancel all", or this exact track was cancelled while it sat queued
+        // behind the concurrency window (drain the request here so the task never starts).
+        let individually = requested().lock().unwrap().remove(&c.video_id);
+        if BATCH_STOP.load(Ordering::SeqCst) || individually {
+            let _ = app.emit(
+                "download-cancelled",
+                serde_json::json!({ "video_id": c.video_id, "title": c.title }),
+            );
+            cancelled_before_start += 1;
+            continue;
+        }
         let permit = match sem.clone().acquire_owned().await {
             Ok(p) => p,
             Err(_) => break, // semaphore dropped — never happens, but don't spin
@@ -385,8 +503,9 @@ pub async fn download_many(
     for handle in handles {
         match handle.await {
             Ok(Ok(())) => completed += 1,
+            Ok(Err(msg)) if msg == "cancelled" => {}
             _ => failed += 1,
         }
     }
-    (completed, failed)
+    (completed, failed, cancelled_before_start)
 }

@@ -28,7 +28,7 @@
 	import AccountMenu from './AccountMenu.svelte';
 	import logo from '$lib/assets/favicon.svg';
 	import * as api from '$lib/api';
-	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor } from '$lib/player.svelte';
+	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor, cancelDownload, cancelAllDownloads } from '$lib/player.svelte';
 	import { lt } from '$lib/lt.svelte';
 
 let downloadsOpen = $state(false);
@@ -290,7 +290,12 @@ let downloadsOpen = $state(false);
 				>
 					<div class="flex items-center justify-between border-b border-border px-4 py-2.5">
 						<span class="text-sm font-semibold">Downloads</span>
-						<button class="text-xs text-muted-foreground hover:text-foreground" onclick={() => (downloadsOpen = false)}>Close</button>
+						<div class="flex items-center gap-3">
+							{#if downloads.active > 0}
+								<button class="text-xs text-muted-foreground hover:text-foreground" onclick={cancelAllDownloads}>Cancel all</button>
+							{/if}
+							<button class="text-xs text-muted-foreground hover:text-foreground" onclick={() => (downloadsOpen = false)}>Close</button>
+						</div>
 					</div>
 					{#if downloads.items.length === 0}
 						<p class="px-4 py-6 text-center text-sm text-muted-foreground">No active downloads.</p>
@@ -318,13 +323,23 @@ let downloadsOpen = $state(false);
 											<p class="mt-1 truncate text-xs text-red-500">{it.message ?? 'Failed'}</p>
 										{/if}
 									</div>
-									{#if it.state === 'downloading'}
-											<span class="text-xs tabular-nums text-muted-foreground">{it.percent}%</span>
-									{:else if it.state === 'done'}
-											<HugeiconsIcon icon={Tick01Icon} class="h-4 w-4 text-green-500" />
-									{:else}
-										<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-red-500" />
-									{/if}
+								{#if it.state === 'downloading'}
+										<span class="text-xs tabular-nums text-muted-foreground">{it.percent}%</span>
+										<button
+											class="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent/10 hover:text-foreground"
+											onclick={() => cancelDownload(it.id)}
+											aria-label="Cancel download"
+											title="Cancel"
+										>
+											<HugeiconsIcon icon={Cancel01Icon} class="h-3.5 w-3.5" />
+										</button>
+								{:else if it.state === 'done'}
+										<HugeiconsIcon icon={Tick01Icon} class="h-4 w-4 text-green-500" />
+								{:else if it.state === 'cancelled'}
+									<p class="mt-1 text-xs text-muted-foreground">Cancelled</p>
+								{:else}
+									<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-red-500" />
+								{/if}
 								</li>
 						{/each}
 						</ul>

@@ -319,6 +319,11 @@ export const listDownloads = () => invoke<DownloadList>('list_downloads');
 export const deleteDownload = (video_id: string) =>
 	invoke<void>('delete_download', { video_id });
 export const clearDownloads = () => invoke<void>('clear_downloads');
+/** Stop one in-flight (or queued-behind-the-batch) download; its partial file is removed. */
+export const cancelDownload = (video_id: string) =>
+	invoke<boolean>('cancel_download', { video_id });
+/** Stop every in-flight track and stop a running batch before its next track starts. */
+export const cancelAllDownloads = () => invoke<number>('cancel_all_downloads');
 
 // Download progress events (Rust → UI). Used by the Titlebar indicator.
 export const onDownloadProgress = (cb: (p: any) => void) =>
@@ -327,6 +332,8 @@ export const onDownloadComplete = (cb: (p: any) => void) =>
 	listen('download-complete', (e) => cb(e.payload));
 export const onDownloadError = (cb: (p: any) => void) =>
 	listen('download-error', (e) => cb(e.payload));
+export const onDownloadCancelled = (cb: (p: any) => void) =>
+	listen('download-cancelled', (e) => cb(e.payload));
 export const downloadPlaylist = (id: string) =>
 	invoke<{ ok: boolean; total: number; skipped: number; downloaded: number; failed: number }>(
 		'download_playlist',

@@ -77,25 +77,10 @@
 	// Auto-scroll pauses while the user is scrolling (wheel/touch/scrollbar), resumes after 3s.
 	// Tracked via input events, not `scroll`, so our own smooth scrolls don't trip it.
 	let userScrollUntil = 0;
-	// Idea 8: gentle idle dim in fullscreen — after 30s without interaction the panel breathes
-	// down to 60% opacity so it doubles as ambient art rather than a bright wall.
-	let idleDim = $state(false);
-	let idleTimer: ReturnType<typeof setTimeout> | undefined;
-	function resetIdle() {
-		idleDim = false;
-		clearTimeout(idleTimer);
-		if (expanded) idleTimer = setTimeout(() => (idleDim = true), 30000);
-	}
 	let hasScrolled = false;
 	function onUserScroll() {
 		userScrollUntil = Date.now() + 3000;
-		resetIdle();
 	}
-
-	$effect(() => {
-		expanded; // track — restarting the idle dim on enter/leave fullscreen
-		resetIdle();
-	});
 	let wasExpanded: boolean | undefined;
 
 	$effect(() => {
@@ -187,7 +172,7 @@
 		? 'px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 		: expanded
 			? 'px-10 py-6'
-			: 'px-5 py-6'} {idleDim ? 'opacity-60 transition-opacity duration-1000' : ''}"
+			: 'px-5 py-6'}"
 >
 	{#if loading}
 		<div class="space-y-3">
