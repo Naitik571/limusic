@@ -37,8 +37,7 @@ on:
 permissions:
   contents: write # upload assets onto the release
 
-# Per-workflow, NOT shared with linux-release.yml any more: the two now run in parallel, and the
-# only thing they contend for is latest.json, which the upload step merges with a read-back retry.
+# The only release workflow: it owns latest.json outright (single-platform fork).
 concurrency:
   group: windows-release-${{ inputs.tag }}
   cancel-in-progress: false
@@ -231,28 +230,19 @@ jobs:
 
           gh release upload "$TAG" "$EXE" "$SIG" ${MSI:+"$MSI"} --clobber --repo "$GITHUB_REPOSITORY"
 
-          # latest.json is the one thing both release workflows write, and they now run in parallel.
-          # There is no compare-and-swap on release assets, so: merge, upload, read back, and retry
-          # if the other job clobbered us in between. Whoever loses a round re-merges onto the
-          # winner's copy, so it converges — normally on the first attempt, worst case the second.
+          # Windows is the only platform this fork ships, so this workflow owns latest.json outright:
+          # write the full manifest from scratch and clobber whatever is there. No merge dance —
+          # there is no other writer to clobber us back.
           URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$EXE")"
-          for attempt in 1 2 3 4 5; do
-            rm -rf manifest && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir manifest
-            MANIFEST_VERSION="$(jq -r .version manifest/latest.json)"
-            if [ "$MANIFEST_VERSION" != "$VERSION" ]; then
-              echo "::error::the release's latest.json is for $MANIFEST_VERSION but we built $VERSION"; exit 1
-            fi
-            jq --arg sig "$(cat "$SIG")" --arg url "$URL" \
-              '.platforms["windows-x86_64"] = { signature: $sig, url: $url }' \
-              manifest/latest.json > latest.json
-            gh release upload "$TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          jq -n --arg version "$VERSION" --arg sig "$(cat "$SIG")" --arg url "$URL" \
+            '{version: $version, platforms: { "windows-x86_64": { signature: $sig, url: $url } } }' \
+            > latest.json
+          gh release upload "$TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"
 
-            sleep $((3 + RANDOM % 5))
-            rm -rf check && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir check
-            if [ "$(jq -r '.platforms["windows-x86_64"].url // ""' check/latest.json)" = "$URL" ]; then
-              echo "latest.json carries windows-x86_64 (attempt $attempt): $(jq -c '.platforms | keys' check/latest.json)"
-              break
-            fi
-            [ "$attempt" -lt 5 ] || { echo "::error::windows-x86_64 kept getting clobbered out of latest.json"; exit 1; }
-            echo "the Linux job clobbered the manifest, re-merging"
-          done
+          # Read back once: if it carries our URL, the updater endpoint is correct.
+          rm -rf check && gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir check
+          if [ "$(jq -r '.platforms["windows-x86_64"].url // ""' check/latest.json)" = "$URL" ]; then
+            echo "latest.json carries windows-x86_64: $(jq -c '.platforms | keys' check/latest.json)"
+          else
+            echo "::error::latest.json upload did not stick"; exit 1
+          fi
