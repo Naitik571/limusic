@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as api from '$lib/api';
+	import { onDestroy } from 'svelte';
 	import { playback } from '$lib/player.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
@@ -80,8 +81,44 @@
 	let hasScrolled = false;
 	function onUserScroll() {
 		userScrollUntil = Date.now() + 3000;
+		cancelScrollTween();
 	}
 	let wasExpanded: boolean | undefined;
+
+	// rAF-driven scroll tween. `scrollIntoView({ behavior: 'smooth' })` delegates to the browser,
+	// whose curve and duration are unsteerable and visibly different per platform (WebView2 glides,
+	// WebKitGTK snaps); a fixed-duration easeInOutCubic reads the same everywhere and can be
+	// cancelled mid-flight by a new line or a user scroll, so lines never queue up animations.
+	let scrollTweenId: number | undefined;
+	function cancelScrollTween() {
+		if (scrollTweenId !== undefined) {
+			cancelAnimationFrame(scrollTweenId);
+			scrollTweenId = undefined;
+		}
+	}
+	onDestroy(cancelScrollTween);
+	function glideTo(target: number, ms: number) {
+		const scrollerEl = scroller;
+		if (!scrollerEl) return;
+		cancelScrollTween();
+		const from = scrollerEl.scrollTop;
+		const delta = target - from;
+		if (Math.abs(delta) < 0.5) return; // already there — don't fight sub-pixel jitter
+		if (ms <= 0) {
+			scrollerEl.scrollTop = target;
+			return;
+		}
+		const t0 = performance.now();
+		// easeInOutCubic: gentle start (the previous line just released focus), gentle settle
+		// (the next line is about to take it). Linear feels mechanical at 60fps; this reads calm.
+		const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+		const tick = (now: number) => {
+			const p = Math.min(1, (now - t0) / ms);
+			scrollerEl.scrollTop = from + delta * ease(p);
+			scrollTweenId = p < 1 ? requestAnimationFrame(tick) : undefined;
+		};
+		scrollTweenId = requestAnimationFrame(tick);
+	}
 
 	$effect(() => {
 		const i = activeIndex;
@@ -93,11 +130,27 @@
 			userScrollUntil = 0;
 		}
 		if (i < 0 || !scroller || Date.now() < userScrollUntil) return;
-		scroller.querySelector(`[data-line="${i}"]`)?.scrollIntoView({
-			// Opening mid-song jumps straight to the line; after that, glide.
-			behavior: hasScrolled ? 'smooth' : 'instant',
-			block: 'center'
-		});
+		const line = scroller.querySelector(`[data-line="${i}"]`);
+		if (!line) return;
+		// Centre the active line in the scroller's viewport (matches block:'center').
+		const target =
+			line.getBoundingClientRect().top -
+			scroller.getBoundingClientRect().top -
+			scroller.clientHeight / 2 +
+			line.getBoundingClientRect().height / 2 +
+			scroller.scrollTop;
+		if (!hasScrolled) {
+			// Opening mid-song jumps straight to the line.
+			glideTo(target, 0);
+		} else if (Math.abs(target - scroller.scrollTop) > scroller.clientHeight) {
+			// A seek landed far away: jump instead of sweeping past every line in between.
+			glideTo(target, 0);
+		} else {
+			// Duration scales slightly with distance so short hops feel snappy and long ones
+			// never rush — clamped to 320–640ms, the range that reads as "glide" not "slide".
+			const dist = Math.abs(target - scroller.scrollTop);
+			glideTo(target, Math.max(320, Math.min(640, 320 + dist)));
+		}
 		hasScrolled = true;
 	});
 
@@ -191,7 +244,7 @@
 				<button
 					data-line={i}
 					onclick={() => seekTo(line)}
-					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-300 ease-out
+					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
 						{expanded ? 'py-3 text-3xl' : compact ? 'py-1 text-sm' : 'py-2 text-xl'}
 						{isActive
 						? line.words?.length
