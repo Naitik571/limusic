@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+﻿@import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
 @import '@fontsource-variable/oxanium';
@@ -17,7 +17,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Desktop app on WebKitGTK: the webview can report no hover-capable pointer, so Tailwind v4's
-   default hover variant — gated behind @media (hover: hover) — never matches, silently killing
+   default hover variant â€” gated behind @media (hover: hover) â€” never matches, silently killing
    every hover: and group-hover: utility in the app. Redefine hover to fire on a real :hover
    regardless of the pointer heuristic. (This is a desktop app; hover always applies.) */
 @custom-variant hover (&:hover);
@@ -28,6 +28,9 @@
 	   number. Tokens at chroma 0 are pure white/black by design and stay that way. Preset palettes
 	   hardcode their own oklch values, so the tint only applies to this default set. */
 	--hue: 326;
+	/* Hue of the artwork tint, written by theme.svelte.ts. Only the `.art-tint` rules read it; the
+	   default here just keeps those rules valid if the class ever outlives the variable. */
+	--art-h: 326;
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.145 0.008 var(--hue));
 	--card: oklch(1 0 0);
@@ -128,7 +131,7 @@
    mode-watcher `.dark` variant. Selected by toggling `.theme-<id>` on <html> (see theme.svelte.ts).
    --font-heading has no equivalent in the source themes, so it follows --font-sans to keep the
    theme's type coherent. ponytail: --tracking-normal/--spacing/--shadow-x..opacity from the source
-   themes are dropped — they're either Tailwind defaults or just the inputs the shadow values were
+   themes are dropped â€” they're either Tailwind defaults or just the inputs the shadow values were
    generated from. */
 
 .theme-catppuccin {
@@ -167,7 +170,7 @@
 	--font-sans: 'Montserrat Variable', sans-serif;
 	--font-heading: 'Montserrat Variable', sans-serif;
 	--font-serif: Georgia, serif;
-	/* ponytail: Fira Code isn't bundled — used if the system has it, else the stock mono stack.
+	/* ponytail: Fira Code isn't bundled â€” used if the system has it, else the stock mono stack.
 	   Install @fontsource-variable/fira-code if the four font-mono spots ever matter. */
 	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	--shadow-2xs: 0px 4px 6px 0px hsl(240 30% 25% / 0.06);
@@ -433,7 +436,7 @@
 	--sidebar-ring: oklch(0.7729 0.1535 163.2231);
 }
 
-/* --- Pixel — an 8-bit take: Game-Boy greens, hard-edged (blur-free) shadows, tiny radius.
+/* --- Pixel â€” an 8-bit take: Game-Boy greens, hard-edged (blur-free) shadows, tiny radius.
    The hard-edge shadows are the point: they stay "pixelated" instead of blurring like every
    other theme's soft glow. */
 .theme-pixel {
@@ -515,7 +518,7 @@
 	--sidebar-ring: oklch(0.76 0.17 140);
 }
 
-/* --- Arcade — loud, saturated gaming: electric purple primary over a magenta-dark light mode,
+/* --- Arcade â€” loud, saturated gaming: electric purple primary over a magenta-dark light mode,
    and a hot-pink-to-cyan burst in dark. */
 .theme-arcade {
 	--background: oklch(0.96 0.02 300);
@@ -596,7 +599,7 @@
 	--sidebar-ring: oklch(0.65 0.28 330);
 }
 
-/* --- Synthwave — outrun night: hot pink primary, cyan accents, deep violet dark mode. */
+/* --- Synthwave â€” outrun night: hot pink primary, cyan accents, deep violet dark mode. */
 .theme-synthwave {
 	--background: oklch(0.95 0.03 330);
 	--foreground: oklch(0.30 0.08 320);
@@ -676,7 +679,7 @@
 	--sidebar-ring: oklch(0.70 0.25 350);
 }
 
-/* --- Gruvbox — warm retro terminal: cream + coffee in light, dark leather in dark, with the
+/* --- Gruvbox â€” warm retro terminal: cream + coffee in light, dark leather in dark, with the
    classic orange/red/aqua trinity instead of a single accent. */
 .theme-gruvbox {
 	--background: oklch(0.95 0.02 85);
@@ -757,7 +760,7 @@
 	--sidebar-ring: oklch(0.72 0.14 60);
 }
 
-/* --- Nord — Arctic coolness: slate-blues and frost everywhere, calm and restrained. */
+/* --- Nord â€” Arctic coolness: slate-blues and frost everywhere, calm and restrained. */
 .theme-nord {
 	--background: oklch(0.95 0.01 250);
 	--foreground: oklch(0.35 0.02 250);
@@ -839,7 +842,7 @@
 
 /* --- Theme personalities ------------------------------------------------
    The token blocks above give each palette its colours, fonts and shadows, but a theme is more
-   than a palette — this is the part that makes them actually *feel* different: background
+   than a palette â€” this is the part that makes them actually *feel* different: background
    treatments (scanlines, grids, glows), heading styling, focus rings and selection colour.
    Every rule here is gated on the `.theme-<id>` class on <html> and unlayered, so it wins over
    the layered utilities it replaces (same trick as the frosted chrome rules further down).
@@ -847,7 +850,7 @@
    `.app-root` is the whole-window shell (see +layout.svelte); positioning it lets a theme paint
    an overlay film or gradients over the app's own `bg-background`. */
 
-/* — Pixel: 8-bit CRT. Scanline film over the window, hard dashed focus rings, pixel-green
+/* â€” Pixel: 8-bit CRT. Scanline film over the window, hard dashed focus rings, pixel-green
    selection, and a tiny dithered wash behind the content. */
 .theme-pixel .app-root {
 	position: relative;
@@ -881,7 +884,7 @@
 	background: color-mix(in oklch, var(--primary) 45%, transparent);
 }
 
-/* — Arcade: loud cabinets. Vibrant dual glow behind the content, Bungee display type,
+/* â€” Arcade: loud cabinets. Vibrant dual glow behind the content, Bungee display type,
    chunky accent focus rings and cyan-tinted selection. */
 .theme-arcade .app-root {
 	position: relative;
@@ -907,7 +910,7 @@
 	background: color-mix(in oklch, var(--accent) 50%, transparent);
 }
 
-/* — Synthwave: outrun night. Perspective-free retro grid + a cyan sunset wash up top, Orbitron
+/* â€” Synthwave: outrun night. Perspective-free retro grid + a cyan sunset wash up top, Orbitron
    type with a neon glow, cyan selection. */
 .theme-synthwave .app-root {
 	position: relative;
@@ -936,7 +939,7 @@
 	background: color-mix(in oklch, var(--accent) 55%, transparent);
 }
 
-/* — Gruvbox: warm terminal. A soft warm wash, mono display type, terminal-style selection and a
+/* â€” Gruvbox: warm terminal. A soft warm wash, mono display type, terminal-style selection and a
    faint inner ring on card surfaces. */
 .theme-gruvbox .app-root {
 	position: relative;
@@ -957,7 +960,7 @@
 	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 10%, transparent);
 }
 
-/* — Nord: Arctic calm. An icy wash, tight IBM Plex type, thin focus ring and a cool selection. */
+/* â€” Nord: Arctic calm. An icy wash, tight IBM Plex type, thin focus ring and a cool selection. */
 .theme-nord .app-root {
 	position: relative;
 	background-image: radial-gradient(120% 70% at 50% -10%, color-mix(in oklch, var(--accent) 9%, transparent), transparent 65%);
@@ -977,6 +980,60 @@
 }
 .theme-nord .bg-card {
 	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 5%, transparent);
+/* --- Artwork tint ---
+   "Adapt colors to artwork" (Themes tab). `theme.svelte.ts` puts the playing cover's hue in
+   --art-h and toggles .art-tint on <html>; every surface below is derived from that one number, so
+   the whole UI drifts with the cover instead of only the accent. Written as static CSS rather than
+   generated in JS because the light/dark split has to stay a CSS concern.
+
+   These override whichever palette is selected, so the selectors have to outrank `.dark.theme-x`
+   (0,2,0): `html.art-tint:not(.dark)` and `html.art-tint.dark` are both (0,2,1). --primary /
+   --accent are not here â€” they stay inline styles on <html>, which beat any of this.
+
+   Chroma is what makes it visible: the default palette's neutrals sit at 0.003â€“0.034, which reads
+   as grey. Turn the numbers here down together if a saturated cover is too much. */
+html.art-tint:not(.dark) {
+	--background: oklch(0.985 0.014 var(--art-h));
+	--foreground: oklch(0.17 0.03 var(--art-h));
+	--card: oklch(0.995 0.01 var(--art-h));
+	--card-foreground: oklch(0.17 0.03 var(--art-h));
+	--popover: oklch(0.995 0.01 var(--art-h));
+	--popover-foreground: oklch(0.17 0.03 var(--art-h));
+	--secondary: oklch(0.945 0.03 var(--art-h));
+	--secondary-foreground: oklch(0.25 0.04 var(--art-h));
+	--muted: oklch(0.945 0.028 var(--art-h));
+	--muted-foreground: oklch(0.53 0.055 var(--art-h));
+	--border: oklch(0.9 0.032 var(--art-h));
+	--input: oklch(0.9 0.032 var(--art-h));
+	--ring: oklch(0.7 0.06 var(--art-h));
+	--sidebar: oklch(0.965 0.022 var(--art-h));
+	--sidebar-foreground: oklch(0.17 0.03 var(--art-h));
+	--sidebar-accent: oklch(0.935 0.035 var(--art-h));
+	--sidebar-accent-foreground: oklch(0.25 0.04 var(--art-h));
+	--sidebar-border: oklch(0.9 0.032 var(--art-h));
+	--sidebar-ring: oklch(0.7 0.06 var(--art-h));
+}
+
+html.art-tint.dark {
+	--background: oklch(0.165 0.028 var(--art-h));
+	--foreground: oklch(0.97 0.012 var(--art-h));
+	--card: oklch(0.225 0.038 var(--art-h));
+	--card-foreground: oklch(0.97 0.012 var(--art-h));
+	--popover: oklch(0.225 0.038 var(--art-h));
+	--popover-foreground: oklch(0.97 0.012 var(--art-h));
+	--secondary: oklch(0.285 0.04 var(--art-h));
+	--secondary-foreground: oklch(0.97 0.012 var(--art-h));
+	--muted: oklch(0.275 0.042 var(--art-h));
+	--muted-foreground: oklch(0.72 0.045 var(--art-h));
+	--border: oklch(0.33 0.04 var(--art-h));
+	--input: oklch(0.37 0.04 var(--art-h));
+	--ring: oklch(0.55 0.06 var(--art-h));
+	--sidebar: oklch(0.195 0.032 var(--art-h));
+	--sidebar-foreground: oklch(0.97 0.012 var(--art-h));
+	--sidebar-accent: oklch(0.275 0.042 var(--art-h));
+	--sidebar-accent-foreground: oklch(0.97 0.012 var(--art-h));
+	--sidebar-border: oklch(0.33 0.04 var(--art-h));
+	--sidebar-ring: oklch(0.55 0.06 var(--art-h));
 }
 
 @theme inline {
@@ -1047,7 +1104,7 @@
 	html,
 	body {
 		/* Chromium (WebView2, so Windows) rubber-bands the whole page when a wheel reaches the
-		   viewport with nothing left to scroll — and off Android it does that even along an axis
+		   viewport with nothing left to scroll â€” and off Android it does that even along an axis
 		   that never scrolls, picking the axis from whatever delta is left over. The titlebar has
 		   no scrollable ancestor at all, so every wheel over it lands there, and a hair of sideways
 		   delta slides the page left or right. The window is transparent and undecorated, so the
@@ -1073,7 +1130,7 @@
 
 /* --- Motion & interaction polish --- */
 
-/* Loaded page content fades in over the skeleton/route swap it replaces. Opacity-only —
+/* Loaded page content fades in over the skeleton/route swap it replaces. Opacity-only â€”
    cheap to composite on WebKitGTK. */
 @keyframes content-in {
 	from { opacity: 0; }
@@ -1082,7 +1139,7 @@
 
 /* The card grid behind Library, Local music, search results and "See all". Same reasoning as
    Shelf.svelte: WebKit keeps every card in style, layout and paint, and because it rasterizes in
-   tiles, one card's hover repaint re-rasterizes the images around it — so hovering gets slower the
+   tiles, one card's hover repaint re-rasterizes the images around it â€” so hovering gets slower the
    more cards there are, and a full library is hundreds. Skipping off-screen cards caps that at a
    screenful, and their thumbnails stop being fetched until you scroll near them.
    12.75rem is a card exactly (8px padding + 144px cover + 8px gap + title + subtitle + 8px); the
@@ -1093,7 +1150,7 @@
 	display: grid;
 	grid-template-columns: repeat(auto-fill, 10rem);
 	/* Pinned, not auto. An auto row is as tall as its tallest card, and a skipped card reports the
-	   contain-intrinsic-size below while a rendered one reports its real height — which is 1rem
+	   contain-intrinsic-size below while a rendered one reports its real height â€” which is 1rem
 	   shorter when the item has no subtitle. So any row straddling the skip boundary changed height
 	   as you scrolled, and since a hover is what forces the layout pass that reconciles it, hovering
 	   near that boundary reflowed the grid, moved the scroll position, and changed which cards were
@@ -1148,7 +1205,7 @@ input[type='range'].range.on-art::-webkit-slider-runnable-track {
 /* The seek bar paints the Aurora headline ramp (the same teal->violet->pink family as
    .text-gradient and the karaoke sweep) across its FULL width, then reveals it with progress
    via background-size. So the colour under the thumb changes as the song plays: teal at the
-   start, blue-violet midway, pink by the end — instead of one flat primary. The muted layer
+   start, blue-violet midway, pink by the end â€” instead of one flat primary. The muted layer
    underneath is the unplayed remainder. Seek-only; the volume slider keeps flat primary. */
 input[type='range'].range.range-seek::-webkit-slider-runnable-track {
 	background:
@@ -1210,7 +1267,7 @@ input[type='range'].range:active::-webkit-slider-thumb {
 /* --- Aurora glass (2026-08 redesign round) ---
    Frosted surfaces: translucent fill + backdrop blur + hairline border + a 1px inner
    highlight along the top edge (the "glass catching light" look). Blur is only used on
-   static chrome (sidebar, titlebar, player bar, drawers, dialogs) — never on the scrolling
+   static chrome (sidebar, titlebar, player bar, drawers, dialogs) â€” never on the scrolling
    content area, so WebKitGTK's tile-rasterization never re-blurs moving content. */
 @layer components {
 	.glass {
@@ -1233,7 +1290,7 @@ input[type='range'].range:active::-webkit-slider-thumb {
 		backdrop-filter: blur(24px) saturate(160%);
 		border-bottom: 1px solid var(--glass-border);
 	}
-	/* The signature headline treatment: accent → violet gradient text. */
+	/* The signature headline treatment: accent â†’ violet gradient text. */
 	.text-gradient {
 		background-image: linear-gradient(100deg, var(--primary) 10%, oklch(0.68 0.19 285) 55%, oklch(0.65 0.17 335) 95%);
 		-webkit-background-clip: text;
