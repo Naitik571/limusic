@@ -51,7 +51,19 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.5.3`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.5.9`.
+
+**v0.5.8–v0.5.9 — upstream ports + fork fixes:**
+- **Ctrl+K anywhere search palette**, **Ctrl+E** now-playing toggle, **Ctrl+>/< volume** — the real #81 shortcuts, with a `⌘K` chip on the search field and one owner for every Ctrl-chord
+- **Right-click opens the app's own menus** — rows, cards, sidebar, player bar, artwork, playlist/album/artist headers; placed from their real size at the pointer; Shift+right-click and text fields keep WebKit's menu
+- **Themes adapt to the album art** (upstream #69) — the playing cover's hue drives accent and surfaces in light and dark, crossfading per track; sits on top of whichever theme you have
+- **Scroll to change volume** — wheel over either slider, the whole player bar, or the big artwork; persisted once the gesture stops (upstream's nudge engine under the fork's wider hit areas)
+- **Download manager: cancel** — per-track ✕ and Cancel-all, partial `.part` files cleaned up; **collision-safe filenames** — two tracks with the same `Title - Artist` get an id suffix instead of overwriting each other
+- **Discord shows the artist** in the member-list line (#88), dialogs centre by layout so text stays crisp (#75)
+- **Stream resilience**: stale sessions no longer surface as raw 403s, dead stream URLs sweep at open, WAL journal for the settings DB, failed DB writes are logged instead of swallowed
+- **Apple Music lyrics tokens actually save now** — the settings allowlist was rejecting them
+- **Smoother lyrics** — cancellable eased scroll tween (no more platform-dependent scrollIntoView), calmer line-state easing
+- **CI** runs the full Rust test suite (now 103 tests) + clippy + fmt + svelte-check on every push/PR
 
 **Base fixes (upstream `v0.3.12` base):**
 - **No more quiet playback** — removed the attenuate-only `loudnessDb` gain filter (typically +2…+7 dB cut) so audio is unmodified; stale filters from older builds are cleared on track load

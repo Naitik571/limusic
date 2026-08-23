@@ -980,6 +980,7 @@
 }
 .theme-nord .bg-card {
 	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
 /* --- Artwork tint ---
    "Adapt colors to artwork" (Themes tab). `theme.svelte.ts` puts the playing cover's hue in
    --art-h and toggles .art-tint on <html>; every surface below is derived from that one number, so
