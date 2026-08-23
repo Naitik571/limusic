@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -56,7 +56,7 @@
 		expanded = false;
 		try {
 			const fresh = await api.getArtist(cid);
-			if (cid !== id) return; // superseded by navigation — drop the stale response
+			if (cid !== id) return; // superseded by navigation â€” drop the stale response
 			artist = fresh;
 			subscribed = fresh.subscribed;
 			putCached(key, fresh);
@@ -72,7 +72,7 @@
 		if (id) load(id);
 	});
 
-	// ⋯ options menu, positioned `fixed` at the button so it isn't clipped (matches the album page).
+	// â‹¯ options menu, positioned `fixed` at the button so it isn't clipped (matches the album page).
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
@@ -294,11 +294,7 @@
 		aria-label="Close menu"
 	></button>
 	<div
-<<<<<<< HEAD
 		class="fixed z-50 min-w-52 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-=======
-		class="fixed z-50 min-w-52 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0"
->>>>>>> 92580a0 (fix(menus): no motion, and nothing painted before the menu is placed)
 		style={anchor.style}
 		{@attach fitMenu(anchor)}
 	>

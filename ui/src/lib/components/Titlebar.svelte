@@ -1,8 +1,8 @@
-<script lang="ts">
-	// Custom titlebar (the window runs undecorated — tauri.conf `decorations: false`). Everything
+﻿<script lang="ts">
+	// Custom titlebar (the window runs undecorated â€” tauri.conf `decorations: false`). Everything
 	// on the bar is a drag region except the buttons; double-click maximizes (handled by Tauri's
 	// drag region itself). Right cluster: Last.fm scrobbler | separator | minimize / maximize /
-	// close — per the design, the scrobbler lives with the window controls but visually apart.
+	// close â€” per the design, the scrobbler lives with the window controls but visually apart.
 	// Account (sign in/out) sits first in that cluster, in its own component.
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
@@ -49,14 +49,14 @@ let downloadsOpen = $state(false);
 	});
 
 	// Last.fm connection state. `connecting` is UI-local: set on click, cleared by the
-	// `lastfm-state` event (success, failure, or timeout) — the backend always answers.
+	// `lastfm-state` event (success, failure, or timeout) â€” the backend always answers.
 	let connected = $state(false);
 	let username = $state<string | null>(null);
 	let connecting = $state(false);
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
-	// Discord Rich Presence — a plain on/off toggle of the `discord_rpc` setting (the backend
+	// Discord Rich Presence â€” a plain on/off toggle of the `discord_rpc` setting (the backend
 	// connects/clears the presence the moment it flips). Optimistic; reverted on failure.
 	let discordOn = $state(false);
 
@@ -128,7 +128,7 @@ let downloadsOpen = $state(false);
 
 	const scrobblerTitle = $derived(
 		connecting
-			? 'Connecting to Last.fm — click to cancel'
+			? 'Connecting to Last.fm â€” click to cancel'
 			: connected
 				? `Scrobbling as ${username}`
 				: 'Scrobble to Last.fm'
@@ -136,7 +136,7 @@ let downloadsOpen = $state(false);
 </script>
 
 <!-- `relative` makes this a stacking context, so the account/window dropdowns inside it are capped
-     at this z — it must outrank the panels below (LyricsPanel/QueuePanel, z-30). -->
+     at this z â€” it must outrank the panels below (LyricsPanel/QueuePanel, z-30). -->
 <header
 	data-tauri-drag-region
 	class="relative z-50 flex h-9 shrink-0 select-none items-center justify-between glass-edge bg-transparent"
@@ -174,7 +174,7 @@ let downloadsOpen = $state(false);
 
 	<div class="flex h-full items-center">
 		<!-- Account first, then the integrations, then the window controls. The drag region lives on
-		     <header> only, so these children are ordinary buttons — don't add the attribute here. -->
+		     <header> only, so these children are ordinary buttons â€” don't add the attribute here. -->
 		<AccountMenu />
 		<div class="mx-1.5 h-4 w-px bg-border"></div>
 
@@ -219,7 +219,7 @@ let downloadsOpen = $state(false);
 				? 'text-foreground'
 				: ''}"
 			onclick={toggleDiscord}
-			title={discordOn ? 'Discord presence on — click to turn off' : 'Show what you play on Discord'}
+			title={discordOn ? 'Discord presence on â€” click to turn off' : 'Show what you play on Discord'}
 			aria-label="Discord Rich Presence"
 		>
 			<span class="relative">
@@ -266,7 +266,7 @@ let downloadsOpen = $state(false);
 			<button
 				class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
 				title={downloads.active > 0
-					? `Downloading ${downloads.active} track${downloads.active === 1 ? '' : 's'}…`
+					? `Downloading ${downloads.active} track${downloads.active === 1 ? '' : 's'}â€¦`
 					: downloads.done > 0
 						? 'Downloads ready'
 						: 'Downloads'}
@@ -397,11 +397,7 @@ let downloadsOpen = $state(false);
 		aria-label="Close menu"
 	></button>
 	<div
-<<<<<<< HEAD
 		class="fixed z-50 min-w-52 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-=======
-		class="fixed z-50 min-w-52 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0"
->>>>>>> 92580a0 (fix(menus): no motion, and nothing painted before the menu is placed)
 		style={anchor.style}
 		{@attach fitMenu(anchor)}
 	>

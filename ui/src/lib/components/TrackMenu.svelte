@@ -1,5 +1,5 @@
-<script lang="ts">
-	// The ⋯ options menu shared by TrackRow (inline trigger) and MediaCard (overlay trigger).
+﻿<script lang="ts">
+	// The â‹¯ options menu shared by TrackRow (inline trigger) and MediaCard (overlay trigger).
 	// Right-clicking anywhere in the surrounding `[data-ctx]` element opens the same menu at the
 	// pointer (see `ctxHost`), which is what a track row's whole surface is for.
 	// The queue actions + like are universal; go-to-artist/album/playlist show when the song carries
@@ -37,14 +37,14 @@
 		linksOnly = false
 	}: {
 		song: SongItem;
-		/** Classes for the ⋯ trigger button (positioning differs per host: inline vs overlay). */
+		/** Classes for the â‹¯ trigger button (positioning differs per host: inline vs overlay). */
 		triggerClass?: string;
 		/** Adds an "Add to playlist" menu item. */
 		onAdd?: () => void;
 		/** Adds a remove menu item (label via `removeLabel`). */
 		onRemove?: () => void;
 		removeLabel?: string;
-		/** Player-bar variant: ⋮ trigger, and only artist/album/shortcuts (queue and like already
+		/** Player-bar variant: â‹® trigger, and only artist/album/shortcuts (queue and like already
 		    have their own buttons there). */
 		linksOnly?: boolean;
 	} = $props();
@@ -52,7 +52,7 @@
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
-	// Click on the ⋯ opens under the button; right-click on the host row opens at the pointer.
+	// Click on the â‹¯ opens under the button; right-click on the host row opens at the pointer.
 	function openMenu(e: MouseEvent) {
 		e.preventDefault(); // a right-click must not also raise WebKit's own menu
 		e.stopPropagation();
@@ -91,7 +91,7 @@
 	aria-label="Track options"
 	{@attach ctxHost(openMenu)}
 >
-	<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount -->
+	<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount -->
 	<HugeiconsIcon
 		icon={MoreHorizontalIcon}
 		altIcon={MoreVerticalIcon}
@@ -109,11 +109,7 @@
 		{@attach toBody}
 	></button>
 	<div
-<<<<<<< HEAD
 		class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-=======
-		class="fixed z-50 min-w-44 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0"
->>>>>>> 92580a0 (fix(menus): no motion, and nothing painted before the menu is placed)
 		style={anchor.style}
 		{@attach toBody}
 		{@attach fitMenu(anchor)}

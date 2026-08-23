@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
     import { page } from "$app/state";
     import { goto } from "$app/navigation";
     import { HugeiconsIcon } from "@hugeicons/svelte";
@@ -40,7 +40,7 @@
     let loading = $state(true);
     let error = $state<string | null>(null);
     let expanded = $state(false);
-    // ⋯ options menu, `fixed` and anchored under the button so the header can't clip it.
+    // â‹¯ options menu, `fixed` and anchored under the button so the header can't clip it.
     let menuOpen = $state(false);
     let anchor = $state(NO_ANCHOR);
 
@@ -71,7 +71,7 @@
         expanded = false;
         try {
             const fresh = await api.getAlbum(aid);
-            if (aid !== id) return; // superseded by navigation — drop the stale response
+            if (aid !== id) return; // superseded by navigation â€” drop the stale response
             album = fresh;
             putCached(key, fresh);
             loadHero(aid, fresh);
@@ -83,10 +83,10 @@
         }
     }
 
-    // The album's artist image becomes the hero backdrop (like the artist page). Non-blocking —
+    // The album's artist image becomes the hero backdrop (like the artist page). Non-blocking â€”
     // the page already shows; the backdrop fades in when it arrives. Guarded against navigation.
     // ponytail: reuses the full artist browse just for its hero image; `album.artistThumbnail`
-    // already carries a straplineThumbnail — swap to it to drop this second fetch if it ever matters.
+    // already carries a straplineThumbnail â€” swap to it to drop this second fetch if it ever matters.
     function loadHero(aid: string, a: AlbumPage) {
         if (!a.artistId) return;
         api.getArtist(a.artistId)
@@ -102,7 +102,7 @@
 
     // A local track deleted off disk vanishes from the open page too, header count included: the
     // page is rebuilt from SQLite (already pruned) rather than patched, so nothing can go stale.
-    // An album whose last file is gone has no page left to show — step back to the library.
+    // An album whose last file is gone has no page left to show â€” step back to the library.
     $effect(() => {
         const un = api.onLocalChanged(async (removed) => {
             const a = album;
@@ -119,7 +119,7 @@
 
     // This album as a card, for the sidebar's last-played sort and the Shortcuts grid.
     const asItem = (): BrowseItem => ({
-        // A local artist opens this route too — it stays an artist on the Shortcuts grid, so the
+        // A local artist opens this route too â€” it stays an artist on the Shortcuts grid, so the
         // tile keeps its circle (see browse.ts `hrefFor`).
         kind: id.startsWith(api.LOCAL_ARTIST_PREFIX) ? "artist" : "album",
         id,
@@ -139,7 +139,7 @@
     function shuffle() {
         if (!album?.items.length) return;
         menuOpen = false;
-        // Real order + shuffle flag — the backend shuffles (fresh each time, restorable).
+        // Real order + shuffle flag â€” the backend shuffles (fresh each time, restorable).
         playFrom(asItem(), album.items, null, album.playlistId, true);
     }
     // Saving an album to the library is a "like" on its audio playlist. Optimistic: the button
@@ -269,7 +269,7 @@
                             </span>
                         {/if}
                         {#if album.secondSubtitle}
-                            <span class="text-muted-foreground/60">•</span>
+                            <span class="text-muted-foreground/60">â€¢</span>
                             <span>{album.secondSubtitle}</span>
                         {/if}
                     </div>
@@ -350,11 +350,7 @@
                         {@attach toBody}
                     ></button>
                     <div
-<<<<<<< HEAD
                         class="fixed z-50 min-w-48 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-=======
-                        class="fixed z-50 min-w-48 animate-in rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl duration-150 fade-in-0"
->>>>>>> 92580a0 (fix(menus): no motion, and nothing painted before the menu is placed)
                         style={anchor.style}
                         {@attach toBody}
                         {@attach fitMenu(anchor)}
