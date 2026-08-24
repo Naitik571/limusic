@@ -39,7 +39,7 @@
 		wheelVolume,
 		type SleepTimerMode
 	} from '$lib/player.svelte';
-	import { anchorMenu, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
+	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
@@ -82,10 +82,15 @@
 	let sleepMenuOpen = $state(false);
 	let sleepAnchor = $state(NO_ANCHOR);
 
+	// One menu at a time (see TrackMenu).
+	const sleepMenuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(sleepMenuId, () => (sleepMenuOpen = false)));
+
 	function openSleepMenu(e: MouseEvent) {
 		e.stopPropagation();
 		sleepAnchor = anchorMenu(e, { align: 'right' });
 		sleepMenuOpen = true;
+		claimMenu(sleepMenuId);
 	}
 	function closeSleepMenu(e: MouseEvent) {
 		e.stopPropagation();

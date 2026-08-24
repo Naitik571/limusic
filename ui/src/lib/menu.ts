@@ -12,6 +12,36 @@ export function toBody(el: HTMLElement) {
 	return () => el.remove();
 }
 
+// --- One menu at a time ------------------------------------------------------------------------
+// Menus are independent components with local open state, so nothing stopped two (or five) being
+// open at once — right-click down a list stacked them. A claim protocol, not a shared store: when
+// any menu opens it broadcasts its claim, and every other open menu closes itself. A plain window
+// event keeps menu.ts free of runes and works from every caller, including .svelte components.
+
+let menuSeq = 0;
+
+/** Stable per-instance id for a menu, taken once when the component initialises. */
+export function nextMenuId(): number {
+	return ++menuSeq;
+}
+
+/** Announce that the menu with `id` just opened; all others close. */
+export function claimMenu(id: number): void {
+	window.dispatchEvent(new CustomEvent<number>('limusic-menu-claimed', { detail: id }));
+}
+
+/**
+ * Listen for other menus opening. Returns the unsubscribe function — call it inside a `$effect`
+ * so the listener lives and dies with the component.
+ */
+export function onOtherMenuClaimed(id: number, close: () => void): () => void {
+	const handler = (e: Event) => {
+		if ((e as CustomEvent<number>).detail !== id) close();
+	};
+	window.addEventListener('limusic-menu-claimed', handler);
+	return () => window.removeEventListener('limusic-menu-claimed', handler);
+}
+
 /** What a popup hangs off: a trigger's box, or a zero-size box at the pointer. */
 type Box = { left: number; right: number; top: number; bottom: number };
 

@@ -8,15 +8,20 @@
 	import * as api from '$lib/api';
 	import { auth, openChannelPicker } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
-	import { anchorMenu, fitMenu, NO_ANCHOR } from '$lib/menu';
+	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
+
+	// One menu at a time (see TrackMenu).
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
 
 	// Right-anchored under the trigger, like the Last.fm menu next to it.
 	function openMenu(e: MouseEvent) {
 		anchor = anchorMenu(e, { align: 'right' });
 		menuOpen = !menuOpen;
+		if (menuOpen) claimMenu(menuId);
 	}
 
 	// Sign-in/out state arrives via the `auth-changed` event (player.svelte.ts), which also reloads

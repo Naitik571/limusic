@@ -28,7 +28,7 @@
 		toast
 	} from '$lib/player.svelte';
 	import { getCached, putCached } from '$lib/pagecache';
-	import { anchorMenu, fitMenu, NO_ANCHOR } from '$lib/menu';
+	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 
 	let artist = $state<ArtistPage | null>(null);
 	let loading = $state(true);
@@ -76,9 +76,14 @@
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
+	// One menu at a time (see TrackMenu).
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+
 	function openMenu(e: MouseEvent) {
 		anchor = anchorMenu(e);
 		menuOpen = true;
+		claimMenu(menuId);
 	}
 
 	// This artist as a card, for the sidebar's last-played sort and the Shortcuts grid.

@@ -16,7 +16,7 @@
 	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
 	import { enqueueItem } from '$lib/browse';
-	import { anchorMenu, ctxHost, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
+	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
 	import { addPick, personal, startRadio, togglePin } from '$lib/player.svelte';
 
 	let {
@@ -59,12 +59,17 @@
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
-	// Click on the â‹¯ opens under the button; right-click on the host card or row opens at the pointer.
+	// One menu at a time (see TrackMenu).
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+
+	// Click on the ⋯ opens under the button; right-click on the host card or row opens at the pointer.
 	function openMenu(e: MouseEvent) {
 		e.preventDefault(); // a right-click must not also raise WebKit's own menu
 		e.stopPropagation();
 		anchor = anchorMenu(e, { align: 'right' });
 		menuOpen = true;
+		claimMenu(menuId);
 	}
 	// stopPropagation everywhere: the trigger sits over a clickable host (a card's whole surface is a
 	// play/navigate target), so its click must not reach the host's handler. The popup itself now

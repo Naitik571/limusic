@@ -25,7 +25,7 @@
 	import * as api from '$lib/api';
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
-	import { anchorMenu, ctxHost, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
+	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
 	import { addPick, enqueue, isLiked, startRadio, toggleLike, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
 
 	let {
@@ -52,12 +52,19 @@
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
-	// Click on the â‹¯ opens under the button; right-click on the host row opens at the pointer.
+	// One menu at a time: opening here closes every other open menu (and another menu opening
+	// closes this one). The palette renders many of these — one per row — so this is what keeps
+	// right-clicking down a list from stacking a menu per row.
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+
+	// Click on the ⋯ opens under the button; right-click on the host row opens at the pointer.
 	function openMenu(e: MouseEvent) {
 		e.preventDefault(); // a right-click must not also raise WebKit's own menu
 		e.stopPropagation();
 		anchor = anchorMenu(e, { align: 'right' });
 		menuOpen = true;
+		claimMenu(menuId);
 	}
 	// stopPropagation everywhere: the trigger sits inside a clickable row (TrackRow's whole row is a
 	// play target), so its click must not reach the row's onplay (e.g. replacing the queue with the

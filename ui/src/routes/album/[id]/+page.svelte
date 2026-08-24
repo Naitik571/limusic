@@ -33,7 +33,7 @@
     } from "$lib/player.svelte";
     import { getCached, putCached } from "$lib/pagecache";
     import { thumb } from "$lib/thumb";
-    import { anchorMenu, fitMenu, NO_ANCHOR, toBody } from "$lib/menu";
+    import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from "$lib/menu";
 
     let album = $state<AlbumPage | null>(null);
     let artistHero = $state<string | null>(null);
@@ -44,9 +44,14 @@
     let menuOpen = $state(false);
     let anchor = $state(NO_ANCHOR);
 
+    // One menu at a time (see TrackMenu).
+    const menuId = nextMenuId();
+    $effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+
     function openMenu(e: MouseEvent) {
         anchor = anchorMenu(e);
         menuOpen = true;
+        claimMenu(menuId);
     }
 
     const id = $derived(page.params.id ?? "");

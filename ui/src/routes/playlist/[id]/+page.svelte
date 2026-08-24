@@ -36,7 +36,7 @@
 	import type { BrowseItem, PlaylistPage, SongItem } from '$lib/api';
 	import { getCached, putCached, invalidateCached } from '$lib/pagecache';
 	import { thumb } from '$lib/thumb';
-	import { anchorMenu, ctxHost, fitMenu, NO_ANCHOR } from '$lib/menu';
+	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 	import {
 		addPick,
 		enqueue,
@@ -182,6 +182,7 @@
 	function openSort(e: MouseEvent) {
 		sortAnchor = anchorMenu(e, { align: 'right' });
 		sortOpen = true;
+		claimMenu(sortMenuId);
 	}
 
 	async function downloadPlaylistHere() {
@@ -544,9 +545,19 @@
 		playFrom(asItem(), pl.items, null, isOnRepeat ? undefined : id, true, pl.continuation);
 	}
 
+	// One menu at a time across this page's three menus (options / sort / bulk-selection) and
+	// every other menu in the app (see TrackMenu).
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+	const sortMenuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(sortMenuId, () => (sortOpen = false)));
+	const selMenuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(selMenuId, () => (selMenuOpen = false)));
+
 	function openMenu(e: MouseEvent) {
 		anchor = anchorMenu(e);
 		menuOpen = true;
+		claimMenu(menuId);
 	}
 	function run(action: () => void) {
 		menuOpen = false;
@@ -663,6 +674,7 @@
 		selX = e.clientX;
 		selY = e.clientY;
 		selMenuOpen = true;
+		claimMenu(selMenuId);
 	}
 
 	function playSelected(items: SongItem[]) {

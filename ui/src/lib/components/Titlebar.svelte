@@ -30,7 +30,7 @@
 	import * as api from '$lib/api';
 	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor, cancelDownload, cancelAllDownloads } from '$lib/player.svelte';
 	import { lt } from '$lib/lt.svelte';
-	import { anchorMenu, fitMenu, NO_ANCHOR } from '$lib/menu';
+	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 
 let downloadsOpen = $state(false);
 
@@ -116,9 +116,14 @@ let downloadsOpen = $state(false);
 		}
 	}
 
+	// One menu at a time (see TrackMenu) — the account menu sits right next door.
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+
 	function openMenu(e: MouseEvent) {
 		anchor = anchorMenu(e, { align: 'right' });
 		menuOpen = true;
+		claimMenu(menuId);
 	}
 
 	function disconnect() {
