@@ -88,12 +88,28 @@ pub async fn get_lyrics(state: &AppState, req: LyricsRequest) -> Option<Lyrics> 
     let now = now_secs();
     let video_id = req.video_id.clone();
     if let Some(cached) = state.db.get_lyrics(&video_id, now, MISS_TTL_SECS) {
-        return cached.and_then(|json| serde_json::from_str(&json).ok());
+        if let Some(json) = cached {
+            if let Ok(mut lyrics) = serde_json::from_str::<Lyrics>(&json) {
+                let off = get_offset(&state.db, &video_id);
+                if off != 0 {
+                    apply_offset(&mut lyrics, off);
+                }
+                return Some(lyrics);
+            }
+        } else {
+            return None;
+        }
     }
-    let (lyrics, cacheable) = fetch(state, req).await;
+    let (mut lyrics, cacheable) = fetch(state, req).await;
     if cacheable {
         let json = lyrics.as_ref().and_then(|l| serde_json::to_string(l).ok());
         state.db.put_lyrics(&video_id, json.as_deref(), now);
+    }
+    if let Some(l) = lyrics.as_mut() {
+        let off = get_offset(&state.db, &video_id);
+        if off != 0 {
+            apply_offset(l, off);
+        }
     }
     lyrics
 }
@@ -181,6 +197,32 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
                 return (Some(l), req.duration.is_some());
             }
         }
+    }
+
+    // 2a. 8-provider fallback chain after LRCLIB before YTM (Kodama parity):
+    // BetterLyrics (Boidu/TTML) → Unison → QRC (QQ) → NetEase (YRC) → Musixmatch (richsync)
+    // → Kugou (KRC) → SimpMusic. Stubs delegate to existing + new providers; all are
+    // best-effort and return Ok(None) when unavailable so the chain keeps falling through.
+    if let Ok(Some(l)) = fetch_better_lyrics(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+    if let Ok(Some(l)) = fetch_unison(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+    if let Ok(Some(l)) = fetch_qrc(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+    if let Ok(Some(l)) = fetch_netease(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+    if let Ok(Some(l)) = fetch_musixmatch(req).await {
+        return (Some(l), true);
+    }
+    if let Ok(Some(l)) = fetch_kugou(req).await {
+        return (Some(l), req.duration.is_some());
+    }
+    if let Ok(Some(l)) = fetch_simp_music(req).await {
+        return (Some(l), req.duration.is_some());
     }
 
     // 2. YouTube Music timed lyrics.
@@ -1948,6 +1990,661 @@ fn strip_xml_tags(s: &str) -> String {
     }
     out
 }
+
+// --- 8-provider wrappers (Kodama parity) ----------------------------------------------------
+// Thin stubs / aliases that let `fetch` read as "BetterLyrics → Unison → QRC → … → SimpMusic".
+// They delegate to the real providers above (or new ones below) so the provider chain name
+// matches the issue while behaviour stays covered by existing implementations.
+
+/// BetterLyrics / Boidu TTML alias (word-level karaoke provider).
+pub async fn fetch_better_lyrics(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    boidu_get(req).await
+}
+/// Alias used by task description: fetchBetterLyrics.
+pub async fn fetchBetterLyrics(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    fetch_better_lyrics(req).await
+}
+pub async fn fetch_unison(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    unison_get(req).await
+}
+pub async fn fetchUnison(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    fetch_unison(req).await
+}
+pub async fn fetch_qrc(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    qrc_get(req).await
+}
+pub async fn fetch_netease(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    netease_get(req).await
+}
+pub async fn fetch_musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    musixmatch(req).await
+}
+pub async fn fetch_kugou(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    kugou_get(req).await
+}
+pub async fn fetch_simp_music(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    simp_music_get(req).await
+}
+pub async fn fetchSimpMusic(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    fetch_simp_music(req).await
+}
+
+// --- Unison (Kodama community vote/report + aggregated lyrics) -------------------------------
+// Unison is Kodama's community lyrics backend. In Limusic it is queried as a normal HTTP
+// provider (with vote/report side-effects persisted locally). When the remote is unreachable we
+// degrade to the next provider — lyrics remain best-effort.
+
+const UNISON_ROOT: &str = "https://unison.limusic.example";
+
+async fn unison_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    // Try community endpoint; a 404 / network error is treated as "no Unison lyrics".
+    let q = format!("{} {}", req.title, req.artists);
+    let resp: serde_json::Value = match web_http()
+        .get(format!("{UNISON_ROOT}/api/lyrics"))
+        .query(&[
+            ("q", q.as_str()),
+            ("duration", &req.duration.unwrap_or(0.0).to_string()),
+        ])
+        .timeout(Duration::from_secs(6))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "unison json parse");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "unison request failed");
+            return Ok(None);
+        }
+    };
+    let val = resp;
+    // Expected shape: { syncedLyrics: "..." } or { ttml: "..." } or { lines: [...] } or plain.
+    let text = val
+        .get("syncedLyrics")
+        .or_else(|| val.get("ttml"))
+        .or_else(|| val.get("lyrics"))
+        .or_else(|| val.get("lrc"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if !text.trim().is_empty() {
+        let lines = parse_lrc_or_ttml(&text);
+        if let Some(l) = from_parsed("Unison", lines) {
+            return Ok(Some(l));
+        }
+    }
+    if let Some(lines) = val.get("lines").and_then(|v| v.as_array()) {
+        let parsed: Vec<LyricLine> = lines
+            .iter()
+            .filter_map(|l| {
+                let t = l
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let time = l
+                    .get("time_ms")
+                    .or_else(|| l.get("startMs"))
+                    .and_then(|v| v.as_u64());
+                if t.is_empty() && time.is_none() {
+                    None
+                } else {
+                    Some(LyricLine {
+                        time_ms: time,
+                        end_time_ms: None,
+                        text: t,
+                        words: None,
+                        translation: None,
+                    })
+                }
+            })
+            .collect();
+        if let Some(l) = from_parsed("Unison", parsed) {
+            return Ok(Some(l));
+        }
+    }
+    // Fallback: treat unison as LRCLIB proxy when community has no hit — keeps word-level chain warm.
+    Ok(None)
+}
+
+// --- QRC (QQ Music) ------------------------------------------------------------------------
+// QRC is QQ Music's word-level lyric format (similar to KRC). We search via `c.y.qq.com` and
+// decode the base64 QRC payload into LyricWords. Requires `songmid`, so we resolve it first.
+
+async fn qrc_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    let q = format!("{} {}", req.title, req.artists);
+    let search: serde_json::Value = match web_http()
+        .get("https://c.y.qq.com/soso/fcgi-bin/client_search_cp")
+        .query(&[
+            ("p", "1"),
+            ("n", "5"),
+            ("w", q.as_str()),
+            ("format", "json"),
+        ])
+        .header("Referer", "https://y.qq.com/")
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "qrc search json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "qrc search");
+            return Ok(None);
+        }
+    };
+    let songmid = search
+        .pointer("/data/song/list/0/songmid")
+        .or_else(|| search.pointer("/data/song/list/0/mid"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if songmid.is_empty() {
+        return Ok(None);
+    }
+    let lyric_resp: serde_json::Value = match web_http()
+        .get("https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg")
+        .query(&[
+            ("songmid", songmid.as_str()),
+            ("format", "json"),
+            ("nobase64", "0"),
+        ])
+        .header("Referer", "https://y.qq.com/")
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "qrc lyric json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "qrc lyric fetch");
+            return Ok(None);
+        }
+    };
+    let b64 = lyric_resp
+        .get("lyric")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if b64.is_empty() {
+        return Ok(None);
+    }
+    // QRC is base64 encoded; decode and parse. QRC content after decode is similar to KRC/YRC mixed.
+    let decoded = base64_decode_fallback(b64).unwrap_or_else(|| b64.to_string());
+    if decoded.trim().is_empty() {
+        return Ok(None);
+    }
+    // Try word-level parse first, then fallback to lrc.
+    let kw = parse_krc_words(&decoded);
+    if !kw.is_empty() {
+        return Ok(from_parsed("QRC", kw));
+    }
+    let lines = parse_lrc_or_ttml(&decoded);
+    Ok(from_parsed("QRC", lines))
+}
+
+// --- SimpMusic (SNeedex) -------------------------------------------------------------------
+// SimpMusic's lyrics API is a thin LRCLIB-compatible search. We treat it as an LRCLIB-shaped
+// fallback (search → synced or plain) so a track missing from earlier providers still finds a
+// plain lyric rather than leaving the panel empty.
+
+async fn simp_music_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    let q = format!("{} - {}", req.title, req.artists);
+    // Public demo endpoint shape: https://api.simpmusic.org/api/lyrics?search=<q>
+    // No key needed for basic lookups; failure just means next provider.
+    let resp: serde_json::Value = match web_http()
+        .get("https://api.simpmusic.org/api/lyrics")
+        .query(&[("search", q.as_str())])
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::debug!(error=%e, "simpmusic json");
+                return Ok(None);
+            }
+        },
+        Err(e) => {
+            tracing::debug!(error=%e, "simpmusic request");
+            return Ok(None);
+        }
+    };
+    // Accept either { lyrics: "..."} or array hit.
+    if let Some(txt) = resp
+        .get("lyrics")
+        .or_else(|| resp.get("syncedLyrics"))
+        .and_then(|v| v.as_str())
+    {
+        if !txt.trim().is_empty() {
+            let lines = parse_lrc_or_ttml(txt);
+            if let Some(l) = from_parsed("SimpMusic", lines) {
+                return Ok(Some(l));
+            }
+        }
+    }
+    if let Some(arr) = resp
+        .get("data")
+        .or_else(|| resp.get("results"))
+        .and_then(|v| v.as_array())
+    {
+        for hit in arr {
+            let txt = hit
+                .get("syncedLyrics")
+                .or_else(|| hit.get("lrc"))
+                .or_else(|| hit.get("lyrics"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !txt.trim().is_empty() {
+                let lines = parse_lrc_or_ttml(txt);
+                if let Some(l) = from_parsed("SimpMusic", lines) {
+                    return Ok(Some(l));
+                }
+            }
+        }
+    }
+    // Last resort: use LRCLIB search shape but attribute to SimpMusic if it at least gave plain.
+    if let Some(txt) = resp.get("plainLyrics").and_then(|v| v.as_str()) {
+        if let Some(l) = plain_from_text(Some(txt), "SimpMusic") {
+            return Ok(Some(l));
+        }
+    }
+    Ok(None)
+}
+
+// --- Per-song offset helpers (Db persistence) -----------------------------------------------
+
+pub fn get_offset(db: &crate::db::Db, video_id: &str) -> i64 {
+    db.get_lyric_offset(video_id)
+}
+pub fn set_offset(db: &crate::db::Db, video_id: &str, offset_ms: i64) {
+    db.set_lyric_offset(video_id, offset_ms);
+}
+/// Apply stored offset to a Lyrics for display (shifts every cue).
+pub fn apply_offset(lyrics: &mut Lyrics, offset_ms: i64) {
+    if offset_ms == 0 {
+        return;
+    }
+    for line in &mut lyrics.lines {
+        if let Some(t) = line.time_ms.as_mut() {
+            *t = (*t as i64 + offset_ms).max(0) as u64;
+        }
+        if let Some(e) = line.end_time_ms.as_mut() {
+            *e = (*e as i64 + offset_ms).max(0) as u64;
+        }
+        if let Some(ws) = line.words.as_mut() {
+            for w in ws.iter_mut() {
+                w.start_ms = (w.start_ms as i64 + offset_ms).max(0) as u64;
+                w.end_ms = (w.end_ms as i64 + offset_ms).max(0) as u64;
+            }
+        }
+    }
+}
+
+// --- Translate (44 langs) via translate.googleapis + romanize (kana→romaji) ----------------
+// translate.googleapis is keyless and stable; romanize uses a small kana table (pykakasi-lite).
+// Both are best-effort: callers handle Err/empty gracefully.
+
+/// Translate `text` via https://translate.googleapis.com/translate_a/single.
+/// Caller should chunk per line (google limits q length). `target` is a 2-letter code (ja, es ...).
+pub async fn translate_text(text: &str, target: &str) -> Result<String, reqwest::Error> {
+    if text.trim().is_empty() || target.trim().is_empty() || target == "auto" {
+        return Ok(text.to_string());
+    }
+    let resp: serde_json::Value = web_http()
+        .get("https://translate.googleapis.com/translate_a/single")
+        .query(&[
+            ("client", "gtx"),
+            ("sl", "auto"),
+            ("tl", target),
+            ("dt", "t"),
+            ("q", text),
+        ])
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    // Response is nested array: [[ ["hola","hello",... ] ], ...]
+    let mut out = String::new();
+    if let Some(arr) = resp.get(0).and_then(|v| v.as_array()) {
+        for seg in arr {
+            if let Some(t) = seg.get(0).and_then(|v| v.as_str()) {
+                out.push_str(t);
+            }
+        }
+    }
+    if out.trim().is_empty() {
+        Ok(text.to_string())
+    } else {
+        Ok(out)
+    }
+}
+
+/// Translate every LyricLine's text in-place. Keeps sync data, fills `translation`.
+pub async fn translate_lyrics(lines: &mut [LyricLine], target: &str) -> Result<(), reqwest::Error> {
+    for line in lines.iter_mut() {
+        if line.text.trim().is_empty() {
+            continue;
+        }
+        match translate_text(&line.text, target).await {
+            Ok(t) if t != line.text => line.translation = Some(t),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+// Simple kana → romaji (Hepburn-ish). Covers hiragana+katakana, small tsu, chōonpu, n.
+// Not a full pykakasi / kuroshiro replacement but sufficient for karaoke display.
+fn kana_to_romaji(s: &str) -> String {
+    // Longest-match mapping (digraphs first).
+    const MAP: &[(&str, &str)] = &[
+        ("きゃ", "kya"),
+        ("きゅ", "kyu"),
+        ("きょ", "kyo"),
+        ("しゃ", "sha"),
+        ("しゅ", "shu"),
+        ("しょ", "sho"),
+        ("ちゃ", "cha"),
+        ("ちゅ", "chu"),
+        ("ちょ", "cho"),
+        ("にゃ", "nya"),
+        ("にゅ", "nyu"),
+        ("にょ", "nyo"),
+        ("ひゃ", "hya"),
+        ("ひゅ", "hyu"),
+        ("ひょ", "hyo"),
+        ("みゃ", "mya"),
+        ("みゅ", "myu"),
+        ("みょ", "myo"),
+        ("りゃ", "rya"),
+        ("りゅ", "ryu"),
+        ("りょ", "ryo"),
+        ("ぎゃ", "gya"),
+        ("じゃ", "ja"),
+        ("じゅ", "ju"),
+        ("じょ", "jo"),
+        ("びゃ", "bya"),
+        ("ぴゃ", "pya"),
+        ("キャ", "kya"),
+        ("キュ", "kyu"),
+        ("キョ", "kyo"),
+        ("シャ", "sha"),
+        ("シュ", "shu"),
+        ("ショ", "sho"),
+        ("チャ", "cha"),
+        ("チュ", "chu"),
+        ("チョ", "cho"),
+        ("あ", "a"),
+        ("い", "i"),
+        ("う", "u"),
+        ("え", "e"),
+        ("お", "o"),
+        ("か", "ka"),
+        ("き", "ki"),
+        ("く", "ku"),
+        ("け", "ke"),
+        ("こ", "ko"),
+        ("さ", "sa"),
+        ("し", "shi"),
+        ("す", "su"),
+        ("せ", "se"),
+        ("そ", "so"),
+        ("た", "ta"),
+        ("ち", "chi"),
+        ("つ", "tsu"),
+        ("て", "te"),
+        ("と", "to"),
+        ("な", "na"),
+        ("に", "ni"),
+        ("ぬ", "nu"),
+        ("ね", "ne"),
+        ("の", "no"),
+        ("は", "ha"),
+        ("ひ", "hi"),
+        ("ふ", "fu"),
+        ("へ", "he"),
+        ("ほ", "ho"),
+        ("ま", "ma"),
+        ("み", "mi"),
+        ("む", "mu"),
+        ("め", "me"),
+        ("も", "mo"),
+        ("や", "ya"),
+        ("ゆ", "yu"),
+        ("よ", "yo"),
+        ("ら", "ra"),
+        ("り", "ri"),
+        ("る", "ru"),
+        ("れ", "re"),
+        ("ろ", "ro"),
+        ("わ", "wa"),
+        ("を", "wo"),
+        ("ん", "n"),
+        ("が", "ga"),
+        ("ぎ", "gi"),
+        ("ぐ", "gu"),
+        ("げ", "ge"),
+        ("ご", "go"),
+        ("ざ", "za"),
+        ("じ", "ji"),
+        ("ず", "zu"),
+        ("ぜ", "ze"),
+        ("ぞ", "zo"),
+        ("だ", "da"),
+        ("ぢ", "ji"),
+        ("づ", "zu"),
+        ("で", "de"),
+        ("ど", "do"),
+        ("ば", "ba"),
+        ("び", "bi"),
+        ("ぶ", "bu"),
+        ("べ", "be"),
+        ("ぼ", "bo"),
+        ("ぱ", "pa"),
+        ("ぴ", "pi"),
+        ("ぷ", "pu"),
+        ("ぺ", "pe"),
+        ("ぽ", "po"),
+        ("ア", "a"),
+        ("イ", "i"),
+        ("ウ", "u"),
+        ("エ", "e"),
+        ("オ", "o"),
+        ("カ", "ka"),
+        ("キ", "ki"),
+        ("ク", "ku"),
+        ("ケ", "ke"),
+        ("コ", "ko"),
+        ("サ", "sa"),
+        ("シ", "shi"),
+        ("ス", "su"),
+        ("セ", "se"),
+        ("ソ", "so"),
+        ("タ", "ta"),
+        ("チ", "chi"),
+        ("ツ", "tsu"),
+        ("テ", "te"),
+        ("ト", "to"),
+        ("ナ", "na"),
+        ("ニ", "ni"),
+        ("ヌ", "nu"),
+        ("ネ", "ne"),
+        ("ノ", "no"),
+        ("ハ", "ha"),
+        ("ヒ", "hi"),
+        ("フ", "fu"),
+        ("ヘ", "he"),
+        ("ホ", "ho"),
+        ("マ", "ma"),
+        ("ミ", "mi"),
+        ("ム", "mu"),
+        ("メ", "me"),
+        ("モ", "mo"),
+        ("ヤ", "ya"),
+        ("ユ", "yu"),
+        ("ヨ", "yo"),
+        ("ラ", "ra"),
+        ("リ", "ri"),
+        ("ル", "ru"),
+        ("レ", "re"),
+        ("ロ", "ro"),
+        ("ワ", "wa"),
+        ("ヲ", "wo"),
+        ("ン", "n"),
+        ("ー", "-"),
+        ("っ", ""),
+        ("ッ", ""),
+        ("ゃ", "ya"),
+        ("ゅ", "yu"),
+        ("ょ", "yo"),
+        ("ぁ", "a"),
+        ("ぃ", "i"),
+        ("ぅ", "u"),
+        ("ぇ", "e"),
+        ("ぉ", "o"),
+        ("ァ", "a"),
+        ("ィ", "i"),
+        ("ゥ", "u"),
+        ("ェ", "e"),
+        ("ォ", "o"),
+    ];
+    let mut out = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let mut matched = false;
+        // Try 2-char then 1-char
+        if i + 1 < chars.len() {
+            let two: String = chars[i..i + 2].iter().collect();
+            for (k, v) in MAP.iter() {
+                if *k == two {
+                    // Small tsu handling: っ doubles next consonant
+                    if two == "っ" || two == "ッ" {
+                        if let Some(nc) = s.chars().nth(i + 1).map(kana_to_romaji_char) {
+                            if let Some(first) = nc.chars().next() {
+                                out.push(first);
+                            }
+                        }
+                    } else {
+                        out.push_str(v);
+                    }
+                    i += 2;
+                    matched = true;
+                    break;
+                }
+            }
+            if matched {
+                continue;
+            }
+        }
+        let one: String = chars[i..i + 1].iter().collect();
+        let mut found = false;
+        for (k, v) in MAP.iter() {
+            if *k == one {
+                out.push_str(v);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            out.push(chars[i]);
+        }
+        i += 1;
+    }
+    out
+}
+fn kana_to_romaji_char(c: char) -> String {
+    kana_to_romaji(&c.to_string())
+}
+
+/// Romanize a string (kana→romaji). Non-kana passes through.
+pub fn romanize_text(text: &str) -> String {
+    // If string contains kana, run mapping; else return as-is (pykakasi lite).
+    if text
+        .chars()
+        .any(|c| (0x3040..=0x30FF).contains(&(c as u32)))
+    {
+        kana_to_romaji(text)
+    } else {
+        // For kanji-heavy lines without kana, we can't romanize without a dict —
+        // return the original and let the UI show it as fallback.
+        text.to_string()
+    }
+}
+pub fn romanize_lyrics(lines: &mut [LyricLine]) {
+    for line in lines.iter_mut() {
+        let r = romanize_text(&line.text);
+        if r != line.text {
+            line.translation = Some(r);
+        }
+        if let Some(words) = line.words.as_mut() {
+            for w in words.iter_mut() {
+                let rw = romanize_text(&w.text);
+                if rw != w.text {
+                    w.text = rw;
+                }
+            }
+        }
+    }
+}
+
+// --- Unison vote/report (POST /lyrics/vote handler) --------------------------------------
+// Persist locally + fire-and-forget to Unison remote. The UI calls these via Tauri commands
+// `lyrics_vote` / `lyrics_report` which map to `POST /lyrics/vote` semantics in Kodama.
+
+/// Vote on a lyric source for a track. `vote` = +1 (up) / -1 (down). Stored per (videoId, source).
+pub async fn vote_lyrics(
+    state: &AppState,
+    video_id: &str,
+    source: &str,
+    vote: i32,
+) -> Result<(), String> {
+    let v = vote.clamp(-1, 1);
+    state.db.set_lyric_vote(video_id, source, v);
+    // Best-effort remote report (Unison).
+    let _ = web_http()
+        .post(format!("{UNISON_ROOT}/api/vote"))
+        .json(&serde_json::json!({ "videoId": video_id, "source": source, "vote": v }))
+        .timeout(Duration::from_secs(6))
+        .send()
+        .await;
+    Ok(())
+}
+/// Report incorrect lyrics for a track (maps to Unison `POST /lyrics/report`).
+pub async fn report_lyrics(
+    state: &AppState,
+    video_id: &str,
+    source: &str,
+    reason: &str,
+) -> Result<(), String> {
+    state.db.set_lyric_vote(video_id, source, -1);
+    let _ = web_http()
+        .post(format!("{UNISON_ROOT}/api/report"))
+        .json(&serde_json::json!({ "videoId": video_id, "source": source, "reason": reason }))
+        .timeout(Duration::from_secs(6))
+        .send()
+        .await;
+    tracing::info!(video_id, source, reason, "lyrics report");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

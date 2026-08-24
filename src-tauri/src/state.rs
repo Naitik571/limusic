@@ -269,6 +269,15 @@ fn identity_snapshot(identity: &AccountIdentity, selected: bool) -> serde_json::
     })
 }
 
+/// 10-band EQ frequencies Hz
+pub const EQ_FREQS: [u32; 10] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CrossfadeMode {
+    Standard,
+    Smart,
+}
+
 #[derive(Default)]
 struct QueueState {
     items: Vec<SongItem>,
@@ -1955,6 +1964,145 @@ impl AppState {
             .get_setting("autoplay")
             .map(|v| v != "false")
             .unwrap_or(true)
+    }
+
+    // --- EQ / crossfade / best mix ----------------------------------------------------
+
+    pub fn get_eq_bands(&self) -> [f64; 10] {
+        self.db
+            .get_setting("eq_bands")
+            .and_then(|s| serde_json::from_str::<[f64; 10]>(&s).ok())
+            .unwrap_or([0.0; 10])
+    }
+    pub fn get_eq(&self) -> serde_json::Value {
+        let bands = self.get_eq_bands();
+        let preamp: f64 = self
+            .db
+            .get_setting("eq_preamp")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.0);
+        let balance: f64 = self
+            .db
+            .get_setting("eq_balance")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.0);
+        let output_gain: f64 = self
+            .db
+            .get_setting("eq_output_gain")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.0);
+        let auto_eq = self.db.get_setting("eq_autoeq").as_deref() == Some("true");
+        serde_json::json!({"bands":bands,"preamp":preamp,"balance":balance,"output_gain":output_gain,"auto_eq":auto_eq,"freqs":EQ_FREQS})
+    }
+    pub fn set_eq_band(&self, band: usize, gain: f64) {
+        let mut bands = self.get_eq_bands();
+        if band < 10 {
+            bands[band] = gain.clamp(-12.0, 12.0);
+        }
+        self.db.set_setting(
+            "eq_bands",
+            &serde_json::to_string(&bands).unwrap_or_default(),
+        );
+        let _ = self.player.set_eq(band, gain);
+    }
+    pub fn set_eq_bands(&self, bands: [f64; 10]) {
+        self.db.set_setting(
+            "eq_bands",
+            &serde_json::to_string(&bands).unwrap_or_default(),
+        );
+        for (i, g) in bands.iter().enumerate() {
+            let _ = self.player.set_eq(i, *g);
+        }
+    }
+    pub fn set_preamp(&self, g: f64) {
+        self.db.set_setting("eq_preamp", &g.to_string());
+        let _ = self.player.set_preamp(g);
+    }
+    pub fn set_balance(&self, b: f64) {
+        self.db.set_setting("eq_balance", &b.to_string());
+        let _ = self.player.set_balance(b);
+    }
+    pub fn set_output_gain(&self, g: f64) {
+        self.db.set_setting("eq_output_gain", &g.to_string());
+        let _ = self.player.set_output_gain(g);
+    }
+    pub fn set_autoeq(&self, on: bool) {
+        self.db
+            .set_setting("eq_autoeq", if on { "true" } else { "false" });
+        let _ = self.player.set_autoeq(on);
+    }
+    pub fn set_track_gain(&self, video_id: &str, gain: f64) {
+        let mut map: std::collections::HashMap<String, f64> = self
+            .db
+            .get_setting("track_gains")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        map.insert(video_id.to_string(), gain.clamp(-12.0, 12.0));
+        self.db.set_setting(
+            "track_gains",
+            &serde_json::to_string(&map).unwrap_or_default(),
+        );
+        let _ = self.player.set_track_gain(video_id.to_string(), gain);
+    }
+    pub fn get_track_gain(&self, video_id: &str) -> Option<f64> {
+        let map: std::collections::HashMap<String, f64> = self
+            .db
+            .get_setting("track_gains")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        map.get(video_id).copied()
+    }
+    pub fn get_output_devices(&self) -> Vec<String> {
+        self.player.get_output_devices()
+    }
+    pub fn set_output_device(&self, dev: &str) {
+        let _ = self.player.set_output_device(dev);
+        self.db.set_setting("audio_device", dev);
+    }
+
+    pub fn get_crossfade(&self) -> serde_json::Value {
+        let secs: f64 = self
+            .db
+            .get_setting("crossfade_secs")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.0);
+        let mode = self
+            .db
+            .get_setting("crossfade_mode")
+            .unwrap_or_else(|| "standard".into());
+        let best_mix = self.db.get_setting("best_mix").as_deref() == Some("true");
+        serde_json::json!({"secs": secs.clamp(0.0,12.0), "mode": mode, "best_mix": best_mix})
+    }
+    pub fn set_crossfade(&self, secs: f64, mode: &str) {
+        let s = secs.clamp(0.0, 12.0);
+        self.db.set_setting("crossfade_secs", &s.to_string());
+        let m = if mode == "smart" { "smart" } else { "standard" };
+        self.db.set_setting("crossfade_mode", m);
+        let _ = self.player.set_crossfade(s, m);
+    }
+    pub fn set_best_mix(&self, on: bool) {
+        self.db
+            .set_setting("best_mix", if on { "true" } else { "false" });
+        let _ = self.player.set_best_mix(on);
+    }
+    pub async fn apply_best_mix_sort(self: &std::sync::Arc<Self>) {
+        let mut q = self.queue.lock().await;
+        if q.items.len() > q.current + 1 {
+            let cur = q.current;
+            let key_of = |id: &str| -> u8 {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                use std::hash::{Hash, Hasher};
+                id.hash(&mut h);
+                (h.finish() % 12) as u8
+            };
+            let cur_key = key_of(&q.items[cur].video_id);
+            let upcoming = &mut q.items[cur + 1..];
+            upcoming.sort_by_key(|it| {
+                let k = key_of(&it.video_id);
+                let dist = (k as i8 - cur_key as i8).abs() as u8;
+                dist.min(12 - dist)
+            });
+        }
     }
 
     /// Extend the queue with radio continuation when it's nearly out (autoplay). Returns how many

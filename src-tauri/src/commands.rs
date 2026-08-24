@@ -7,7 +7,7 @@ use innertube::{
     AlbumPage, ArtistPage, BrowseItem, HomePage, PlaylistContinuation, PlaylistPage, SearchResults,
     SongItem,
 };
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::state::{AppState, ON_REPEAT_ID, ON_REPEAT_LIMIT, ON_REPEAT_WINDOW_SECS};
 
@@ -174,7 +174,17 @@ pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
     // There is one volume and there can be two windows (the mini player). Without this the one
     // that didn't move the slider keeps showing the old level and lies about what you're hearing.
     let _ = state.app.emit("volume", volume);
+    state.db.set_setting("volume", &volume.to_string());
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_volume(state: St<'_>) -> i64 {
+    state
+        .db
+        .get_setting("volume")
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(state.player.get_volume())
 }
 
 /// Arm or disarm the sleep timer. `mode` is `"off"`, `"end_of_song"`, or `"<minutes>"` (1–1440).
@@ -315,6 +325,13 @@ pub async fn ytdlp_install_now(state: St<'_>) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_highres_art(artist: String, title: String) -> Result<Option<String>, String> {
     crate::art::lookup(&artist, &title).await
+}
+
+/// Spotify Canvas: short looping video for Now Playing (#8). Uses SimpMusic API stub;
+/// returns None when no canvas exists — UI falls back to blurred artwork / palette gradient.
+#[tauri::command]
+pub async fn get_canvas(artist: String, title: String) -> Result<Option<String>, String> {
+    crate::canvas::lookup(&artist, &title).await
 }
 
 /// The streamable client keys the orchestrator tries, for the "disabled clients" setting. Names
@@ -1226,6 +1243,71 @@ pub async fn get_lyrics(
     .await)
 }
 
+/// Per-song lyric offset (ms) — persisted in `lyric_offsets`. The UI applies it as chip
+/// ±250 ms steps and as a drag; the returned `Lyrics` from `get_lyrics` already has it applied
+/// when re-fetched, but the live offset is kept client-side until the next fetch.
+#[tauri::command]
+pub fn get_lyric_offset(state: St<'_>, video_id: String) -> i64 {
+    state.db.get_lyric_offset(&video_id)
+}
+#[tauri::command]
+pub fn set_lyric_offset(state: St<'_>, video_id: String, offset_ms: i64) -> Result<(), String> {
+    state
+        .db
+        .set_lyric_offset(&video_id, offset_ms.clamp(-5000, 5000));
+    Ok(())
+}
+/// Unison vote/report (POST /lyrics/vote semantics). `vote` = 1 or -1.
+#[tauri::command]
+pub async fn lyrics_vote(
+    state: St<'_>,
+    video_id: String,
+    source: String,
+    vote: i32,
+) -> Result<(), String> {
+    crate::lyrics::vote_lyrics(&state, &video_id, &source, vote).await
+}
+#[tauri::command]
+pub async fn lyrics_report(
+    state: St<'_>,
+    video_id: String,
+    source: String,
+    reason: String,
+) -> Result<(), String> {
+    crate::lyrics::report_lyrics(&state, &video_id, &source, &reason).await
+}
+/// Translate via translate.googleapis (44 langs). `target` is a BCP code (e.g. `en`, `ja`).
+#[tauri::command]
+pub async fn translate_lyrics(text: String, target: String) -> Result<String, String> {
+    crate::lyrics::translate_text(&text, &target)
+        .await
+        .map_err(|e| e.to_string())
+}
+/// Romanize (kana → romaji, pykakasi-lite). Returns the romanized string.
+#[tauri::command]
+pub fn romanize_lyrics(text: String) -> String {
+    crate::lyrics::romanize_text(&text)
+}
+
+// --- Video Sync ------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn set_video_sync(state: St<'_>, enabled: bool) -> Result<(), String> {
+    state
+        .player
+        .set_video_sync(enabled)
+        .map_err(|e| e.to_string())?;
+    // also persist for next launch as internal setting
+    state
+        .db
+        .set_setting("video_sync", if enabled { "true" } else { "false" });
+    Ok(())
+}
+#[tauri::command]
+pub fn get_video_sync(state: St<'_>) -> bool {
+    state.db.get_setting("video_sync").as_deref() == Some("true") || state.player.get_video_sync()
+}
+
 // --- Changelog ------------------------------------------------------------------------------
 
 #[derive(Clone, serde::Serialize)]
@@ -1524,6 +1606,147 @@ pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
         state.db.delete_download(&d.video_id);
     }
     Ok(())
+}
+
+// --- EQ / crossfade / best mix -------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_eq(state: St<'_>) -> Result<serde_json::Value, String> {
+    Ok(state.get_eq())
+}
+#[tauri::command]
+pub async fn set_eq(state: St<'_>, band: usize, gain: f64) -> Result<(), String> {
+    state.set_eq_band(band, gain);
+    Ok(())
+}
+#[tauri::command]
+pub async fn get_eq_bands(state: St<'_>) -> Result<[f64; 10], String> {
+    Ok(state.get_eq_bands())
+}
+#[tauri::command]
+pub async fn set_eq_bands(state: St<'_>, bands: [f64; 10]) -> Result<(), String> {
+    state.set_eq_bands(bands);
+    Ok(())
+}
+#[tauri::command]
+pub async fn set_preamp(state: St<'_>, gain: f64) -> Result<(), String> {
+    state.set_preamp(gain);
+    Ok(())
+}
+#[tauri::command]
+pub async fn set_balance(state: St<'_>, balance: f64) -> Result<(), String> {
+    state.set_balance(balance);
+    Ok(())
+}
+#[tauri::command]
+pub async fn set_output_gain(state: St<'_>, gain: f64) -> Result<(), String> {
+    state.set_output_gain(gain);
+    Ok(())
+}
+#[tauri::command]
+pub async fn set_autoeq(state: St<'_>, on: bool) -> Result<(), String> {
+    state.set_autoeq(on);
+    Ok(())
+}
+#[tauri::command]
+pub async fn set_track_gain(state: St<'_>, video_id: String, gain: f64) -> Result<(), String> {
+    state.set_track_gain(&video_id, gain);
+    Ok(())
+}
+#[tauri::command]
+pub async fn get_output_devices(state: St<'_>) -> Result<Vec<String>, String> {
+    Ok(state.get_output_devices())
+}
+#[tauri::command]
+pub async fn set_output_device(state: St<'_>, device: String) -> Result<(), String> {
+    state.set_output_device(&device);
+    Ok(())
+}
+#[tauri::command]
+pub async fn get_crossfade(state: St<'_>) -> Result<serde_json::Value, String> {
+    Ok(state.get_crossfade())
+}
+#[tauri::command]
+pub async fn set_crossfade(state: St<'_>, secs: f64, mode: String) -> Result<(), String> {
+    state.set_crossfade(secs, &mode);
+    Ok(())
+}
+#[tauri::command]
+pub async fn set_best_mix(state: St<'_>, on: bool) -> Result<(), String> {
+    let s = state.inner().clone();
+    s.set_best_mix(on);
+    if on {
+        s.apply_best_mix_sort().await;
+    }
+    Ok(())
+}
+
+// --- Remote LAN QR (#5) ------------------------------------------------------------------
+#[tauri::command]
+pub fn get_lan_url(state: St<'_>) -> String {
+    crate::remote::lan_url(&state.db)
+}
+#[tauri::command]
+pub fn get_remote_token(state: St<'_>) -> String {
+    crate::remote::get_or_create_token(&state.db)
+}
+#[tauri::command]
+pub fn pair_remote(state: St<'_>, token: String) -> Result<bool, String> {
+    let expected = crate::remote::get_or_create_token(&state.db);
+    if token == expected {
+        state
+            .db
+            .set_setting("remote_paired_at", &crate::db::now_secs().to_string());
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+// --- Artist Packs (#9) -------------------------------------------------------------------
+#[tauri::command]
+pub async fn list_artist_packs(
+    state: St<'_>,
+) -> Result<Vec<crate::artist_packs::ArtistPack>, String> {
+    Ok(crate::artist_packs::list_packs(&state.db))
+}
+#[tauri::command]
+pub async fn get_artist_pack(
+    state: St<'_>,
+    id: String,
+) -> Result<Option<crate::artist_packs::ArtistPack>, String> {
+    Ok(crate::artist_packs::get_pack(&state.db, &id))
+}
+#[tauri::command]
+pub async fn remove_artist_pack(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    id: String,
+) -> Result<(), String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    crate::artist_packs::remove_pack(&state.db, &data_dir, &id)
+}
+#[tauri::command]
+pub async fn install_artist_pack(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    url: String,
+) -> Result<crate::artist_packs::ArtistPack, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    crate::artist_packs::install_from_url(state.inner().db.clone(), data_dir, url).await
+}
+#[tauri::command]
+pub async fn install_artist_pack_zip(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    path: String,
+) -> Result<crate::artist_packs::ArtistPack, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    crate::artist_packs::install_from_zip(&state.db, &data_dir, std::path::Path::new(&path))
+}
+#[tauri::command]
+pub async fn fetch_artist_packs_index() -> Result<crate::artist_packs::ArtistPackIndex, String> {
+    crate::artist_packs::fetch_index().await
 }
 
 #[cfg(test)]

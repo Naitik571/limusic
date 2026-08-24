@@ -1,6 +1,8 @@
 //! Limusic Tauri app. Wires transport + player + db + orchestrator behind the command boundary.
 
 mod art;
+mod artist_packs;
+mod canvas;
 mod cipher;
 mod commands;
 mod db;
@@ -15,6 +17,7 @@ mod media;
 mod mini;
 mod orchestrator;
 mod potoken;
+mod remote;
 mod session;
 mod state;
 mod tray;
@@ -68,8 +71,8 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
-        // Must be the first plugin registered (its documented requirement). A second launch â€”
-        // e.g. clicking the app icon while we're hidden in the tray â€” re-shows this instance
+        // Must be the first plugin registered (its documented requirement). A second launch —
+        // e.g. clicking the app icon while we're hidden in the tray — re-shows this instance
         // instead of spawning a second one (which would fight over SQLite and mpv).
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             tray::show_main(app);
@@ -82,6 +85,60 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcuts([
+                    "CmdOrCtrl+Shift+Up",
+                    "CmdOrCtrl+Shift+Down",
+                    "MediaPlayPause",
+                    "MediaNextTrack",
+                    "MediaPrevTrack",
+                ])
+                .unwrap()
+                .with_handler(|app, shortcut, event| {
+                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        return;
+                    }
+                    let Some(state) = app.try_state::<Arc<AppState>>() else {
+                        return;
+                    };
+                    let state = state.inner().clone();
+                    match shortcut.to_string().as_str() {
+                        "CmdOrCtrl+Shift+Up" => {
+                            let vol = (state.player.get_volume() + 5).min(100);
+                            let _ = state.player.set_volume(vol);
+                            state.db.set_setting("volume", &vol.to_string());
+                            let _ = app.emit("volume", vol);
+                        }
+                        "CmdOrCtrl+Shift+Down" => {
+                            let vol = (state.player.get_volume() - 5).max(0);
+                            let _ = state.player.set_volume(vol);
+                            state.db.set_setting("volume", &vol.to_string());
+                            let _ = app.emit("volume", vol);
+                        }
+                        "MediaPlayPause" => {
+                            let s = state.clone();
+                            tauri::async_runtime::spawn(async move {
+                                s.resume_or_toggle().await;
+                            });
+                        }
+                        "MediaNextTrack" => {
+                            let s = state.clone();
+                            tauri::async_runtime::spawn(async move {
+                                s.next_in_queue().await;
+                            });
+                        }
+                        "MediaPrevTrack" => {
+                            let s = state.clone();
+                            tauri::async_runtime::spawn(async move {
+                                s.prev_in_queue().await;
+                            });
+                        }
+                        _ => {}
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -215,6 +272,54 @@ pub fn run() {
                 });
             }
 
+            // Restore audio settings (EQ / crossfade / device) from DB
+            {
+                let bands = app_state.get_eq_bands();
+                for (i, g) in bands.iter().enumerate() {
+                    let _ = app_state.player.set_eq(i, *g);
+                }
+                let pre: f64 = app_state
+                    .db
+                    .get_setting("eq_preamp")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let _ = app_state.player.set_preamp(pre);
+                let bal: f64 = app_state
+                    .db
+                    .get_setting("eq_balance")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let _ = app_state.player.set_balance(bal);
+                let og: f64 = app_state
+                    .db
+                    .get_setting("eq_output_gain")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let _ = app_state.player.set_output_gain(og);
+                let cf: f64 = app_state
+                    .db
+                    .get_setting("crossfade_secs")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let mode = app_state
+                    .db
+                    .get_setting("crossfade_mode")
+                    .unwrap_or_else(|| "standard".into());
+                let _ = app_state.player.set_crossfade(cf, &mode);
+                // Video Sync: restore mpv `vid` from persisted setting
+                if app_state.db.get_setting("video_sync").as_deref() == Some("true") {
+                    let _ = app_state.player.set_video_sync(true);
+                }
+                // Volume: restore persisted level (exponential curve EXPONENT=3)
+                if let Some(v) = app_state
+                    .db
+                    .get_setting("volume")
+                    .and_then(|s| s.parse::<i64>().ok())
+                {
+                    let _ = app_state.player.set_volume(v.clamp(0, 100));
+                    let _ = handle.emit("volume", v.clamp(0, 100));
+                }
+            }
             // Restore the last session's queue (paused, not autoplaying). context/11 Â§state.
             {
                 let st = app_state.clone();
@@ -247,6 +352,9 @@ pub fn run() {
             // 1 Hz sleep-timer tick: pause + notify when the countdown expires. A plain thread â€”
             // the check is a few ns, `Player::pause` is sync, and the app already has several
             // std threads (media, discord, lastfm) for the same reason.
+            remote::spawn(app_state.clone());
+            artist_packs::spawn_index_poller(handle.clone(), app_state.db.clone());
+
             spawn_sleep_timer(app_state.clone());
 
             // Pump mpv events â†’ UI events + queue advance. context/11 events, context/14 Â§TrackEnded.
@@ -308,6 +416,8 @@ pub fn run() {
             commands::get_stream_clients,
             commands::ytdlp_info,
             commands::get_highres_art,
+            commands::get_canvas,
+            commands::get_volume,
             commands::ytdlp_install_now,
             commands::clear_caches,
             commands::list_downloads,
@@ -365,12 +475,43 @@ pub fn run() {
             commands::lt_reject_suggestion,
             commands::lt_request_sync,
             commands::get_lyrics,
+            commands::get_lyric_offset,
+            commands::set_lyric_offset,
+            commands::lyrics_vote,
+            commands::lyrics_report,
+            commands::translate_lyrics,
+            commands::romanize_lyrics,
+            commands::set_video_sync,
+            commands::get_video_sync,
             commands::lastfm_connect,
             commands::lastfm_disconnect,
             commands::lastfm_status,
             commands::release_notes,
             commands::can_self_update,
             commands::open_external,
+            commands::get_eq,
+            commands::set_eq,
+            commands::get_eq_bands,
+            commands::set_eq_bands,
+            commands::set_preamp,
+            commands::set_balance,
+            commands::set_output_gain,
+            commands::set_autoeq,
+            commands::set_track_gain,
+            commands::get_output_devices,
+            commands::set_output_device,
+            commands::get_crossfade,
+            commands::set_crossfade,
+            commands::set_best_mix,
+            commands::get_lan_url,
+            commands::get_remote_token,
+            commands::pair_remote,
+            commands::list_artist_packs,
+            commands::install_artist_pack,
+            commands::install_artist_pack_zip,
+            commands::remove_artist_pack,
+            commands::get_artist_pack,
+            commands::fetch_artist_packs_index,
         ])
         .on_window_event(|window, event| {
             // Close-to-tray: âœ• hides the main window and playback keeps running; real quit is

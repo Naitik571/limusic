@@ -14,7 +14,7 @@
 	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { appearance, applyArtworkAccent, initTheme } from '$lib/theme.svelte';
+	import { appearance, applyArtworkAccent, initLayout, initTheme } from '$lib/theme.svelte';
 	import { thumb } from '$lib/thumb';
 	import { dragScroll } from '$lib/dnd';
 	import { suppressNative } from '$lib/menu';
@@ -74,8 +74,11 @@
 	// routes below it are ever rendered. Constant for the window's lifetime.
 	const isMini = browser && getCurrentWindow().label === 'mini';
 
-	// Apply the saved accent color before the first paint (ssr=false → nothing renders until now).
-	if (browser) initTheme();
+	// Apply the saved accent color + layout before the first paint (ssr=false → nothing renders until now).
+	if (browser) {
+		initTheme();
+		initLayout();
+	}
 
 	// Wire the Tauri event bridge once for the whole app; teardown on destroy. Check for an update
 	// on every app open (silent unless one exists).
@@ -117,6 +120,16 @@
 			: 'rounded-[1.25rem]'}"
 	>
 		<AmbientGlow />
+		{#if appearance.ambientMode && playback.now?.thumbnail}
+			<img
+				src={thumb(playback.now.thumbnail, 720)}
+				alt=""
+				aria-hidden="true"
+				class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+				style="filter: blur(40px) scale(1.2); opacity: var(--ambient-opacity, 0.12);"
+			/>
+			<div class="pointer-events-none absolute inset-0 bg-background/40 backdrop-blur-[1px]" style="opacity: calc(var(--ambient-opacity, 0.12) * 0.7);"></div>
+		{/if}
 		<ResizeBorders />
 		<Titlebar />
 		<!-- relative: the queue and lyrics panels are absolute overlays inside it (see QueuePanel). -->

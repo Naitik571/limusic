@@ -7,6 +7,7 @@
 		Maximize01Icon,
 		Minimize01Icon,
 		Mic01Icon,
+		Video01Icon,
 		MusicNote01Icon,
 		PauseIcon,
 		PlayIcon,
@@ -20,6 +21,7 @@
 	import QueueList from './QueueList.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import LyricsView from './LyricsView.svelte';
+	import { setAppearance } from '$lib/theme.svelte';
 
 	// Off in settings, this view drops its tabs and the queue/lyrics panels stay in charge of both
 	// (see +layout): they paint above this (z-30 over z-20), so all this needs is to hand back the
@@ -41,6 +43,14 @@
 		const cur = playback.queue.items[playback.queue.currentIndex];
 		return cur?.video_id === playback.now?.videoId ? cur : null;
 	});
+
+	function toggleVideoSync() {
+		const next = !appearance.videoSync;
+		setAppearance({ videoSync: next });
+		api.setVideoSync(next).catch(()=>{});
+	}
+	const isVideoTrack = $derived(!!currentSong?.is_video);
+	const showVideo = $derived(appearance.videoSync && !!playback.now?.videoId);
 
 	// Enlarged lyrics take the whole view, artwork column and tab strip included. A class swap
 	// rather than unmounting the tabs: LyricsView must survive it or it refetches and loses its
@@ -98,6 +108,21 @@
 		}
 	}
 
+	// Spotify Canvas (#8): looping video when available, palette gradient fallback.
+	let canvasUrl = $state<string | null>(null);
+	$effect(() => {
+		const now = playback.now;
+		canvasUrl = null;
+		if (!now || !now.artists || api.isLocalId(now.videoId)) return;
+		const vid = now.videoId;
+		api
+			.getCanvas(now.artists, now.title)
+			.then((url) => {
+				if (url && vid === playback.now?.videoId) canvasUrl = url;
+			})
+			.catch(() => {});
+	});
+
 	// Clicking the artwork toggles playback, and flashes the action just taken over it so the click
 	// visibly did something. Read `paused` before the toggle: the backend event that flips it is a
 	// round trip away, and the icon has to be right on the frame the user clicked.
@@ -113,6 +138,7 @@
 	// Wheel over the cover art in the maximized view steps the volume (same 5%/notch as the
 	// player bar) and pops a % badge over the artwork. wheelVolume reuses nudgeVolume, so the
 	// level persists once the gesture stops. The badge clears ~1s after the last notch.
+	// Hold Shift for precise 1% steps.
 	let volBadge = $state<number | null>(null);
 	let volBadgeTimer: ReturnType<typeof setTimeout> | undefined;
 	function onMaxWheel(e: WheelEvent) {
@@ -121,6 +147,13 @@
 		clearTimeout(volBadgeTimer);
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}
+
+	// Ambient intensity → opacity (mirrors theme.svelte mapping) for inline style fallback.
+	const ambientOpacity = $derived(
+		appearance.ambientMode
+			? (appearance.immersiveBackgroundIntensity ?? (appearance.ambientIntensity === 'vivid' ? 0.22 : appearance.ambientIntensity === 'subtle' ? 0.06 : 0.12))
+			: 0
+	);
 </script>
 
 <!-- Covers the page but not the sidebar (you navigate away to minimise) and not the player bar,
@@ -140,7 +173,18 @@
 	     Two opacities because the wash sits on opposite grounds: over white it has to stay pale
 	     enough for dark text, over near-black it can carry more colour before muted-foreground
 	     stops reading. Turn them up together if it's too subtle. -->
-	{#if appearance.artworkBackground && srcs[2] && !bgFailed}
+	{#if appearance.ambientMode && srcs[2] && !bgFailed}
+		<!-- Ambient mode (#7): blurred backdrop with intensity via --ambient-opacity -->
+		<img
+			src={srcs[2]}
+			alt=""
+			onerror={() => (bgFailed = true)}
+			class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+			style="filter: blur(40px) scale(1.2); opacity: var(--ambient-opacity, {ambientOpacity});"
+		/>
+		<!-- Glass veil keeps text legible over vivid ambient -->
+		<div class="pointer-events-none absolute inset-0 bg-background/20 dark:bg-background/10"></div>
+	{:else if appearance.artworkBackground && srcs[2] && !bgFailed}
 		<img
 			src={srcs[2]}
 			alt=""
@@ -169,6 +213,50 @@
 			<!-- A div, not a button: it is the [data-ctx] host, so right-clicking anywhere on the
 			     artwork opens the track menu at the pointer (ctxHost on the hidden TrackMenu). -->
 			<div class="relative w-full max-w-[var(--art)]" data-ctx>
+				{#if showVideo}
+					<!-- Video Sync: muted official video + audio with FFT cross-correlation (Kodama parity). Uses YT embed muted + audio from mpv; mpv `vo=libmpv` path renders when `is_video` is true. -->
+					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
+						<iframe
+							src="https://www.youtube.com/embed/{playback.now?.videoId}?autoplay=1&mute=1&controls=0&rel=0&playsinline=1"
+							title="Official video"
+							allow="autoplay; encrypted-media"
+							class="absolute inset-0 h-full w-full border-0"
+						></iframe>
+						<div class="pointer-events-none absolute bottom-2 left-2 rounded-full glass-strong px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">VIDEO SYNC • muted</div>
+					</div>
+				{:else if canvasUrl}
+					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
+					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
+						<video
+							src={canvasUrl}
+							autoplay
+							muted
+							loop
+							playsinline
+							onerror={() => (canvasUrl = null)}
+							class="absolute inset-0 h-full w-full object-cover"
+						></video>
+						{#if heroSrc}
+							<img src={heroSrc} alt="" class="absolute inset-0 h-full w-full object-cover opacity-30 mix-blend-overlay" aria-hidden="true" />
+						{/if}
+						<div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/10"></div>
+						<button
+							type="button"
+							class="absolute inset-0 cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+							onclick={(e) => { e.stopPropagation(); toggle(); }}
+							onwheel={onMaxWheel}
+							aria-label={playback.paused ? 'Play' : 'Pause'}
+						></button>
+						<div class="pointer-events-none absolute bottom-2 left-2 rounded-full glass-strong px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">CANVAS</div>
+						{#if flash}
+							<div in:scale={{ start: 0.7, duration: 150, easing: cubicOut }} out:scale={{ start: 1.3, duration: 320, easing: cubicOut }} class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+								<div class="rounded-full bg-black/55 p-3.5 text-white">
+									<HugeiconsIcon icon={PauseIcon} altIcon={PlayIcon} showAlt={flash === 'play'} class="h-7 w-7" />
+								</div>
+							</div>
+						{/if}
+					</div>
+				{:else}
 				<button
 					type="button"
 					class="relative block w-full max-w-[var(--art)] cursor-pointer rounded-2xl bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -214,6 +302,7 @@
 						</div>
 					{/if}
 				</button>
+				{/if}
 				{#if volBadge !== null}
 					<span
 						class="pointer-events-none absolute top-2 left-2 z-10 rounded-lg glass-strong px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
@@ -266,6 +355,14 @@
 							/>
 						</button>
 					{/if}
+					<button
+						onclick={toggleVideoSync}
+						class="cursor-pointer rounded-md p-1.5 transition-colors {appearance.videoSync ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'}"
+						aria-label="Toggle video sync"
+						title={appearance.videoSync ? 'Video sync on (muted video + audio)' : 'Video sync off (artwork only)'}
+					>
+						<HugeiconsIcon icon={Video01Icon} class="h-4 w-4" />
+					</button>
 				</div>
 				<!-- Only the open tab is mounted: bits-ui keeps inactive content in the DOM, which would
 				     leave LyricsView fetching lyrics for every track you never asked to see. -->

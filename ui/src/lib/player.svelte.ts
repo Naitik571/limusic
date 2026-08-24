@@ -8,6 +8,7 @@ import { applyLtState, lt } from './lt.svelte';
 import { clearCached } from './pagecache';
 import * as pl from './personal';
 import type { Personal } from './personal';
+import { appearance, setAppearance } from './theme.svelte';
 
 export const playback = $state({
 	now: null as NowPlaying | null,
@@ -20,6 +21,34 @@ export const playback = $state({
 	// then optimistic on toggle.
 	liked: false
 });
+
+// --- EQ / crossfade ---------------------------------------------------------
+export const eq = $state<{ bands: number[]; preamp: number; balance: number; output_gain: number; auto_eq: boolean; freqs: number[] }>({
+	bands: Array(10).fill(0),
+	preamp: 0,
+	balance: 0,
+	output_gain: 0,
+	auto_eq: false,
+	freqs: [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+});
+export const crossfade = $state<{ secs: number; mode: string; best_mix: boolean }>({ secs: 0, mode: 'standard', best_mix: false });
+export async function loadEq() {
+	try {
+		const e = await api.getEq();
+		eq.bands = e.bands; eq.preamp = e.preamp; eq.balance = e.balance; eq.output_gain = e.output_gain; eq.auto_eq = e.auto_eq; eq.freqs = e.freqs ?? eq.freqs;
+		const cf = await api.getCrossfade();
+		crossfade.secs = cf.secs; crossfade.mode = cf.mode; crossfade.best_mix = cf.best_mix;
+	} catch {}
+}
+export function setEqBand(band: number, gain: number) { eq.bands[band] = gain; api.setEq(band, gain).catch(()=>{}); }
+export function setEqPreamp(g: number) { eq.preamp = g; api.setPreamp(g).catch(()=>{}); }
+export function setEqBalance(b: number) { eq.balance = b; api.setBalance(b).catch(()=>{}); }
+export function setEqOutputGain(g: number) { eq.output_gain = g; api.setOutputGain(g).catch(()=>{}); }
+export function setEqAutoEq(on: boolean) { eq.auto_eq = on; api.setAutoeq(on).catch(()=>{}); }
+export function setTrackGain(id: string, g: number) { api.setTrackGain(id, g).catch(()=>{}); }
+export function setCrossfadeSecs(s: number) { crossfade.secs = s; api.setCrossfade(s, crossfade.mode).catch(()=>{}); }
+export function setCrossfadeMode(m: string) { crossfade.mode = m; api.setCrossfade(crossfade.secs, m).catch(()=>{}); }
+export function setBestMix(on: boolean) { crossfade.best_mix = on; api.setBestMix(on).catch(()=>{}); }
 
 // --- Offline download manager (Titlebar popover). A reactive list of in-flight / finished /
 // failed downloads, fed by the Rust event bus. Each track carries a 0–100 percent so the UI
@@ -427,6 +456,7 @@ let volTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function dragVolume(v: number) {
 	playback.volume = v;
+	showVolumeHud(v);
 	if (volTimer) return;
 	volTimer = setTimeout(() => {
 		volTimer = null;
@@ -442,6 +472,7 @@ export function commitVolume(v: number) {
 	}
 	playback.volume = v;
 	api.setVolume(v);
+	showVolumeHud(v);
 	// Persisted here rather than in Rust's `set_volume`: a drag calls that once per frame and every
 	// settings write is an fsync. A commit is one per gesture, and it's the level to reopen at.
 	api.setSetting('volume', String(v)).catch(() => {});
@@ -451,24 +482,76 @@ export function commitVolume(v: number) {
  * One keyboard step of volume (Ctrl+> / Ctrl+<). Live like a drag, so a held key gets one IPC per
  * frame instead of one per repeat, and persisted only once the presses stop: a settings write is an
  * fsync, and a run of taps is one gesture the same way a drag is.
+ *
+ * Precise mode (Shift held or toggle) uses 1% steps; coarse uses 5% (pear parity, EXPONENT=3
+ * exponential curve is applied server-side in `perceptual_to_mpv`).
  */
 let volSettle: ReturnType<typeof setTimeout> | undefined;
 
-export function nudgeVolume(delta: number) {
-	dragVolume(Math.min(100, Math.max(0, playback.volume + delta)));
+export const VOLUME_STEP_COARSE = 5;
+export const VOLUME_STEP_PRECISE = 1;
+
+export function volumeStep(precise: boolean): number {
+	return precise ? VOLUME_STEP_PRECISE : VOLUME_STEP_COARSE;
+}
+
+/** Precise HUD: shows on every volume change, auto-hides after 1.5s. */
+export const volumeHud = $state<{ visible: boolean; value: number; timeout: ReturnType<typeof setTimeout> | undefined }>({
+	visible: false,
+	value: 100,
+	timeout: undefined
+});
+
+export function showVolumeHud(value: number) {
+	volumeHud.value = value;
+	volumeHud.visible = true;
+	clearTimeout(volumeHud.timeout);
+	volumeHud.timeout = setTimeout(() => {
+		volumeHud.visible = false;
+	}, 1500);
+}
+
+export function hideVolumeHud() {
+	clearTimeout(volumeHud.timeout);
+	volumeHud.visible = false;
+}
+
+export function nudgeVolume(delta: number, precise = false) {
+	const step = precise ? VOLUME_STEP_PRECISE : VOLUME_STEP_COARSE;
+	// delta is -1/1 or -5/5 or arbitrary; use its sign scaled to the desired step.
+	// If delta magnitude equals the opposite step size (e.g. caller passed 5 but we want precise 1),
+	// re-scale to the requested step.
+	const dir = delta > 0 ? 1 : delta < 0 ? -1 : 0;
+	if (dir === 0) return;
+	let actual: number;
+	if (Math.abs(delta) === VOLUME_STEP_PRECISE || Math.abs(delta) === VOLUME_STEP_COARSE) {
+		actual = dir * step;
+	} else {
+		actual = dir * Math.abs(delta);
+		if (precise && Math.abs(actual) > 1) actual = dir * step;
+	}
+	dragVolume(Math.min(100, Math.max(0, playback.volume + actual)));
 	clearTimeout(volSettle);
 	volSettle = setTimeout(() => commitVolume(playback.volume), 400);
+}
+
+/** Precise variant: 1% per step. */
+export function nudgeVolumePrecise(delta: number) {
+	nudgeVolume(delta, true);
 }
 
 /**
  * Mouse wheel as a volume gesture (sliders, the player bar, artwork). Same gesture as a run of
  * key presses, so it reuses the nudge path — live per frame, persisted once the scrolling stops.
+ * Hold Shift for precise 1% steps (matches Orchard/pear).
  * preventDefault keeps the page from scrolling underneath: Svelte only forces passive listeners
  * on touch events, not wheel.
  */
 export function wheelVolume(e: WheelEvent) {
 	e.preventDefault();
-	nudgeVolume(e.deltaY < 0 ? 5 : -5);
+	const precise = e.shiftKey;
+	const step = precise ? VOLUME_STEP_PRECISE : VOLUME_STEP_COARSE;
+	nudgeVolume(e.deltaY < 0 ? step : -step, precise);
 }
 
 // Mute *is* volume 0 — no separate flag, so dragging the slider off zero un-mutes for free and the
@@ -501,7 +584,8 @@ export function toggleMute() {
 // focused button, arrows on a focused slider. The guard below yields to them — without it,
 // Space would toggle playback *instead of* activating whichever button has focus.
 
-const SHORTCUT_STEP = 5; // volume percent / seek seconds for the arrow keys
+	const SHORTCUT_STEP = 5; // volume percent / seek seconds for the arrow keys
+	const SHORTCUT_STEP_PRECISE = 1;
 
 function onShortcut(e: KeyboardEvent) {
 	const target = e.target as HTMLElement | null;
@@ -531,10 +615,16 @@ function onShortcut(e: KeyboardEvent) {
 		toggleMute();
 	} else if (key === 'ArrowUp') {
 		e.preventDefault();
-		commitVolume(Math.min(100, playback.volume + SHORTCUT_STEP));
+		const precise = e.shiftKey;
+		const step = precise ? SHORTCUT_STEP_PRECISE : SHORTCUT_STEP;
+		if (precise) nudgeVolume(step, true);
+		else commitVolume(Math.min(100, playback.volume + step));
 	} else if (key === 'ArrowDown') {
 		e.preventDefault();
-		commitVolume(Math.max(0, playback.volume - SHORTCUT_STEP));
+		const precise = e.shiftKey;
+		const step = precise ? SHORTCUT_STEP_PRECISE : SHORTCUT_STEP;
+		if (precise) nudgeVolume(-step, true);
+		else commitVolume(Math.max(0, playback.volume - step));
 	} else if (key === 'ArrowLeft') {
 		e.preventDefault();
 		api.seek(Math.max(0, pos - 5));
@@ -962,5 +1052,10 @@ export function initApp(mini = false): () => void {
 	scanLocal();
 	// Seed the Listen Together state (server URL, any active room after a UI reload).
 	api.ltGetState().then(applyLtState).catch(() => {});
+	loadEq();
+	// Restore persisted volume (exponential EXPONENT=3)
+	api.getVolume().then((v) => { playback.volume = v; }).catch(()=>{});
+	// Restore Video Sync persisted state (mpv vo=libmpv) — sync appearance switch with backend
+	api.getVideoSync().then((on) => { if (on) setAppearance({ videoSync: true }); }).catch(()=>{});
 	return teardown;
 }

@@ -49,3 +49,5 @@ discord-rich-presence = "1.1.0"
 md-5 = "0.10"
 lofty = "0.22.2"
 tauri-plugin-dialog = "2.7.2"
+tauri-plugin-global-shortcut = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }

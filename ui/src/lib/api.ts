@@ -274,6 +274,7 @@ export const setRepeat = (mode: RepeatMode) => invoke<void>('set_repeat', { mode
 export const togglePause = () => invoke<void>('toggle_pause');
 export const seek = (position: number) => invoke<void>('seek', { position });
 export const setVolume = (volume: number) => invoke<void>('set_volume', { volume });
+export const getVolume = () => invoke<number>('get_volume');
 export const setSleepTimer = (mode: string) => invoke<void>('set_sleep_timer', { mode });
 export const getSleepTimer = () => invoke<string>('get_sleep_timer');
 export const getQueue = () => invoke<QueueState>('get_queue');
@@ -386,6 +387,10 @@ export const closeMini = () => invoke<void>('close_mini');
 // --- hi-res cover art (Rust art.rs) ------------------------------------------------------------
 export const getHighresArt = (artist: string, title: string) =>
 	invoke<string | null>('get_highres_art', { artist, title });
+
+// --- Spotify Canvas (Rust canvas.rs, #8) --------------------------------------------------
+export const getCanvas = (artist: string, title: string) =>
+	invoke<string | null>('get_canvas', { artist, title });
 
 // --- yt-dlp fallback (Rust ytdlp.rs) -----------------------------------------------------------------
 export interface YtdlpInfo {
@@ -553,6 +558,19 @@ export const getLyrics = (args: {
 	duration?: number;
 }) => invoke<Lyrics | null>('get_lyrics', args);
 
+/** Per-song offset (ms) persisted in Rust `lyric_offsets`. */
+export const getLyricOffset = (videoId: string) => invoke<number>('get_lyric_offset', { videoId });
+export const setLyricOffset = (videoId: string, offset_ms: number) => invoke<void>('set_lyric_offset', { videoId, offsetMs: offset_ms });
+/** Unison vote/report (POST /lyrics/vote semantics). */
+export const lyricsVote = (videoId: string, source: string, vote: number) => invoke<void>('lyrics_vote', { videoId, source, vote });
+export const lyricsReport = (videoId: string, source: string, reason: string) => invoke<void>('lyrics_report', { videoId, source, reason });
+/** Translate via translate.googleapis (44 langs) + romanize (kana→romaji). */
+export const translateLyrics = (text: string, target: string) => invoke<string>('translate_lyrics', { text, target });
+export const romanizeLyrics = (text: string) => invoke<string>('romanize_lyrics', { text });
+/** Video Sync toggle (mpv `vo=libmpv` + `vid` switch). */
+export const setVideoSync = (enabled: boolean) => invoke<void>('set_video_sync', { enabled });
+export const getVideoSync = () => invoke<boolean>('get_video_sync');
+
 // --- Last.fm scrobbling ---------------------------------------------------------------------
 export interface LastfmState {
 	connected: boolean;
@@ -631,3 +649,58 @@ export const onLtNotice = (cb: (msg: string) => void): Promise<UnlistenFn> =>
 // the same actions the keyboard shortcuts trigger. Works while the app is backgrounded.
 export const onGamepad = (cb: (action: string) => void): Promise<UnlistenFn> =>
 	listen<string>('gamepad', (e) => cb(e.payload));
+
+// --- EQ / crossfade / best mix --------------------------------------------------
+export interface EqState { bands: number[]; preamp: number; balance: number; output_gain: number; auto_eq: boolean; freqs: number[] }
+export const getEq = () => invoke<EqState>('get_eq');
+export const getEqBands = () => invoke<number[]>('get_eq_bands');
+export const setEq = (band: number, gain: number) => invoke<void>('set_eq', { band, gain });
+export const setEqBands = (bands: number[]) => invoke<void>('set_eq_bands', { bands });
+export const setPreamp = (gain: number) => invoke<void>('set_preamp', { gain });
+export const setBalance = (balance: number) => invoke<void>('set_balance', { balance });
+export const setOutputGain = (gain: number) => invoke<void>('set_output_gain', { gain });
+export const setAutoeq = (on: boolean) => invoke<void>('set_autoeq', { on });
+export const setTrackGain = (videoId: string, gain: number) => invoke<void>('set_track_gain', { video_id: videoId, gain });
+export const getOutputDevices = () => invoke<string[]>('get_output_devices');
+export const setOutputDevice = (device: string) => invoke<void>('set_output_device', { device });
+export interface CrossfadeState { secs: number; mode: string; best_mix: boolean }
+export const getCrossfade = () => invoke<CrossfadeState>('get_crossfade');
+export const setCrossfade = (secs: number, mode: string) => invoke<void>('set_crossfade', { secs, mode });
+export const setBestMix = (on: boolean) => invoke<void>('set_best_mix', { on });
+// --- Remote LAN QR (#5) ---------------------------------------------------------
+export const getLanUrl = () => invoke<string>('get_lan_url');
+export const getRemoteToken = () => invoke<string>('get_remote_token');
+export const pairRemote = (token: string) => invoke<boolean>('pair_remote', { token });
+
+// --- Artist Packs (#9) ---------------------------------------------------------
+export interface ArtistPack {
+    id: string;
+    name: string;
+    version: string;
+    description?: string | null;
+    artist_ids: string[];
+    aliases: string[];
+    layout?: string | null;
+    style_css?: string | null;
+    installed_at: number;
+    thumbnail?: string | null;
+}
+export interface ArtistPackIndexEntry {
+    id: string;
+    name: string;
+    version: string;
+    description?: string | null;
+    artist_ids: string[];
+    aliases: string[];
+    url: string;
+    thumbnail?: string | null;
+}
+export interface ArtistPackIndex { packs: ArtistPackIndexEntry[]; }
+export const listArtistPacks = () => invoke<ArtistPack[]>('list_artist_packs');
+export const getArtistPack = (id: string) => invoke<ArtistPack | null>('get_artist_pack', { id });
+export const removeArtistPack = (id: string) => invoke<void>('remove_artist_pack', { id });
+export const installArtistPack = (url: string) => invoke<ArtistPack>('install_artist_pack', { url });
+export const installArtistPackZip = (path: string) => invoke<ArtistPack>('install_artist_pack_zip', { path });
+export const fetchArtistPacksIndex = () => invoke<ArtistPackIndex>('fetch_artist_packs_index');
+export const onArtistPacksIndex = (cb: (idx: ArtistPackIndex) => void) => listen<ArtistPackIndex>('artist-packs-index', (e) => cb(e.payload));
+

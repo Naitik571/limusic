@@ -127,6 +127,7 @@
 	// scrolling still loads more. Each result keeps its index into `shown` so play/select map back
 	// to the real row, even with duplicate titles.
 	let search = $state('');
+	let searchInput = $state<HTMLInputElement | null>(null);
 	const searched = $derived(
 		shown.map((item, idx) => ({ item, idx })).filter(({ item }) => {
 			const q = search.trim().toLowerCase();
@@ -750,9 +751,33 @@
 <svelte:window
 	onkeydown={(e) => {
 		if (e.key === 'Escape') {
+			if (search.trim().length > 0) {
+				search = '';
+				searchInput?.blur();
+			}
 			clearSelection();
 			menuOpen = false;
+			sortOpen = false;
+			selMenuOpen = false;
+			return;
 		}
+		// Type-anywhere filter: printable alphanumerics focus the search input (Orchard behavior)
+		const target = e.target as HTMLElement | null;
+		if (target?.closest('input,textarea,[contenteditable]')) return;
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		if (e.key.length !== 1) return;
+		if (!/^[a-z0-9]$/i.test(e.key)) return;
+		// Don't hijack when a modifier-driven shortcut is in flight; allow Space to keep its play/pause role
+		e.preventDefault();
+		search = search + e.key;
+		// Focus after updating value so the cursor lands at end; queueMicrotask ensures binding applied
+		queueMicrotask(() => {
+			searchInput?.focus();
+			try {
+				const len = search.length;
+				searchInput?.setSelectionRange(len, len);
+			} catch {}
+		});
 	}}
 />
 
@@ -938,8 +963,9 @@
 				>
 					<HugeiconsIcon icon={Search01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
 					<Input
+						bind:ref={searchInput}
 						bind:value={search}
-						placeholder="Search songs, artistsâ€¦"
+						placeholder="Search songs, artists…"
 						class="h-8 flex-1"
 						aria-label="Search this playlist"
 					/>
@@ -966,6 +992,7 @@
 						song={item}
 						index={idx}
 						active={item.video_id === nowId}
+						highlight={search}
 						onplay={() => playAll(idx)}
 						onAdd={() => openAddToPlaylist(item)}
 						onRemove={isLiked || (editable && item.set_video_id) ? () => removeTrack(item) : undefined}

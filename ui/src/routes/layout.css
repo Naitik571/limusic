@@ -23,6 +23,8 @@
 @custom-variant hover (&:hover);
 
 :root {
+	/* Ambient mode opacity: controlled by theme.svelte.ts appearance.ambientMode / intensity */
+	--ambient-opacity: 0;
 	/* Hue of the neutrals (greys, borders, muted surfaces, dark-mode backgrounds). Every tinted
 	   neutral below reads it, so the Themes tab can reshade the whole default palette from one
 	   number. Tokens at chroma 0 are pure white/black by design and stay that way. Preset palettes
@@ -1035,6 +1037,219 @@ html.art-tint.dark {
 	--sidebar-accent-foreground: oklch(0.97 0.012 var(--art-h));
 	--sidebar-border: oklch(0.33 0.04 var(--art-h));
 	--sidebar-ring: oklch(0.55 0.06 var(--art-h));
+}
+
+/* --- Orchard layouts (Grove / Canopy + extra) ---
+   Toggled via `layout-${id}` on <html> by theme.svelte.ts. Uses the CSS variables already
+   defined above so every palette + tint still works. The four layouts all keep the Pixel/
+   Arcade/Synthwave vibe: sharp when pixel, glowing when arcade, neon when synthwave — just
+   rearranged.
+   - Grove: sidebar left + main + right panels docked side-by-side (no overlay).
+   - Canopy: top nav + immersive full-bleed player.
+   - Compact: narrow 900px centered focus.
+   - Wide: collapsed sidebar + 1400px content. */
+
+html.layout-default {
+	/* no overrides — the stock flex row (sidebar | main) + floating panels */
+}
+
+html.layout-grove .app-root > div.relative {
+	gap: 0.875rem;
+	padding: 0.875rem 0.875rem 0.875rem 0;
+	align-items: stretch;
+}
+html.layout-grove aside.glass {
+	width: 15rem !important;
+	flex-shrink: 0;
+	border-radius: var(--radius);
+	border: 1px solid var(--glass-border);
+	background: var(--sidebar);
+}
+html.layout-grove main {
+	flex: 1;
+	border: 1px solid var(--glass-border);
+	border-radius: var(--radius);
+	background: var(--card);
+	overflow-y: auto;
+	box-shadow: inset 0 1px 0 0 var(--glass-highlight);
+}
+html.layout-grove aside.glass-strong,
+html.layout-grove aside.bg-card {
+	position: relative !important;
+	inset: auto !important;
+	width: 20rem !important;
+	max-width: none !important;
+	flex-shrink: 0;
+	border-radius: var(--radius);
+	border: 1px solid var(--glass-border);
+	height: auto !important;
+	align-self: stretch;
+	overflow: hidden;
+	box-shadow: inset 0 1px 0 0 var(--glass-highlight), 0 12px 24px -8px rgb(0 0 0 / 0.25);
+}
+html.layout-grove .app-root > div.relative > button.absolute {
+	display: none !important;
+}
+html.layout-grove footer.glass {
+	margin: 0 0.875rem 0.875rem 0.875rem;
+	border-radius: var(--radius);
+	border: 1px solid var(--glass-border);
+}
+html.layout-grove .app-root {
+	background-image: radial-gradient(90% 55% at 12% 0%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 60%);
+}
+
+html.layout-canopy .app-root > div.relative {
+	flex-direction: column;
+	gap: 0;
+}
+html.layout-canopy aside.glass {
+	width: 100% !important;
+	height: auto !important;
+	flex-direction: row !important;
+	align-items: center !important;
+	justify-content: space-between !important;
+	padding: 0.6rem 1rem !important;
+	border-radius: 0;
+	border-left: 0;
+	border-right: 0;
+	border-top: 0;
+	border-bottom: 1px solid var(--glass-border);
+	gap: 1rem;
+	overflow-x: auto;
+}
+html.layout-canopy aside.glass nav {
+	flex-direction: row !important;
+	gap: 0.5rem !important;
+	margin-top: 0 !important;
+}
+html.layout-canopy aside.glass nav a {
+	padding: 0.45rem 0.75rem !important;
+	justify-content: center;
+}
+html.layout-canopy aside.glass > div:last-child {
+	margin-top: 0 !important;
+	padding-top: 0 !important;
+	border-top: 0 !important;
+	flex: 1;
+	overflow: hidden;
+}
+html.layout-canopy main {
+	width: 100% !important;
+	padding: 1rem 1.25rem;
+}
+html.layout-canopy footer.glass {
+	margin: 0 1rem 1rem 1rem;
+	border-radius: calc(var(--radius) * 1.4);
+	border: 1px solid var(--glass-border);
+	box-shadow:
+		inset 0 1px 0 0 var(--glass-highlight),
+		0 20px 40px -10px rgb(0 0 0 / 0.45),
+		0 8px 16px -8px rgb(0 0 0 / 0.3);
+	background: var(--glass-strong);
+	backdrop-filter: blur(24px) saturate(160%);
+}
+html.layout-canopy .app-root > div.relative > aside.glass-strong,
+html.layout-canopy .app-root > div.relative > aside.bg-card {
+	position: relative !important;
+	inset: auto !important;
+	width: 100% !important;
+	max-width: none !important;
+	border-top: 1px solid var(--border);
+	height: auto !important;
+}
+html.layout-canopy .app-root > div.relative > button.absolute {
+	display: none !important;
+}
+html.layout-canopy .app-root {
+	background-image:
+		radial-gradient(120% 70% at 50% -12%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 62%),
+		radial-gradient(90% 45% at 95% 100%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 60%);
+}
+
+html.layout-compact .app-root > div.relative {
+	justify-content: center;
+	gap: 1rem;
+	padding: 0.75rem;
+}
+html.layout-compact aside.glass {
+	width: 13.5rem !important;
+	flex-shrink: 0;
+	border-radius: var(--radius);
+}
+html.layout-compact main {
+	max-width: 900px !important;
+	width: 100% !important;
+	margin-left: auto !important;
+	margin-right: auto !important;
+	padding-left: 1.25rem !important;
+	padding-right: 1.25rem !important;
+	border: 1px solid var(--glass-border);
+	border-radius: var(--radius);
+	background: var(--card);
+	box-shadow: inset 0 1px 0 0 var(--glass-highlight);
+}
+html.layout-compact footer.glass {
+	max-width: 900px;
+	width: calc(100% - 1.5rem);
+	margin-left: auto;
+	margin-right: auto;
+	border-radius: var(--radius);
+}
+html.layout-compact .app-root {
+	background-image: radial-gradient(85% 45% at 50% 0%, color-mix(in oklch, var(--primary) 6%, transparent), transparent 65%);
+}
+
+html.layout-wide aside.glass {
+	width: 4rem !important;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+html.layout-wide aside.glass nav a span,
+html.layout-wide aside.glass nav + button span,
+html.layout-wide aside.glass .font-heading {
+	display: none !important;
+}
+html.layout-wide aside.glass nav a {
+	justify-content: center !important;
+	padding-left: 0.5rem !important;
+	padding-right: 0.5rem !important;
+}
+html.layout-wide aside.glass > div.hidden {
+	display: none !important;
+}
+html.layout-wide main {
+	max-width: 1400px !important;
+	width: 100% !important;
+	margin-left: auto !important;
+	margin-right: auto !important;
+	padding-left: 1.5rem;
+	padding-right: 1.5rem;
+}
+html.layout-wide .app-root > div.relative {
+	gap: 0;
+}
+html.layout-wide .app-root {
+	background-image: radial-gradient(110% 70% at 50% -8%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 65%);
+}
+
+/* --- Ambient mode (#7) ---
+   When enabled, --ambient-opacity drives a blurred artwork backdrop behind the glass chrome.
+   Intensity maps: subtle 0.06 / balanced 0.12 / vivid 0.22. The backdrop image itself lives
+   in +layout.svelte (app-wide) and NowPlaying.svelte (immersive view) as:
+     <img style="filter: blur(40px) scale(1.2); opacity: var(--ambient-opacity)">
+   Glass theme is kept: glass surfaces stay frosted, but the ambient wash shows through. */
+html.ambient-on {
+	/* JS writes --ambient-opacity; this ensures the backdrop is visible even before first paint */
+	--ambient-opacity: 0.12;
+}
+html[data-ambient-intensity='subtle'] { --ambient-opacity: 0.06; }
+html[data-ambient-intensity='balanced'] { --ambient-opacity: 0.12; }
+html[data-ambient-intensity='vivid'] { --ambient-opacity: 0.22; }
+.ambient-canvas {
+	filter: blur(40px) scale(1.2);
+	opacity: var(--ambient-opacity);
+	transition: opacity 400ms ease, filter 400ms ease;
 }
 
 @theme inline {

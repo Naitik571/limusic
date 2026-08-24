@@ -10,10 +10,13 @@ export const MOD = browser && navigator.platform.startsWith('Mac') ? '⌘' : 'Ct
 
 /** Percent per press, matching a step of the volume slider's arrow keys. */
 const VOLUME_STEP = 5;
+const VOLUME_STEP_PRECISE = 1;
 
 export function initShortcuts() {
 	const onKey = (e: KeyboardEvent) => {
 		if (!e.ctrlKey && !e.metaKey) return;
+		const precise = e.shiftKey; // Shift for precise 1% (pear parity)
+		const step = precise ? VOLUME_STEP_PRECISE : VOLUME_STEP;
 		switch (e.key) {
 			// Toggles, so the key that opened the palette also dismisses it.
 			case 'k':
@@ -35,11 +38,11 @@ export function initShortcuts() {
 			// shortcut still works on layouts that put > and < somewhere else.
 			case '>':
 			case '.':
-				nudgeVolume(VOLUME_STEP);
+				nudgeVolume(step, precise);
 				break;
 			case '<':
 			case ',':
-				nudgeVolume(-VOLUME_STEP);
+				nudgeVolume(-step, precise);
 				break;
 			default:
 				return;

@@ -31,6 +31,16 @@ export type ThemeId =
 	| 'gruvbox'
 	| 'nord';
 
+export type LayoutId = 'default' | 'grove' | 'canopy' | 'compact' | 'wide';
+
+export const LAYOUTS: { id: LayoutId; label: string; description: string }[] = [
+	{ id: 'default', label: 'Default', description: 'Balanced sidebar + feed — the classic Limusic look' },
+	{ id: 'grove', label: 'Grove', description: 'Three columns — navigation, feed, and docked panels side-by-side' },
+	{ id: 'canopy', label: 'Canopy', description: 'Top navigation with immersive full-bleed player' },
+	{ id: 'compact', label: 'Compact', description: 'Narrow 900px centered focus' },
+	{ id: 'wide', label: 'Wide', description: 'Collapsed sidebar + 1400px content' }
+];
+
 // `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (lime,
 // teal) need a dark foreground; dark accents keep the light one. `color` is just the picker swatch.
 type Theme =
@@ -85,7 +95,9 @@ export type Custom = {
 const KEY = 'primary-theme';
 const CUSTOM_KEY = 'custom-theme';
 const APPEARANCE_KEY = 'appearance';
+const LAYOUT_KEY = 'layout';
 const PALETTE_CLASSES = THEMES.filter((t) => t.kind === 'palette').map((t) => `theme-${t.id}`);
+const LAYOUT_CLASSES = LAYOUTS.map((l) => `layout-${l.id}`);
 const ACCENT_VARS = ['--primary', '--primary-foreground', '--accent', '--accent-foreground'];
 /** Set on <html> while the artwork tint is live; the surface rules in layout.css hang off it. */
 const TINT_CLASS = 'art-tint';
@@ -96,6 +108,7 @@ const ON_LIGHT = 'oklch(0.205 0 0)';
 
 /** Reactive current selection, so the picker reflects it. */
 export const theme = $state<{ id: ThemeId }>({ id: 'rose' });
+export const layout = $state<{ id: LayoutId }>({ id: 'default' });
 export const custom = $state<Custom>({
 	accent: null,
 	hue: null,
@@ -110,6 +123,8 @@ export const custom = $state<Custom>({
  * the theme above (a pure UI preference, no backend round-trip), which also means a component can
  * read it during its first render instead of flashing the default while a command round-trips.
  */
+export type AmbientIntensity = 'subtle' | 'balanced' | 'vivid';
+
 export const appearance = $state({
 	/** Blur the playing track's artwork behind the now-playing view. */
 	artworkBackground: true,
@@ -120,12 +135,35 @@ export const appearance = $state({
 	 */
 	tabbedPlayer: true,
 	/** Take the accent colour from the playing track's cover, crossfading on each change (#69). */
-	artworkAccent: false
+	artworkAccent: false,
+	/** Video Sync: show muted official video + audio (muted video via mpv `vid=auto` or YT embed). */
+	videoSync: false,
+	/** Ambient mode: immersive blurred artwork backdrop (#7). */
+	ambientMode: false,
+	/** Intensity of the ambient backdrop. */
+	ambientIntensity: 'balanced' as AmbientIntensity,
+	/** 0–1 opacity for the immersive background (maps to CSS var --ambient-opacity). */
+	immersiveBackgroundIntensity: 0.12
 });
 
 export function setAppearance(patch: Partial<typeof appearance>): void {
 	Object.assign(appearance, patch);
+	// Keep immersiveBackgroundIntensity in sync with ambientIntensity when that changes
+	if (patch.ambientIntensity) {
+		const map: Record<AmbientIntensity, number> = { subtle: 0.06, balanced: 0.12, vivid: 0.22 };
+		appearance.immersiveBackgroundIntensity = map[patch.ambientIntensity] ?? 0.12;
+	}
+	applyAmbient();
 	localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
+}
+
+function applyAmbient(): void {
+	const root = document.documentElement;
+	const enabled = appearance.ambientMode;
+	const opacity = appearance.immersiveBackgroundIntensity;
+	root.style.setProperty('--ambient-opacity', enabled ? String(opacity) : '0');
+	root.classList.toggle('ambient-on', enabled);
+	root.setAttribute('data-ambient-intensity', appearance.ambientIntensity);
 }
 
 /**
@@ -201,6 +239,7 @@ function apply(): void {
 	if (custom.fontSans) root.style.setProperty('--font-sans', custom.fontSans);
 	if (custom.fontHeading) root.style.setProperty('--font-heading', custom.fontHeading);
 
+	applyAmbient();
 	readBack();
 }
 
@@ -208,6 +247,24 @@ export function applyTheme(id: ThemeId): void {
 	theme.id = THEMES.some((t) => t.id === id) ? id : THEMES[0].id;
 	apply();
 	localStorage.setItem(KEY, theme.id);
+}
+
+export function applyLayout(id: LayoutId): void {
+	const valid = (LAYOUTS.some((l) => l.id === id) ? id : 'default') as LayoutId;
+	layout.id = valid;
+	const root = document.documentElement;
+	root.classList.remove(...LAYOUT_CLASSES);
+	root.classList.add(`layout-${valid}`);
+	localStorage.setItem(LAYOUT_KEY, valid);
+}
+
+export function initLayout(): void {
+	const stored = localStorage.getItem(LAYOUT_KEY) as LayoutId | null;
+	const id = (stored && LAYOUTS.some((l) => l.id === stored) ? stored : 'default') as LayoutId;
+	layout.id = id;
+	const root = document.documentElement;
+	root.classList.remove(...LAYOUT_CLASSES);
+	root.classList.add(`layout-${id}`);
 }
 
 const persist = () => localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom));
@@ -418,13 +475,23 @@ export function initTheme(): void {
 	}
 	try {
 		const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) ?? '{}');
-		for (const k of ['artworkBackground', 'tabbedPlayer', 'artworkAccent'] as const) {
-			if (typeof saved?.[k] === 'boolean') appearance[k] = saved[k];
+		for (const k of ['artworkBackground', 'tabbedPlayer', 'artworkAccent', 'videoSync', 'ambientMode'] as const) {
+			if (typeof saved?.[k] === 'boolean') (appearance as any)[k] = saved[k];
+		}
+		if (typeof saved?.ambientIntensity === 'string' && ['subtle', 'balanced', 'vivid'].includes(saved.ambientIntensity)) {
+			(appearance as any).ambientIntensity = saved.ambientIntensity;
+		}
+		if (typeof saved?.immersiveBackgroundIntensity === 'number') {
+			(appearance as any).immersiveBackgroundIntensity = Math.min(1, Math.max(0, saved.immersiveBackgroundIntensity));
+		} else if (typeof saved?.ambientIntensity === 'string') {
+			const map: Record<string, number> = { subtle: 0.06, balanced: 0.12, vivid: 0.22 };
+			(appearance as any).immersiveBackgroundIntensity = map[saved.ambientIntensity] ?? 0.12;
 		}
 	} catch {
 		// unparseable — keep the defaults
 	}
 	apply();
+	initLayout();
 	// Async (each file needs its URL granted first), so the app paints in the fallback font for a
 	// frame or two before a loaded font swaps in.
 	if (custom.fontFiles.length) registerFontFiles();

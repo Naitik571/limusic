@@ -37,6 +37,17 @@
 	let subscribed = $state(false);
 	let subBusy = $state(false);
 	let shuffleBusy = $state(false);
+	// --- Artist Pack (#9) glass vibe: inject per-artist style.css when id matches ---
+	let artistPackStyle = $state<string | null>(null);
+	let packIdShown = $state<string | null>(null);
+	async function loadPack(cid: string){
+		try{
+			const packs = await api.listArtistPacks();
+			const match = packs.find(a => a.artist_ids.includes(cid) || a.aliases.includes(cid));
+			if(match?.style_css){ artistPackStyle = match.style_css; packIdShown = match.id; } else { artistPackStyle = null; packIdShown = null; }
+			if(!match){ const direct = await api.getArtistPack(cid).catch(()=>null); if(direct?.style_css){ artistPackStyle = direct.style_css; packIdShown = direct.id; } }
+		}catch{ artistPackStyle=null; }
+	}
 
 	const id = $derived(page.params.id ?? '');
 	const nowId = $derived(playback.now?.videoId);
@@ -69,7 +80,18 @@
 	}
 
 	$effect(() => {
-		if (id) load(id);
+		if (id) { load(id); loadPack(id); }
+	});
+	// Inject pack style.css as data URI via style element (glass vibe) — cleans up on navigation
+	$effect(()=>{
+		if(artistPackStyle){
+			let el=document.getElementById('artist-pack-style') as HTMLStyleElement|null;
+			if(!el){ el=document.createElement('style'); el.id='artist-pack-style'; document.head.appendChild(el); }
+			el.textContent=artistPackStyle;
+		} else {
+			document.getElementById('artist-pack-style')?.remove();
+		}
+		return ()=>{ document.getElementById('artist-pack-style')?.remove(); };
 	});
 
 	// â‹¯ options menu, positioned `fixed` at the button so it isn't clipped (matches the album page).
@@ -177,6 +199,9 @@
 {:else if error}
 	<div class="p-6"><ErrorState message={error} onRetry={() => load(id)} /></div>
 {:else if artist}
+	{#if artistPackStyle}
+		<div class="mx-6 mb-2 rounded-lg glass-strong px-3 py-1.5 text-xs text-muted-foreground">Artist Pack: {packIdShown} • <span class="font-mono">style.css</span> active</div>
+	{/if}
 	<!-- Hero -->
 	<div class="content-in relative flex min-h-[45vh] flex-col justify-end overflow-hidden">
 		{#if artist.thumbnail}

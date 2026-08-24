@@ -23,7 +23,8 @@
 		onplay,
 		onAdd,
 		onRemove,
-		removeLabel = 'Remove from playlist'
+		removeLabel = 'Remove from playlist',
+		highlight = ''
 	}: {
 		song: SongItem;
 		/** Position badge when set (playlist/queue); omitted for flat search results. */
@@ -43,7 +44,19 @@
 		/** Adds a remove menu item (label via `removeLabel`). */
 		onRemove?: () => void;
 		removeLabel?: string;
+		/** Query to highlight inside title/artists (playlist type-anywhere filter). */
+		highlight?: string;
 	} = $props();
+
+	function highlightParts(text: string, query: string): { text: string; match: boolean }[] {
+		const q = query.trim();
+		if (!q) return [{ text, match: false }];
+		const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const re = new RegExp(`(${esc})`, 'gi');
+		const parts = text.split(re);
+		const lower = q.toLowerCase();
+		return parts.map((p) => ({ text: p, match: p.toLowerCase() === lower }));
+	}
 
 	// In a session as guest, clicking a song adds it to the shared queue instead of playing it —
 	// reflect that in the hover icon + label so the row doesn't lie.
@@ -109,7 +122,13 @@
 		<div class="min-w-0 flex-1">
 			<div class="flex min-w-0 items-center gap-2">
 				<span class="min-w-0 truncate text-sm font-medium {active ? 'text-primary' : ''}">
-					{song.title}
+					{#if highlight.trim()}
+						{#each highlightParts(song.title, highlight) as part}
+							{#if part.match}<mark class="rounded bg-primary/30 px-0.5 text-primary">{part.text}</mark>{:else}{part.text}{/if}
+						{/each}
+					{:else}
+						{song.title}
+					{/if}
 				</span>
 				{#if song.queued_by}
 					<span

@@ -10,6 +10,7 @@
 		RepeatOne01Icon,
 		Queue01Icon,
 		Mic01Icon,
+		Video01Icon,
 		VolumeHighIcon,
 		VolumeMute02Icon,
 		FavouriteIcon,
@@ -37,10 +38,12 @@
 		toggleMute,
 		toggleNowPlayingLike,
 		wheelVolume,
+		volumeHud,
 		type SleepTimerMode
 	} from '$lib/player.svelte';
 	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
+	import { appearance, setAppearance } from '$lib/theme.svelte';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 
@@ -149,6 +152,12 @@
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}
 
+	function toggleVideoSync() {
+		const next = !appearance.videoSync;
+		setAppearance({ videoSync: next });
+		api.setVideoSync(next).catch(()=>{});
+	}
+
 	// Anywhere on the bar that isn't a control opens (or closes) the now-playing view: the bar is
 	// what's left of it once it's minimised, so it's the way back in. Deliberately no pointer
 	// cursor, because this is the whole bar, not a button, and every real button keeps its own click.
@@ -157,6 +166,21 @@
 		np.open = !np.open;
 	}
 </script>
+
+	<!-- Precise volume HUD: shows on any nudgeVolume/dragVolume, auto-hides after 1.5s -->
+	{#if volumeHud.visible}
+		<div
+			class="pointer-events-none fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl glass-strong px-4 py-2 shadow-xl"
+			transition:fade={{ duration: 150 }}
+			aria-live="polite"
+		>
+			<HugeiconsIcon icon={volumeHud.value === 0 ? VolumeMute02Icon : VolumeHighIcon} class="h-4 w-4 text-primary" />
+			<div class="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+				<div class="h-full bg-primary transition-all" style="width:{volumeHud.value}%"></div>
+			</div>
+			<span class="min-w-8 text-right text-xs font-bold tabular-nums">{volumeHud.value}%</span>
+		</div>
+	{/if}
 
 <!-- The chevron button below is the keyboard equivalent of clicking the bar, so the bar itself
      stays a plain region rather than becoming a focusable control wrapping every other control. -->
@@ -442,6 +466,15 @@
 			{/if}
 			<Button variant="ghost" size="icon-sm" onclick={openMiniPlayer} aria-label="Mini player">
 						<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
+					</Button>
+					<Button
+						variant={appearance.videoSync ? 'secondary' : 'ghost'}
+						size="icon-sm"
+						onclick={toggleVideoSync}
+						aria-label="Toggle video sync"
+						title={appearance.videoSync ? 'Video sync on' : 'Video sync off'}
+					>
+						<HugeiconsIcon icon={Video01Icon} class="h-5 w-5" />
 					</Button>
 					<Button
 						variant={lyricsOpen ? 'secondary' : 'ghost'}

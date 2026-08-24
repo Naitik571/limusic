@@ -37,6 +37,11 @@ pub struct CachedStream {
 }
 
 impl Db {
+    /// Expose inner mutex for modules that need raw queries (artist_packs, remote).
+    pub fn conn_lock(&self) -> std::sync::MutexGuard<'_, rusqlite::Connection> {
+        self.0.lock().unwrap()
+    }
+
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
         // WAL + NORMAL sync: a commit stops taking the file's full rollback journal plus an fsync.
@@ -95,6 +100,29 @@ impl Db {
                 format     TEXT NOT NULL,
                 size_bytes INTEGER NOT NULL,
                 added_at   INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS lyric_offsets (
+                video_id  TEXT PRIMARY KEY,
+                offset_ms INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS lyric_votes (
+                video_id TEXT NOT NULL,
+                source   TEXT NOT NULL,
+                vote     INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (video_id, source)
+            );
+            CREATE TABLE IF NOT EXISTS artist_packs (
+                id           TEXT PRIMARY KEY,
+                name         TEXT NOT NULL,
+                version      TEXT NOT NULL,
+                description  TEXT,
+                artist_ids   TEXT NOT NULL,
+                aliases      TEXT NOT NULL,
+                layout       TEXT,
+                style_css    TEXT,
+                installed_at INTEGER NOT NULL,
+                thumbnail    TEXT
             );
             "#,
         )?;
@@ -318,6 +346,54 @@ impl Db {
             rusqlite::params![video_id, lyrics, now],
         )
         .unwrap_or_else(warn_write("put_lyrics", "lyrics_cache"));
+    }
+
+    // --- lyric per-song offset + votes (Kodama parity) --------------------------------------
+
+    /// Per-song sync offset in milliseconds. Positive = delay lyrics, negative = advance.
+    pub fn get_lyric_offset(&self, video_id: &str) -> i64 {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT offset_ms FROM lyric_offsets WHERE video_id = ?1",
+            [video_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
+    }
+
+    pub fn set_lyric_offset(&self, video_id: &str, offset_ms: i64) {
+        let conn = self.0.lock().unwrap();
+        if offset_ms == 0 {
+            conn.execute("DELETE FROM lyric_offsets WHERE video_id = ?1", [video_id])
+                .unwrap_or_else(warn_write("delete_lyric_offset", "lyric_offsets"));
+        } else {
+            conn.execute(
+                "INSERT INTO lyric_offsets(video_id, offset_ms) VALUES(?1, ?2)
+                 ON CONFLICT(video_id) DO UPDATE SET offset_ms = excluded.offset_ms",
+                rusqlite::params![video_id, offset_ms],
+            )
+            .unwrap_or_else(warn_write("set_lyric_offset", "lyric_offsets"));
+        }
+    }
+
+    pub fn get_lyric_vote(&self, video_id: &str, source: &str) -> Option<i32> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT vote FROM lyric_votes WHERE video_id = ?1 AND source = ?2",
+            rusqlite::params![video_id, source],
+            |r| r.get(0),
+        )
+        .ok()
+    }
+
+    pub fn set_lyric_vote(&self, video_id: &str, source: &str, vote: i32) {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO lyric_votes(video_id, source, vote, updated_at) VALUES(?1, ?2, ?3, ?4)
+             ON CONFLICT(video_id, source) DO UPDATE SET vote = excluded.vote, updated_at = excluded.updated_at",
+            rusqlite::params![video_id, source, vote, now_secs()],
+        )
+        .unwrap_or_else(warn_write("set_lyric_vote", "lyric_votes"));
     }
 
     // --- play history (the On Repeat playlist) ------------------------------------------------
