@@ -22,7 +22,10 @@ export const asSong = (i: BrowseItem): SongItem => ({
 	artist_runs: i.artistRuns,
 	artist_id: i.artistRuns?.find((r) => r.id)?.id,
 	duration: i.duration,
-	thumbnail: i.thumbnail
+	thumbnail: i.thumbnail,
+	// Without this a card played from a shelf reaches the orchestrator as an ordinary track and
+	// gets the anonymous fallback chain, which can never stream an upload.
+	is_upload: i.isUpload
 });
 
 /** Where a non-song item lives. Songs have no page — they play. */

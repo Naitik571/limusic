@@ -278,6 +278,19 @@ pub struct VideoDetails {
     pub thumbnail: Option<Thumbnails>,
 }
 
+impl VideoDetails {
+    /// Whether this videoId is a video upload rather than the audio track YouTube generates for a
+    /// release, from YouTube's own `musicVideoType`. `None` when the response didn't say, which is
+    /// every non-Music client: only WEB_REMIX carries the field, so a fallback client's answer
+    /// must not be read as "not a video". Authoritative for the player view's music-video mode,
+    /// where the queue row's flag is only as good as the parse that built it.
+    pub fn is_music_video(&self) -> Option<bool> {
+        Some(super::metadata::is_video_type(
+            self.music_video_type.as_deref()?,
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Thumbnails {
     #[serde(default)]

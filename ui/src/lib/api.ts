@@ -37,6 +37,11 @@ export interface SongItem {
 	queued_from?: string;
 	/** Appended by autoplay radio continuation — drives the queue's "Autoplay" divider + badge. */
 	autoplay?: boolean;
+	/** This row links a music video rather than the audio track. */
+	is_video?: boolean;
+	/** One of the user's own YouTube Music uploads. Set by Rust and passed straight back on play:
+	 *  only an authenticated client can stream one, and the row is where that is known. */
+	is_upload?: boolean;
 }
 
 export interface NowPlaying {
@@ -98,6 +103,11 @@ export interface BrowseItem {
 	duration?: string;
 	/** Song cards only: the artist line run by run, so a card that gets played keeps its links. */
 	artistRuns?: ArtistRun[];
+	/** YouTube flags this track/album explicit. */
+	explicit?: boolean;
+	/** Song cards only: one of the user's own uploads. Carried into the SongItem `asSong` builds,
+	 *  because that flag is what picks the login-only client chain when it plays. */
+	isUpload?: boolean;
 }
 
 export interface HomeSection {

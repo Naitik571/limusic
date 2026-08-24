@@ -2836,6 +2836,7 @@ fn track_to_song(t: &Track) -> SongItem {
         queued_from: None,
         autoplay: false,
         is_video: false,
+        is_upload: false,
     }
 }
 
@@ -3231,6 +3232,7 @@ mod tests {
             queued_by: by.map(Into::into),
             autoplay: false,
             is_video: false,
+            is_upload: false,
         }
     }
 

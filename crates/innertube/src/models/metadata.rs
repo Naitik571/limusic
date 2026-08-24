@@ -68,11 +68,25 @@ pub struct SongItem {
     /// "hide music videos" setting; computed once here, never re-derived downstream.
     #[serde(default)]
     pub is_video: bool,
+    /// One of the signed-in user's own uploads ([`is_upload_row`]). Only an authenticated client
+    /// can stream these, so the orchestrator swaps in a login-only fallback chain. Issue #71.
+    #[serde(default)]
+    pub is_upload: bool,
 }
 
 /// `MUSIC_VIDEO_TYPE_ATV` — the audio track YouTube Music generates for a release. Anything else
-/// (`_OMV`, `_UGC`) is a video upload.
-const AUDIO_TRACK_TYPE: &str = "MUSIC_VIDEO_TYPE_ATV";
+/// (`_OMV`, `_UGC`) is a video upload, except [`UPLOADED_TRACK_TYPE`].
+pub(crate) const AUDIO_TRACK_TYPE: &str = "MUSIC_VIDEO_TYPE_ATV";
+
+/// A track the signed-in user uploaded to their own library. Audio, not a music video: counting
+/// it as one hid every upload under the "hide music videos" setting, and put the player view into
+/// video mode on a track that has no video at all. Issue #71.
+pub(crate) const UPLOADED_TRACK_TYPE: &str = "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK";
+
+/// True for a `musicVideoType` that means "a music video", i.e. neither of the two audio kinds.
+pub(crate) fn is_video_type(t: &str) -> bool {
+    t != AUDIO_TRACK_TYPE && t != UPLOADED_TRACK_TYPE
+}
 
 /// The `musicVideoType` a watch endpoint carries, if any.
 fn endpoint_video_type(endpoint: &Value) -> Option<&str> {
@@ -87,7 +101,12 @@ fn endpoint_video_type(endpoint: &Value) -> Option<&str> {
 
 /// True when a watch endpoint points at a music video rather than the audio track.
 pub(crate) fn is_video_endpoint(endpoint: &Value) -> bool {
-    matches!(endpoint_video_type(endpoint), Some(t) if t != AUDIO_TRACK_TYPE)
+    matches!(endpoint_video_type(endpoint), Some(t) if is_video_type(t))
+}
+
+/// True when a watch endpoint points at one of the user's own uploads.
+pub(crate) fn is_upload_endpoint(endpoint: &Value) -> bool {
+    endpoint_video_type(endpoint) == Some(UPLOADED_TRACK_TYPE)
 }
 
 /// True when a renderer row (list row, two-row card, or queue panel row) links a music video.
@@ -97,18 +116,27 @@ pub(crate) fn is_video_endpoint(endpoint: &Value) -> bool {
 /// endpoint is the fallback. Absent ⇒ we can't tell ⇒ audio, so a parse that misses the tag
 /// degrades to "keep everything" rather than hiding the library.
 pub(crate) fn is_video_row(node: &Value) -> bool {
+    matches!(row_video_type(node), Some(t) if is_video_type(t))
+}
+
+/// True when a renderer row links one of the user's own uploads. Same lookup as [`is_video_row`].
+pub(crate) fn is_upload_row(node: &Value) -> bool {
+    row_video_type(node) == Some(UPLOADED_TRACK_TYPE)
+}
+
+/// The `musicVideoType` a row claims, from the overlay play button when it carries one.
+fn row_video_type(node: &Value) -> Option<&str> {
     let overlay = node
         .get("overlay")
         .or_else(|| node.get("thumbnailOverlay"))
         .and_then(|o| o.get("musicItemThumbnailOverlayRenderer"))
         .and_then(|o| o.get("content"))
         .and_then(|c| c.get("musicPlayButtonRenderer"))
-        .and_then(|p| p.get("playNavigationEndpoint"));
+        .and_then(|p| p.get("playNavigationEndpoint"))
+        .filter(|ep| endpoint_video_type(ep).is_some());
     match overlay {
-        Some(ep) if endpoint_video_type(ep).is_some() => is_video_endpoint(ep),
-        _ => node
-            .get("navigationEndpoint")
-            .is_some_and(is_video_endpoint),
+        Some(ep) => endpoint_video_type(ep),
+        None => node.get("navigationEndpoint").and_then(endpoint_video_type),
     }
 }
 
@@ -456,6 +484,7 @@ pub(crate) fn parse_list_item(node: &Value) -> Option<SongItem> {
         queued_from: None,
         autoplay: false,
         is_video: is_video_row(node),
+        is_upload: is_upload_row(node),
     })
 }
 
@@ -549,6 +578,7 @@ fn parse_panel_video(node: &Value) -> Option<SongItem> {
         queued_from: None,
         autoplay: false,
         is_video: is_video_row(node),
+        is_upload: is_upload_row(node),
     })
 }
 

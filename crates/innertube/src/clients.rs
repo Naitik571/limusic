@@ -119,7 +119,10 @@ mod tests {
         }
         for key in UPLOAD_FALLBACK_ORDER {
             assert!(clients.get(key).is_some(), "missing upload client {key}");
-            assert!(clients.get(key).unwrap().login_supported, "upload client {key} is anonymous");
+            assert!(
+                clients.get(key).unwrap().login_supported,
+                "upload client {key} is anonymous"
+            );
         }
         assert!(clients.get(METADATA_CLIENT).is_some());
         assert!(clients.get(LYRICS_TIMED_CLIENT).is_some());
