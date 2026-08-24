@@ -505,6 +505,8 @@ const SHORTCUT_STEP = 5; // volume percent / seek seconds for the arrow keys
 
 function onShortcut(e: KeyboardEvent) {
 	const target = e.target as HTMLElement | null;
+	// Ctrl/Cmd chords are owned by shortcuts.ts (Ctrl+K palette, Ctrl+E, etc.) — never handle them here
+	if (e.ctrlKey || e.metaKey) return;
 	// Text-entry contexts always win — typing must never trigger playback.
 	if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
 	// Rows and buttons keep focus after a click (TrackRow is role="button" and plays on

@@ -95,6 +95,11 @@ pub const MAIN_CLIENT: &str = "WEB_REMIX";
 pub const STREAM_FALLBACK_ORDER: [&str; 3] =
     ["VISIONOS", "ANDROID_VR_1_65_10", "ANDROID_VR_1_43_32"];
 
+/// The fallback order for one of the user's own uploads (issue #71). YouTube only streams a
+/// privately-owned track to an authenticated client, so every anonymous client in
+/// [`STREAM_FALLBACK_ORDER`] (and rustypipe behind it) is a guaranteed miss.
+pub const UPLOAD_FALLBACK_ORDER: [&str; 2] = ["TVHTML5", "WEB_CREATOR"];
+
 /// The metadata client for search/next (renderer shape only comes back as WEB_REMIX).
 pub const METADATA_CLIENT: &str = "WEB_REMIX";
 
@@ -111,6 +116,10 @@ mod tests {
         let clients = Clients::bundled();
         for key in STREAM_FALLBACK_ORDER {
             assert!(clients.get(key).is_some(), "missing stream client {key}");
+        }
+        for key in UPLOAD_FALLBACK_ORDER {
+            assert!(clients.get(key).is_some(), "missing upload client {key}");
+            assert!(clients.get(key).unwrap().login_supported, "upload client {key} is anonymous");
         }
         assert!(clients.get(METADATA_CLIENT).is_some());
         assert!(clients.get(LYRICS_TIMED_CLIENT).is_some());

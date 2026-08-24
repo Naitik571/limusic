@@ -104,7 +104,16 @@
 				{#each items as item (item.id)}
 					<!-- data-ctx: right-clicking the row opens the same ⋯ menu every other surface offers
 					     (ctxHost on the hidden menu trigger below finds this host). -->
-					<Command.Item value={item.id} onSelect={() => choose(item)} data-ctx class="gap-3 px-2 py-1.5">
+					<Command.Item
+						value={item.id}
+						onSelect={() => choose(item)}
+						data-ctx
+						oncontextmenu={(e) => {
+							// Prevent cmdk's selection on right-click and let ctxHost open the row's menu
+							e.preventDefault();
+						}}
+						class="gap-3 px-2 py-1.5"
+					>
 						{#if item.thumbnail}
 							<!-- 400, the same size the cards ask for: the CDN doesn't serve every rewritten
 							     size, that one is verified, and the row lands on an image the grid already

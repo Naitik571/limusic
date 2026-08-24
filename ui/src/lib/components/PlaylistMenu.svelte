@@ -11,13 +11,15 @@
 		Radio02Icon,
 		ArrowUpNarrowWideIcon,
 		ArrowDownWideNarrowIcon,
-		DashboardSquare02Icon
+		DashboardSquare02Icon,
+		PlayIcon,
+		ShuffleIcon
 	} from '@hugeicons/core-free-icons';
-	import * as api from '$lib/api';
-	import type { BrowseItem } from '$lib/api';
-	import { enqueueItem } from '$lib/browse';
-	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
-	import { addPick, personal, startRadio, togglePin } from '$lib/player.svelte';
+import * as api from '$lib/api';
+import type { BrowseItem } from '$lib/api';
+import { enqueueItem, playItem } from '$lib/browse';
+import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
+import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.svelte';
 
 	let {
 		item,
@@ -53,6 +55,35 @@
 			menuOpen = false;
 		} finally {
 			queueing = false;
+		}
+	}
+
+	let playing = $state(false);
+	async function play(shuffle = false) {
+		if (playing) return;
+		playing = true;
+		try {
+			if (item.kind === 'playlist' || item.kind === 'album') {
+				// Fetch then play via playFrom so shuffle is honored and autoplay seeds correctly
+				if (item.kind === 'album') {
+					const album = await api.getAlbum(item.id);
+					await playFrom(item, album.items, null, album.playlistId ?? undefined, shuffle, album.continuation);
+				} else {
+					const pl = await api.getPlaylist(item.id);
+					await playFrom(item, pl.items, null, item.id === api.ON_REPEAT_ID ? undefined : item.id, shuffle, pl.continuation);
+				}
+			} else {
+				await playItem(item);
+				// playItem for artists/songs doesn't use shuffle; for playlists above we already handled it
+				if (shuffle && item.kind === 'song') {
+					// no-op for single song
+				}
+			}
+			menuOpen = false;
+		} catch {
+			// playFrom/playItem toasts on failure
+		} finally {
+			playing = false;
 		}
 	}
 
@@ -116,6 +147,28 @@
 		{@attach toBody}
 		{@attach fitMenu(anchor)}
 	>
+		{#if item.kind === 'playlist' || item.kind === 'album'}
+			<button
+				class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10 disabled:opacity-50"
+				disabled={playing}
+				onclick={(e) => {
+					e.stopPropagation();
+					play(false);
+				}}
+			>
+				<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play
+			</button>
+			<button
+				class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10 disabled:opacity-50"
+				disabled={playing}
+				onclick={(e) => {
+					e.stopPropagation();
+					play(true);
+				}}
+			>
+				<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" /> Shuffle play
+			</button>
+		{/if}
 		{#if showPin}
 			<button
 				class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
