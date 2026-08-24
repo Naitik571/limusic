@@ -94,7 +94,7 @@ fn is_authorized(request: &str, expected: &str) -> bool {
 /// Spawn the tiny HTTP server on 0.0.0.0:32145. Best-effort, logs on bind failure.
 pub fn spawn(state: Arc<AppState>) {
     let db = state.db.clone();
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let listener = match TcpListener::bind("0.0.0.0:32145").await {
             Ok(l) => l,
             Err(e) => {
@@ -113,7 +113,7 @@ pub fn spawn(state: Arc<AppState>) {
             };
             let state = state.clone();
             let db = db.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let mut buf = vec![0u8; 8192];
                 let n = match stream.read(&mut buf).await {
                     Ok(n) if n > 0 => n,
