@@ -289,9 +289,10 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     // 2. YouTube Music timed lyrics — authenticated and heaviest, so strictly last and optional:
     //    only when nothing synced arrived, and only within whatever budget remains.
     if best.as_ref().is_none_or(|(_, l)| rank(l) < 2) {
-        if let (Some(bid), Some(client)) =
-            (&browse_id, state.clients.get(innertube::LYRICS_TIMED_CLIENT))
-        {
+        if let (Some(bid), Some(client)) = (
+            &browse_id,
+            state.clients.get(innertube::LYRICS_TIMED_CLIENT),
+        ) {
             let remain = FETCH_BUDGET.saturating_sub(started.elapsed());
             if remain.is_zero() {
                 definitive = false; // YTM never got to answer — not a checked-everywhere run
