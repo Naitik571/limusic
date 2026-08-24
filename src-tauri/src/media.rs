@@ -83,11 +83,32 @@ pub fn spawn(app: AppHandle) -> Option<MediaHandle> {
 #[allow(unused_assignments)]
 fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
     // On Windows SMTC needs the main window handle; Linux/macOS ignore it.
+    // The window is hidden to tray (not destroyed) so the HWND stays valid in
+    // background — SMTC keeps delivering Play/Pause/Next/Prev even when the
+    // app has no visible window or focus (souvlaki keeps the controller alive
+    // on this owner thread for the app lifetime).
     #[cfg(target_os = "windows")]
-    let hwnd = app
-        .get_webview_window("main")
-        .and_then(|w| w.hwnd().ok())
-        .map(|h| h.0 as *mut std::ffi::c_void);
+    let hwnd = {
+        // At `setup` the webview may not have its HWND yet on slow startups;
+        // retry briefly so we don't boot without SMTC on a cold launch.
+        let mut h = app
+            .get_webview_window("main")
+            .and_then(|w| w.hwnd().ok())
+            .map(|h| h.0 as *mut std::ffi::c_void);
+        if h.is_none() {
+            std::thread::sleep(Duration::from_millis(500));
+            h = app
+                .get_webview_window("main")
+                .and_then(|w| w.hwnd().ok())
+                .map(|h| h.0 as *mut std::ffi::c_void);
+            if h.is_none() {
+                tracing::warn!(
+                    "media-controls: main window HWND unavailable — SMTC may not attach"
+                );
+            }
+        }
+        h
+    };
     #[cfg(not(target_os = "windows"))]
     let hwnd = None;
 
@@ -108,7 +129,7 @@ fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
         tracing::warn!(error = ?e, "media controls attach failed");
         return;
     }
-    tracing::info!("OS media controls attached");
+    tracing::info!("OS media controls attached (SMTC/MPRIS — works in background/tray)");
 
     // Owner-thread-local mirror of what the OS should show; rebuilt on each change.
     let mut title = String::new();
