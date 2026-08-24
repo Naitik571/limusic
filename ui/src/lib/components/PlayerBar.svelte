@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		PreviousIcon,
@@ -10,7 +10,6 @@
 		RepeatOne01Icon,
 		Queue01Icon,
 		Mic01Icon,
-		Video01Icon,
 		VolumeHighIcon,
 		VolumeMute02Icon,
 		FavouriteIcon,
@@ -105,7 +104,7 @@
 		setSleepTimer(mode, minutes);
 	}
 
-	// The current track was appended by autoplay → show the subtle ∞ badge next to the title.
+	// The current track was appended by autoplay â†’ show the subtle âˆž badge next to the title.
 	// Matched against the now-playing videoId so a transient queue/now-playing mismatch (mid
 	// gapless advance) can't flash the badge on the wrong song.
 	const autoplayTrack = $derived.by(() => {
@@ -113,7 +112,7 @@
 		return !!cur?.autoplay && cur.video_id === playback.now?.videoId;
 	});
 
-	// The ⋮ menu needs the full SongItem — NowPlaying carries no album_id. Take it from the queue
+	// The â‹® menu needs the full SongItem â€” NowPlaying carries no album_id. Take it from the queue
 	// row, matched on videoId so a mid-advance mismatch can't point the menu at the wrong song.
 	const currentSong = $derived.by(() => {
 		const cur = playback.queue.items[playback.queue.currentIndex];
@@ -152,12 +151,6 @@
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}
 
-	function toggleVideoSync() {
-		const next = !appearance.videoSync;
-		setAppearance({ videoSync: next });
-		api.setVideoSync(next).catch(()=>{});
-	}
-
 	// Anywhere on the bar that isn't a control opens (or closes) the now-playing view: the bar is
 	// what's left of it once it's minimised, so it's the way back in. Deliberately no pointer
 	// cursor, because this is the whole bar, not a button, and every real button keeps its own click.
@@ -191,7 +184,7 @@
 	class="flex items-center gap-2 border-x-0 border-b-0 glass px-2 py-2.5 sm:gap-4 sm:px-4 sm:py-3"
 >
 	<!-- Now playing. data-ctx: right-clicking the cover, the title or the space around them opens
-	     the ⋯ menu for the track that's playing. -->
+	     the â‹¯ menu for the track that's playing. -->
 	<div class="flex min-w-0 flex-1 items-center gap-3" data-ctx>
 		<button
 			type="button"
@@ -321,7 +314,7 @@
 				onclick={() => api.togglePause()}
 				aria-label="Play/pause"
 			>
-				<!-- HugeiconsIcon only re-renders `altIcon`/`showAlt`, not `icon` (frozen at mount) —
+				<!-- HugeiconsIcon only re-renders `altIcon`/`showAlt`, not `icon` (frozen at mount) â€”
 			     so toggle via showAlt, not a ternary on `icon`. -->
 			<HugeiconsIcon
 				icon={PauseIcon}
@@ -340,7 +333,7 @@
 				aria-label="Repeat: {repeat}"
 				aria-pressed={repeat !== 'off'}
 			>
-				<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount (see play/pause above) -->
+				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
 				<HugeiconsIcon
 					icon={RepeatIcon}
 					altIcon={RepeatOne01Icon}
@@ -377,7 +370,7 @@
 				onclick={toggleMute}
 				aria-label={playback.volume === 0 ? 'Unmute' : 'Mute'}
 			>
-				<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount (see play/pause above) -->
+				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
 				<HugeiconsIcon
 					icon={VolumeHighIcon}
 					altIcon={VolumeMute02Icon}
@@ -412,7 +405,7 @@
 				<HugeiconsIcon icon={Moon01Icon} class="h-5 w-5" />
 				{#if sleepTimer.mode !== 'off'}
 					<span class="ml-0.5 text-[10px] font-medium tabular-nums">
-						{sleepTimer.mode === 'minutes' ? fmt(sleepTimer.remaining) : '♪'}
+						{sleepTimer.mode === 'minutes' ? fmt(sleepTimer.remaining) : 'â™ª'}
 					</span>
 				{/if}
 			</Button>
@@ -468,15 +461,6 @@
 						<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
 					</Button>
 					<Button
-						variant={appearance.videoSync ? 'secondary' : 'ghost'}
-						size="icon-sm"
-						onclick={toggleVideoSync}
-						aria-label="Toggle video sync"
-						title={appearance.videoSync ? 'Video sync on' : 'Video sync off'}
-					>
-						<HugeiconsIcon icon={Video01Icon} class="h-5 w-5" />
-					</Button>
-					<Button
 						variant={lyricsOpen ? 'secondary' : 'ghost'}
 						size="icon-sm"
 						onclick={onToggleLyrics}
@@ -501,7 +485,7 @@
 				aria-label={np.open ? 'Minimise player' : 'Open player'}
 				aria-expanded={np.open}
 			>
-				<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount (see play/pause above) -->
+				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
 				<HugeiconsIcon
 					icon={ArrowUp01Icon}
 					altIcon={ArrowDown01Icon}

@@ -1055,7 +1055,5 @@ export function initApp(mini = false): () => void {
 	loadEq();
 	// Restore persisted volume (exponential EXPONENT=3)
 	api.getVolume().then((v) => { playback.volume = v; }).catch(()=>{});
-	// Restore Video Sync persisted state (mpv vo=libmpv) — sync appearance switch with backend
-	api.getVideoSync().then((on) => { if (on) setAppearance({ videoSync: true }); }).catch(()=>{});
 	return teardown;
 }

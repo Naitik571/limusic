@@ -119,17 +119,24 @@
 			? ''
 			: 'rounded-[1.25rem]'}"
 	>
-		<AmbientGlow />
+		<!-- Ambient mode (#7): one app-wide backdrop under every surface (-z-10; html.ambient-on
+		     isolates .app-root so the negative z can't slip under its own background). The cover is
+		     blurred to a wash at --ambient-opacity and dimmed by a black veil at --ambient-veil,
+		     solved for text contrast in veil.ts. Drifts only while audio plays. -->
 		{#if appearance.ambientMode && playback.now?.thumbnail}
-			<img
-				src={thumb(playback.now.thumbnail, 720)}
-				alt=""
-				aria-hidden="true"
-				class="pointer-events-none absolute inset-0 h-full w-full object-cover"
-				style="filter: blur(40px) scale(1.2); opacity: var(--ambient-opacity, 0.12);"
-			/>
-			<div class="pointer-events-none absolute inset-0 bg-background/40 backdrop-blur-[1px]" style="opacity: calc(var(--ambient-opacity, 0.12) * 0.7);"></div>
+			<div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+				<img
+					src={thumb(playback.now.thumbnail, 1200)}
+					alt=""
+					class="ambient-drift h-full w-full object-cover"
+					style="filter: blur(70px) saturate(1.25); transform: scale(1.25); opacity: var(--ambient-opacity, 0.7); animation-play-state: {playback.paused
+						? 'paused'
+						: 'running'};"
+				/>
+				<div class="absolute inset-0 bg-black" style="opacity: var(--ambient-veil, 0.5);"></div>
+			</div>
 		{/if}
+		<AmbientGlow />
 		<ResizeBorders />
 		<Titlebar />
 		<!-- relative: the queue and lyrics panels are absolute overlays inside it (see QueuePanel). -->

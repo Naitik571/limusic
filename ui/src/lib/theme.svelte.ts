@@ -13,6 +13,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { hexToHsv, hsvToHex, isLight, lerpHue, type Hsv } from './color';
 import { artworkAccent } from './artcolor';
+import { solveVeil } from './veil';
 import { allowFontFile } from './api';
 
 export type ThemeId =
@@ -136,9 +137,7 @@ export const appearance = $state({
 	tabbedPlayer: true,
 	/** Take the accent colour from the playing track's cover, crossfading on each change (#69). */
 	artworkAccent: false,
-	/** Video Sync: show muted official video + audio (muted video via mpv `vid=auto` or YT embed). */
-	videoSync: false,
-	/** Ambient mode: immersive blurred artwork backdrop (#7). */
+	/** Ambient mode: immersive artwork backdrop (#7). */
 	ambientMode: false,
 	/** Intensity of the ambient backdrop. */
 	ambientIntensity: 'balanced' as AmbientIntensity,
@@ -157,11 +156,31 @@ export function setAppearance(patch: Partial<typeof appearance>): void {
 	localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
 }
 
+/** Ambient intensity -> artwork backdrop layer opacity (subtle/balanced/vivid). */
+const AMBIENT_LAYER_OPACITY: Record<AmbientIntensity, number> = {
+	subtle: 0.5,
+	balanced: 0.7,
+	vivid: 0.85
+};
+
 function applyAmbient(): void {
 	const root = document.documentElement;
 	const enabled = appearance.ambientMode;
-	const opacity = appearance.immersiveBackgroundIntensity;
-	root.style.setProperty('--ambient-opacity', enabled ? String(opacity) : '0');
+	// --ambient-opacity is the artwork layer's opacity; --ambient-veil is the black dim on top,
+	// solved (veil.ts) against the current artwork colour so text keeps WCAG 4.5:1.
+	const layerOpacity = AMBIENT_LAYER_OPACITY[appearance.ambientIntensity] ?? 0.7;
+	root.style.setProperty('--ambient-opacity', enabled ? String(layerOpacity) : '0');
+	let veil = '0';
+	if (enabled) {
+		const cs = getComputedStyle(root);
+		veil = solveVeil(
+			artAccentHex ?? effective.accent,
+			cs.getPropertyValue('--foreground'),
+			cs.getPropertyValue('--background'),
+			layerOpacity
+		).toFixed(3);
+	}
+	root.style.setProperty('--ambient-veil', veil);
 	root.classList.toggle('ambient-on', enabled);
 	root.setAttribute('data-ambient-intensity', appearance.ambientIntensity);
 }
@@ -239,8 +258,9 @@ function apply(): void {
 	if (custom.fontSans) root.style.setProperty('--font-sans', custom.fontSans);
 	if (custom.fontHeading) root.style.setProperty('--font-heading', custom.fontHeading);
 
-	applyAmbient();
+	// readBack first, so the veil solver sees the accent as it now resolves (not last apply's).
 	readBack();
+	applyAmbient();
 }
 
 export function applyTheme(id: ThemeId): void {
@@ -399,6 +419,8 @@ export function fontAvailable(name: string): boolean {
 let art: Hsv | null = null;
 let frame = 0;
 let wanted = '';
+/** Raw hex from the last successful artworkAccent() fetch, for the ambient veil solver. */
+let artAccentHex: string | null = null;
 
 /** Push the current artwork colour into the accent vars and the tint hue. */
 function setArtVars(c: Hsv): void {
@@ -440,6 +462,7 @@ function fadeTo(to: Hsv): void {
 export function applyArtworkAccent(url: string | undefined | null): void {
 	wanted = url ?? '';
 	if (!url) {
+		artAccentHex = null;
 		cancelAnimationFrame(frame);
 		if (art) {
 			art = null;
@@ -448,8 +471,10 @@ export function applyArtworkAccent(url: string | undefined | null): void {
 		return;
 	}
 	artworkAccent(url).then((hex) => {
+		if (wanted !== url) return; // a faster track change already won
+		artAccentHex = hex;
 		const hsv = hex && hexToHsv(hex);
-		if (hsv && wanted === url) fadeTo(hsv); // a faster track change already won
+		if (hsv) fadeTo(hsv);
 	});
 }
 
@@ -475,7 +500,7 @@ export function initTheme(): void {
 	}
 	try {
 		const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) ?? '{}');
-		for (const k of ['artworkBackground', 'tabbedPlayer', 'artworkAccent', 'videoSync', 'ambientMode'] as const) {
+		for (const k of ['artworkBackground', 'tabbedPlayer', 'artworkAccent', 'ambientMode'] as const) {
 			if (typeof saved?.[k] === 'boolean') (appearance as any)[k] = saved[k];
 		}
 		if (typeof saved?.ambientIntensity === 'string' && ['subtle', 'balanced', 'vivid'].includes(saved.ambientIntensity)) {

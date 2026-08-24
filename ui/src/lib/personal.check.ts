@@ -276,7 +276,11 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 	const back = hydrate(JSON.parse(JSON.stringify(p)));
 	// '@familiar' is slotted into an order saved before it existed, so it doesn't sink to the bottom.
 	ok(back.home.order.join() === '@recent,@familiar,Listen again', 'order survives persistence');
-	ok(back.home.hidden.join() === '@forgotten', 'hidden survives persistence');
+	// '@shortcuts' is opt-in now: an arrangement saved before it existed gets the hidden flag seeded.
+	ok(
+		back.home.hidden.join() === '@forgotten,@shortcuts',
+		'hidden survives persistence, with @shortcuts seeded once'
+	);
 	ok(back.home.seen.join() === 'Listen again', 'so does the list of shelves home has ever shown');
 	ok(
 		hydrate({ home: { order: ['Listen again'], hidden: [] } }).home.order.join() ===
@@ -289,6 +293,11 @@ const range = (n: number, prefix: string) => Array.from({ length: n }, (_, i) =>
 	);
 	ok(hydrate({}).home.order.length === 0, 'a blob from before the feature reads as unarranged');
 	ok(hydrate({ home: { order: [1, 'a'], hidden: 'nope' } }).home.order.join() === 'a,@familiar', 'junk is dropped');
+	// The seeding happens once: a saved choice (ranked or hidden) is never overwritten.
+	const chose = hydrate({ home: { order: ['@shortcuts', 'x'], hidden: [] } });
+	ok(!chose.home.hidden.includes('@shortcuts'), 'a ranked @shortcuts stays visible');
+	const hid = hydrate({ home: { order: [], hidden: ['@shortcuts'] } });
+	ok(hid.home.hidden.join() === '@shortcuts', 'an explicitly hidden @shortcuts stays hidden');
 }
 
 // --- familiar artists: play counts, but only the ones with a channel to open --------------------

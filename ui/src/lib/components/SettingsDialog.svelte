@@ -1,8 +1,16 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Cancel01Icon } from '@hugeicons/core-free-icons';
+	import {
+		Cancel01Icon,
+		Settings02Icon,
+		PaintBoardIcon,
+		PlayCircleIcon,
+		Download04Icon,
+		Database02Icon,
+		InformationCircleIcon
+	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
@@ -49,14 +57,21 @@
 	import { getVersion } from '@tauri-apps/api/app';
 
 	type TabId = 'general' | 'themes' | 'playback' | 'downloads' | 'data' | 'about';
-	const TABS: { id: TabId; label: string }[] = [
-		{ id: 'general', label: 'General' },
-		{ id: 'themes', label: 'Themes' },
-		{ id: 'playback', label: 'Playback' },
-		{ id: 'downloads', label: 'Downloads' },
-		{ id: 'data', label: 'Data & storage' },
-		{ id: 'about', label: 'About' }
+	const TABS: { id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[] = [
+		{ id: 'general', label: 'General', hint: 'History, integrations and how the app starts.', icon: Settings02Icon },
+		{ id: 'themes', label: 'Appearance', hint: 'Colors, fonts, layouts and the player view.', icon: PaintBoardIcon },
+		{ id: 'playback', label: 'Playback', hint: 'Quality, equalizer, transitions and streams.', icon: PlayCircleIcon },
+		{ id: 'downloads', label: 'Downloads', hint: 'Offline files: location, quality and cleanup.', icon: Download04Icon },
+		{ id: 'data', label: 'Data & storage', hint: 'Network and cached files.', icon: Database02Icon },
+		{ id: 'about', label: 'About', hint: 'Version and updates.', icon: InformationCircleIcon }
 	];
+
+	// Shared shapes for the settings rows. Kept as strings so the markup below stays readable and
+	// every group looks identical without a wrapper component per row.
+	const GROUP = 'mb-7 last:mb-1';
+	const LABEL =
+		'mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground';
+	const CARD = 'divide-y divide-border/60 overflow-hidden rounded-xl border bg-card';
 
 	const ACCENT_THEMES = THEMES.filter((t) => t.kind === 'accent');
 	const PALETTE_THEMES = THEMES.filter((t) => t.kind === 'palette');
@@ -107,6 +122,7 @@
 	}
 
 	let tab = $state<TabId>('general');
+	const currentTab = $derived(TABS.find((t) => t.id === tab) ?? TABS[0]);
 	// Bring-your-own-token lyrics (Apple Music). Stored in the internal settings DB; empty means off.
 	let appleMediaToken = $state('');
 	let appleDevToken = $state('');
@@ -122,16 +138,16 @@
 	}
 	let settings = $state<Record<string, string>>({});
 	let ytdlp = $state<api.YtdlpInfo>({ enabled: true, installed: false, last_error: null });
-    // --- Remote LAN QR (#5) ---
-    let lanUrl = $state('');
-    let remoteToken = $state('');
-    let remotePaired = $state(false);
-    let qrCanvas = $state<HTMLCanvasElement | null>(null);
-    // --- Artist Packs (#9) ---
-    let artistPacks = $state<api.ArtistPack[]>([]);
-    let packIndex = $state<api.ArtistPackIndex | null>(null);
-    let packUrl = $state('');
-    let packLoading = $state(false);
+	// --- Remote LAN QR (#5) ---
+	let lanUrl = $state('');
+	let remoteToken = $state('');
+	let remotePaired = $state(false);
+	let qrCanvas = $state<HTMLCanvasElement | null>(null);
+	// --- Artist Packs (#9) ---
+	let artistPacks = $state<api.ArtistPack[]>([]);
+	let packIndex = $state<api.ArtistPackIndex | null>(null);
+	let packUrl = $state('');
+	let packLoading = $state(false);
 	let clients = $state<string[]>([]);
 	let proxyInput = $state('');
 	let loaded = $state(false);
@@ -383,949 +399,1253 @@
 	}
 	function eqSetBand(i: number, v: number) { eq.bands[i] = v; api.setEq(i, v).catch(()=>{}); }
 	function eqReset() { for(let i=0;i<10;i++) eqSetBand(i,0); api.setEqBands(Array(10).fill(0)).catch(()=>{}); api.setPreamp(0); api.setBalance(0); api.setOutputGain(0); eq.preamp=0; eq.balance=0; eq.output_gain=0; }
-    // --- Remote QR helpers: minimal QR-like canvas (hash-based pseudo-QR, glass vibe, no external npm) ---
-    function drawQr(canvas: HTMLCanvasElement | null, text: string) {
-        if (!canvas || !text) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        const size = 160;
-        canvas.width = size; canvas.height = size;
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,size,size);
-        // pseudo-QR: hash text to bits
-        let hash = 0; for (let i=0;i<text.length;i++) hash = ((hash<<5)-hash + text.charCodeAt(i))|0;
-        const modules = 21;
-        const cell = size / modules;
-        ctx.fillStyle = '#000000';
-        // finder patterns (3 corners)
-        const finder = (ox:number, oy:number)=>{ ctx.fillRect(ox*cell, oy*cell, 7*cell, 7*cell); ctx.fillStyle='#fff'; ctx.fillRect((ox+1)*cell,(oy+1)*cell,5*cell,5*cell); ctx.fillStyle='#000'; ctx.fillRect((ox+2)*cell,(oy+2)*cell,3*cell,3*cell); };
-        finder(0,0); finder(modules-7,0); finder(0,modules-7);
-        ctx.fillStyle='#000';
-        let h = hash;
-        for(let y=0;y<modules;y++) for(let x=0;x<modules;x++){
-            if ((x<7 && y<7) || (x>=modules-7 && y<7) || (x<7 && y>=modules-7)) continue;
-            h = (h*1664525 + 1013904223)|0;
-            if ((h & 1) === 1) ctx.fillRect(x*cell, y*cell, cell, cell);
-        }
-        // center text hint
-        ctx.fillStyle='rgba(0,0,0,0.08)'; ctx.font='8px monospace'; ctx.textAlign='center'; ctx.fillText('LAN', size/2, size/2+2);
-    }
-    $effect(()=>{ if(qrCanvas && lanUrl) drawQr(qrCanvas, lanUrl); });
-    async function refreshRemote(){
-        try{ lanUrl = await api.getLanUrl(); remoteToken = await api.getRemoteToken(); drawQr(qrCanvas, lanUrl); }catch{}
-    }
-    async function regenerateToken(){
-        try{ remoteToken = await api.pairRemote('__regenerate__').then(()=> api.getRemoteToken()); lanUrl = await api.getLanUrl(); drawQr(qrCanvas, lanUrl); toast.success('Refreshed'); }catch(e){ await refreshRemote(); toast.success('Refreshed'); }
-    }
-    async function refreshPacks(){
-        try{ artistPacks = await api.listArtistPacks(); }catch{}
-        try{ packIndex = await api.fetchArtistPacksIndex(); }catch{ packIndex=null; }
-    }
-    async function installPackFromUrl(){
-        if(!packUrl.trim()) return; packLoading=true;
-        try{ const p = await api.installArtistPack(packUrl.trim()); toast.success(`Installed ${p.name}`); packUrl=''; await refreshPacks(); }catch(e){ toast.error(String(e)); } finally{ packLoading=false; }
-    }
-    async function installPackFromZip(){
-        const picked = await open({ multiple:false, title:'Pick artist pack ZIP', filters:[{name:'ZIP', extensions:['zip']} ]});
-        const path = Array.isArray(picked)? picked[0] : picked;
-        if(!path) return; packLoading=true;
-        try{ const p = await api.installArtistPackZip(path as string); toast.success(`Installed ${p.name}`); await refreshPacks(); }catch(e){ toast.error(String(e)); } finally{ packLoading=false; }
-    }
-    async function removePack(id:string){
-        try{ await api.removeArtistPack(id); toast.success('Removed'); await refreshPacks(); }catch(e){ toast.error(String(e)); }
-    }
+	// --- Remote QR helpers: minimal QR-like canvas (hash-based pseudo-QR, glass vibe, no external npm) ---
+	function drawQr(canvas: HTMLCanvasElement | null, text: string) {
+		if (!canvas || !text) return;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		const size = 160;
+		canvas.width = size; canvas.height = size;
+		ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,size,size);
+		// pseudo-QR: hash text to bits
+		let hash = 0; for (let i=0;i<text.length;i++) hash = ((hash<<5)-hash + text.charCodeAt(i))|0;
+		const modules = 21;
+		const cell = size / modules;
+		ctx.fillStyle = '#000000';
+		// finder patterns (3 corners)
+		const finder = (ox:number, oy:number)=>{ ctx.fillRect(ox*cell, oy*cell, 7*cell, 7*cell); ctx.fillStyle='#fff'; ctx.fillRect((ox+1)*cell,(oy+1)*cell,5*cell,5*cell); ctx.fillStyle='#000'; ctx.fillRect((ox+2)*cell,(oy+2)*cell,3*cell,3*cell); };
+		finder(0,0); finder(modules-7,0); finder(0,modules-7);
+		ctx.fillStyle='#000';
+		let h = hash;
+		for(let y=0;y<modules;y++) for(let x=0;x<modules;x++){
+			if ((x<7 && y<7) || (x>=modules-7 && y<7) || (x<7 && y>=modules-7)) continue;
+			h = (h*1664525 + 1013904223)|0;
+			if ((h & 1) === 1) ctx.fillRect(x*cell, y*cell, cell, cell);
+		}
+		// center text hint
+		ctx.fillStyle='rgba(0,0,0,0.08)'; ctx.font='8px monospace'; ctx.textAlign='center'; ctx.fillText('LAN', size/2, size/2+2);
+	}
+	$effect(()=>{ if(qrCanvas && lanUrl) drawQr(qrCanvas, lanUrl); });
+	async function refreshRemote(){
+		try{ lanUrl = await api.getLanUrl(); remoteToken = await api.getRemoteToken(); drawQr(qrCanvas, lanUrl); }catch{}
+	}
+	async function regenerateToken(){
+		try{ remoteToken = await api.pairRemote('__regenerate__').then(()=> api.getRemoteToken()); lanUrl = await api.getLanUrl(); drawQr(qrCanvas, lanUrl); toast.success('Refreshed'); }catch(e){ await refreshRemote(); toast.success('Refreshed'); }
+	}
+	async function refreshPacks(){
+		try{ artistPacks = await api.listArtistPacks(); }catch{}
+		try{ packIndex = await api.fetchArtistPacksIndex(); }catch{ packIndex=null; }
+	}
+	async function installPackFromUrl(){
+		if(!packUrl.trim()) return; packLoading=true;
+		try{ const p = await api.installArtistPack(packUrl.trim()); toast.success(`Installed ${p.name}`); packUrl=''; await refreshPacks(); }catch(e){ toast.error(String(e)); } finally{ packLoading=false; }
+	}
+	async function installPackFromZip(){
+		const picked = await open({ multiple:false, title:'Pick artist pack ZIP', filters:[{name:'ZIP', extensions:['zip']} ]});
+		const path = Array.isArray(picked)? picked[0] : picked;
+		if(!path) return; packLoading=true;
+		try{ const p = await api.installArtistPackZip(path as string); toast.success(`Installed ${p.name}`); await refreshPacks(); }catch(e){ toast.error(String(e)); } finally{ packLoading=false; }
+	}
+	async function removePack(id:string){
+		try{ await api.removeArtistPack(id); toast.success('Removed'); await refreshPacks(); }catch(e){ toast.error(String(e)); }
+	}
 </script>
+
+<!-- One row shape for the whole modal: label and description on the left, the control on the right,
+     and an optional block underneath for the things that expand (color picker, font input, lists,
+     the EQ sliders, the QR canvas, the layouts preview). -->
+{#snippet row(o: {
+	title: string;
+	desc?: string;
+	badge?: string;
+	control?: Snippet;
+	below?: Snippet;
+	tall?: boolean;
+})}
+	<div class="px-4 py-3.5">
+		<div class="flex {o.tall ? 'items-start' : 'items-center'} justify-between gap-6">
+			<div class="min-w-0">
+				<div class="flex items-center gap-2">
+					<span class="text-sm font-medium">{o.title}</span>
+					{#if o.badge}
+						<span
+							class="rounded-full bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+						>
+							{o.badge}
+						</span>
+					{/if}
+				</div>
+				{#if o.desc}
+					<p class="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{o.desc}</p>
+				{/if}
+			</div>
+			{#if o.control}
+				<div class="shrink-0">{@render o.control()}</div>
+			{/if}
+		</div>
+		{#if o.below}
+			<div class="mt-3">{@render o.below()}</div>
+		{/if}
+	</div>
+{/snippet}
 
 <Dialog.Root bind:open={ui.settingsOpen}>
 	<Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-3xl">
-		<div class="flex items-center border-b px-6 py-4">
-			<Dialog.Title class="text-lg font-semibold">Settings</Dialog.Title>
-			<Dialog.Description class="sr-only">Application settings</Dialog.Description>
-		</div>
+		<Dialog.Description class="sr-only">Application settings</Dialog.Description>
 
-		<div class="flex h-[28rem]">
+		<div class="flex h-[min(38rem,80vh)]">
 			<!-- Tab rail -->
-			<nav class="w-48 shrink-0 border-r p-2">
-				{#each TABS as t (t.id)}
-					<button
-						onclick={() => (tab = t.id)}
-						class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors {tab ===
-						t.id
-							? 'bg-accent text-accent-foreground'
-							: 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}"
-					>
-						{t.label}
-					</button>
-				{/each}
+			<nav class="flex w-52 shrink-0 flex-col border-r bg-muted/40 p-3">
+				<Dialog.Title class="px-3 pt-1 pb-4 font-heading text-base font-semibold">
+					Settings
+				</Dialog.Title>
+				<div class="flex flex-col gap-0.5">
+					{#each TABS as t (t.id)}
+						<button
+							onclick={() => (tab = t.id)}
+							aria-current={tab === t.id}
+							class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors {tab === t.id ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'}"
+						>
+							<HugeiconsIcon
+								icon={t.icon}
+								size={17}
+								strokeWidth={2}
+								class={tab === t.id ? 'text-primary' : ''}
+							/>
+							<span class="truncate">{t.label}</span>
+						</button>
+					{/each}
+				</div>
+				{#if version}
+					<span class="mt-auto px-3 pb-1 text-[11px] text-muted-foreground">v{version}</span>
+				{/if}
 			</nav>
 
 			<!-- Content pane. min-w-0: a flex child's min-width is auto, so without it one wide row
 			     (a long font name, a long path) widens the pane and pushes every tab off the modal. -->
-			<div class="min-w-0 flex-1 overflow-y-auto px-6 py-4">
-				{#if !loaded}
-					<p class="text-sm text-muted-foreground">Loading…</p>
-				{:else if tab === 'general'}
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Watch history</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Register plays in your YouTube Music history. Needs sign-in.
-							</p>
-						</div>
-						<Switch checked={historyOn} onCheckedChange={setHistory} />
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Discord rich presence</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Show what you're listening to on your Discord profile. Needs the Discord desktop app
-								running — no login here.
-							</p>
-						</div>
-						<Switch checked={discordOn} onCheckedChange={setDiscord} />
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Close to tray</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Closing the window keeps music playing in the background. Restore or quit from the
-								tray icon.
-							</p>
-						</div>
-						<Switch checked={trayOn} onCheckedChange={setTray} />
-					</div>
-					<div class="flex items-start justify-between gap-4 py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Start on login</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Launch Limusic automatically when you log in.
-							</p>
-						</div>
-						<Switch checked={autostartOn} onCheckedChange={setAutostart} />
-					</div>
-					<div class="mt-4 border-t pt-3">
-						<div class="font-medium">Apple Music lyrics (bring your own token)</div>
-						<p class="mt-0.5 text-sm text-muted-foreground">
-							Optional. Paste two values from a logged-in music.apple.com session to unlock
-							Apple's word-level lyrics: the <b>media user token</b> and the <b>developer
-							bearer token</b> (both are in the site's request headers — any devtools network
-							tab shows them). Stored only on this machine. Leave empty to keep it off.
-						</p>
-						<div class="mt-2 grid gap-2">
-							<Input
-								placeholder="media-user-token (starts with a long base64 string)"
-								value={appleMediaToken}
-								oninput={(e) => (appleMediaToken = e.currentTarget.value)}
-							/>
-							<Input
-								placeholder="developer bearer token (eyJ… JWT)"
-								value={appleDevToken}
-								oninput={(e) => (appleDevToken = e.currentTarget.value)}
-							/>
-							<div class="flex items-center gap-2">
-								<Input
-									class="w-28"
-									placeholder="us"
-									value={appleStorefront}
-									oninput={(e) => (appleStorefront = e.currentTarget.value)}
-								/>
-								<Button
-									size="sm"
-									onclick={() => setAppleLyrics(appleMediaToken, appleDevToken, appleStorefront)}
-								>
-									Save tokens
-								</Button>
-							</div>
-						</div>
-					</div>
-					<!-- Remote LAN QR (#5) glass vibe -->
-					<div class="mt-4 border-t pt-3">
-						<div class="font-medium">Remote LAN Control</div>
-						<p class="mt-0.5 text-sm text-muted-foreground">Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. pairing token 18B base64url stored in Db; HTTP 0.0.0.0:32145.</p>
-						<div class="mt-3 flex gap-4">
-							<canvas bind:this={qrCanvas} class="h-40 w-40 rounded-lg border bg-white p-2 shadow-sm"></canvas>
-							<div class="min-w-0 flex-1 space-y-2">
-								<div class="rounded-md bg-secondary/50 px-3 py-2 font-mono text-xs break-all">{lanUrl || 'Loading…'}</div>
-								<div class="text-xs text-muted-foreground">Token: <span class="font-mono">{remoteToken ? remoteToken.slice(0,8)+'…' : '—'}</span></div>
-								<div class="flex gap-2">
-									<Button size="sm" variant="outline" onclick={refreshRemote}>Refresh</Button>
-									<Button size="sm" variant="ghost" onclick={regenerateToken}>Regenerate</Button>
-								</div>
-								<p class="text-xs text-muted-foreground">Approve/deny handled via token match. Shows QR canvas (glass) like Orchard.</p>
-							</div>
-						</div>
-					</div>
-				{:else if tab === 'themes'}
-					<div class="flex items-center justify-between gap-8 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Preset</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Accent colors tint the default look; palettes swap every color.
-							</p>
-						</div>
-						<Select.Root
-							type="single"
-							value={theme.id}
-							onValueChange={(v) => applyTheme(v as ThemeId)}
-						>
-							<Select.Trigger class="w-44 shrink-0" aria-label="Theme">
-								<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{currentTheme.color}"></span>
-								<span class="flex-1 text-left">{currentTheme.label}</span>
-							</Select.Trigger>
-							<Select.Content>
-								<Select.Group>
-									<Select.GroupHeading>Accent colors</Select.GroupHeading>
-									{#each ACCENT_THEMES as t (t.id)}
-										<Select.Item value={t.id} label={t.label}>
-											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
-											{t.label}
-										</Select.Item>
-									{/each}
-								</Select.Group>
-								<Select.Group>
-									<Select.GroupHeading>Palettes</Select.GroupHeading>
-									{#each PALETTE_THEMES as t (t.id)}
-										<Select.Item value={t.id} label={t.label}>
-											<span class="size-4 shrink-0 rounded-full ring-1 ring-black/10" style="background:{t.color}"></span>
-											{t.label}
-										</Select.Item>
-									{/each}
-								</Select.Group>
-							</Select.Content>
-						</Select.Root>
-					</div>
+			<div class="flex min-w-0 flex-1 flex-col">
+				<!-- h-14 also keeps the dialog's close button clear of the first row. -->
+				<header class="flex h-14 shrink-0 flex-col justify-center border-b px-6 pr-14">
+					<h2 class="text-sm font-semibold">{currentTab.label}</h2>
+					<p class="truncate text-xs text-muted-foreground">{currentTab.hint}</p>
+				</header>
 
-					<div class="flex items-center justify-between gap-8 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Layout</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Orchard window arrangement — Grove, Canopy and more.
-							</p>
-						</div>
-						<Select.Root
-							type="single"
-							value={layout.id}
-							onValueChange={(v) => applyLayout(v as LayoutId)}
-						>
-							<Select.Trigger class="w-44 shrink-0" aria-label="Layout">
-								<span class="flex-1 text-left">{LAYOUTS.find((l) => l.id === layout.id)?.label ?? layout.id}</span>
-							</Select.Trigger>
-							<Select.Content>
-								{#each LAYOUTS as l (l.id)}
-									<Select.Item value={l.id} label={l.label}>
-										<span class="flex flex-col items-start">
-											<span>{l.label}</span>
-											<span class="text-xs text-muted-foreground">{l.description}</span>
-										</span>
-									</Select.Item>
+				<div class="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+					{#if !loaded}
+						<p class="text-sm text-muted-foreground">Loading…</p>
+					{:else if tab === 'general'}
+						<section class={GROUP}>
+							<h3 class={LABEL}>Activity</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Watch history',
+									desc: 'Register plays in your YouTube Music history. Needs sign-in.',
+									control: historySwitch
+								})}
+								{@render row({
+									title: 'Discord rich presence',
+									desc: "Show what you're listening to on your Discord profile. Needs the Discord desktop app running — no login here.",
+									control: discordSwitch
+								})}
+							</div>
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>System</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Close to tray',
+									desc: 'Closing the window keeps music playing in the background. Restore or quit from the tray icon.',
+									control: traySwitch
+								})}
+								{@render row({
+									title: 'Start on login',
+									desc: 'Launch Limusic automatically when you log in.',
+									control: autostartSwitch
+								})}
+							</div>
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Lyrics</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Apple Music lyrics',
+									badge: 'Optional',
+									desc: "Paste two values from a logged-in music.apple.com session to unlock Apple's word-level lyrics: the media user token and the developer bearer token (both are in the site's request headers — any devtools network tab shows them). Stored only on this machine. Leave empty to keep it off.",
+									below: appleForm
+								})}
+							</div>
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Remote</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Remote LAN Control',
+									desc: 'Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token (128-bit base64url) stored in the DB; HTTP listens on 0.0.0.0:32145. Approve/deny handled via token match.',
+									below: remotePanel
+								})}
+							</div>
+						</section>
+					{:else if tab === 'themes'}
+						<section class={GROUP}>
+							<h3 class={LABEL}>Theme</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Preset',
+									desc: 'Accent colors tint the default look; palettes swap every color.',
+									control: presetSelect
+								})}
+								{@render row({
+									title: 'Accent color',
+									desc: 'Buttons, highlights and the progress bar. Applies over any preset.',
+									control: accentSwatch,
+									below: pickerOpen ? accentPicker : undefined
+								})}
+								{@render row({
+									title: 'Background tint',
+									desc:
+										currentTheme.kind === 'palette'
+											? `Only shades the default palette — ${currentTheme.label} brings its own colors.`
+											: 'Shades the greys: surfaces, borders and secondary text.',
+									control: tintSlider
+								})}
+								{@render row({
+									title: 'Roundness',
+									desc: 'Corner radius of cards, buttons and artwork.',
+									control: radiusSlider
+								})}
+								{@render row({
+									title: 'Reset customization',
+									desc: 'Drop the color, roundness and font overrides. Keeps the preset.',
+									control: resetButton
+								})}
+							</div>
+						</section>
+
+						<section class={GROUP}>
+							<h3 class={LABEL}>Layout</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Window layout',
+									desc: 'Orchard window arrangement — Grove, Canopy and more.',
+									control: layoutSelect,
+									below: layoutPreview
+								})}
+							</div>
+						</section>
+
+						<section class={GROUP}>
+							<h3 class={LABEL}>Typography</h3>
+							<div class={CARD}>
+								{#each FONT_ROWS as fr (fr.key)}
+									<!-- Zero-arg wrappers: a snippet passed as a value can't carry arguments. -->
+									{#snippet pick()}{@render fontSelect(fr.key, fr.label)}{/snippet}
+									{#snippet type()}{@render fontInput(fr.key, fr.label)}{/snippet}
+									{@render row({
+										title: fr.label,
+										desc: fr.hint,
+										control: pick,
+										below: isCustomFont[fr.key] ? type : undefined
+									})}
 								{/each}
-							</Select.Content>
-						</Select.Root>
-					</div>
-
-					<!-- Layout preview — mini wireframes for each option -->
-					<div class="border-b py-3">
-						<div class="mb-2 text-xs font-medium text-muted-foreground">Preview</div>
-						<div class="grid grid-cols-5 gap-2">
-							{#each LAYOUTS as l (l.id)}
-								<button
-									type="button"
-									onclick={() => applyLayout(l.id)}
-									class="flex flex-col items-center gap-1 rounded-lg border p-2 transition-colors hover:bg-accent/50 {layout.id === l.id ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-card'}"
-									aria-label="Select {l.label} layout"
-									aria-pressed={layout.id === l.id}
-								>
-									<div class="flex h-10 w-full gap-0.5 overflow-hidden rounded border bg-background p-0.5">
-										{#if l.id === 'default'}
-											<div class="w-1/4 rounded-sm bg-sidebar"></div>
-											<div class="flex flex-1 flex-col gap-0.5">
-												<div class="flex-1 rounded-sm bg-muted"></div>
-												<div class="h-1.5 rounded-sm bg-primary/60"></div>
-											</div>
-										{:else if l.id === 'grove'}
-											<div class="w-[22%] rounded-sm bg-sidebar"></div>
-											<div class="flex-1 rounded-sm bg-muted"></div>
-											<div class="w-[24%] rounded-sm bg-sidebar"></div>
-										{:else if l.id === 'canopy'}
-											<div class="flex w-full flex-col gap-0.5">
-												<div class="h-2 rounded-sm bg-sidebar"></div>
-												<div class="flex-1 rounded-sm bg-muted"></div>
-												<div class="h-1.5 rounded-sm bg-primary/60"></div>
-											</div>
-										{:else if l.id === 'compact'}
-											<div class="w-1/5 rounded-sm bg-sidebar/50"></div>
-											<div class="mx-auto flex w-3/5 flex-col gap-0.5">
-												<div class="flex-1 rounded-sm bg-muted"></div>
-												<div class="h-1.5 rounded-sm bg-primary/60"></div>
-											</div>
-											<div class="w-1/5"></div>
-										{:else if l.id === 'wide'}
-											<div class="w-[12%] rounded-sm bg-sidebar/50"></div>
-											<div class="flex flex-1 flex-col gap-0.5">
-												<div class="flex-1 rounded-sm bg-muted"></div>
-												<div class="h-1.5 rounded-sm bg-primary/60"></div>
-											</div>
-										{/if}
-									</div>
-									<span class="text-[11px] font-medium {layout.id === l.id ? 'text-primary' : 'text-muted-foreground'}">{l.label}</span>
-								</button>
-							{/each}
-						</div>
-						<p class="mt-2 text-xs text-muted-foreground">
-							{LAYOUTS.find((l) => l.id === layout.id)?.description}
-						</p>
-					</div>
-
-					<div class="border-b py-3">
-						<div class="flex items-center justify-between gap-8">
-							<div class="min-w-0">
-								<div class="font-medium">Accent color</div>
-								<p class="mt-0.5 text-sm text-muted-foreground">
-									Buttons, highlights and the progress bar. Applies over any preset.
-								</p>
+								{@render row({
+									title: 'Font files',
+									desc: 'Load a .ttf, .otf or .woff from anywhere on this computer. It joins both dropdowns above.',
+									control: addFontButton,
+									below: custom.fontFiles.length ? fontFileList : undefined
+								})}
 							</div>
-							<button
-								type="button"
-								onclick={() => (pickerOpen = !pickerOpen)}
-								aria-label="Choose accent color"
-								aria-expanded={pickerOpen}
-								class="size-8 shrink-0 rounded-md ring-1 ring-black/10 transition-transform hover:scale-105"
-								style="background:{effective.accent}"
-							></button>
-						</div>
-						{#if pickerOpen}
-							<div class="mt-3">
-								<ColorPicker
-									value={effective.accent}
-									onchange={(hex) => setCustom({ accent: hex })}
-								/>
-							</div>
-						{/if}
-					</div>
+						</section>
 
-					<div class="flex items-center justify-between gap-8 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Background tint</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								{#if currentTheme.kind === 'palette'}
-									Only shades the default palette — {currentTheme.label} brings its own colors.
-								{:else}
-									Shades the greys: surfaces, borders and secondary text.
+						<section class={GROUP}>
+							<h3 class={LABEL}>Player view</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Queue and lyrics in the player view',
+									desc: "On, the player view carries them as tabs and the bar's two buttons switch between them. Off, those buttons only ever open the side panels, which stay open over the player view so you can see both at once.",
+									control: tabbedSwitch,
+									tall: true
+								})}
+								{@render row({
+									title: 'Artwork background',
+									desc: "Tint the player view with the playing track's cover, blurred. Off leaves it plain.",
+									control: artworkBgSwitch
+								})}
+								{@render row({
+									title: 'Adapt colors to artwork',
+									badge: 'Experimental',
+									desc: "Recolor the app from the playing track's cover: accent, surfaces and borders, fading between tracks. Off keeps the selected theme's own colors.",
+									control: artworkAccentSwitch,
+									tall: true
+								})}
+							</div>
+						</section>
+
+						<section class={GROUP}>
+							<h3 class={LABEL}>Backdrops</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Ambient Mode',
+									desc: 'Immersive blurred artwork backdrop behind the app (#7). Uses filter: blur(40px) scale(1.2), driven by --ambient-opacity. Glass theme stays frosted over it.',
+									control: ambientSwitch
+								})}
+								{#if appearance.ambientMode}
+									{@render row({
+										title: 'Ambient intensity',
+										desc: 'How strong the blurred backdrop is — maps to --ambient-opacity.',
+										below: ambientOptions
+									})}
 								{/if}
-							</p>
-						</div>
-						<Slider
-							type="single"
-							aria-label="Background tint"
-							max={360}
-							step={1}
-							disabled={currentTheme.kind === 'palette'}
-							value={effective.hue}
-							onValueChange={(hue) => setCustom({ hue })}
-							class="w-44 shrink-0 [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(to_right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)]"
-						/>
-					</div>
-
-					<div class="flex items-center justify-between gap-8 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Roundness</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Corner radius of cards, buttons and artwork.
-							</p>
-						</div>
-						<div class="flex w-44 shrink-0 items-center gap-3">
-							<Slider
-								type="single"
-								aria-label="Roundness"
-								max={1.5}
-								step={0.05}
-								value={effective.radius}
-								onValueChange={(radius) => setCustom({ radius })}
-							/>
-							<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
-								{effective.radius.toFixed(2)}
-							</span>
-						</div>
-					</div>
-
-					{#each FONT_ROWS as row (row.key)}
-						<div class="border-b py-3">
-							<div class="flex items-center justify-between gap-8">
-								<div class="min-w-0">
-									<div class="font-medium">{row.label}</div>
-									<p class="mt-0.5 text-sm text-muted-foreground">{row.hint}</p>
-								</div>
-								<Select.Root
-									type="single"
-									value={isCustomFont[row.key] ? 'custom' : matchFont(effective[row.key])}
-									onValueChange={(v) => chooseFont(row.key, v)}
-								>
-									<Select.Trigger class="w-44 shrink-0" aria-label={row.label}>
-										<span
-											class="min-w-0 flex-1 truncate text-left"
-											style="font-family:{effective[row.key]}"
-										>
-											{isCustomFont[row.key] ? 'Custom' : familyName(effective[row.key])}
-										</span>
-									</Select.Trigger>
-									<!-- max-w: a loaded font's name is whatever the file was called, and the
-									     dropdown grows to its widest item. -->
-									<Select.Content class="max-w-64">
-										{#each FONTS as f (f.value)}
-											<Select.Item value={f.value} label={f.label}>
-												<span class="block truncate" style="font-family:{f.value}">{f.label}</span>
-											</Select.Item>
-										{/each}
-										{#if custom.fontFiles.length}
-											<Select.Group>
-												<Select.GroupHeading>Your fonts</Select.GroupHeading>
-												{#each fileFonts() as f (f.value)}
-													<Select.Item value={f.value} label={f.label}>
-														<span class="block truncate" style="font-family:{f.value}">
-															{f.label}
-														</span>
-													</Select.Item>
-												{/each}
-											</Select.Group>
-										{/if}
-										<Select.Item value="custom" label="Custom">Custom…</Select.Item>
-									</Select.Content>
-								</Select.Root>
+								{@render row({
+									title: 'Spotify Canvas',
+									badge: 'Auto',
+									desc: 'Show looping Canvas video in Now Playing when available (#8). Fetches via https://api.simpmusic.org/canvas (or Spotify API stub) with palette gradient fallback, muted autoplay loop.'
+								})}
 							</div>
-							{#if isCustomFont[row.key]}
-								<div class="mt-3">
-									<Input
-										value={fontName[row.key]}
-										oninput={(e) => typeFont(row.key, e.currentTarget.value)}
-										placeholder="Font installed on this computer, e.g. Inter"
-										aria-label="{row.label} family name"
-										spellcheck={false}
-										style="font-family:{effective[row.key]}"
-									/>
-									{#if fontName[row.key].trim() && !fontAvailable(fontName[row.key])}
-										<p class="mt-1.5 text-sm text-muted-foreground">
-											Not installed — install the font, then reopen settings.
-										</p>
-									{/if}
-								</div>
-							{/if}
-						</div>
-					{/each}
+						</section>
 
-					<div class="border-b py-3">
-						<div class="flex items-center justify-between gap-8">
-							<div class="min-w-0">
-								<div class="font-medium">Font files</div>
-								<p class="mt-0.5 text-sm text-muted-foreground">
-									Load a .ttf, .otf or .woff from anywhere on this computer. It joins both dropdowns
-									above.
-								</p>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Artist packs</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Get packs',
+									desc: 'Per-artist ZIPs (artist.json + style.css) indexed from R2 artist-packs.sfg545.dev/v1/index.json every 15min. Injects style.css via data URI on the artist page; stored under app_data/artist_packs/<id>/.',
+									control: packRefreshButton,
+									below: packInstall
+								})}
+								{@render row({ title: 'Installed packs', below: packList })}
 							</div>
-							<Button variant="outline" size="sm" class="shrink-0" onclick={pickFontFiles}>
-								Add font…
-							</Button>
-						</div>
-						{#if custom.fontFiles.length}
-							<div class="mt-3 flex flex-col gap-1.5">
-								{#each custom.fontFiles as path (path)}
-									<div class="flex items-center gap-3 rounded-md bg-secondary/50 py-1.5 pr-1.5 pl-3">
-										<!-- The name is the identity; the path only earns a tooltip. A font called
-										     BigBlueTerm437NerdFontMono-Regular is wider than the modal. -->
-										<span
-											class="min-w-0 flex-1 truncate"
-											style="font-family:'{fileFamily(path)}'"
-											title={path}
-										>
-											{fileFamily(path)}
-										</span>
-										<button
-											type="button"
-											onclick={() => removeFontFile(path)}
-											aria-label="Remove {fileFamily(path)}"
-											class="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-										>
-											<HugeiconsIcon icon={Cancel01Icon} size={14} />
-										</button>
-									</div>
-								{/each}
+						</section>
+					{:else if tab === 'playback'}
+						<section class={GROUP}>
+							<h3 class={LABEL}>Audio</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Audio quality',
+									desc: 'Preferred stream quality when resolving a track.',
+									control: qualityPicker
+								})}
+								{@render row({
+									title: 'Autoplay',
+									desc: 'Keep the music going with similar songs when your queue ends.',
+									control: autoplaySwitch
+								})}
+								{@render row({
+									title: 'Prevent duplicate tracks in queue',
+									desc: "Adding a track that's already in the queue moves it from its old position instead of adding a second copy.",
+									control: dupSwitch,
+									tall: true
+								})}
 							</div>
-						{/if}
-					</div>
+						</section>
 
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Queue and lyrics in the player view</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								On, the player view carries them as tabs and the bar's two buttons switch between
-								them. Off, those buttons only ever open the side panels, which stay open over the
-								player view so you can see both at once.
-							</p>
-						</div>
-						<Switch
-							checked={appearance.tabbedPlayer}
-							onCheckedChange={(on) => setAppearance({ tabbedPlayer: on })}
-						/>
-					</div>
-
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Artwork background</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Tint the player view with the playing track's cover, blurred. Off leaves it plain.
-							</p>
-						</div>
-						<Switch
-							checked={appearance.artworkBackground}
-							onCheckedChange={(on) => setAppearance({ artworkBackground: on })}
-						/>
-					</div>
-
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="flex items-center gap-2">
-								<span class="font-medium">Adapt colors to artwork</span>
-								<span
-									class="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary"
-								>
-									Experimental
-								</span>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Equalizer & output</h3>
+							<div class={CARD}>
+								{@render row({
+									title: '10-band EQ',
+									desc: '31 Hz – 16 kHz peaking, preamp & balance. Uses mpv lavfi equalizer.',
+									control: eqResetButton,
+									below: eqBands
+								})}
+								{@render row({
+									title: 'AutoEq',
+									control: autoeqSwitch
+								})}
+								{@render row({
+									title: 'Per-track gain',
+									desc: 'Trim a single video ID up or down.',
+									below: trackGainForm
+								})}
+								{@render row({
+									title: 'Output device',
+									control: deviceSelect
+								})}
 							</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Recolor the app from the playing track's cover: accent, surfaces and borders, fading
-								between tracks. Off keeps the selected theme's own colors.
-							</p>
-						</div>
-						<Switch
-							checked={appearance.artworkAccent}
-							onCheckedChange={(on) => setAppearance({ artworkAccent: on })}
-						/>
-					</div>
+						</section>
 
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Video Sync</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Show muted official video + audio (FFT cross-correlation). When on, the Now Playing artwork switches to the YouTube embed (muted) while audio plays; uses mpv `vo=libmpv` with `set_video_sync`.
-							</p>
-						</div>
-						<Switch
-							checked={appearance.videoSync}
-							onCheckedChange={(on) => { setAppearance({ videoSync: on }); api.setVideoSync(on).catch(()=>{}); }}
-						/>
-					</div>
-
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Ambient Mode</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Immersive blurred artwork backdrop behind the app (#7). Uses <span class="font-mono text-xs">filter: blur(40px) scale(1.2)</span> with intensity via <span class="font-mono text-xs">--ambient-opacity</span>. Glass theme is kept frosted over it.
-							</p>
-						</div>
-						<Switch
-							checked={appearance.ambientMode}
-							onCheckedChange={(on) => setAppearance({ ambientMode: on })}
-						/>
-					</div>
-					{#if appearance.ambientMode}
-						<div class="border-b py-3">
-							<div class="font-medium">Ambient Intensity</div>
-							<p class="mt-0.5 mb-2 text-sm text-muted-foreground">How strong the blurred backdrop is — maps to <span class="font-mono text-xs">--ambient-opacity</span>.</p>
-							<div class="flex gap-2">
-								{#each [{id:'subtle',label:'Subtle'},{id:'balanced',label:'Balanced'},{id:'vivid',label:'Vivid'}] as opt (opt.id)}
-									<Button size="sm" variant={appearance.ambientIntensity===opt.id ? 'default' : 'outline'} onclick={()=>setAppearance({ ambientIntensity: opt.id as any })}>{opt.label}</Button>
-								{/each}
+						<section class={GROUP}>
+							<h3 class={LABEL}>Transitions</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Smart Crossfade',
+									desc: 'Gapless via mpv gapless-audio; crossfade is a volume ramp hint (1–12s).',
+									control: crossfadeSlider
+								})}
+								{@render row({
+									title: 'Crossfade mode',
+									control: crossfadeMode
+								})}
+								{@render row({
+									title: 'Best Mix',
+									control: bestMixSwitch
+								})}
 							</div>
-							<div class="mt-2 flex items-center gap-3">
-								<span class="text-xs text-muted-foreground">Opacity</span>
-								<Slider type="single" min={0} max={0.4} step={0.02} value={appearance.immersiveBackgroundIntensity} onValueChange={(v)=>setAppearance({ immersiveBackgroundIntensity: v })} class="flex-1" aria-label="Ambient opacity" />
-								<span class="font-mono text-xs w-12 text-right">{appearance.immersiveBackgroundIntensity.toFixed(2)}</span>
-							</div>
-						</div>
-					{/if}
+						</section>
 
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Spotify Canvas</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Show looping Canvas video in Now Playing when available (#8). Fetches via <span class="font-mono text-xs">https://api.simpmusic.org/canvas</span> (or Spotify API stub) with palette gradient fallback, <span class="font-mono text-xs">muted autoplay loop</span>.
-							</p>
-						</div>
-						<span class="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">Auto</span>
-					</div>
-
-					<div class="border-b py-3">
-						<div class="flex items-center justify-between gap-4">
-							<div class="min-w-0">
-								<div class="font-medium">Artist Packs</div>
-								<p class="mt-0.5 text-sm text-muted-foreground">Per-artist ZIPs <span class="font-mono text-xs">artist.json + style.css</span> from R2 <span class="font-mono text-xs">artist-packs.sfg545.dev/v1/index.json</span> every 15min. Injects style.css via data URI on artist page. Stored under <span class="font-mono text-xs">app_data/artist_packs/&lt;id&gt;/</span></p>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Video & advanced</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Hide music videos',
+									desc: "Keep only the audio version of a track, so the official video doesn't turn up beside it. Applies to newly loaded content.",
+									control: hideVideoSwitch,
+									tall: true
+								})}
+								{@render row({
+									title: 'yt-dlp fallback',
+									desc: `Last resort for tracks every YouTube client refuses (restricted/DRM uploads): resolve them through a self-updating yt-dlp binary. ${ytdlp.installed ? 'yt-dlp installed' : 'yt-dlp not installed yet'}${ytdlp.last_error ? ` — ${ytdlp.last_error}` : ''}`,
+									control: ytdlpSwitch,
+									tall: true,
+									below: ytdlp.installed ? undefined : ytdlpInstall
+								})}
+								{@render row({
+									title: 'Stream clients',
+									below: clientList
+								})}
 							</div>
-							<Button size="sm" variant="outline" onclick={refreshPacks} disabled={packLoading}>Refresh</Button>
-						</div>
-						<div class="mt-3 flex gap-2">
-							<Input placeholder="https://…/pack.zip or id" class="flex-1" value={packUrl} oninput={(e)=>packUrl=e.currentTarget.value} />
-							<Button size="sm" onclick={installPackFromUrl} disabled={packLoading || !packUrl.trim()}>{packLoading ? 'Installing…' : 'Install URL'}</Button>
-							<Button size="sm" variant="outline" onclick={installPackFromZip} disabled={packLoading}>From ZIP</Button>
-						</div>
-						{#if packIndex?.packs?.length}
-							<div class="mt-3 grid gap-2">
-								{#each packIndex.packs as p (p.id)}
-									<div class="flex items-center justify-between rounded-md border px-3 py-2">
-										<div class="min-w-0">
-											<div class="text-sm font-medium">{p.name} <span class="text-xs text-muted-foreground">v{p.version}</span></div>
-											<div class="text-xs text-muted-foreground truncate">{p.description ?? ''} — {p.artist_ids.join(', ')}</div>
-										</div>
-										<Button size="sm" variant="ghost" onclick={()=>{ packUrl=p.url; installPackFromUrl(); }}>Install</Button>
-									</div>
-								{/each}
+						</section>
+					{:else if tab === 'downloads'}
+						<section class={GROUP}>
+							<h3 class={LABEL}>Location</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Download location',
+									desc: 'Where offline tracks are saved. Defaults to the app data folder if empty.',
+									below: downloadDirForm
+								})}
 							</div>
-						{/if}
-						<div class="mt-3 flex flex-col gap-1.5">
-							{#each artistPacks as ap (ap.id)}
-								<div class="flex items-center gap-3 rounded-md bg-secondary/50 py-1.5 pr-1.5 pl-3">
-									<div class="min-w-0 flex-1">
-										<div class="text-sm font-medium truncate">{ap.name} <span class="text-xs text-muted-foreground">{ap.id}</span></div>
-										<div class="text-xs text-muted-foreground truncate">{ap.artist_ids.join(', ')} {ap.aliases.join(', ')}</div>
-									</div>
-									<Button size="sm" variant="ghost" onclick={()=>removePack(ap.id)}>Remove</Button>
-								</div>
-							{:else}
-								<p class="text-sm text-muted-foreground">No packs installed.</p>
-							{/each}
-						</div>
-					</div>
-
-					<div class="flex items-center justify-between gap-4 py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Reset customization</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Drop the color, roundness and font overrides. Keeps the preset.
-							</p>
-						</div>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={isDefaultCustom()}
-							onclick={() => {
-								resetCustom();
-								isCustomFont = { fontSans: false, fontHeading: false };
-								fontName = { fontSans: '', fontHeading: '' };
-							}}
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Quality & format</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Default quality',
+									desc: 'Quality used when you download a track for offline listening.',
+									control: downloadQualityPicker
+								})}
+								{@render row({
+									title: 'Audio format',
+									desc: 'Container/codec for saved files. M4A is the most compatible.',
+									control: downloadFormatPicker
+								})}
+								{@render row({
+									title: 'Use downloads when available',
+									desc: 'Play the saved file instead of streaming whenever you have one — works offline and saves bandwidth.',
+									control: offlineSwitch,
+									tall: true
+								})}
+							</div>
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Saved tracks</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Downloaded tracks',
+									control: clearAllButton,
+									below: downloadsList
+								})}
+							</div>
+						</section>
+					{:else if tab === 'data'}
+						<section class={GROUP}>
+							<h3 class={LABEL}>Network</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Proxy',
+									desc: 'HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.',
+									below: proxyForm
+								})}
+							</div>
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Storage</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Cache',
+									desc: 'Clear cached stream URLs and downloaded audio bytes.',
+									control: clearButton
+								})}
+							</div>
+						</section>
+					{:else if tab === 'about'}
+						<div
+							class="mb-7 rounded-xl border bg-gradient-to-br from-primary/8 to-transparent px-4 py-4"
 						>
-							Reset
-						</Button>
-					</div>
-				{:else if tab === 'playback'}
-					<div class="border-b py-3">
-						<div class="font-medium">Audio quality</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							Preferred stream quality when resolving a track.
-						</p>
-						<div class="flex gap-2">
-							{#each QUALITIES as q (q.id)}
-								<Button
-									variant={quality === q.id ? 'default' : 'outline'}
-									size="sm"
-									onclick={() => setQuality(q.id)}
-								>
-									{q.label}
-								</Button>
-							{/each}
-						</div>
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Autoplay</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Keep the music going with similar songs when your queue ends.
-							</p>
-						</div>
-						<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Prevent duplicate tracks in queue</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Adding a track that's already in the queue moves it from its old position instead of
-								adding a second copy.
-							</p>
-						</div>
-						<Switch checked={preventDuplicatesOn} onCheckedChange={setPreventDuplicates} />
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Hide music videos</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Keep only the audio version of a track, so the official video doesn't turn up
-								beside it. Applies to newly loaded content.
-							</p>
-						</div>
-						<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">yt-dlp fallback</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Last resort for tracks every YouTube client refuses (restricted/DRM uploads):
-								resolve them through a self-updating yt-dlp binary.
-								<span class="mt-0.5 block font-mono text-xs text-muted-foreground/80">
-									{ytdlp.installed ? 'yt-dlp installed' : 'yt-dlp not installed yet'}
-									{ytdlp.last_error ? ` — ${ytdlp.last_error}` : ''}
-								</span>
-							</p>
-							{#if !ytdlp.installed}
-								<Button size="sm" variant="outline" class="mt-2" onclick={installYtdlp}>Install now</Button>
-							{/if}
-						</div>
-						<Switch checked={ytdlpOn} onCheckedChange={setYtdlp} />
-					</div>
-					<div class="py-3">
-						<div class="font-medium">Stream clients</div>
-						<p class="mt-0.5 mb-2 text-sm text-muted-foreground">
-							Advanced — turn a client off to skip it when resolving streams. Overridden by the
-							<span class="font-mono text-xs">LIMUSIC_DISABLED_CLIENTS</span> env var.
-						</p>
-						<div class="flex flex-col gap-2">
-							{#each clients as name (name)}
-								<div class="flex items-center justify-between">
-									<span class="font-mono text-sm">{name}</span>
-									<Switch
-										checked={!disabled.has(name)}
-										onCheckedChange={() => toggleClient(name)}
-									/>
-								</div>
-							{/each}
-						</div>
-					</div>
-					<!-- EQ -->
-					<div class="border-t mt-3 pt-3">
-						<div class="flex items-center justify-between">
-							<div class="font-medium">10-band EQ</div>
-							<Button size="sm" variant="ghost" onclick={eqReset}>Reset</Button>
-						</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">31 Hz – 16 kHz peaking, preamp & balance. Uses mpv lavfi equalizer.</p>
-						<div class="grid grid-cols-5 gap-3">
-							{#each eq.freqs as f, i}
-								<div class="flex flex-col items-center gap-1 rounded-lg border bg-card/50 p-2">
-									<span class="text-[10px] font-medium text-muted-foreground">{f >= 1000 ? `${f/1000}k` : f} Hz</span>
-									<Slider type="single" orientation="vertical" min={-12} max={12} step={0.5} value={eq.bands[i] ?? 0} onValueChange={(v)=>eqSetBand(i, v)} class="h-24" aria-label="{f} Hz" />
-									<span class="font-mono text-xs">{(eq.bands[i] ?? 0).toFixed(1)} dB</span>
-								</div>
-							{/each}
-						</div>
-						<div class="mt-3 grid grid-cols-3 gap-3">
-							<div class="flex flex-col gap-1">
-								<span class="text-xs font-medium">Preamp</span>
-								<div class="flex items-center gap-2">
-									<Slider type="single" min={-12} max={12} step={0.5} value={eq.preamp} onValueChange={(v)=>{eq.preamp=v; api.setPreamp(v);}} class="flex-1" />
-									<span class="font-mono text-xs w-12 text-right">{eq.preamp.toFixed(1)} dB</span>
-								</div>
-							</div>
-							<div class="flex flex-col gap-1">
-								<span class="text-xs font-medium">Balance</span>
-								<div class="flex items-center gap-2">
-									<Slider type="single" min={-1} max={1} step={0.1} value={eq.balance} onValueChange={(v)=>{eq.balance=v; api.setBalance(v);}} class="flex-1" />
-									<span class="font-mono text-xs w-10 text-right">{eq.balance.toFixed(1)}</span>
-								</div>
-							</div>
-							<div class="flex flex-col gap-1">
-								<span class="text-xs font-medium">Output trim</span>
-								<div class="flex items-center gap-2">
-									<Slider type="single" min={-12} max={12} step={0.5} value={eq.output_gain} onValueChange={(v)=>{eq.output_gain=v; api.setOutputGain(v);}} class="flex-1" />
-									<span class="font-mono text-xs w-12 text-right">{eq.output_gain.toFixed(1)} dB</span>
-								</div>
-							</div>
-						</div>
-						<div class="mt-3 flex flex-col gap-2">
-							<div class="flex items-center justify-between">
-								<span class="text-sm">AutoEq</span>
-								<Switch checked={eq.auto_eq} onCheckedChange={(on)=>{eq.auto_eq=on; api.setAutoeq(on);}} />
-							</div>
 							<div class="flex items-center gap-2">
-								<Input placeholder="videoId for per-track trim" class="flex-1" value={trackGainId} oninput={(e)=>trackGainId=e.currentTarget.value} />
-								<Input type="number" class="w-20" value={String(trackGainVal)} oninput={(e)=>trackGainVal=parseFloat(e.currentTarget.value)||0} />
-								<Button size="sm" variant="outline" onclick={()=>{ if(trackGainId) api.setTrackGain(trackGainId, trackGainVal); toast.success('Per-track gain saved'); }}>Save</Button>
-							</div>
-							<div class="flex items-center justify-between">
-								<span class="text-sm">Output device</span>
-								<Select.Root type="single" value={"auto"} onValueChange={(v)=>api.setOutputDevice(v)}>
-									<Select.Trigger class="w-44"><span>{outputDevices[0] ?? 'auto'}</span></Select.Trigger>
-									<Select.Content>
-										{#each outputDevices as d}<Select.Item value={d} label={d}>{d}</Select.Item>{/each}
-									</Select.Content>
-								</Select.Root>
-							</div>
-						</div>
-					</div>
-					<!-- Smart Crossfade / Best Mix -->
-					<div class="border-t mt-3 pt-3">
-						<div class="font-medium">Smart Crossfade & Best Mix</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">Gapless via mpv gapless-audio; crossfade is a volume ramp hint (1–12s).</p>
-						<div class="flex items-center justify-between gap-4 py-2">
-							<span class="text-sm">Crossfade {crossfade.secs.toFixed(1)}s</span>
-							<Slider type="single" min={0} max={12} step={0.5} value={crossfade.secs} onValueChange={(v)=>setCrossfadeSecs(v)} class="w-40" />
-						</div>
-						<div class="flex items-center gap-2 py-2">
-							<span class="text-sm">Mode</span>
-							<div class="flex gap-2">
-								<Button size="sm" variant={crossfade.mode==='standard' ? 'default' : 'outline'} onclick={()=>{crossfade.mode='standard'; api.setCrossfade(crossfade.secs,'standard');}}>Standard</Button>
-								<Button size="sm" variant={crossfade.mode==='smart' ? 'default' : 'outline'} onclick={()=>{crossfade.mode='smart'; api.setCrossfade(crossfade.secs,'smart');}}>Smart</Button>
-							</div>
-							<span class="ml-auto text-sm">Best Mix</span>
-							<Switch checked={crossfade.best_mix} onCheckedChange={(on)=>{crossfade.best_mix=on; api.setBestMix(on);}} />
-						</div>
-					</div>
-				{:else if tab === 'downloads'}
-					<div class="border-b py-3">
-						<div class="font-medium">Download location</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							Where offline tracks are saved. Defaults to the app data folder if empty.
-						</p>
-						<div class="flex items-center gap-2">
-							<Input class="flex-1" readonly value={downloadDir} placeholder="App data / downloads" />
-							<Button size="sm" variant="outline" onclick={pickDownloadDir}>Browse…</Button>
-						</div>
-					</div>
-					<div class="border-b py-3">
-						<div class="font-medium">Default quality</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							Quality used when you download a track for offline listening.
-						</p>
-						<div class="flex gap-2">
-							{#each QUALITIES as q (q.id)}
-								<Button
-									variant={downloadQuality === q.id ? 'default' : 'outline'}
-									size="sm"
-									onclick={() => setDownloadQuality(q.id)}
-								>{q.label}</Button>
-							{/each}
-						</div>
-					</div>
-					<div class="border-b py-3">
-						<div class="font-medium">Audio format</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							Container/codec for saved files. M4A is the most compatible.
-						</p>
-						<div class="flex gap-2">
-							{#each DOWNLOAD_FORMATS as f (f.id)}
-								<Button
-									variant={downloadFormat === f.id ? 'default' : 'outline'}
-									size="sm"
-									onclick={() => setDownloadFormat(f.id)}
-								>{f.label}</Button>
-							{/each}
-						</div>
-					</div>
-					<div class="flex items-start justify-between gap-4 border-b py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Use downloads when available</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								Play the saved file instead of streaming whenever you have one — works offline and
-								saves bandwidth.
-							</p>
-						</div>
-						<Switch checked={useOffline} onCheckedChange={setUseOffline} />
-					</div>
-					<div class="py-3">
-						<div class="flex items-center justify-between">
-							<div class="font-medium">Downloaded tracks</div>
-							<Button size="sm" variant="ghost" disabled={downloads.length === 0} onclick={clearAllDownloads}>
-								Clear all
-							</Button>
-						</div>
-						{#if downloads.length === 0}
-							<p class="mt-2 text-sm text-muted-foreground">
-								Nothing saved yet. Use the ⋮ menu on any track and choose “Download”.
-							</p>
-						{:else}
-							<div class="mt-2 flex flex-col gap-1">
-								{#each downloads as d (d.video_id)}
-									<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-										<div class="min-w-0">
-											<div class="truncate text-sm font-medium">{d.title}</div>
-											<div class="truncate text-xs text-muted-foreground">{d.artists}</div>
-										</div>
-										<div class="flex items-center gap-3 text-xs text-muted-foreground">
-											<span class="uppercase">{d.format}</span>
-											<span>{fmtSize(d.size_bytes)}</span>
-											<Button size="sm" variant="ghost" onclick={() => removeDownload(d.video_id)}>Remove</Button>
-										</div>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
-{:else if tab === 'data'}
-					<div class="border-b py-3">
-						<div class="font-medium">Proxy</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.
-						</p>
-						<form
-							class="flex gap-2"
-							onsubmit={(e) => {
-								e.preventDefault();
-								saveProxy();
-							}}
-						>
-							<Input bind:value={proxyInput} placeholder="http://host:port (blank = none)" />
-							<Button type="submit" variant="outline">Save</Button>
-						</form>
-					</div>
-					<div class="py-3">
-						<div class="font-medium">Cache</div>
-						<p class="mt-0.5 mb-3 text-sm text-muted-foreground">
-							Clear cached stream URLs and downloaded audio bytes.
-						</p>
-						<Button variant="destructive" size="sm" onclick={doClearCaches} disabled={clearing}>
-							{clearing ? 'Clearing…' : 'Clear caches'}
-						</Button>
-					</div>
-				{:else if tab === 'about'}
-					<div class="border-b py-3">
-						<div class="font-heading text-lg font-bold">Limusic</div>
-						<p class="mt-1 text-sm text-muted-foreground">
-							A cross-platform desktop YouTube Music client — ad-free playback straight from
-							YouTube's private API, with your real library and OS media keys.
-						</p>
-						{#if version}<p class="mt-2 text-sm text-muted-foreground">Version {version}</p>{/if}
-					</div>
-					<div class="flex items-center justify-between gap-4 py-3">
-						<div class="min-w-0">
-							<div class="font-medium">Updates</div>
-							<p class="mt-0.5 text-sm text-muted-foreground">
-								{#if updateState.available && !updateState.canInstall}
-									Version {updateState.available.version} is available. This build was installed by a
-									package manager, so update it the same way.
-								{:else if updateState.available}
-									Version {updateState.available.version} is available.
-								{:else}
-									Check GitHub for a newer release.
+								<span class="font-heading text-lg font-bold">Limusic</span>
+								{#if version}
+									<span
+										class="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-semibold text-primary"
+									>
+										v{version}
+									</span>
 								{/if}
+							</div>
+							<p class="mt-1.5 max-w-prose text-xs leading-relaxed text-muted-foreground">
+								A cross-platform desktop YouTube Music client. Ad-free playback straight from
+								YouTube's private API, with your real library and OS media keys.
 							</p>
 						</div>
-						{#if updateState.available && !updateState.canInstall}
-							<Button size="sm" onclick={openDownloadPage}>Download</Button>
-						{:else if updateState.available}
-							<Button size="sm" onclick={installUpdate} disabled={updateState.installing}>
-								{updateState.installing ? 'Updating…' : 'Update now'}
-							</Button>
-						{:else}
-							<Button
-								variant="outline"
-								size="sm"
-								onclick={checkUpdates}
-								disabled={updateState.checking}
-							>
-								{updateState.checking ? 'Checking…' : 'Check for updates'}
-							</Button>
-						{/if}
-					</div>
-					{#if updateResult && !updateState.available}
-						<Alert variant={updateResult.error ? 'destructive' : 'default'}>
-							<AlertDescription>{updateResult.message}</AlertDescription>
-						</Alert>
+
+						<section class={GROUP}>
+							<h3 class={LABEL}>Updates</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Updates',
+									desc: updateState.available && !updateState.canInstall
+										? `Version ${updateState.available.version} is available. This build was installed by a package manager, so update it the same way.`
+										: updateState.available
+											? `Version ${updateState.available.version} is available.`
+											: 'Check GitHub for a newer release.',
+									control: updateButton,
+									below: updateResult && !updateState.available ? updateAlert : undefined
+								})}
+							</div>
+						</section>
 					{/if}
-				{/if}
+				</div>
 			</div>
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<!-- Controls. Split out so the rows above read as a list of settings rather than a wall of markup. -->
+{#snippet historySwitch()}<Switch checked={historyOn} onCheckedChange={setHistory} />{/snippet}
+{#snippet discordSwitch()}<Switch checked={discordOn} onCheckedChange={setDiscord} />{/snippet}
+{#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
+{#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
+{#snippet autoplaySwitch()}<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />{/snippet}
+{#snippet dupSwitch()}<Switch
+		checked={preventDuplicatesOn}
+		onCheckedChange={setPreventDuplicates}
+	/>{/snippet}
+{#snippet hideVideoSwitch()}<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />{/snippet}
+{#snippet ytdlpSwitch()}<Switch checked={ytdlpOn} onCheckedChange={setYtdlp} />{/snippet}
+{#snippet offlineSwitch()}<Switch checked={useOffline} onCheckedChange={setUseOffline} />{/snippet}
+{#snippet tabbedSwitch()}<Switch
+		checked={appearance.tabbedPlayer}
+		onCheckedChange={(on) => setAppearance({ tabbedPlayer: on })}
+	/>{/snippet}
+{#snippet artworkBgSwitch()}<Switch
+		checked={appearance.artworkBackground}
+		onCheckedChange={(on) => setAppearance({ artworkBackground: on })}
+	/>{/snippet}
+{#snippet artworkAccentSwitch()}<Switch
+		checked={appearance.artworkAccent}
+		onCheckedChange={(on) => setAppearance({ artworkAccent: on })}
+	/>{/snippet}
+{#snippet ambientSwitch()}<Switch
+		checked={appearance.ambientMode}
+		onCheckedChange={(on) => setAppearance({ ambientMode: on })}
+	/>{/snippet}
+{#snippet autoeqSwitch()}<Switch
+		checked={eq.auto_eq}
+		onCheckedChange={(on) => {
+			eq.auto_eq = on;
+			api.setAutoeq(on);
+		}}
+	/>{/snippet}
+{#snippet bestMixSwitch()}<Switch
+		checked={crossfade.best_mix}
+		onCheckedChange={(on) => {
+			crossfade.best_mix = on;
+			api.setBestMix(on);
+		}}
+	/>{/snippet}
+
+{#snippet appleForm()}
+	<div class="grid gap-2">
+		<Input
+			placeholder="media-user-token (starts with a long base64 string)"
+			value={appleMediaToken}
+			oninput={(e) => (appleMediaToken = e.currentTarget.value)}
+		/>
+		<Input
+			placeholder="developer bearer token (eyJ… JWT)"
+			value={appleDevToken}
+			oninput={(e) => (appleDevToken = e.currentTarget.value)}
+		/>
+		<div class="flex items-center gap-2">
+			<Input
+				class="w-28"
+				placeholder="us"
+				value={appleStorefront}
+				oninput={(e) => (appleStorefront = e.currentTarget.value)}
+			/>
+			<Button
+				size="sm"
+				onclick={() => setAppleLyrics(appleMediaToken, appleDevToken, appleStorefront)}
+			>
+				Save tokens
+			</Button>
+		</div>
+	</div>
+{/snippet}
+
+{#snippet remotePanel()}
+	<div class="flex gap-4">
+		<canvas
+			bind:this={qrCanvas}
+			class="h-40 w-40 shrink-0 rounded-lg border bg-white p-2 shadow-sm"
+		></canvas>
+		<div class="min-w-0 flex-1 space-y-2">
+			<div class="rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs break-all">
+				{lanUrl || 'Loading…'}
+			</div>
+			<div class="text-xs text-muted-foreground">
+				Token: <span class="font-mono">{remoteToken ? remoteToken.slice(0, 8) + '…' : '—'}</span>
+			</div>
+			<div class="flex gap-2">
+				<Button size="sm" variant="outline" onclick={refreshRemote}>Refresh</Button>
+				<Button size="sm" variant="ghost" onclick={regenerateToken}>Regenerate</Button>
+			</div>
+		</div>
+	</div>
+{/snippet}
+
+{#snippet presetSelect()}
+	<Select.Root type="single" value={theme.id} onValueChange={(v) => applyTheme(v as ThemeId)}>
+		<Select.Trigger class="w-44 shrink-0" aria-label="Theme">
+			<span
+				class="size-4 shrink-0 rounded-full ring-1 ring-black/10"
+				style="background:{currentTheme.color}"
+			></span>
+			<span class="flex-1 truncate text-left">{currentTheme.label}</span>
+		</Select.Trigger>
+		<Select.Content>
+			<Select.Group>
+				<Select.GroupHeading>Accent colors</Select.GroupHeading>
+				{#each ACCENT_THEMES as t (t.id)}
+					<Select.Item value={t.id} label={t.label}>
+						<span
+							class="size-4 shrink-0 rounded-full ring-1 ring-black/10"
+							style="background:{t.color}"
+						></span>
+						{t.label}
+					</Select.Item>
+				{/each}
+			</Select.Group>
+			<Select.Group>
+				<Select.GroupHeading>Palettes</Select.GroupHeading>
+				{#each PALETTE_THEMES as t (t.id)}
+					<Select.Item value={t.id} label={t.label}>
+						<span
+							class="size-4 shrink-0 rounded-full ring-1 ring-black/10"
+							style="background:{t.color}"
+						></span>
+						{t.label}
+					</Select.Item>
+				{/each}
+			</Select.Group>
+		</Select.Content>
+	</Select.Root>
+{/snippet}
+
+{#snippet accentSwatch()}
+	<button
+		type="button"
+		onclick={() => (pickerOpen = !pickerOpen)}
+		aria-label="Choose accent color"
+		aria-expanded={pickerOpen}
+		class="size-8 cursor-pointer rounded-lg ring-1 ring-black/10 transition-transform hover:scale-105 {pickerOpen ? 'ring-2 ring-primary/60' : ''}"
+		style="background:{effective.accent}"
+	></button>
+{/snippet}
+
+{#snippet accentPicker()}
+	<ColorPicker value={effective.accent} onchange={(hex) => setCustom({ accent: hex })} />
+{/snippet}
+
+{#snippet tintSlider()}
+	<Slider
+		type="single"
+		aria-label="Background tint"
+		max={360}
+		step={1}
+		disabled={currentTheme.kind === 'palette'}
+		value={effective.hue}
+		onValueChange={(hue) => setCustom({ hue })}
+		class="w-44 shrink-0 [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-track]]:bg-[linear-gradient(to_right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)]"
+	/>
+{/snippet}
+
+{#snippet radiusSlider()}
+	<div class="flex w-44 shrink-0 items-center gap-3">
+		<Slider
+			type="single"
+			aria-label="Roundness"
+			max={1.5}
+			step={0.05}
+			value={effective.radius}
+			onValueChange={(radius) => setCustom({ radius })}
+		/>
+		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+			{effective.radius.toFixed(2)}
+		</span>
+	</div>
+{/snippet}
+
+{#snippet layoutSelect()}
+	<Select.Root type="single" value={layout.id} onValueChange={(v) => applyLayout(v as LayoutId)}>
+		<Select.Trigger class="w-44 shrink-0" aria-label="Layout">
+			<span class="flex-1 truncate text-left">
+				{LAYOUTS.find((l) => l.id === layout.id)?.label ?? layout.id}
+			</span>
+		</Select.Trigger>
+		<Select.Content>
+			{#each LAYOUTS as l (l.id)}
+				<Select.Item value={l.id} label={l.label}>
+					<span class="flex flex-col items-start">
+						<span>{l.label}</span>
+						<span class="text-xs text-muted-foreground">{l.description}</span>
+					</span>
+				</Select.Item>
+			{/each}
+		</Select.Content>
+	</Select.Root>
+{/snippet}
+
+{#snippet layoutPreview()}
+	<!-- Mini wireframes for each option -->
+	<div class="grid grid-cols-5 gap-2">
+		{#each LAYOUTS as l (l.id)}
+			<button
+				type="button"
+				onclick={() => applyLayout(l.id)}
+				class="flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-2 transition-colors hover:bg-accent/50 {layout.id === l.id ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-card'}"
+				aria-label="Select {l.label} layout"
+				aria-pressed={layout.id === l.id}
+			>
+				<div class="flex h-10 w-full gap-0.5 overflow-hidden rounded border bg-background p-0.5">
+					{#if l.id === 'default'}
+						<div class="w-1/4 rounded-sm bg-sidebar"></div>
+						<div class="flex flex-1 flex-col gap-0.5">
+							<div class="flex-1 rounded-sm bg-muted"></div>
+							<div class="h-1.5 rounded-sm bg-primary/60"></div>
+						</div>
+					{:else if l.id === 'grove'}
+						<div class="w-[22%] rounded-sm bg-sidebar"></div>
+						<div class="flex-1 rounded-sm bg-muted"></div>
+						<div class="w-[24%] rounded-sm bg-sidebar"></div>
+					{:else if l.id === 'canopy'}
+						<div class="flex w-full flex-col gap-0.5">
+							<div class="h-2 rounded-sm bg-sidebar"></div>
+							<div class="flex-1 rounded-sm bg-muted"></div>
+							<div class="h-1.5 rounded-sm bg-primary/60"></div>
+						</div>
+					{:else if l.id === 'compact'}
+						<div class="w-1/5 rounded-sm bg-sidebar/50"></div>
+						<div class="mx-auto flex w-3/5 flex-col gap-0.5">
+							<div class="flex-1 rounded-sm bg-muted"></div>
+							<div class="h-1.5 rounded-sm bg-primary/60"></div>
+						</div>
+						<div class="w-1/5"></div>
+					{:else if l.id === 'wide'}
+						<div class="w-[12%] rounded-sm bg-sidebar/50"></div>
+						<div class="flex flex-1 flex-col gap-0.5">
+							<div class="flex-1 rounded-sm bg-muted"></div>
+							<div class="h-1.5 rounded-sm bg-primary/60"></div>
+						</div>
+					{/if}
+				</div>
+				<span class="text-[11px] font-medium {layout.id === l.id ? 'text-primary' : 'text-muted-foreground'}">{l.label}</span>
+			</button>
+		{/each}
+	</div>
+	<p class="mt-2 text-xs text-muted-foreground">
+		{LAYOUTS.find((l) => l.id === layout.id)?.description}
+	</p>
+{/snippet}
+
+{#snippet fontSelect(key: FontKey, label: string)}
+	<Select.Root
+		type="single"
+		value={isCustomFont[key] ? 'custom' : matchFont(effective[key])}
+		onValueChange={(v) => chooseFont(key, v)}
+	>
+		<Select.Trigger class="w-44 shrink-0" aria-label={label}>
+			<span
+				class="min-w-0 flex-1 truncate text-left"
+				style="font-family:{effective[key]}"
+			>
+				{isCustomFont[key] ? 'Custom' : familyName(effective[key])}
+			</span>
+		</Select.Trigger>
+		<!-- max-w: a loaded font's name is whatever the file was called, and the dropdown grows to
+		     its widest item. -->
+		<Select.Content class="max-w-64">
+			{#each FONTS as f (f.value)}
+				<Select.Item value={f.value} label={f.label}>
+					<span class="block truncate" style="font-family:{f.value}">{f.label}</span>
+				</Select.Item>
+			{/each}
+			{#if custom.fontFiles.length}
+				<Select.Group>
+					<Select.GroupHeading>Your fonts</Select.GroupHeading>
+					{#each fileFonts() as f (f.value)}
+						<Select.Item value={f.value} label={f.label}>
+							<span class="block truncate" style="font-family:{f.value}">
+								{f.label}
+							</span>
+						</Select.Item>
+					{/each}
+				</Select.Group>
+			{/if}
+			<Select.Item value="custom" label="Custom">Custom…</Select.Item>
+		</Select.Content>
+	</Select.Root>
+{/snippet}
+
+{#snippet fontInput(key: FontKey, label: string)}
+	<Input
+		value={fontName[key]}
+		oninput={(e) => typeFont(key, e.currentTarget.value)}
+		placeholder="Font installed on this computer, e.g. Inter"
+		aria-label="{label} family name"
+		spellcheck={false}
+		style="font-family:{effective[key]}"
+	/>
+	{#if fontName[key].trim() && !fontAvailable(fontName[key])}
+		<p class="mt-1.5 text-xs text-muted-foreground">
+			Not installed — install the font, then reopen settings.
+		</p>
+	{/if}
+{/snippet}
+
+{#snippet addFontButton()}
+	<Button variant="outline" size="sm" class="shrink-0" onclick={pickFontFiles}>Add font…</Button>
+{/snippet}
+
+{#snippet fontFileList()}
+	<div class="flex flex-col gap-1.5">
+		{#each custom.fontFiles as path (path)}
+			<div class="flex items-center gap-3 rounded-lg bg-secondary/60 py-1.5 pr-1.5 pl-3 text-sm">
+				<!-- The name is the identity; the path only earns a tooltip. A font called
+				     BigBlueTerm437NerdFontMono-Regular is wider than the modal. -->
+				<span
+					class="min-w-0 flex-1 truncate"
+					style="font-family:'{fileFamily(path)}'"
+					title={path}
+				>
+					{fileFamily(path)}
+				</span>
+				<button
+					type="button"
+					onclick={() => removeFontFile(path)}
+					aria-label="Remove {fileFamily(path)}"
+					class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+				>
+					<HugeiconsIcon icon={Cancel01Icon} size={14} />
+				</button>
+			</div>
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet resetButton()}
+	<Button
+		variant="outline"
+		size="sm"
+		disabled={isDefaultCustom()}
+		onclick={() => {
+			resetCustom();
+			isCustomFont = { fontSans: false, fontHeading: false };
+			fontName = { fontSans: '', fontHeading: '' };
+		}}
+	>
+		Reset
+	</Button>
+{/snippet}
+
+{#snippet ambientOptions()}
+	<div class="flex gap-2">
+		{#each [{ id: 'subtle', label: 'Subtle' }, { id: 'balanced', label: 'Balanced' }, { id: 'vivid', label: 'Vivid' }] as opt (opt.id)}
+			<Button
+				size="sm"
+				variant={appearance.ambientIntensity === opt.id ? 'default' : 'outline'}
+				onclick={() => setAppearance({ ambientIntensity: opt.id as any })}
+			>
+				{opt.label}
+			</Button>
+		{/each}
+	</div>
+	<div class="mt-2 flex items-center gap-3">
+		<span class="text-xs text-muted-foreground">Opacity</span>
+		<Slider
+			type="single"
+			min={0}
+			max={0.4}
+			step={0.02}
+			value={appearance.immersiveBackgroundIntensity}
+			onValueChange={(v) => setAppearance({ immersiveBackgroundIntensity: v })}
+			class="flex-1"
+			aria-label="Ambient opacity"
+		/>
+		<span class="w-12 text-right font-mono text-xs">{appearance.immersiveBackgroundIntensity.toFixed(2)}</span>
+	</div>
+{/snippet}
+
+{#snippet packRefreshButton()}
+	<Button size="sm" variant="outline" onclick={refreshPacks} disabled={packLoading}>Refresh</Button>
+{/snippet}
+
+{#snippet packInstall()}
+	<div class="flex gap-2">
+		<Input
+			placeholder="https://…/pack.zip or id"
+			class="flex-1"
+			value={packUrl}
+			oninput={(e) => (packUrl = e.currentTarget.value)}
+		/>
+		<Button size="sm" onclick={installPackFromUrl} disabled={packLoading || !packUrl.trim()}>
+			{packLoading ? 'Installing…' : 'Install URL'}
+		</Button>
+		<Button size="sm" variant="outline" onclick={installPackFromZip} disabled={packLoading}>
+			From ZIP
+		</Button>
+	</div>
+	{#if packIndex?.packs?.length}
+		<div class="mt-3 grid gap-2">
+			{#each packIndex.packs as p (p.id)}
+				<div class="flex items-center justify-between rounded-lg border px-3 py-2">
+					<div class="min-w-0">
+						<div class="text-sm font-medium">
+							{p.name}
+							<span class="text-xs text-muted-foreground">v{p.version}</span>
+						</div>
+						<div class="truncate text-xs text-muted-foreground">
+							{p.description ?? ''} — {p.artist_ids.join(', ')}
+						</div>
+					</div>
+					<Button
+						size="sm"
+						variant="ghost"
+						onclick={() => {
+							packUrl = p.url;
+							installPackFromUrl();
+						}}
+					>
+						Install
+					</Button>
+				</div>
+			{/each}
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet packList()}
+	<div class="flex flex-col gap-1.5">
+		{#each artistPacks as ap (ap.id)}
+			<div class="flex items-center gap-3 rounded-lg bg-secondary/60 py-1.5 pr-1.5 pl-3">
+				<div class="min-w-0 flex-1">
+					<div class="truncate text-sm font-medium">
+						{ap.name}
+						<span class="text-xs text-muted-foreground">{ap.id}</span>
+					</div>
+					<div class="truncate text-xs text-muted-foreground">
+						{ap.artist_ids.join(', ')} {ap.aliases.join(', ')}
+					</div>
+				</div>
+				<Button size="sm" variant="ghost" onclick={() => removePack(ap.id)}>Remove</Button>
+			</div>
+		{:else}
+			<p class="text-sm text-muted-foreground">No packs installed.</p>
+		{/each}
+	</div>
+{/snippet}
+
+<!-- Segmented, not three buttons: the options are one exclusive choice and should look like it. -->
+{#snippet segmented(options: { id: string; label: string }[], selected: string, onpick: (id: string) => void)}
+	<div class="flex rounded-lg bg-muted p-0.5">
+		{#each options as q (q.id)}
+			<button
+				type="button"
+				onclick={() => onpick(q.id)}
+				aria-pressed={selected === q.id}
+				class="cursor-pointer rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors {selected === q.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+			>
+				{q.label}
+			</button>
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet qualityPicker()}
+	{@render segmented(QUALITIES, quality, setQuality)}
+{/snippet}
+
+{#snippet downloadQualityPicker()}
+	{@render segmented(QUALITIES, downloadQuality, setDownloadQuality)}
+{/snippet}
+
+{#snippet downloadFormatPicker()}
+	{@render segmented(DOWNLOAD_FORMATS, downloadFormat, setDownloadFormat)}
+{/snippet}
+
+{#snippet eqResetButton()}
+	<Button size="sm" variant="ghost" onclick={eqReset}>Reset</Button>
+{/snippet}
+
+{#snippet eqBands()}
+	<div class="grid grid-cols-5 gap-3">
+		{#each eq.freqs as f, i}
+			<div class="flex flex-col items-center gap-1 rounded-lg border bg-card/50 p-2">
+				<span class="text-[10px] font-medium text-muted-foreground">{f >= 1000 ? `${f / 1000}k` : f} Hz</span>
+				<Slider
+					type="single"
+					orientation="vertical"
+					min={-12}
+					max={12}
+					step={0.5}
+					value={eq.bands[i] ?? 0}
+					onValueChange={(v) => eqSetBand(i, v)}
+					class="h-24"
+					aria-label="{f} Hz"
+				/>
+				<span class="font-mono text-xs">{(eq.bands[i] ?? 0).toFixed(1)} dB</span>
+			</div>
+		{/each}
+	</div>
+	<div class="mt-3 grid grid-cols-3 gap-3">
+		<div class="flex flex-col gap-1">
+			<span class="text-xs font-medium">Preamp</span>
+			<div class="flex items-center gap-2">
+				<Slider
+					type="single"
+					min={-12}
+					max={12}
+					step={0.5}
+					value={eq.preamp}
+					onValueChange={(v) => {
+						eq.preamp = v;
+						api.setPreamp(v);
+					}}
+					class="flex-1"
+				/>
+				<span class="w-12 text-right font-mono text-xs">{eq.preamp.toFixed(1)} dB</span>
+			</div>
+		</div>
+		<div class="flex flex-col gap-1">
+			<span class="text-xs font-medium">Balance</span>
+			<div class="flex items-center gap-2">
+				<Slider
+					type="single"
+					min={-1}
+					max={1}
+					step={0.1}
+					value={eq.balance}
+					onValueChange={(v) => {
+						eq.balance = v;
+						api.setBalance(v);
+					}}
+					class="flex-1"
+				/>
+				<span class="w-10 text-right font-mono text-xs">{eq.balance.toFixed(1)}</span>
+			</div>
+		</div>
+		<div class="flex flex-col gap-1">
+			<span class="text-xs font-medium">Output trim</span>
+			<div class="flex items-center gap-2">
+				<Slider
+					type="single"
+					min={-12}
+					max={12}
+					step={0.5}
+					value={eq.output_gain}
+					onValueChange={(v) => {
+						eq.output_gain = v;
+						api.setOutputGain(v);
+					}}
+					class="flex-1"
+				/>
+				<span class="w-12 text-right font-mono text-xs">{eq.output_gain.toFixed(1)} dB</span>
+			</div>
+		</div>
+	</div>
+{/snippet}
+
+{#snippet trackGainForm()}
+	<div class="flex items-center gap-2">
+		<Input
+			placeholder="videoId for per-track trim"
+			class="flex-1"
+			value={trackGainId}
+			oninput={(e) => (trackGainId = e.currentTarget.value)}
+		/>
+		<Input
+			type="number"
+			class="w-20"
+			value={String(trackGainVal)}
+			oninput={(e) => (trackGainVal = parseFloat(e.currentTarget.value) || 0)}
+		/>
+		<Button
+			size="sm"
+			variant="outline"
+			onclick={() => {
+				if (trackGainId) api.setTrackGain(trackGainId, trackGainVal);
+				toast.success('Per-track gain saved');
+			}}
+		>
+			Save
+		</Button>
+	</div>
+{/snippet}
+
+{#snippet deviceSelect()}
+	<Select.Root type="single" value={'auto'} onValueChange={(v) => api.setOutputDevice(v)}>
+		<Select.Trigger class="w-44 shrink-0" aria-label="Output device">
+			<span class="truncate">{outputDevices[0] ?? 'auto'}</span>
+		</Select.Trigger>
+		<Select.Content>
+			{#each outputDevices as d (d)}
+				<Select.Item value={d} label={d}>{d}</Select.Item>
+			{/each}
+		</Select.Content>
+	</Select.Root>
+{/snippet}
+
+{#snippet crossfadeSlider()}
+	<div class="flex w-44 shrink-0 items-center gap-3">
+		<Slider
+			type="single"
+			aria-label="Crossfade seconds"
+			min={0}
+			max={12}
+			step={0.5}
+			value={crossfade.secs}
+			onValueChange={(v) => setCrossfadeSecs(v)}
+		/>
+		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+			{crossfade.secs.toFixed(1)}s
+		</span>
+	</div>
+{/snippet}
+
+{#snippet crossfadeMode()}
+	<div class="flex gap-2">
+		<Button
+			size="sm"
+			variant={crossfade.mode === 'standard' ? 'default' : 'outline'}
+			onclick={() => {
+				crossfade.mode = 'standard';
+				api.setCrossfade(crossfade.secs, 'standard');
+			}}
+		>
+			Standard
+		</Button>
+		<Button
+			size="sm"
+			variant={crossfade.mode === 'smart' ? 'default' : 'outline'}
+			onclick={() => {
+				crossfade.mode = 'smart';
+				api.setCrossfade(crossfade.secs, 'smart');
+			}}
+		>
+			Smart
+		</Button>
+	</div>
+{/snippet}
+
+{#snippet ytdlpInstall()}
+	<div>
+		<Button size="sm" variant="outline" onclick={installYtdlp}>Install now</Button>
+	</div>
+{/snippet}
+
+{#snippet clientList()}
+	<p class="mb-3 max-w-prose text-xs leading-relaxed text-muted-foreground">
+		Advanced — turn a client off to skip it when resolving streams. Overridden by the
+		<span class="font-mono">LIMUSIC_DISABLED_CLIENTS</span> env var.
+	</p>
+	<div class="flex flex-col gap-2">
+		{#each clients as name (name)}
+			<div class="flex items-center justify-between rounded-lg bg-muted/60 py-1.5 pr-2 pl-3">
+				<span class="font-mono text-xs">{name}</span>
+				<Switch checked={!disabled.has(name)} onCheckedChange={() => toggleClient(name)} />
+			</div>
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet downloadDirForm()}
+	<div class="flex items-center gap-2">
+		<Input class="flex-1" readonly value={downloadDir} placeholder="App data / downloads" />
+		<Button size="sm" variant="outline" onclick={pickDownloadDir}>Browse…</Button>
+	</div>
+{/snippet}
+
+{#snippet clearAllButton()}
+	<Button
+		size="sm"
+		variant="ghost"
+		disabled={downloads.length === 0}
+		onclick={clearAllDownloads}
+	>
+		Clear all
+	</Button>
+{/snippet}
+
+{#snippet downloadsList()}
+	{#if downloads.length === 0}
+		<p class="text-sm text-muted-foreground">
+			Nothing saved yet. Use the ⋮ menu on any track and choose “Download”.
+		</p>
+	{:else}
+		<div class="flex flex-col gap-1.5">
+			{#each downloads as d (d.video_id)}
+				<div class="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+					<div class="min-w-0">
+						<div class="truncate text-sm font-medium">{d.title}</div>
+						<div class="truncate text-xs text-muted-foreground">{d.artists}</div>
+					</div>
+					<div class="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+						<span class="uppercase">{d.format}</span>
+						<span>{fmtSize(d.size_bytes)}</span>
+						<Button size="sm" variant="ghost" onclick={() => removeDownload(d.video_id)}>
+							Remove
+						</Button>
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet proxyForm()}
+	<form
+		class="flex gap-2"
+		onsubmit={(e) => {
+			e.preventDefault();
+			saveProxy();
+		}}
+	>
+		<Input bind:value={proxyInput} placeholder="http://host:port (blank = none)" />
+		<Button type="submit" variant="outline">Save</Button>
+	</form>
+{/snippet}
+
+{#snippet clearButton()}
+	<Button variant="destructive" size="sm" onclick={doClearCaches} disabled={clearing}>
+		{clearing ? 'Clearing…' : 'Clear caches'}
+	</Button>
+{/snippet}
+
+{#snippet updateButton()}
+	{#if updateState.available && !updateState.canInstall}
+		<Button size="sm" onclick={openDownloadPage}>Download</Button>
+	{:else if updateState.available}
+		<Button size="sm" onclick={installUpdate} disabled={updateState.installing}>
+			{updateState.installing ? 'Updating…' : 'Update now'}
+		</Button>
+	{:else}
+		<Button variant="outline" size="sm" onclick={checkUpdates} disabled={updateState.checking}>
+			{updateState.checking ? 'Checking…' : 'Check for updates'}
+		</Button>
+	{/if}
+{/snippet}
+
+{#snippet updateAlert()}
+	<Alert variant={updateResult?.error ? 'destructive' : 'default'}>
+		<AlertDescription>{updateResult?.message}</AlertDescription>
+	</Alert>
+{/snippet}

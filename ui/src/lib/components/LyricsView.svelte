@@ -29,6 +29,7 @@
 	let translateOn = $state(false);
 	let romanizeOn = $state(false);
 	let voteBusy = $state(false);
+	let toolsOpen = $state(false);
 
 	const LANGS = [
 		{ code: 'en', label: 'English' },{ code: 'es', label: 'Español' },{ code: 'fr', label: 'Français' },{ code: 'de', label: 'Deutsch' },
@@ -304,28 +305,42 @@
 </script>
 
 {#if !compact && lyrics && !loading}
-	<div class="sticky top-0 z-10 -mx-5 -mt-6 mb-3 flex flex-wrap items-center gap-2 border-b glass px-4 py-2.5 text-xs">
+	<div class="sticky top-0 z-10 -mx-5 -mt-6 mb-3 flex items-center gap-2 border-b glass px-4 py-2.5 text-xs">
 		<span class="rounded-full bg-primary px-2.5 py-1 font-bold text-primary-foreground shadow-sm">{lyrics.source}</span>
-		<div class="ml-1 flex items-center gap-1">
-			<span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Offset</span>
-			<button onclick={() => nudgeOffset(-500)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">-500</button>
-			<button onclick={() => nudgeOffset(-250)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">-250</button>
-			<span class="min-w-[3.2rem] text-center font-mono tabular-nums">{offsetMs > 0 ? `+${offsetMs}` : offsetMs}ms</span>
-			<button onclick={() => nudgeOffset(250)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">+250</button>
-			<button onclick={() => nudgeOffset(500)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">+500</button>
-			<button onclick={resetOffset} class="cursor-pointer rounded-md bg-muted px-2 py-1 hover:bg-accent">Reset</button>
-		</div>
+		<!-- Tools live in a collapsed menu so the bar stays one quiet line (user request). -->
 		<div class="ml-auto flex items-center gap-1.5">
-			<select bind:value={translateLang} class="rounded-md border bg-card px-2 py-1 text-xs">
-				{#each LANGS as l}<option value={l.code}>{l.label}</option>{/each}
-			</select>
-			<button onclick={toggleTranslate} class="cursor-pointer rounded-md px-2.5 py-1 font-medium {translateOn ? 'bg-primary text-primary-foreground' : 'border bg-card hover:bg-accent'}">{translateOn ? 'Original' : 'Translate'}</button>
-			<button onclick={toggleRomanize} class="cursor-pointer rounded-md px-2.5 py-1 font-medium {romanizeOn ? 'bg-primary text-primary-foreground' : 'border bg-card hover:bg-accent'}">{romanizeOn ? 'Original' : 'Romanize'}</button>
-			<button disabled={voteBusy} onclick={() => vote(1)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent" title="Upvote this lyric source">👍</button>
-			<button disabled={voteBusy} onclick={() => vote(-1)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent" title="Downvote">👎</button>
-			<button onclick={report} class="cursor-pointer rounded-md border bg-card px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Report incorrect lyrics">Report</button>
+			<button
+				onclick={() => (toolsOpen = !toolsOpen)}
+				class="cursor-pointer rounded-md border bg-card px-2.5 py-1 font-medium hover:bg-accent"
+				aria-expanded={toolsOpen}
+			>
+				{toolsOpen ? 'Hide tools' : 'Lyric tools'}
+			</button>
 		</div>
 	</div>
+	{#if toolsOpen}
+		<div class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border glass px-3 py-2 text-xs">
+			<div class="flex items-center gap-1">
+				<span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Offset</span>
+				<button onclick={() => nudgeOffset(-500)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">-500</button>
+				<button onclick={() => nudgeOffset(-250)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">-250</button>
+				<span class="min-w-[3.2rem] text-center font-mono tabular-nums">{offsetMs > 0 ? `+${offsetMs}` : offsetMs}ms</span>
+				<button onclick={() => nudgeOffset(250)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">+250</button>
+				<button onclick={() => nudgeOffset(500)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">+500</button>
+				<button onclick={resetOffset} class="cursor-pointer rounded-md bg-muted px-2 py-1 hover:bg-accent">Reset</button>
+			</div>
+			<div class="ml-auto flex items-center gap-1.5">
+				<select bind:value={translateLang} class="rounded-md border bg-card px-2 py-1 text-xs">
+					{#each LANGS as l}<option value={l.code}>{l.label}</option>{/each}
+				</select>
+				<button onclick={toggleTranslate} class="cursor-pointer rounded-md px-2.5 py-1 font-medium {translateOn ? 'bg-primary text-primary-foreground' : 'border bg-card hover:bg-accent'}">{translateOn ? 'Original' : 'Translate'}</button>
+				<button onclick={toggleRomanize} class="cursor-pointer rounded-md px-2.5 py-1 font-medium {romanizeOn ? 'bg-primary text-primary-foreground' : 'border bg-card hover:bg-accent'}">{romanizeOn ? 'Original' : 'Romanize'}</button>
+				<button disabled={voteBusy} onclick={() => vote(1)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent" title="Upvote this lyric source">👍</button>
+				<button disabled={voteBusy} onclick={() => vote(-1)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent" title="Downvote">👎</button>
+				<button onclick={report} class="cursor-pointer rounded-md border bg-card px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Report incorrect lyrics">Report</button>
+			</div>
+		</div>
+	{/if}
 {/if}
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
 <div

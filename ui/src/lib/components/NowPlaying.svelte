@@ -7,7 +7,6 @@
 		Maximize01Icon,
 		Minimize01Icon,
 		Mic01Icon,
-		Video01Icon,
 		MusicNote01Icon,
 		PauseIcon,
 		PlayIcon,
@@ -43,14 +42,6 @@
 		const cur = playback.queue.items[playback.queue.currentIndex];
 		return cur?.video_id === playback.now?.videoId ? cur : null;
 	});
-
-	function toggleVideoSync() {
-		const next = !appearance.videoSync;
-		setAppearance({ videoSync: next });
-		api.setVideoSync(next).catch(()=>{});
-	}
-	const isVideoTrack = $derived(!!currentSong?.is_video);
-	const showVideo = $derived(appearance.videoSync && !!playback.now?.videoId);
 
 	// Enlarged lyrics take the whole view, artwork column and tab strip included. A class swap
 	// rather than unmounting the tabs: LyricsView must survive it or it refetches and loses its
@@ -147,13 +138,6 @@
 		clearTimeout(volBadgeTimer);
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}
-
-	// Ambient intensity → opacity (mirrors theme.svelte mapping) for inline style fallback.
-	const ambientOpacity = $derived(
-		appearance.ambientMode
-			? (appearance.immersiveBackgroundIntensity ?? (appearance.ambientIntensity === 'vivid' ? 0.22 : appearance.ambientIntensity === 'subtle' ? 0.06 : 0.12))
-			: 0
-	);
 </script>
 
 <!-- Covers the page but not the sidebar (you navigate away to minimise) and not the player bar,
@@ -169,22 +153,12 @@
 	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
 	     needs no colour extraction (which a remote image would taint the canvas for anyway). The
 	     120px variant is the one the player bar has already loaded for this track, so this costs
-	     no request and nothing new to decode.
+	     no request and nothing new to decode. Ambient mode (#7) renders no layer here — the
+	     app-wide backdrop in +layout.svelte owns that; only this view's own wash is local.
 	     Two opacities because the wash sits on opposite grounds: over white it has to stay pale
 	     enough for dark text, over near-black it can carry more colour before muted-foreground
 	     stops reading. Turn them up together if it's too subtle. -->
-	{#if appearance.ambientMode && srcs[2] && !bgFailed}
-		<!-- Ambient mode (#7): blurred backdrop with intensity via --ambient-opacity -->
-		<img
-			src={srcs[2]}
-			alt=""
-			onerror={() => (bgFailed = true)}
-			class="pointer-events-none absolute inset-0 h-full w-full object-cover"
-			style="filter: blur(40px) scale(1.2); opacity: var(--ambient-opacity, {ambientOpacity});"
-		/>
-		<!-- Glass veil keeps text legible over vivid ambient -->
-		<div class="pointer-events-none absolute inset-0 bg-background/20 dark:bg-background/10"></div>
-	{:else if appearance.artworkBackground && srcs[2] && !bgFailed}
+	{#if appearance.artworkBackground && srcs[2] && !bgFailed}
 		<img
 			src={srcs[2]}
 			alt=""
@@ -210,21 +184,10 @@
 			<div
 				class="min-w-0 flex-1 items-center justify-center {tabbed ? 'hidden md:flex' : 'flex'}"
 			>
-			<!-- A div, not a button: it is the [data-ctx] host, so right-clicking anywhere on the
-			     artwork opens the track menu at the pointer (ctxHost on the hidden TrackMenu). -->
+		<!-- A div, not a button: it is the [data-ctx] host, so right-clicking anywhere on the
+		     artwork opens the track menu at the pointer (ctxHost on the hidden TrackMenu). -->
 			<div class="relative w-full max-w-[var(--art)]" data-ctx>
-				{#if showVideo}
-					<!-- Video Sync: muted official video + audio with FFT cross-correlation (Kodama parity). Uses YT embed muted + audio from mpv; mpv `vo=libmpv` path renders when `is_video` is true. -->
-					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
-						<iframe
-							src="https://www.youtube.com/embed/{playback.now?.videoId}?autoplay=1&mute=1&controls=0&rel=0&playsinline=1"
-							title="Official video"
-							allow="autoplay; encrypted-media"
-							class="absolute inset-0 h-full w-full border-0"
-						></iframe>
-						<div class="pointer-events-none absolute bottom-2 left-2 rounded-full glass-strong px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">VIDEO SYNC • muted</div>
-					</div>
-				{:else if canvasUrl}
+				{#if canvasUrl}
 					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
 					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
 						<video
@@ -355,14 +318,6 @@
 							/>
 						</button>
 					{/if}
-					<button
-						onclick={toggleVideoSync}
-						class="cursor-pointer rounded-md p-1.5 transition-colors {appearance.videoSync ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'}"
-						aria-label="Toggle video sync"
-						title={appearance.videoSync ? 'Video sync on (muted video + audio)' : 'Video sync off (artwork only)'}
-					>
-						<HugeiconsIcon icon={Video01Icon} class="h-4 w-4" />
-					</button>
 				</div>
 				<!-- Only the open tab is mounted: bits-ui keeps inactive content in the DOM, which would
 				     leave LyricsView fetching lyrics for every track you never asked to see. -->

@@ -59,7 +59,9 @@ export function empty(): Personal {
 		recent: {},
 		artists: {},
 		dismissedSeeds: [],
-		home: { order: [], hidden: [], seen: [] }
+		// The Shortcuts grid ships hidden ('@shortcuts' in `hidden`): home leads with the feed, and
+		// Edit home lists the block to bring it back. Opt-in, not opt-out.
+		home: { order: [], hidden: ['@shortcuts'], seen: [] }
 	};
 }
 
@@ -94,6 +96,12 @@ export function hydrate(raw: unknown): Personal {
 		if (base.home.order.length && !base.home.order.includes('@familiar')) {
 			const at = base.home.order.indexOf('@recent');
 			base.home.order.splice(at < 0 ? base.home.order.length : at + 1, 0, '@familiar');
+		}
+		// '@shortcuts' moved from always-on to opt-in. Seed the hidden flag exactly once: a user
+		// who has ranked it (order) or already hidden it (hidden) has made their choice, and the
+		// modal's save writes both lists, so neither branch can fire again afterwards.
+		if (!base.home.order.includes('@shortcuts') && !base.home.hidden.includes('@shortcuts')) {
+			base.home.hidden.push('@shortcuts');
 		}
 	}
 	return base;

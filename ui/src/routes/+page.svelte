@@ -85,11 +85,13 @@
 	const feed = $derived(home?.sections.filter((s) => !isForgotten(s)) ?? []);
 
 	// --- the arrangement the user set in the Edit modal (personal.ts) ---------------------------
-	// The two sections the app builds itself get reserved keys — a YouTube shelf title can't start
-	// with "@" — so they keep their slot even before (or without) any content to show.
+	// The sections the app builds itself get reserved keys — a YouTube shelf title can't start
+	// with "@" — so they keep their slot even before (or without) any content to show. Shortcuts
+	// is one of them now: it ships hidden (personal.ts) and Edit home brings it back.
 	const RECENT = '@recent';
 	const FAMILIAR = '@familiar';
 	const FORGOTTEN = '@forgotten';
+	const SHORTCUTS = '@shortcuts';
 	type Block =
 		| { id: string; key: string; title: string; shelf?: undefined }
 		| { id: string; key: string; title: string; shelf: HomeSection };
@@ -102,8 +104,9 @@
 	 */
 	const blocks = $derived.by(() => {
 		const local: Block[] = selected
-			? [] // a mood feed is the chip's: neither of ours belongs in it
+			? [] // a mood feed is the chip's: none of ours belongs in it
 			: [
+					{ id: SHORTCUTS, key: SHORTCUTS, title: 'Shortcuts' },
 					{ id: RECENT, key: RECENT, title: 'Jump back in' },
 					{ id: FAMILIAR, key: FAMILIAR, title: 'Familiar Artists' },
 					{ id: FORGOTTEN, key: FORGOTTEN, title: 'Forgotten favourites' }
@@ -340,12 +343,16 @@
 		</div>
 	{/if}
 	<div class="px-6 pb-6 pt-6">
-		<!-- Zone one: what's yours. The grid you arranged, above the rule that separates it from
-		     everything the app or YouTube chose. It steps aside entirely while a mood filter is
-		     active: none of it is filterable, and neither is the arrangement it edits. -->
-		{#if !selected}
-			<div class="mb-10 border-b pb-8">
-				<Shortcuts onEdit={() => (editing = true)} />
+		<!-- The Shortcuts grid carried the Edit-home button; when it's hidden, home still needs a
+		     way into the modal. A quiet text button above the feed — visible, never in the way. -->
+		{#if !selected && hidden.has(SHORTCUTS)}
+			<div class="flex justify-end px-1 pt-1">
+				<button
+					onclick={() => (editing = true)}
+					class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted hover:text-foreground"
+				>
+					Edit home
+				</button>
 			</div>
 		{/if}
 		{#snippet shelfSkeletons(n: number)}
@@ -360,7 +367,7 @@
 				</section>
 			{/each}
 		{/snippet}
-		<!-- One ordered column, so the two sections the app builds itself sit among YouTube's shelves
+		<!-- One ordered column, so the sections the app builds itself sit among YouTube's shelves
 		     instead of above them, and a drag in the Edit modal can put any of them anywhere.
 		     gap-10, not gap-8: with a heading, a row of cards and no rule between them, shelves any
 		     closer than this stop reading as separate sections. -->
@@ -373,6 +380,8 @@
 						community={/community/i.test(block.shelf.title)}
 						onMore={block.shelf.moreBrowseId ? () => showMore(block.shelf!) : undefined}
 					/>
+				{:else if block.key === SHORTCUTS}
+					<Shortcuts onEdit={() => (editing = true)} />
 				{:else if block.key === RECENT}
 					{#if recent.length}<RecentRail items={recent} />{/if}
 				{:else if block.key === FAMILIAR}
