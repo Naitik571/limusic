@@ -10,11 +10,27 @@
 		MusicNote01Icon,
 		PauseIcon,
 		PlayIcon,
-		Queue01Icon
+		Queue01Icon,
+		PreviousIcon,
+		NextIcon,
+		ShuffleIcon,
+		RepeatIcon,
+		RepeatOne01Icon,
+		VolumeHighIcon,
+		VolumeMute02Icon,
+		FavouriteIcon
 	} from '@hugeicons/core-free-icons';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { dragVolume, np, playback, wheelVolume } from '$lib/player.svelte';
-	import { appearance } from '$lib/theme.svelte';
+	import {
+		dragVolume,
+		commitVolume,
+		np,
+		playback,
+		wheelVolume,
+		toggleNowPlayingLike,
+		cycleRepeat
+	} from '$lib/player.svelte';
+	import { appearance, layout } from '$lib/theme.svelte';
 	import { thumb, thumbHQ } from '$lib/thumb';
 	import * as api from '$lib/api';
 	import QueueList from './QueueList.svelte';
@@ -27,6 +43,13 @@
 	// width they take at lg+ instead of letting them cover a third of the artwork. Below lg they're
 	// a scrimmed overlay and there's nothing to shrink into. In tabbed mode both are always closed.
 	let { queueOpen, lyricsOpen }: { queueOpen: boolean; lyricsOpen: boolean } = $props();
+
+	/** Seconds → "m:ss" for the canopy transport readout. */
+	function fmt(s: number): string {
+		if (!s || Number.isNaN(s)) return '0:00';
+		const total = Math.max(0, Math.floor(s));
+		return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+	}
 	const tabbed = $derived(appearance.tabbedPlayer);
 	// ponytail: mirrors QueuePanel / LyricsPanel's w-80, keep in sync if those change.
 	const panels = $derived(Number(queueOpen) + Number(lyricsOpen));
@@ -148,8 +171,12 @@
      ponytail: left offsets mirror Sidebar's w-16/lg:w-60 â€” keep in sync if those change. -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
-	class="np-view absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 {inset}"
+	class="np-view absolute inset-0 z-20 flex flex-col overflow-hidden bg-background {inset}"
 >
+	<!-- Orchard takeover: the view owns the whole row in every layout. Canopy has no bottom bar
+	     (its transport lives in the top bar), so this view carries its own footer there; in the
+	     other layouts the player bar below the row stays the transport and no footer renders. -->
+	<div class="relative flex min-h-0 flex-1 justify-center px-4 py-4 sm:px-6 sm:py-6">
 	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
 	     needs no colour extraction (which a remote image would taint the canvas for anyway). The
 	     120px variant is the one the player bar has already loaded for this track, so this costs
@@ -334,4 +361,113 @@
 			</div>
 		{/if}
 	</div>
+	</div>
+
+	<!-- Canopy-only transport: this layout unmounts the bottom player bar, so the takeover view
+	     carries its own. Every other layout keeps the bar below the row and renders no footer. -->
+	{#if layout.id === 'canopy'}
+		<footer class="relative shrink-0 border-t px-6 pb-4 pt-3">
+			<div class="mx-auto flex max-w-[80rem] flex-col gap-2">
+				<!-- Seek line -->
+				<div class="flex items-center gap-3">
+					<span class="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+						{fmt(playback.position)}
+					</span>
+					<input
+						type="range"
+						min="0"
+						max={Math.max(1, Math.floor(playback.duration))}
+						value={Math.min(playback.position, playback.duration)}
+						oninput={(e) => api.seek(Number(e.currentTarget.value)).catch(() => {})}
+						class="h-1 flex-1 accent-primary"
+						aria-label="Seek"
+					/>
+					<span class="w-12 shrink-0 text-xs tabular-nums text-muted-foreground">
+						{fmt(playback.duration)}
+					</span>
+				</div>
+				<!-- Controls -->
+				<div class="flex items-center justify-center gap-2">
+					<button
+						class="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground {playback.liked
+							? 'text-primary'
+							: ''}"
+						onclick={() => toggleNowPlayingLike()}
+						aria-label="Like"
+					>
+						<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4" />
+					</button>
+					<button
+						class="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground {playback.queue.shuffle
+							? 'text-primary'
+							: ''}"
+						onclick={() => api.toggleShuffle().catch(() => {})}
+						aria-label="Shuffle"
+					>
+						<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" />
+					</button>
+					<button
+						class="flex h-10 w-10 items-center justify-center rounded-md text-foreground/90 transition-colors hover:bg-accent/10"
+						onclick={() => api.prevTrack().catch(() => {})}
+						aria-label="Previous"
+					>
+						<HugeiconsIcon icon={PreviousIcon} class="h-5 w-5" />
+					</button>
+					<button
+						class="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow transition-transform hover:scale-105"
+						onclick={() => api.togglePause().catch(() => {})}
+						aria-label={playback.paused ? 'Play' : 'Pause'}
+					>
+						{#if playback.paused}
+							<HugeiconsIcon icon={PlayIcon} class="h-6 w-6" />
+						{:else}
+							<HugeiconsIcon icon={PauseIcon} class="h-6 w-6" />
+						{/if}
+					</button>
+					<button
+						class="flex h-10 w-10 items-center justify-center rounded-md text-foreground/90 transition-colors hover:bg-accent/10"
+						onclick={() => api.nextTrack().catch(() => {})}
+						aria-label="Next"
+					>
+						<HugeiconsIcon icon={NextIcon} class="h-5 w-5" />
+					</button>
+					<button
+						class="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground {playback.queue.repeat !==
+						'off'
+							? 'text-primary'
+							: ''}"
+						onclick={() => cycleRepeat().catch(() => {})}
+						aria-label="Repeat"
+					>
+						<HugeiconsIcon
+							icon={playback.queue.repeat === 'one' ? RepeatOne01Icon : RepeatIcon}
+							class="h-4 w-4"
+						/>
+					</button>
+					<div class="ml-6 hidden items-center gap-2 md:flex">
+						<button
+							class="p-1 text-muted-foreground transition-colors hover:text-foreground"
+							onclick={() => commitVolume(playback.volume === 0 ? 100 : 0)}
+							aria-label="Mute"
+						>
+							<HugeiconsIcon
+								icon={playback.volume === 0 ? VolumeMute02Icon : VolumeHighIcon}
+								class="h-4 w-4"
+							/>
+						</button>
+						<input
+							type="range"
+							min="0"
+							max="100"
+							value={playback.volume}
+							oninput={(e) => dragVolume(Number(e.currentTarget.value))}
+							onchange={(e) => commitVolume(Number(e.currentTarget.value))}
+							class="w-28 accent-primary"
+							aria-label="Volume"
+						/>
+					</div>
+				</div>
+			</div>
+		</footer>
+	{/if}
 </div>

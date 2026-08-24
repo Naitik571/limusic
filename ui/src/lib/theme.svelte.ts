@@ -35,10 +35,10 @@ export type ThemeId =
 export type LayoutId = 'default' | 'grove' | 'canopy' | 'compact' | 'wide';
 
 export const LAYOUTS: { id: LayoutId; label: string; description: string }[] = [
-	{ id: 'default', label: 'Default', description: 'Balanced sidebar + feed — the classic Limusic look' },
-	{ id: 'grove', label: 'Grove', description: 'Three columns — navigation, feed, and docked panels side-by-side' },
-	{ id: 'canopy', label: 'Canopy', description: 'Top navigation with immersive full-bleed player' },
-	{ id: 'compact', label: 'Compact', description: 'Narrow 900px centered focus' },
+	{ id: 'default', label: 'Default', description: 'Balanced sidebar + feed - the classic Limusic look' },
+	{ id: 'grove', label: 'Grove', description: 'Rounded feed card + floating player island' },
+	{ id: 'canopy', label: 'Canopy', description: 'Transport in the top bar - no bottom bar at all' },
+	{ id: 'compact', label: 'Compact', description: 'Narrow centered focus with docked panels' },
 	{ id: 'wide', label: 'Wide', description: 'Collapsed sidebar + 1400px content' }
 ];
 
@@ -275,6 +275,9 @@ export function applyLayout(id: LayoutId): void {
 	const root = document.documentElement;
 	root.classList.remove(...LAYOUT_CLASSES);
 	root.classList.add(`layout-${valid}`);
+	// Orchard scopes its per-layout stylesheet to this attribute (component-carried CSS hangs off
+	// it); the class above stays for the rules in layout.css.
+	root.dataset.layoutPreset = valid;
 	localStorage.setItem(LAYOUT_KEY, valid);
 }
 
@@ -285,6 +288,7 @@ export function initLayout(): void {
 	const root = document.documentElement;
 	root.classList.remove(...LAYOUT_CLASSES);
 	root.classList.add(`layout-${id}`);
+	root.dataset.layoutPreset = id;
 }
 
 const persist = () => localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom));

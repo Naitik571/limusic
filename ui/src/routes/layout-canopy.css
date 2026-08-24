@@ -1,0 +1,65 @@
+/*
+ * Canopy layout — component-carried stylesheet (imported by CanopyTitlebar.svelte), the Orchard
+ * loading trick: the rules ship with the swapped-in component and are inert unless the preset
+ * attribute matches. Every selector is prefixed `html[data-layout-preset="canopy"]`.
+ *
+ * Canopy identity: 68px top transport bar (the component above), NO bottom player bar, flattened
+ * page, hairline rules, small radii, chrome-tinted surfaces, sidebar repainted onto the chrome
+ * with accent-filled active rows.
+ */
+
+html[data-layout-preset='canopy'] {
+	/* Orchard's token block, retuned to the fork's palette: hairlines and faint surfaces instead
+	   of big soft radii. --radius drives every card/button, so this one var re-skins the app. */
+	--radius: 0.375rem;
+	--canopy-hairline: color-mix(in oklch, var(--foreground) 8%, transparent);
+	--canopy-chrome: color-mix(in oklch, var(--primary) 3%, var(--background));
+}
+
+/* The shell reads as one chrome surface; content floats on it without its own card. */
+html[data-layout-preset='canopy'] .app-root {
+	background: var(--canopy-chrome);
+}
+
+/* Flattened page: no card, no rounding, centered like Orchard's 1560px cap. */
+html[data-layout-preset='canopy'] main {
+	max-width: 96rem;
+	margin: 0 auto;
+	border-radius: 0;
+	border: 0;
+	background: transparent;
+}
+
+html[data-layout-preset='canopy'] .home-hero {
+	border-radius: 0;
+}
+
+/* Sidebar repainted onto the chrome: no glass blur, hairline separator, compact radii and
+   accent-FILLED active rows (a pill of solid accent) instead of the soft glass pill. */
+html[data-layout-preset='canopy'] aside.glass {
+	background: transparent;
+	backdrop-filter: none;
+	border-color: var(--canopy-hairline);
+}
+html[data-layout-preset='canopy'] aside.glass nav a {
+	border-radius: 6px;
+}
+html[data-layout-preset='canopy'] aside.glass nav a.bg-glass-strong {
+	background: var(--primary);
+	color: var(--primary-foreground);
+}
+html[data-layout-preset='canopy'] aside.glass button {
+	border-radius: 6px;
+}
+
+/* Hairline separators everywhere the default look used soft borders. */
+html[data-layout-preset='canopy'] .side-panel {
+	border-color: var(--canopy-hairline);
+	box-shadow: none;
+}
+
+/* The top bar itself: chrome tint, hairline bottom. The scrubber strip lives in the component. */
+html[data-layout-preset='canopy'] .canopy-bar {
+	background: var(--canopy-chrome);
+	border-color: var(--canopy-hairline);
+}

@@ -1084,24 +1084,33 @@ html.layout-grove main {
 	box-shadow: inset 0 1px 0 0 var(--glass-highlight);
 	overflow: hidden;
 }
-/* The now-playing view reads as the same rounded surface as main: same radius on every corner,
-   a small inset all round, its left edge lined up with main's (aside width + the row's gap). */
-html.layout-grove .np-view {
-	top: 0.75rem;
-	right: 0.75rem;
-	bottom: 0.75rem;
-	left: calc(4rem + 0.875rem);
-	border-radius: calc(var(--radius) * 2.2);
+/* The player bar becomes Orchard's floating island: fixed, inset from the sidebar, rounded,
+   floating OVER the now-playing takeover (which is why the takeover needs no per-layout offsets —
+   the island simply sits on top of it everywhere). */
+html.layout-grove .app-root > div.relative.z-20 {
+	position: fixed;
+	left: calc(4rem + 1.25rem);
+	right: 1.25rem;
+	bottom: 0.875rem;
+	z-index: 30;
+	border-radius: calc(var(--radius) * 1.6);
+	overflow: hidden;
+	border: 1px solid var(--border);
+	box-shadow: 0 14px 44px rgb(0 0 0 / 0.4);
 }
 @media (min-width: 64rem) {
-	html.layout-grove .np-view {
-		left: calc(18rem + 0.875rem);
+	html.layout-grove .app-root > div.relative.z-20 {
+		left: calc(18rem + 1.25rem);
 	}
+}
+/* Content clears the island: main's scroll end and the docked panels' bottoms would otherwise
+   run underneath it. */
+html.layout-grove main {
+	padding-bottom: 6.5rem;
 }
 /* The hero's blurred artwork wash is a full-bleed background; round it to match main's top
    corners so the gradient never meets a straight cut. */
-html.layout-grove .home-hero,
-html.layout-canopy .home-hero {
+html.layout-grove .home-hero {
 	overflow: hidden;
 	border-top-left-radius: calc(var(--radius) * 2.2);
 	border-top-right-radius: calc(var(--radius) * 2.2);
@@ -1115,57 +1124,11 @@ html.layout-grove .app-root {
 	background-image: radial-gradient(90% 55% at 12% 0%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 60%);
 }
 
-html.layout-canopy .app-root > div.relative {
-	flex-direction: column;
-	gap: 0;
-}
-html.layout-canopy aside.glass {
-	width: 100%;
-	/* Deterministic height: the now-playing view offsets from it (see .np-view below), so the
-	   bar can't grow under the player. overflow visible keeps popovers free. */
-	height: 4rem;
-	flex-shrink: 0;
-	flex-direction: row;
-	align-items: center;
-	gap: 1.25rem;
-	padding: 0.55rem 1rem;
-	border-radius: 0;
-	border-top: 0;
-	border-left: 0;
-	border-right: 0;
-	border-bottom: 1px solid var(--glass-border);
-	overflow: visible;
-}
-html.layout-canopy aside.glass nav {
-	flex-direction: row;
-	gap: 0.25rem;
-	margin-top: 0;
-}
-html.layout-canopy aside.glass nav a,
-html.layout-canopy aside.glass nav button {
-	justify-content: center;
-	padding: 0.45rem 0.75rem;
-}
-html.layout-canopy aside.glass > div.border-t {
-	display: none;
-}
-html.layout-canopy main {
-	width: 100%;
-	padding: 1rem 1.25rem 1.75rem;
-	/* Round the content surface itself so the hero gradient doesn't hit straight edges; the
-	   bottom stays square where it meets the player bar. */
-	border-radius: calc(var(--radius) * 2.2) calc(var(--radius) * 2.2) 0 0;
-	overflow: hidden;
-}
-/* The player sits BELOW the top bar instead of covering it: the aside is a fixed 4rem strip,
-   so the view starts at that line and fills the rest edge to edge. */
-html.layout-canopy .np-view {
-	top: 4rem;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	border-radius: 0;
-}
+/* Canopy is rebuilt the Orchard way: a component swap, not CSS. CanopyTitlebar.svelte mounts as
+   the top bar (with the transport) and +layout.svelte unmounts the bottom PlayerBar entirely; the
+   preset's styling lives in layout-canopy.css, carried by that component and scoped to
+   html[data-layout-preset="canopy"]. The sidebar stays a vertical rail here — only its skin
+   changes. What remains in this file is just the ambient wash. */
 html.layout-canopy .app-root {
 	background-image:
 		radial-gradient(120% 70% at 50% -12%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 62%),
@@ -1183,33 +1146,37 @@ html.layout-compact main {
 	padding-left: 1.5rem;
 	padding-right: 1.5rem;
 }
-/* Dock the queue/lyrics panels instead of overlaying them: they become a right column beside
-   main inside the existing flex row, so the side space gets used. Both open → side by side. */
-html.layout-compact .side-panel {
-	position: static;
-	width: 24rem;
-	max-width: none;
-	height: auto;
-	flex-shrink: 0;
-	border-left: 1px solid var(--border);
-	box-shadow: none;
+html.layout-compact .app-root {
+	background-image: radial-gradient(85% 45% at 50% 0%, color-mix(in oklch, var(--primary) 6%, transparent), transparent 65%);
 }
 html.layout-compact .app-root {
 	background-image: radial-gradient(85% 45% at 50% 0%, color-mix(in oklch, var(--primary) 6%, transparent), transparent 65%);
 }
 
+/* --- Docked panels (Orchard's right drawer) ---
+   In the four layouts the queue/lyrics panels stop being floating overlays at lg+ and become a
+   right column of the row — space is reserved, the layout incorporates them. Below lg (and in
+   the default layout) they stay scrims over the content, where there isn't room to dock. */
+@media (min-width: 64rem) {
+	html.layout-grove .side-panel,
+	html.layout-canopy .side-panel,
+	html.layout-wide .side-panel,
+	html.layout-compact .side-panel {
+		position: static;
+		width: 20rem;
+		max-width: none;
+		height: auto;
+		flex-shrink: 0;
+		box-shadow: none;
+	}
+	/* Grove's island floats over the docked panel's bottom edge — clear it. */
+	html.layout-grove .side-panel {
+		padding-bottom: 6.5rem;
+	}
+}
+
 html.layout-wide .app-root > div.relative {
 	gap: 0;
-}
-/* The player's own `left-16 lg:left-60` utilities assume the default 15rem sidebar; wide's rail
-   is 4rem, so those offsets left a strip of the page beside the player. Full cover instead —
-   unlayered rules beat the utilities, and grove/canopy re-offset under their own scopes. */
-html.layout-wide .np-view {
-	left: 0;
-	right: 0;
-	top: 0;
-	bottom: 0;
-	border-radius: 0;
 }
 html.layout-wide aside.glass {
 	width: 4rem;

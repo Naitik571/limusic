@@ -14,12 +14,19 @@
 	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { appearance, applyArtworkAccent, initLayout, initTheme } from '$lib/theme.svelte';
+	import {
+		appearance,
+		applyArtworkAccent,
+		initLayout,
+		initTheme,
+		layout
+	} from '$lib/theme.svelte';
 	import { thumb } from '$lib/thumb';
 	import { dragScroll } from '$lib/dnd';
 	import { suppressNative } from '$lib/menu';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
+	import CanopyTitlebar from '$lib/components/CanopyTitlebar.svelte';
 	import ResizeBorders from '$lib/components/ResizeBorders.svelte';
 	import PlayerBar from '$lib/components/PlayerBar.svelte';
 	import QueuePanel from '$lib/components/QueuePanel.svelte';
@@ -138,7 +145,13 @@
 		{/if}
 		<AmbientGlow />
 		<ResizeBorders />
-		<Titlebar />
+		<!-- Orchard mechanism: the layout swaps top-bar COMPONENTS, not CSS. Canopy mounts the
+		     transport bar up here and unmounts the bottom PlayerBar further down. -->
+		{#if layout.id === 'canopy'}
+			<CanopyTitlebar />
+		{:else}
+			<Titlebar />
+		{/if}
 		<!-- relative: the queue and lyrics panels are absolute overlays inside it (see QueuePanel). -->
 		<div class="relative flex min-h-0 flex-1">
 			<Sidebar />
@@ -155,7 +168,10 @@
 			{#if lyricsOpen}<LyricsPanel onClose={() => (lyricsOpen = false)} {queueOpen} />{/if}
 			{#if queueOpen}<QueuePanel onClose={() => (queueOpen = false)} />{/if}
 		</div>
-		{#if playback.now}
+		<!-- Canopy has no bottom bar at all — its transport lives in the top bar (above). This is
+		     the component-swap half of the Orchard mechanism: the preset removes the bar from the
+		     tree rather than hiding it with CSS. -->
+		{#if playback.now && layout.id !== 'canopy'}
 			<!-- Slides up from its own height on first play; leaves instantly (bar removal is rare).
 			     z-20 on the wrapper, not the bar: the intro's transform makes this a stacking context,
 			     so a z on the footer inside would be trapped under it. The now-playing view is z-20 and
