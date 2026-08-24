@@ -51,14 +51,14 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    /// Create a hidden webview from a raw HTML harness + an initialization script (runs before the
-    /// page's own scripts). Resolves once the page has finished loading (Tauri `on_page_load`) AND
-    /// a probe confirms JS↔Rust round-trips. On any failure the just-built window is destroyed so
-    /// its label can be reused (no orphan "already exists").
+    /// Create a hidden webview over `html` (loaded from a `data:` URL) + an initialization script
+    /// (runs before the document's own scripts). Resolves once the page has finished loading (Tauri
+    /// `on_page_load`) AND a probe confirms JS↔Rust round-trips. On any failure the just-built
+    /// window is destroyed so its label can be reused (no orphan "already exists").
     pub async fn create(
         app: &AppHandle,
         label: &str,
-        harness_html: &str,
+        html: &str,
         init_script: &str,
     ) -> Result<Bridge, Error> {
         // Reclaim the label if a prior attempt left an orphan (or a concurrent build raced us).
@@ -70,8 +70,12 @@ impl Bridge {
              window.addEventListener('error',function(e){{window.__jserr=String((e&&e.message)||e);}});\
              window.onunhandledrejection=function(e){{window.__jserr=String((e.reason&&e.reason.message)||e.reason);}};\n{init_script}"
         );
-        let data_url = format!("data:text/html,{}", urlencoding::encode(harness_html));
-        let url = tauri::Url::parse(&data_url).map_err(|e| Error::Build(e.to_string()))?;
+        let raw_url = format!("data:text/html,{}", urlencoding::encode(html));
+        let url = tauri::Url::parse(&raw_url).map_err(|e| Error::Build(e.to_string()))?;
+        // The readiness probe (see below): proves the round-trip AND that OUR document is the one
+        // answering, since `about:blank` (where a fresh WebView2 sits) is not a `data:` page.
+        let probe = "location.protocol==='data:'";
+        let webview_url = WebviewUrl::CustomProtocol(url);
 
         // Page-load signal from the runtime (`on_page_load` → Finished). It's the fast path on
         // WebKitGTK; on WebView2 it is unreliable for the initial `data:` harness (loaded as
@@ -85,7 +89,7 @@ impl Bridge {
         let label2 = label.to_string();
         let ready_slot2 = ready_slot.clone();
         app.run_on_main_thread(move || {
-            let res = WebviewWindowBuilder::new(&app2, label2, WebviewUrl::CustomProtocol(url))
+            let res = WebviewWindowBuilder::new(&app2, label2, webview_url)
                 .visible(false)
                 .inner_size(1.0, 1.0)
                 .skip_taskbar(true)
@@ -109,10 +113,7 @@ impl Bridge {
             .map_err(|_| Error::Build("main-thread create dropped".into()))?
             .map_err(Error::Build)?;
 
-        let bridge = Bridge {
-            app: app.clone(),
-            label: label.to_string(),
-        };
+        let bridge = Bridge { app: app.clone(), label: label.to_string() };
 
         // Give the page-load event a brief chance (WebKitGTK fires it in ~tens of ms, so no evals
         // are issued before load there); if it doesn't arrive, fall through to probing JS directly
@@ -124,27 +125,18 @@ impl Bridge {
                 tracing::debug!(label, "no page-load event within 1s — probing JS directly"),
         }
 
-        // Real readiness gate: poll until JS confirms our harness document is actually loaded.
-        // `location.protocol==='data:'` is true only once the `data:` harness is live — it stays
-        // false on the `about:blank` a fresh WebView2 sits on, so (unlike a plain `1+1`, which would
-        // pass on `about:blank` too) this proves BOTH the JS↔Rust round-trip works AND the right
-        // document loaded. WebView2 misses the load *event*, not the load itself; on WebKitGTK the
-        // same data URL is loaded via `load_uri`, so the check holds there too (no Linux regression).
-        // Short per-attempt timeout so an eval whose callback is dropped pre-load (WebKitGTK quirk)
-        // retries instead of stalling. On timeout the window exists but is unusable — destroy it.
+        // Real readiness gate: poll until JS confirms our own document is actually loaded, which
+        // (unlike a plain `1+1`, which would pass on `about:blank` too) proves BOTH the JS↔Rust
+        // round-trip works AND the right document loaded. WebView2 misses the load *event*, not the
+        // load itself; on WebKitGTK the document is loaded via `load_uri`, so the check holds there
+        // too (no Linux regression). Short per-attempt timeout so an eval whose callback is dropped
+        // pre-load (WebKitGTK quirk) retries instead of stalling. On timeout the window exists but
+        // is unusable — destroy it.
         let deadline = Instant::now() + Duration::from_secs(12);
         loop {
-            let probe = bridge
-                .eval_json(
-                    "location.protocol==='data:'".into(),
-                    Duration::from_millis(800),
-                )
-                .await;
-            if matches!(probe, Ok(Value::Bool(true))) {
-                tracing::info!(
-                    label,
-                    "webview bridge OK — harness loaded, eval round-trips"
-                );
+            let ready = bridge.eval_json(probe.to_owned(), Duration::from_millis(800)).await;
+            if matches!(ready, Ok(Value::Bool(true))) {
+                tracing::info!(label, "webview bridge OK — harness loaded, eval round-trips");
                 return Ok(bridge);
             }
             if Instant::now() >= deadline {
@@ -209,10 +201,7 @@ impl Bridge {
         let deadline = Instant::now() + timeout;
         let step = Duration::from_millis(100);
         loop {
-            match self
-                .eval_json(format!("({expr})"), Duration::from_secs(3))
-                .await
-            {
+            match self.eval_json(format!("({expr})"), Duration::from_secs(3)).await {
                 Ok(v) if !v.is_null() => return Ok(v),
                 Ok(_) => {}                                        // null → still pending
                 Err(Error::Gone(l)) => return Err(Error::Gone(l)), // window died — stop
@@ -241,19 +230,14 @@ impl Bridge {
              catch(e){{window.__slots['{id}']={{ok:0,e:String((e&&e.message)||e)}};}}}})();"
         );
         self.eval(&kick)?;
-        let slot = self
-            .poll_json(&format!("window.__slots['{id}']||null"), timeout)
-            .await?;
+        let slot = self.poll_json(&format!("window.__slots['{id}']||null"), timeout).await?;
         // Free the slot regardless of outcome.
         let _ = self.eval(&format!("delete window.__slots['{id}'];"));
         if slot.get("ok").and_then(Value::as_i64) == Some(1) {
             Ok(slot.get("v").cloned().unwrap_or(Value::Null))
         } else {
             Err(Error::Eval(
-                slot.get("e")
-                    .and_then(Value::as_str)
-                    .unwrap_or("async call failed")
-                    .to_owned(),
+                slot.get("e").and_then(Value::as_str).unwrap_or("async call failed").to_owned(),
             ))
         }
     }
@@ -279,9 +263,7 @@ fn next_call_id() -> u64 {
 /// dispatches to the event loop, so we poll `get_webview_window` until it's `None` (or give up).
 /// Prevents the "a webview with label X already exists" collision on a re-create.
 pub(crate) async fn destroy_and_wait(app: &AppHandle, label: &str) {
-    let Some(wv) = app.get_webview_window(label) else {
-        return;
-    };
+    let Some(wv) = app.get_webview_window(label) else { return };
     let (tx, rx) = tokio::sync::oneshot::channel();
     let _ = app.run_on_main_thread(move || {
         let _ = wv.destroy();
@@ -294,8 +276,5 @@ pub(crate) async fn destroy_and_wait(app: &AppHandle, label: &str) {
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    tracing::warn!(
-        label,
-        "webview label still present after destroy — create may collide"
-    );
+    tracing::warn!(label, "webview label still present after destroy — create may collide");
 }
