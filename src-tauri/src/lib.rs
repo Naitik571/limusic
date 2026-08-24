@@ -86,58 +86,46 @@ pub fn run() {
             None,
         ))
         .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts([
-                    "CmdOrCtrl+Shift+Up",
-                    "CmdOrCtrl+Shift+Down",
-                    "MediaPlayPause",
-                    "MediaNextTrack",
-                    "MediaPrevTrack",
-                ])
-                .unwrap()
-                .with_handler(|app, shortcut, event| {
-                    if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        return;
+            {
+                let builder = tauri_plugin_global_shortcut::Builder::new();
+                let shortcuts = [
+                    "CommandOrControl+Shift+Up",
+                    "CommandOrControl+Shift+Down",
+                ];
+                // Use only safe shortcuts; media keys are handled via SMTC already and global registration can fail on some systems
+                match builder.with_shortcuts(shortcuts) {
+                    Ok(b) => b
+                        .with_handler(|app, shortcut, event| {
+                            if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                                return;
+                            }
+                            let Some(state) = app.try_state::<Arc<AppState>>() else {
+                                return;
+                            };
+                            let state = state.inner().clone();
+                            match shortcut.to_string().as_str() {
+                                "CommandOrControl+Shift+Up" => {
+                                    let vol = (state.player.get_volume() + 5).min(100);
+                                    let _ = state.player.set_volume(vol);
+                                    state.db.set_setting("volume", &vol.to_string());
+                                    let _ = app.emit("volume", vol);
+                                }
+                                "CommandOrControl+Shift+Down" => {
+                                    let vol = (state.player.get_volume() - 5).max(0);
+                                    let _ = state.player.set_volume(vol);
+                                    state.db.set_setting("volume", &vol.to_string());
+                                    let _ = app.emit("volume", vol);
+                                }
+                                _ => {}
+                            }
+                        })
+                        .build(),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "global shortcuts registration failed, continuing without them");
+                        tauri_plugin_global_shortcut::Builder::new().build()
                     }
-                    let Some(state) = app.try_state::<Arc<AppState>>() else {
-                        return;
-                    };
-                    let state = state.inner().clone();
-                    match shortcut.to_string().as_str() {
-                        "CmdOrCtrl+Shift+Up" => {
-                            let vol = (state.player.get_volume() + 5).min(100);
-                            let _ = state.player.set_volume(vol);
-                            state.db.set_setting("volume", &vol.to_string());
-                            let _ = app.emit("volume", vol);
-                        }
-                        "CmdOrCtrl+Shift+Down" => {
-                            let vol = (state.player.get_volume() - 5).max(0);
-                            let _ = state.player.set_volume(vol);
-                            state.db.set_setting("volume", &vol.to_string());
-                            let _ = app.emit("volume", vol);
-                        }
-                        "MediaPlayPause" => {
-                            let s = state.clone();
-                            tauri::async_runtime::spawn(async move {
-                                s.resume_or_toggle().await;
-                            });
-                        }
-                        "MediaNextTrack" => {
-                            let s = state.clone();
-                            tauri::async_runtime::spawn(async move {
-                                s.next_in_queue().await;
-                            });
-                        }
-                        "MediaPrevTrack" => {
-                            let s = state.clone();
-                            tauri::async_runtime::spawn(async move {
-                                s.prev_in_queue().await;
-                            });
-                        }
-                        _ => {}
-                    }
-                })
-                .build(),
+                }
+            }
         )
         .setup(|app| {
             let handle = app.handle().clone();
