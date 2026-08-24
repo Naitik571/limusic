@@ -1,28 +1,40 @@
-//! Lyrics fetching. Provider chain (plan `graceful-kindling`):
+//! Lyrics fetching. Provider wave (plan `graceful-kindling`):
 //!
-//! 1. **LRCLIB** `/api/get` (exact match) → synced LRC lyrics. Free, no key, best coverage —
-//!    what Metrolist defaults to.
-//! 2. **YouTube Music timed** — `next(videoId)` → lyrics browseId → mobile-client browse
-//!    (`timedLyricsData`). The same real-time lyrics the YTM app shows.
-//! 3. **Musixmatch** (unofficial `apic-desktop` API): token.get → macro.subtitles.get, LRC
-//!    synced lines with a token-overlap sanity check against the matched track.
-//! 4. Plain fallbacks: LRCLIB plain (from step 1's response) → YT plain (WEB_REMIX browse) →
-//!    LRCLIB `/api/search` fuzzy → **Genius** page scrape (unauthenticated internal search +
-//!    `data-lyrics-container` extraction), last resort.
+//! `next(videoId)` first resolves the lyrics browseId and the exact length of the cut this
+//! videoId plays (hard-bounded). Then every keyless provider fires **concurrently**, each under
+//! a tight per-provider deadline, and the best answer wins: synced beats instrumental beats
+//! plain, and among equals the higher-priority (earlier) provider wins —
+//! Apple Music (BYO token) → Boidu/BetterLyrics TTML → LRCLIB `/api/get` exact +
+//! `/api/search` fuzzy → NetEase YRC → Kugou KRC → Unison → QRC (QQ) → Musixmatch richsync →
+//! SimpMusic → Megalobiz → Genius. YouTube Music's authenticated timed (then plain) lyrics run
+//! **last and optionally**: only when nothing synced arrived and budget remains. The whole
+//! lookup fits a ~5 s budget — the previous strictly-serial chain with 15–20 s default client
+//! timeouts could stall for minutes behind a few dead hosts.
 //!
-//! Results are cached in SQLite (`lyrics_cache`): hits forever, "no lyrics" verdicts for 24h.
-//! A run where every provider merely *errored* (offline) caches nothing, so lyrics come back
-//! when the network does. Everything is best-effort — a lyrics failure is never a user error.
+//! Results are cached in SQLite (`lyrics_cache`): hits live on, and a "no lyrics" verdict is
+//! written only when providers genuinely *answered* (LRCLIB spoke cleanly, nothing merely
+//! timed out) — a transient outage stays uncached so the next play retries instead of serving
+//! a poisoned negative. Everything is best-effort — a lyrics failure is never a user error.
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use futures::future::{join_all, BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
 
-/// How long a cached "no lyrics found" verdict suppresses refetching.
-const MISS_TTL_SECS: i64 = 24 * 3600;
+/// How long a cached "no lyrics found" verdict suppresses refetching. Short on purpose:
+/// negatives are only cached for genuine checked-everywhere runs, and a brief TTL lets a
+/// provider that was down (or a freshly indexed catalog entry) surface on the next play.
+const MISS_TTL_SECS: i64 = 120;
+
+/// Per-provider hard deadline. One stalled host costs at most this much — never the old
+/// serial 15–20 s default-client timeout per hop.
+const PROVIDER_TIMEOUT: Duration = Duration::from_millis(2500);
+
+/// Whole-lookup budget: `next()`, the concurrent wave, and any YTM follow-up together.
+const FETCH_BUDGET: Duration = Duration::from_secs(5);
 
 const LRCLIB_ROOT: &str = "https://lrclib.net/api";
 
@@ -114,35 +126,40 @@ pub async fn get_lyrics(state: &AppState, req: LyricsRequest) -> Option<Lyrics> 
     lyrics
 }
 
-/// Run the provider chain. Second value: cache the outcome — true only when the track's duration
-/// was known (LRCLIB matching is loose without it and lands on wrong *cuts* of the song, lyrics
-/// seconds off the audio) AND some provider answered definitively (found / not-found) rather
-/// than merely erroring (offline must not poison the cache with a 24h "no lyrics").
+/// Run the provider wave. Second value: cache the outcome — true only for a genuine "every
+/// provider answered, nothing exists" run (LRCLIB's exact + fuzzy passes both spoke cleanly,
+/// no provider merely timed out, and the YTM lookups — when reachable — didn't error). Any
+/// transient trouble returns `false` so the next play retries instead of a poisoned negative.
+///
+/// Flow: resolve `next()` → launch all keyless providers CONCURRENTLY under per-provider
+/// deadlines → take the best answer by priority (synced beats instrumental beats plain; earlier
+/// provider wins ties) → optionally upgrade with YTM authenticated lyrics within budget.
 async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, bool) {
-    let mut definitive = false;
+    let started = std::time::Instant::now();
 
     // 0. `next()` up front: it carries the lyrics browseId AND — via its seed item — the exact
     //    length of the cut this videoId plays. The queue item often has no duration (card plays;
     //    stream-cache replays skip /player entirely), and duration is what keeps LRCLIB from
     //    matching a differently-timed cut, so resolve it here where it's always available.
-    //    A local file has no videoId to ask about — its duration came off the file itself, and
-    //    YouTube has no lyrics browseId for it. Skip straight to LRCLIB (title + artist), which is
-    //    the only provider that can answer for it anyway.
+    //    Hard-bounded so a hung Innertube call can't eat the budget. A local file has no
+    //    videoId to ask about — its duration came off the file itself, and YouTube has no
+    //    lyrics browseId for it; providers match on title + artist alone.
     let next = if crate::local::is_local_song(&req.video_id) {
         None
     } else {
-        match state
-            .it
-            .next(
-                state.clients.get(innertube::METADATA_CLIENT).unwrap(),
-                Some(&req.video_id),
-                None,
-            )
-            .await
-        {
-            Ok(n) => Some(n),
-            Err(e) => {
+        let fut = state.it.next(
+            state.clients.get(innertube::METADATA_CLIENT).unwrap(),
+            Some(&req.video_id),
+            None,
+        );
+        match tokio::time::timeout(PROVIDER_TIMEOUT, fut).await {
+            Ok(Ok(n)) => Some(n),
+            Ok(Err(e)) => {
                 tracing::debug!(error = %e, "lyrics: next() failed");
+                None
+            }
+            Err(_) => {
+                tracing::debug!("lyrics: next() exceeded its deadline");
                 None
             }
         }
@@ -156,179 +173,207 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     }
     let req = &req;
 
-    // 1. Boidu, ahead of LRCLIB because it is the only provider here that returns word-level
-    //    timings, and those are what the karaoke sweep renders. Going first also means it is the
-    //    one provider that sees every track played rather than only the ones LRCLIB misses, so it
-    //    is behind a setting. Off falls straight through to the chain as it was before.
+    // 1. The wave: every keyless provider fires AT ONCE (the old code ran them strictly serial;
+    //    a few dead hosts at 15–20 s each stalled lyrics for minutes). Each slot carries its
+    //    priority; when several answer, the best wins: synced > instrumental > plain, then the
+    //    lower priority number takes it. Word-level sources lead so the karaoke sweep keeps its
+    //    per-word timings. Each provider runs once — the previous chain queried Boidu, NetEase,
+    //    Kugou and Musixmatch twice each on miss paths.
+    //       0 Apple Music — BYO-token syllable data (silently off without Settings tokens)
+    //       1 Boidu       — word-level TTML (setting-gated)
+    //       2 LRCLIB /get — exact signature match
+    //       3 LRCLIB /search — fuzzy second pass (duration-preferred, never hard-fails)
+    //       4 NetEase YRC — word-level
+    //       5 Kugou KRC   — word-level
+    //       6 Unison      — community aggregate
+    //       7 QRC (QQ)    — word-capable
+    //       8 Musixmatch  — richsync/synced (token-overlap sanity check)
+    //       9 SimpMusic   — LRCLIB-shaped fallback
+    //      10 Megalobiz   — scraped LRC
+    //      11 Genius      — plain-text scrape, loosest matching, last
+    let mut slots: Vec<(u8, &'static str, BoxFuture<'_, Result<Option<Lyrics>, ()>>)> = Vec::new();
+    slots.push((0, "Apple Music", Box::pin(bounded(apple_get(state, req)))));
     if state.db.get_setting("lyrics_boidu").as_deref() != Some("false") {
-        if let Ok(Some(l)) = boidu_get(req).await {
-            return (Some(l), req.duration.is_some());
+        slots.push((1, "Boidu", Box::pin(bounded(boidu_get(req)))));
+    }
+    slots.push((
+        2,
+        "LRCLIB",
+        Box::pin(bounded(async {
+            lrclib_get(req)
+                .await
+                .map(|hit| hit.and_then(|t| lrclib_to_lyrics(&t)))
+        })),
+    ));
+    slots.push((
+        3,
+        "LRCLIB",
+        Box::pin(bounded(async {
+            lrclib_search(req)
+                .await
+                .map(|hit| hit.and_then(|t| lrclib_to_lyrics(&t)))
+        })),
+    ));
+    slots.push((4, "NetEase", Box::pin(bounded(fetch_netease(req)))));
+    slots.push((5, "Kugou", Box::pin(bounded(fetch_kugou(req)))));
+    slots.push((6, "Unison", Box::pin(bounded(fetch_unison(req)))));
+    slots.push((7, "QRC", Box::pin(bounded(fetch_qrc(req)))));
+    slots.push((8, "Musixmatch", Box::pin(bounded(fetch_musixmatch(req)))));
+    slots.push((9, "SimpMusic", Box::pin(bounded(fetch_simp_music(req)))));
+    slots.push((10, "Megalobiz", Box::pin(bounded(megalobiz(req)))));
+    slots.push((11, "Genius", Box::pin(bounded(genius(req)))));
+
+    let wave = join_all(
+        slots
+            .drain(..)
+            .map(|(prio, name, fut)| async move { (prio, name, fut.await) }),
+    );
+    // Insurance over the per-provider deadlines (each future is individually bounded, so this
+    // only trips on pathological scheduler stalls). A blown budget is transient: cache nothing.
+    let settled = match tokio::time::timeout(FETCH_BUDGET, wave).await {
+        Ok(settled) => settled,
+        Err(_) => {
+            tracing::debug!("lyrics: provider wave exceeded the overall budget");
+            return (None, false);
+        }
+    };
+
+    /// synced > instrumental > plain — the axis (besides priority) that ranks answers.
+    fn rank(l: &Lyrics) -> u8 {
+        if l.synced {
+            2
+        } else if l.instrumental {
+            1
+        } else {
+            0
         }
     }
 
-    // 1b. NetEase YRC — second word-level pass. If Boidu missed, try NetEase YRC (word-level
-    // JSON) via music.163.com search + lyric; its `yrc` field is KRC-style with per-word
-    // `<start,dur,0>text` and covers a huge adjacent pool. Sits with the word providers so
-    // karaoke stays word-level even when the track is not in Boidu's index.
-    if let Ok(Some(l)) = netease_get(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-
-    // 1c. Kugou KRC — third word-level pass. `lyrics.kugou.com/search` -> candidates
-    // (`id`+`accesskey`) -> `lyrics.kugou.com/download?fmt=krc` returns xor+base64 KRC.
-    // Decodes to LRC with per-word `<start,dur,0>word` blocks parsed into LyricWord.
-    // This mops up the long tail neither Boidu nor NetEase had.
-    if let Ok(Some(l)) = kugou_get(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-
-    // 1d. Apple Music — only when the user pasted their own tokens in Settings. Word/syllable
-    // level data that beats everything else, gated behind bring-your-own credentials.
-    if let Ok(Some(l)) = apple_get(state, req).await {
-        return (Some(l), req.duration.is_some());
-    }
-
-    // 2. LRCLIB exact match.
-    let lr = lrclib_get(req).await;
-    if let Ok(hit) = &lr {
-        definitive = true;
-        if let Some(l) = hit.as_ref().and_then(lrclib_to_lyrics) {
-            if l.synced || l.instrumental {
-                return (Some(l), req.duration.is_some());
+    let mut best: Option<(u8, Lyrics)> = None;
+    let mut timed_out = false;
+    let mut lrclib_answered = 0u8;
+    for (prio, name, res) in settled {
+        if matches!(prio, 2 | 3) && res.is_ok() {
+            lrclib_answered += 1; // Ok(hit) or Ok(None) — LRCLIB itself spoke
+        }
+        match res {
+            Ok(Some(l)) => {
+                let takes = match &best {
+                    None => true,
+                    Some((bp, bl)) => rank(&l) > rank(bl) || (rank(&l) == rank(bl) && prio < *bp),
+                };
+                if takes {
+                    best = Some((prio, l));
+                }
+            }
+            Ok(None) => {}
+            Err(_) => {
+                timed_out = true;
+                tracing::debug!(provider = name, "lyrics: provider exceeded its deadline");
             }
         }
     }
 
-    // 2a. 8-provider fallback chain after LRCLIB before YTM (Kodama parity):
-    // BetterLyrics (Boidu/TTML) → Unison → QRC (QQ) → NetEase (YRC) → Musixmatch (richsync)
-    // → Kugou (KRC) → SimpMusic. Stubs delegate to existing + new providers; all are
-    // best-effort and return Ok(None) when unavailable so the chain keeps falling through.
-    if let Ok(Some(l)) = fetch_better_lyrics(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-    if let Ok(Some(l)) = fetch_unison(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-    if let Ok(Some(l)) = fetch_qrc(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-    if let Ok(Some(l)) = fetch_netease(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-    if let Ok(Some(l)) = fetch_musixmatch(req).await {
-        return (Some(l), true);
-    }
-    if let Ok(Some(l)) = fetch_kugou(req).await {
-        return (Some(l), req.duration.is_some());
-    }
-    if let Ok(Some(l)) = fetch_simp_music(req).await {
+    // Negative-verdict rule: only a run where LRCLIB answered cleanly (both passes — hit or a
+    // clean empty/404) and nothing merely timed out may claim "checked everywhere, nothing
+    // exists". Everything else stays uncached so the next play retries (one LRCLIB 404 plus
+    // nine timeouts used to poison a 24 h "no lyrics" — the reported inconsistency).
+    let mut definitive = lrclib_answered == 2 && !timed_out;
+
+    // Synced answer in hand — done. Plain/partial answers wait for the YTM upgrades below.
+    if best.as_ref().is_some_and(|(_, l)| rank(l) == 2) {
+        let (_, l) = best.take().unwrap();
         return (Some(l), req.duration.is_some());
     }
 
-    // 2. YouTube Music timed lyrics.
-    if next.is_some() {
-        definitive = true; // a next() answer with no lyrics tab IS "YT has no lyrics"
-    }
-    if let (Some(bid), Some(client)) = (
-        &browse_id,
-        state.clients.get(innertube::LYRICS_TIMED_CLIENT),
-    ) {
-        match state.it.lyrics_timed(client, bid).await {
-            Ok(lines) if !lines.is_empty() => {
-                return (
-                    Some(Lyrics {
-                        source: "YouTube Music".into(),
-                        synced: true,
-                        instrumental: false,
-                        lines: lines
-                            .into_iter()
-                            .map(|l| LyricLine {
-                                time_ms: Some(l.time_ms),
-                                end_time_ms: None,
-                                text: l.text,
-                                words: None,
-                                translation: None,
-                            })
-                            .collect(),
-                    }),
-                    true,
-                );
-            }
-            Ok(_) => {}
-            Err(e) => tracing::debug!(error = %e, "lyrics: timed browse failed"),
-        }
-    }
-
-    // 2b. Musixmatch synced — unofficial desktop API, same LRC shape, decent coverage. Sits
-    //    between the official sources and the fuzzy tier: a duration-verified LRCLIB fuzzy hit
-    //    still outranks it on *cut* accuracy, which is why fuzzy stays ahead.
-    match musixmatch(req).await {
-        Ok(Some(l)) => return (Some(l), true),
-        Ok(None) => {}
-        Err(e) => tracing::debug!(error = %e, "lyrics: musixmatch failed"),
-    }
-
-    // 2c. Megalobiz synced — keyless LRC scrape. Sits in the synced tier between Musixmatch and
-    //    LRCLIB's fuzzy search: it catches tracks the paid/unofficial sources miss, and a synced
-    //    hit here still beats the plain tier below.
-    match megalobiz(req).await {
-        Ok(Some(l)) => return (Some(l), true),
-        Ok(None) => {}
-        Err(e) => tracing::debug!(error = %e, "lyrics: megalobiz failed"),
-    }
-
-    // 3. LRCLIB fuzzy search — a synced fuzzy match still beats any plain text, so it outranks
-    //    the plain tier below. (YT lyrics are region-licensed and can be entirely absent.)
-    let searched = lrclib_search(req).await;
-    if let Ok(hit) = &searched {
-        definitive = true;
-        if let Some(l) = hit.as_ref().and_then(lrclib_to_lyrics).filter(|l| l.synced) {
-            return (Some(l), req.duration.is_some());
-        }
-    }
-
-    // --- plain tier -------------------------------------------------------------------------
-
-    // 4a. Plain from LRCLIB's exact match.
-    if let Ok(Some(hit)) = &lr {
-        if let Some(l) = plain_from_text(hit.plain_lyrics.as_deref(), "LRCLIB") {
-            return (Some(l), req.duration.is_some());
-        }
-    }
-
-    // 4b. Plain from YT (WEB_REMIX).
-    if let Some(bid) = &browse_id {
-        if let Some(client) = state.clients.get(innertube::METADATA_CLIENT) {
-            match state.it.lyrics_plain(client, bid).await {
-                Ok(Some(p)) => {
-                    // Footer is YT's own attribution ("Source: Musixmatch") — surface it.
-                    let source = p.footer.unwrap_or_else(|| "YouTube Music".into());
-                    if let Some(l) = plain_from_text(Some(&p.text), &source) {
-                        return (Some(l), true);
+    // 2. YouTube Music timed lyrics — authenticated and heaviest, so strictly last and optional:
+    //    only when nothing synced arrived, and only within whatever budget remains.
+    if best.as_ref().is_none_or(|(_, l)| rank(l) < 2) {
+        if let (Some(bid), Some(client)) =
+            (&browse_id, state.clients.get(innertube::LYRICS_TIMED_CLIENT))
+        {
+            let remain = FETCH_BUDGET.saturating_sub(started.elapsed());
+            if remain.is_zero() {
+                definitive = false; // YTM never got to answer — not a checked-everywhere run
+            } else {
+                match tokio::time::timeout(remain, state.it.lyrics_timed(client, bid)).await {
+                    Ok(Ok(lines)) if !lines.is_empty() => {
+                        return (
+                            Some(Lyrics {
+                                source: "YouTube Music".into(),
+                                synced: true,
+                                instrumental: false,
+                                lines: lines
+                                    .into_iter()
+                                    .map(|l| LyricLine {
+                                        time_ms: Some(l.time_ms),
+                                        end_time_ms: None,
+                                        text: l.text,
+                                        words: None,
+                                        translation: None,
+                                    })
+                                    .collect(),
+                            }),
+                            req.duration.is_some(),
+                        );
+                    }
+                    Ok(Ok(_)) => {} // a lyrics tab exists but carries no timed data
+                    Ok(Err(e)) => {
+                        definitive = false;
+                        tracing::debug!(error = %e, "lyrics: timed browse failed");
+                    }
+                    Err(_) => {
+                        definitive = false;
+                        tracing::debug!("lyrics: timed browse out of budget");
                     }
                 }
-                Ok(None) => {}
-                Err(e) => tracing::debug!(error = %e, "lyrics: plain browse failed"),
             }
         }
     }
 
-    // 4c. Plain from the fuzzy search.
-    if let Ok(Some(hit)) = &searched {
-        if let Some(l) = lrclib_to_lyrics(hit) {
-            return (Some(l), req.duration.is_some());
+    // 3. Plain from YT (WEB_REMIX) — only when the wave gave us nothing at all. Footer is YT's
+    //    own attribution ("Source: Musixmatch") — surface it.
+    if best.is_none() {
+        if let Some(bid) = &browse_id {
+            if let Some(client) = state.clients.get(innertube::METADATA_CLIENT) {
+                let remain = FETCH_BUDGET.saturating_sub(started.elapsed());
+                if !remain.is_zero() {
+                    match tokio::time::timeout(remain, state.it.lyrics_plain(client, bid)).await {
+                        Ok(Ok(Some(p))) => {
+                            let source = p.footer.unwrap_or_else(|| "YouTube Music".into());
+                            if let Some(l) = plain_from_text(Some(&p.text), &source) {
+                                return (Some(l), req.duration.is_some());
+                            }
+                        }
+                        Ok(Ok(None)) => {}
+                        Ok(Err(e)) => {
+                            definitive = false;
+                            tracing::debug!(error = %e, "lyrics: plain browse failed");
+                        }
+                        Err(_) => {
+                            definitive = false;
+                            tracing::debug!("lyrics: plain browse out of budget");
+                        }
+                    }
+                }
+            }
         }
     }
 
-    // 4d. Genius plain — the last resort. Heavy (two requests, HTML scrape) and its matching is
-    //    the loosest, so it only runs after every cheaper source has said no.
-    match genius(req).await {
-        Ok(Some(l)) => return (Some(l), true),
-        Ok(None) => {}
-        Err(e) => tracing::debug!(error = %e, "lyrics: genius failed"),
-    }
+    // Whatever plain/instrumental answer the wave produced stands; otherwise the negative goes
+    // back (cached only when `definitive`).
+    (best.map(|(_, l)| l), definitive)
+}
 
-    (None, definitive)
+/// One provider under one hard deadline. `Err(())` = the deadline blew — a *transient* verdict
+/// the caller must never turn into a cached negative.
+async fn bounded(
+    fut: impl std::future::Future<Output = Result<Option<Lyrics>, reqwest::Error>>,
+) -> Result<Option<Lyrics>, ()> {
+    match tokio::time::timeout(PROVIDER_TIMEOUT, fut).await {
+        Ok(res) => res.map_err(|_| ()),
+        Err(_) => Err(()),
+    }
 }
 
 // --- LRCLIB (https://lrclib.net/docs) -------------------------------------------------------
@@ -347,11 +392,12 @@ struct LrclibTrack {
 }
 
 /// Shared client. LRCLIB asks integrations to identify themselves via User-Agent.
+/// The timeout is a backstop only — each provider runs under `PROVIDER_TIMEOUT`.
 fn http() -> &'static reqwest::Client {
     static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(3))
             .user_agent(concat!(
                 "Limusic v",
                 env!("CARGO_PKG_VERSION"),
@@ -386,51 +432,70 @@ async fn lrclib_get(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest:
     Ok(Some(resp.error_for_status()?.json().await?))
 }
 
-/// `/api/search`: fuzzy fallback. Prefers a synced candidate whose duration is within ±5s of
-/// ours (when known); returns the best or `Ok(None)`.
+/// `/api/search`: fuzzy pass, run as a second LRCLIB chance right next to the exact `/api/get`
+/// (previously it sat behind a dozen other providers and rarely got reached). Two queries: the
+/// fielded `track_name`/`artist_name` first, then a bare `q=` retry — parenthesis/feat.-junk
+/// titles defeat the fielded match. Prefers the synced candidate whose duration is closest to
+/// ours; if nothing is within ±5 s it still returns the closest synced candidate rather than
+/// hard-failing (duration narrows the choice, never gates it).
 async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest::Error> {
-    let q = [
-        ("track_name", req.title.as_str()),
-        ("artist_name", req.artists.as_str()),
-    ];
-    let list: Vec<LrclibTrack> = http()
+    let mut list: Vec<LrclibTrack> = http()
         .get(format!("{LRCLIB_ROOT}/search"))
-        .query(&q)
+        .query(&[
+            ("track_name", req.title.as_str()),
+            ("artist_name", req.artists.as_str()),
+        ])
         .send()
         .await?
         .error_for_status()?
         .json()
         .await?;
+    if list.is_empty() {
+        list = http()
+            .get(format!("{LRCLIB_ROOT}/search"))
+            .query(&[("q", format!("{} {}", req.title, req.artists))])
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+    }
     let ours = req.duration.filter(|d| *d > 0.0);
     // Distance from our track's length; unknown-length candidates rank last but aren't excluded.
     let dist = |t: &LrclibTrack| match (ours, t.duration) {
         (Some(a), Some(b)) => (a - b).abs(),
         _ => f64::INFINITY,
     };
-    let close = |t: &LrclibTrack| ours.is_none() || dist(t) <= 5.0;
     let synced = |t: &LrclibTrack| {
         t.synced_lyrics
             .as_deref()
             .is_some_and(|s| !s.trim().is_empty())
     };
     // Prefer the synced candidate whose duration is CLOSEST to ours — LRCLIB carries multiple
-    // cuts of popular tracks, and a 4s-different cut plays lyrics 4s off the audio.
-    let mut best_synced: Option<(f64, LrclibTrack)> = None;
+    // cuts of popular tracks, and a 4s-different cut plays lyrics 4s off the audio. Beyond ±5 s
+    // confidence drops but some synced lyric still beats none, so keep the closest instead of
+    // dropping the track entirely.
+    let mut best_close: Option<(f64, LrclibTrack)> = None;
+    let mut best_far: Option<(f64, LrclibTrack)> = None;
     let mut best_plain: Option<LrclibTrack> = None;
     for t in list {
-        if !close(&t) {
-            continue;
-        }
         if synced(&t) {
             let d = dist(&t);
-            if best_synced.as_ref().is_none_or(|(bd, _)| d < *bd) {
-                best_synced = Some((d, t));
+            if d <= 5.0 {
+                if best_close.as_ref().is_none_or(|(bd, _)| d < *bd) {
+                    best_close = Some((d, t));
+                }
+            } else if best_far.as_ref().is_none_or(|(bd, _)| d < *bd) {
+                best_far = Some((d, t));
             }
         } else if best_plain.is_none() {
             best_plain = Some(t);
         }
     }
-    Ok(best_synced.map(|(_, t)| t).or(best_plain))
+    Ok(best_close
+        .map(|(_, t)| t)
+        .or(best_far.map(|(_, t)| t))
+        .or(best_plain))
 }
 
 /// Best `Lyrics` an LRCLIB track yields: instrumental > synced > plain > nothing.
@@ -486,11 +551,12 @@ const MXM_APP_ID: &str = "web-desktop-app-v1.0";
 const MXM_MIN_OVERLAP: f64 = 0.35;
 
 /// Browser-ish UA — the desktop endpoint rejects bare clients (curl, reqwest default).
+/// The timeout is a backstop only — each provider runs under `PROVIDER_TIMEOUT`.
 fn web_http() -> &'static reqwest::Client {
     static WEB_HTTP: OnceLock<reqwest::Client> = OnceLock::new();
     WEB_HTTP.get_or_init(|| {
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(20))
+            .timeout(Duration::from_secs(4))
             .user_agent(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
                  Chrome/124.0.0.0 Safari/537.36",

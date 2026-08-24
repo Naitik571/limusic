@@ -286,30 +286,8 @@ pub fn run() {
                 });
             }
 
-            // Restore audio settings (EQ / crossfade / device) from DB
+            // Restore audio settings (crossfade) from DB
             {
-                let bands = app_state.get_eq_bands();
-                for (i, g) in bands.iter().enumerate() {
-                    let _ = app_state.player.set_eq(i, *g);
-                }
-                let pre: f64 = app_state
-                    .db
-                    .get_setting("eq_preamp")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
-                let _ = app_state.player.set_preamp(pre);
-                let bal: f64 = app_state
-                    .db
-                    .get_setting("eq_balance")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
-                let _ = app_state.player.set_balance(bal);
-                let og: f64 = app_state
-                    .db
-                    .get_setting("eq_output_gain")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
-                let _ = app_state.player.set_output_gain(og);
                 let cf: f64 = app_state
                     .db
                     .get_setting("crossfade_secs")
@@ -503,17 +481,6 @@ pub fn run() {
             commands::release_notes,
             commands::can_self_update,
             commands::open_external,
-            commands::get_eq,
-            commands::set_eq,
-            commands::get_eq_bands,
-            commands::set_eq_bands,
-            commands::set_preamp,
-            commands::set_balance,
-            commands::set_output_gain,
-            commands::set_autoeq,
-            commands::set_track_gain,
-            commands::get_output_devices,
-            commands::set_output_device,
             commands::get_crossfade,
             commands::set_crossfade,
             commands::set_best_mix,

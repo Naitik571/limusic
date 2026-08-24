@@ -658,19 +658,7 @@ export const onLtNotice = (cb: (msg: string) => void): Promise<UnlistenFn> =>
 export const onGamepad = (cb: (action: string) => void): Promise<UnlistenFn> =>
 	listen<string>('gamepad', (e) => cb(e.payload));
 
-// --- EQ / crossfade / best mix --------------------------------------------------
-export interface EqState { bands: number[]; preamp: number; balance: number; output_gain: number; auto_eq: boolean; freqs: number[] }
-export const getEq = () => invoke<EqState>('get_eq');
-export const getEqBands = () => invoke<number[]>('get_eq_bands');
-export const setEq = (band: number, gain: number) => invoke<void>('set_eq', { band, gain });
-export const setEqBands = (bands: number[]) => invoke<void>('set_eq_bands', { bands });
-export const setPreamp = (gain: number) => invoke<void>('set_preamp', { gain });
-export const setBalance = (balance: number) => invoke<void>('set_balance', { balance });
-export const setOutputGain = (gain: number) => invoke<void>('set_output_gain', { gain });
-export const setAutoeq = (on: boolean) => invoke<void>('set_autoeq', { on });
-export const setTrackGain = (videoId: string, gain: number) => invoke<void>('set_track_gain', { video_id: videoId, gain });
-export const getOutputDevices = () => invoke<string[]>('get_output_devices');
-export const setOutputDevice = (device: string) => invoke<void>('set_output_device', { device });
+// --- Crossfade / best mix -------------------------------------------------------
 export interface CrossfadeState { secs: number; mode: string; best_mix: boolean }
 export const getCrossfade = () => invoke<CrossfadeState>('get_crossfade');
 export const setCrossfade = (secs: number, mode: string) => invoke<void>('set_crossfade', { secs, mode });

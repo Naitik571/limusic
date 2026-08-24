@@ -22,30 +22,14 @@ export const playback = $state({
 	liked: false
 });
 
-// --- EQ / crossfade ---------------------------------------------------------
-export const eq = $state<{ bands: number[]; preamp: number; balance: number; output_gain: number; auto_eq: boolean; freqs: number[] }>({
-	bands: Array(10).fill(0),
-	preamp: 0,
-	balance: 0,
-	output_gain: 0,
-	auto_eq: false,
-	freqs: [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
-});
+// --- Crossfade ---------------------------------------------------------------
 export const crossfade = $state<{ secs: number; mode: string; best_mix: boolean }>({ secs: 0, mode: 'standard', best_mix: false });
-export async function loadEq() {
+export async function loadCrossfade() {
 	try {
-		const e = await api.getEq();
-		eq.bands = e.bands; eq.preamp = e.preamp; eq.balance = e.balance; eq.output_gain = e.output_gain; eq.auto_eq = e.auto_eq; eq.freqs = e.freqs ?? eq.freqs;
 		const cf = await api.getCrossfade();
 		crossfade.secs = cf.secs; crossfade.mode = cf.mode; crossfade.best_mix = cf.best_mix;
 	} catch {}
 }
-export function setEqBand(band: number, gain: number) { eq.bands[band] = gain; api.setEq(band, gain).catch(()=>{}); }
-export function setEqPreamp(g: number) { eq.preamp = g; api.setPreamp(g).catch(()=>{}); }
-export function setEqBalance(b: number) { eq.balance = b; api.setBalance(b).catch(()=>{}); }
-export function setEqOutputGain(g: number) { eq.output_gain = g; api.setOutputGain(g).catch(()=>{}); }
-export function setEqAutoEq(on: boolean) { eq.auto_eq = on; api.setAutoeq(on).catch(()=>{}); }
-export function setTrackGain(id: string, g: number) { api.setTrackGain(id, g).catch(()=>{}); }
 export function setCrossfadeSecs(s: number) { crossfade.secs = s; api.setCrossfade(s, crossfade.mode).catch(()=>{}); }
 export function setCrossfadeMode(m: string) { crossfade.mode = m; api.setCrossfade(crossfade.secs, m).catch(()=>{}); }
 export function setBestMix(on: boolean) { crossfade.best_mix = on; api.setBestMix(on).catch(()=>{}); }
@@ -1058,7 +1042,7 @@ export function initApp(mini = false): () => void {
 	scanLocal();
 	// Seed the Listen Together state (server URL, any active room after a UI reload).
 	api.ltGetState().then(applyLtState).catch(() => {});
-	loadEq();
+	loadCrossfade();
 	// Restore persisted volume (exponential EXPONENT=3)
 	api.getVolume().then((v) => { playback.volume = v; }).catch(()=>{});
 	return teardown;

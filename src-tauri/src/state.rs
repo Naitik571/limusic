@@ -272,9 +272,6 @@ fn identity_snapshot(identity: &AccountIdentity, selected: bool) -> serde_json::
     })
 }
 
-/// 10-band EQ frequencies Hz
-pub const EQ_FREQS: [u32; 10] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CrossfadeMode {
     Standard,
@@ -1729,11 +1726,12 @@ impl AppState {
             .app
             .emit("now-playing", Self::now_playing_json(item, stream_client));
         let _ = self.app.emit("playback-state", "playing");
-        // Search/queue rows often carry no `likeStatus`, so a track played from search would show
-        // no heart even when it's in Liked Music. When the row didn't say, ask YouTube once in
-        // the background (a bare /next for this videoId returns its queue row with the real
-        // likeStatus) and tell the UI via `like-status`. Fire-and-forget: never blocks playback.
-        if item.liked.is_none()
+        // Search/queue rows often carry no `likeStatus` — and worse, rows that DO carry one
+        // usually hold `INDIFFERENT`, which parses as `Some(false)`. Gating the probe on
+        // `is_none()` therefore never fired for search-sourced tracks and the heart stayed off
+        // even for liked songs. Probe unless the row explicitly says LIKED; the latch below
+        // keeps it to one /next per track.
+        if item.liked != Some(true)
             && self.it.is_logged_in()
             && !crate::local::is_local_song(&item.video_id)
         {
@@ -2014,99 +2012,7 @@ impl AppState {
             .unwrap_or(true)
     }
 
-    // --- EQ / crossfade / best mix ----------------------------------------------------
-
-    pub fn get_eq_bands(&self) -> [f64; 10] {
-        self.db
-            .get_setting("eq_bands")
-            .and_then(|s| serde_json::from_str::<[f64; 10]>(&s).ok())
-            .unwrap_or([0.0; 10])
-    }
-    pub fn get_eq(&self) -> serde_json::Value {
-        let bands = self.get_eq_bands();
-        let preamp: f64 = self
-            .db
-            .get_setting("eq_preamp")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0.0);
-        let balance: f64 = self
-            .db
-            .get_setting("eq_balance")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0.0);
-        let output_gain: f64 = self
-            .db
-            .get_setting("eq_output_gain")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0.0);
-        let auto_eq = self.db.get_setting("eq_autoeq").as_deref() == Some("true");
-        serde_json::json!({"bands":bands,"preamp":preamp,"balance":balance,"output_gain":output_gain,"auto_eq":auto_eq,"freqs":EQ_FREQS})
-    }
-    pub fn set_eq_band(&self, band: usize, gain: f64) {
-        let mut bands = self.get_eq_bands();
-        if band < 10 {
-            bands[band] = gain.clamp(-12.0, 12.0);
-        }
-        self.db.set_setting(
-            "eq_bands",
-            &serde_json::to_string(&bands).unwrap_or_default(),
-        );
-        let _ = self.player.set_eq(band, gain);
-    }
-    pub fn set_eq_bands(&self, bands: [f64; 10]) {
-        self.db.set_setting(
-            "eq_bands",
-            &serde_json::to_string(&bands).unwrap_or_default(),
-        );
-        for (i, g) in bands.iter().enumerate() {
-            let _ = self.player.set_eq(i, *g);
-        }
-    }
-    pub fn set_preamp(&self, g: f64) {
-        self.db.set_setting("eq_preamp", &g.to_string());
-        let _ = self.player.set_preamp(g);
-    }
-    pub fn set_balance(&self, b: f64) {
-        self.db.set_setting("eq_balance", &b.to_string());
-        let _ = self.player.set_balance(b);
-    }
-    pub fn set_output_gain(&self, g: f64) {
-        self.db.set_setting("eq_output_gain", &g.to_string());
-        let _ = self.player.set_output_gain(g);
-    }
-    pub fn set_autoeq(&self, on: bool) {
-        self.db
-            .set_setting("eq_autoeq", if on { "true" } else { "false" });
-        let _ = self.player.set_autoeq(on);
-    }
-    pub fn set_track_gain(&self, video_id: &str, gain: f64) {
-        let mut map: std::collections::HashMap<String, f64> = self
-            .db
-            .get_setting("track_gains")
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        map.insert(video_id.to_string(), gain.clamp(-12.0, 12.0));
-        self.db.set_setting(
-            "track_gains",
-            &serde_json::to_string(&map).unwrap_or_default(),
-        );
-        let _ = self.player.set_track_gain(video_id.to_string(), gain);
-    }
-    pub fn get_track_gain(&self, video_id: &str) -> Option<f64> {
-        let map: std::collections::HashMap<String, f64> = self
-            .db
-            .get_setting("track_gains")
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        map.get(video_id).copied()
-    }
-    pub fn get_output_devices(&self) -> Vec<String> {
-        self.player.get_output_devices()
-    }
-    pub fn set_output_device(&self, dev: &str) {
-        let _ = self.player.set_output_device(dev);
-        self.db.set_setting("audio_device", dev);
-    }
+    // --- Crossfade / best mix -----------------------------------------------------------
 
     pub fn get_crossfade(&self) -> serde_json::Value {
         let secs: f64 = self

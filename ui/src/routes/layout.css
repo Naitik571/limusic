@@ -1201,6 +1201,16 @@ html.layout-compact .app-root {
 html.layout-wide .app-root > div.relative {
 	gap: 0;
 }
+/* The player's own `left-16 lg:left-60` utilities assume the default 15rem sidebar; wide's rail
+   is 4rem, so those offsets left a strip of the page beside the player. Full cover instead —
+   unlayered rules beat the utilities, and grove/canopy re-offset under their own scopes. */
+html.layout-wide .np-view {
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	border-radius: 0;
+}
 html.layout-wide aside.glass {
 	width: 4rem;
 	flex-shrink: 0;

@@ -19,7 +19,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, markNotDownloaded, downloadedIds, eq, crossfade, loadEq, setCrossfadeSecs, setCrossfadeMode, setBestMix } from '$lib/player.svelte';
+	import { ui, toast, markNotDownloaded, downloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import {
 		THEMES,
@@ -60,7 +60,7 @@
 	const TABS: { id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[] = [
 		{ id: 'general', label: 'General', hint: 'History, integrations and how the app starts.', icon: Settings02Icon },
 		{ id: 'themes', label: 'Appearance', hint: 'Colors, fonts, layouts and the player view.', icon: PaintBoardIcon },
-		{ id: 'playback', label: 'Playback', hint: 'Quality, equalizer, transitions and streams.', icon: PlayCircleIcon },
+		{ id: 'playback', label: 'Playback', hint: 'Quality, transitions and streams.', icon: PlayCircleIcon },
 		{ id: 'downloads', label: 'Downloads', hint: 'Offline files: location, quality and cleanup.', icon: Download04Icon },
 		{ id: 'data', label: 'Data & storage', hint: 'Network and cached files.', icon: Database02Icon },
 		{ id: 'about', label: 'About', hint: 'Version and updates.', icon: InformationCircleIcon }
@@ -179,8 +179,7 @@
 		}
 		untrack(() => {
 			load();
-			loadEq();
-			refreshDevices();
+			loadCrossfade();
 			api
 				.ytdlpInfo()
 				.then((info) => (ytdlp = { ...info }))
@@ -391,15 +390,6 @@
 		}
 	}
 
-	// --- EQ / crossfade state ---
-	let outputDevices = $state<string[]>(['auto']);
-	let trackGainId = $state('');
-	let trackGainVal = $state(0);
-	async function refreshDevices() {
-		try { outputDevices = await api.getOutputDevices(); } catch { outputDevices = ['auto']; }
-	}
-	function eqSetBand(i: number, v: number) { eq.bands[i] = v; api.setEq(i, v).catch(()=>{}); }
-	function eqReset() { for(let i=0;i<10;i++) eqSetBand(i,0); api.setEqBands(Array(10).fill(0)).catch(()=>{}); api.setPreamp(0); api.setBalance(0); api.setOutputGain(0); eq.preamp=0; eq.balance=0; eq.output_gain=0; }
 	// --- Remote QR helpers: the QR itself is rendered by Rust (qrcode crate → SVG) so the code
 	// actually scans; the UI just puts it on a light, padded surface.
 	async function refreshRemote() {
@@ -727,31 +717,6 @@
 						</section>
 
 						<section class={GROUP}>
-							<h3 class={LABEL}>Equalizer & output</h3>
-							<div class={CARD}>
-								{@render row({
-									title: '10-band EQ',
-									desc: '31 Hz – 16 kHz peaking, preamp & balance. Uses mpv lavfi equalizer.',
-									control: eqResetButton,
-									below: eqBands
-								})}
-								{@render row({
-									title: 'AutoEq',
-									control: autoeqSwitch
-								})}
-								{@render row({
-									title: 'Per-track gain',
-									desc: 'Trim a single video ID up or down.',
-									below: trackGainForm
-								})}
-								{@render row({
-									title: 'Output device',
-									control: deviceSelect
-								})}
-							</div>
-						</section>
-
-						<section class={GROUP}>
 							<h3 class={LABEL}>Transitions</h3>
 							<div class={CARD}>
 								{@render row({
@@ -925,13 +890,6 @@
 {#snippet ambientSwitch()}<Switch
 		checked={appearance.ambientMode}
 		onCheckedChange={(on) => setAppearance({ ambientMode: on })}
-	/>{/snippet}
-{#snippet autoeqSwitch()}<Switch
-		checked={eq.auto_eq}
-		onCheckedChange={(on) => {
-			eq.auto_eq = on;
-			api.setAutoeq(on);
-		}}
 	/>{/snippet}
 {#snippet bestMixSwitch()}<Switch
 		checked={crossfade.best_mix}
@@ -1375,128 +1333,6 @@
 
 {#snippet downloadFormatPicker()}
 	{@render segmented(DOWNLOAD_FORMATS, downloadFormat, setDownloadFormat)}
-{/snippet}
-
-{#snippet eqResetButton()}
-	<Button size="sm" variant="ghost" onclick={eqReset}>Reset</Button>
-{/snippet}
-
-{#snippet eqBands()}
-	<div class="grid grid-cols-5 gap-3">
-		{#each eq.freqs as f, i}
-			<div class="flex flex-col items-center gap-1 rounded-lg border bg-card/50 p-2">
-				<span class="text-[10px] font-medium text-muted-foreground">{f >= 1000 ? `${f / 1000}k` : f} Hz</span>
-				<Slider
-					type="single"
-					orientation="vertical"
-					min={-12}
-					max={12}
-					step={0.5}
-					value={eq.bands[i] ?? 0}
-					onValueChange={(v) => eqSetBand(i, v)}
-					class="h-24"
-					aria-label="{f} Hz"
-				/>
-				<span class="font-mono text-xs">{(eq.bands[i] ?? 0).toFixed(1)} dB</span>
-			</div>
-		{/each}
-	</div>
-	<div class="mt-3 grid grid-cols-3 gap-3">
-		<div class="flex flex-col gap-1">
-			<span class="text-xs font-medium">Preamp</span>
-			<div class="flex items-center gap-2">
-				<Slider
-					type="single"
-					min={-12}
-					max={12}
-					step={0.5}
-					value={eq.preamp}
-					onValueChange={(v) => {
-						eq.preamp = v;
-						api.setPreamp(v);
-					}}
-					class="flex-1"
-				/>
-				<span class="w-12 text-right font-mono text-xs">{eq.preamp.toFixed(1)} dB</span>
-			</div>
-		</div>
-		<div class="flex flex-col gap-1">
-			<span class="text-xs font-medium">Balance</span>
-			<div class="flex items-center gap-2">
-				<Slider
-					type="single"
-					min={-1}
-					max={1}
-					step={0.1}
-					value={eq.balance}
-					onValueChange={(v) => {
-						eq.balance = v;
-						api.setBalance(v);
-					}}
-					class="flex-1"
-				/>
-				<span class="w-10 text-right font-mono text-xs">{eq.balance.toFixed(1)}</span>
-			</div>
-		</div>
-		<div class="flex flex-col gap-1">
-			<span class="text-xs font-medium">Output trim</span>
-			<div class="flex items-center gap-2">
-				<Slider
-					type="single"
-					min={-12}
-					max={12}
-					step={0.5}
-					value={eq.output_gain}
-					onValueChange={(v) => {
-						eq.output_gain = v;
-						api.setOutputGain(v);
-					}}
-					class="flex-1"
-				/>
-				<span class="w-12 text-right font-mono text-xs">{eq.output_gain.toFixed(1)} dB</span>
-			</div>
-		</div>
-	</div>
-{/snippet}
-
-{#snippet trackGainForm()}
-	<div class="flex items-center gap-2">
-		<Input
-			placeholder="videoId for per-track trim"
-			class="flex-1"
-			value={trackGainId}
-			oninput={(e) => (trackGainId = e.currentTarget.value)}
-		/>
-		<Input
-			type="number"
-			class="w-20"
-			value={String(trackGainVal)}
-			oninput={(e) => (trackGainVal = parseFloat(e.currentTarget.value) || 0)}
-		/>
-		<Button
-			size="sm"
-			variant="outline"
-			onclick={() => {
-				if (trackGainId) api.setTrackGain(trackGainId, trackGainVal);
-				toast.success('Per-track gain saved');
-			}}
-		>
-			Save
-		</Button>
-	</div>
-{/snippet}
-
-{#snippet deviceSelect()}
-	<Select.Root type="single" value={'auto'} onValueChange={(v) => api.setOutputDevice(v)}>
-		<Select.Trigger class="w-44 shrink-0" aria-label="Output device">
-			<span class="truncate">{outputDevices[0] ?? 'auto'}</span>
-		</Select.Trigger>
-		<Select.Content>
-			{#each outputDevices as d (d)}
-				<Select.Item value={d} label={d}>{d}</Select.Item>
-			{/each}
-		</Select.Content>
-	</Select.Root>
 {/snippet}
 
 {#snippet crossfadeSlider()}

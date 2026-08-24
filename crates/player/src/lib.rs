@@ -56,32 +56,6 @@ fn friendly_error(e: &libmpv2::Error) -> String {
     }
 }
 
-/// 10-band EQ frequencies (Hz) — Orchard's layout: 31/62/125/250/500/1k/2k/4k/8k/16k.
-pub const EQ_FREQS: [u32; 10] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-
-#[derive(Debug, Clone)]
-pub struct EqState {
-    pub bands: [f64; 10],
-    pub preamp: f64,
-    pub balance: f64,
-    pub output_gain: f64,
-    pub auto_eq: bool,
-    pub track_gains: std::collections::HashMap<String, f64>,
-}
-
-impl Default for EqState {
-    fn default() -> Self {
-        Self {
-            bands: [0.0; 10],
-            preamp: 0.0,
-            balance: 0.0,
-            output_gain: 0.0,
-            auto_eq: false,
-            track_gains: Default::default(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct CrossfadeState {
     pub secs: f64,
@@ -104,7 +78,6 @@ impl Default for CrossfadeState {
 pub struct Player {
     mpv: Arc<Mpv>,
     events: Option<UnboundedReceiver<PlayerEvent>>,
-    eq: Arc<std::sync::Mutex<EqState>>,
     gain: Arc<std::sync::Mutex<Option<f64>>>,
     crossfade: Arc<std::sync::Mutex<CrossfadeState>>,
 }
@@ -148,7 +121,6 @@ impl Player {
         Ok(Player {
             mpv,
             events: Some(rx),
-            eq: Arc::new(std::sync::Mutex::new(EqState::default())),
             gain: Arc::new(std::sync::Mutex::new(None)),
             crossfade: Arc::new(std::sync::Mutex::new(CrossfadeState::default())),
         })
@@ -271,96 +243,16 @@ impl Player {
         self.apply_af()
     }
 
-    // --- EQ / crossfade -------------------------------------------------------------
-
-    /// Set one band gain (-12..+12 dB). Clamped.
-    pub fn set_eq(&self, band: usize, gain: f64) -> Result<(), Error> {
-        if band < 10 {
-            self.eq.lock().unwrap().bands[band] = gain.clamp(-12.0, 12.0);
-            self.apply_af()?;
-        }
-        Ok(())
-    }
-    pub fn set_preamp(&self, gain: f64) -> Result<(), Error> {
-        self.eq.lock().unwrap().preamp = gain.clamp(-12.0, 12.0);
-        self.apply_af()
-    }
-    pub fn set_balance(&self, balance: f64) -> Result<(), Error> {
-        self.eq.lock().unwrap().balance = balance.clamp(-1.0, 1.0);
-        self.apply_af()
-    }
-    pub fn set_output_gain(&self, gain: f64) -> Result<(), Error> {
-        self.eq.lock().unwrap().output_gain = gain.clamp(-24.0, 12.0);
-        self.apply_af()
-    }
-    pub fn set_autoeq(&self, on: bool) -> Result<(), Error> {
-        self.eq.lock().unwrap().auto_eq = on;
-        self.apply_af()
-    }
-    pub fn set_track_gain(&self, video_id: String, gain: f64) -> Result<(), Error> {
-        self.eq
-            .lock()
-            .unwrap()
-            .track_gains
-            .insert(video_id, gain.clamp(-12.0, 12.0));
-        self.apply_af()
-    }
-    pub fn get_eq_bands(&self) -> [f64; 10] {
-        self.eq.lock().unwrap().bands
-    }
-    pub fn get_eq(&self) -> EqState {
-        self.eq.lock().unwrap().clone()
-    }
-    /// Build and apply the `af` filter chain: equalizers + preamp/volume + balance + crossfade.
-    /// Uses `lavfi=[equalizer=f=...:width_type=o:width=1:g=...]` per band (Q≈1 octave) and
-    /// `lavfi=[volume=XdB]` for gains, mirroring the existing loudness `af` pattern.
-    pub fn apply_eq(&self) -> Result<(), Error> {
-        self.apply_af()
-    }
+    // --- Crossfade -------------------------------------------------------------------
 
     fn apply_af(&self) -> Result<(), Error> {
-        let eq = self.eq.lock().unwrap().clone();
         let gain = *self.gain.lock().unwrap();
-        let cf = self.crossfade.lock().unwrap().clone();
         let mut filters: Vec<String> = Vec::new();
-        // 10-band equalizer chain
-        let has_eq = eq.bands.iter().any(|g| g.abs() > 0.01);
-        if has_eq {
-            let parts: Vec<String> = EQ_FREQS
-                .iter()
-                .zip(eq.bands.iter())
-                .map(|(f, g)| format!("equalizer=f={f}:width_type=o:width=1:g={g:.1}"))
-                .collect();
-            filters.push(format!("lavfi=[{}]", parts.join(",")));
-        }
-        // Preamp + output trim + loudness gain combined as volume filters
-        let total_vol = eq.preamp + eq.output_gain + gain.unwrap_or(0.0);
-        if total_vol.abs() > 0.01 {
-            filters.push(format!("lavfi=[volume={total_vol:.1}dB]"));
-        }
-        // Balance via pan (stereo)
-        if eq.balance.abs() > 0.01 {
-            let left = if eq.balance > 0.0 {
-                1.0 - eq.balance
-            } else {
-                1.0
-            };
-            let right = if eq.balance < 0.0 {
-                1.0 + eq.balance
-            } else {
-                1.0
-            };
-            filters.push(format!(
-                "lavfi=[pan=stereo|c0={left:.2}*c0|c1={right:.2}*c1]"
-            ));
-        }
-        // Crossfade hint — gapless-audio handles gapless; for explicit crossfade we expose the
-        // duration via af metadata. Best-effort: try to add an acrossfade lavfi if duration >0.
-        if cf.secs > 0.5 {
-            // Note: acrossfade needs two inputs, so as a plain af it is a no-op placeholder.
-            // The actual crossfade is achieved by gapless + volume automation; this filter
-            // documents the duration for inspection via `af` property.
-            let _ = self.mpv.get_property::<String>("af");
+        // Per-track loudness gain as a volume filter (None ⇒ empty chain, clearing any stale af).
+        if let Some(g) = gain {
+            if g.abs() > 0.01 {
+                filters.push(format!("lavfi=[volume={g:.1}dB]"));
+            }
         }
         let af = filters.join(",");
         self.mpv.set_property("af", af.as_str())?;
@@ -396,32 +288,6 @@ impl Player {
     }
     pub fn set_best_mix(&self, on: bool) -> Result<(), Error> {
         self.crossfade.lock().unwrap().best_mix = on;
-        Ok(())
-    }
-
-    /// Output devices via mpv `audio-device-list` (falls back to default).
-    pub fn get_output_devices(&self) -> Vec<String> {
-        // mpv exposes JSON array of devices; parse `name` fields.
-        if let Ok(list) = self.mpv.get_property::<String>("audio-device-list") {
-            if let Ok(v) = serde_json::from_str::<Vec<serde_json::Value>>(&list) {
-                let names: Vec<String> = v
-                    .iter()
-                    .filter_map(|o| {
-                        o.get("name")
-                            .and_then(|n| n.as_str())
-                            .map(|s| s.to_string())
-                    })
-                    .collect();
-                if !names.is_empty() {
-                    return names;
-                }
-            }
-        }
-        // Fallback: at least expose auto/default so UI has something
-        vec!["auto".into(), "default".into()]
-    }
-    pub fn set_output_device(&self, device: &str) -> Result<(), Error> {
-        self.mpv.set_property("audio-device", device)?;
         Ok(())
     }
 

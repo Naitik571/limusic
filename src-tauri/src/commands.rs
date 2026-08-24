@@ -1608,60 +1608,8 @@ pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
     Ok(())
 }
 
-// --- EQ / crossfade / best mix -------------------------------------------------------
+// --- Crossfade / best mix ------------------------------------------------------------
 
-#[tauri::command]
-pub async fn get_eq(state: St<'_>) -> Result<serde_json::Value, String> {
-    Ok(state.get_eq())
-}
-#[tauri::command]
-pub async fn set_eq(state: St<'_>, band: usize, gain: f64) -> Result<(), String> {
-    state.set_eq_band(band, gain);
-    Ok(())
-}
-#[tauri::command]
-pub async fn get_eq_bands(state: St<'_>) -> Result<[f64; 10], String> {
-    Ok(state.get_eq_bands())
-}
-#[tauri::command]
-pub async fn set_eq_bands(state: St<'_>, bands: [f64; 10]) -> Result<(), String> {
-    state.set_eq_bands(bands);
-    Ok(())
-}
-#[tauri::command]
-pub async fn set_preamp(state: St<'_>, gain: f64) -> Result<(), String> {
-    state.set_preamp(gain);
-    Ok(())
-}
-#[tauri::command]
-pub async fn set_balance(state: St<'_>, balance: f64) -> Result<(), String> {
-    state.set_balance(balance);
-    Ok(())
-}
-#[tauri::command]
-pub async fn set_output_gain(state: St<'_>, gain: f64) -> Result<(), String> {
-    state.set_output_gain(gain);
-    Ok(())
-}
-#[tauri::command]
-pub async fn set_autoeq(state: St<'_>, on: bool) -> Result<(), String> {
-    state.set_autoeq(on);
-    Ok(())
-}
-#[tauri::command]
-pub async fn set_track_gain(state: St<'_>, video_id: String, gain: f64) -> Result<(), String> {
-    state.set_track_gain(&video_id, gain);
-    Ok(())
-}
-#[tauri::command]
-pub async fn get_output_devices(state: St<'_>) -> Result<Vec<String>, String> {
-    Ok(state.get_output_devices())
-}
-#[tauri::command]
-pub async fn set_output_device(state: St<'_>, device: String) -> Result<(), String> {
-    state.set_output_device(&device);
-    Ok(())
-}
 #[tauri::command]
 pub async fn get_crossfade(state: St<'_>) -> Result<serde_json::Value, String> {
     Ok(state.get_crossfade())
