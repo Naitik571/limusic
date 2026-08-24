@@ -28,7 +28,7 @@
 	});
 </script>
 
-<div class="relative border-b">
+<div class="home-hero relative border-b">
 	<div class="pointer-events-none absolute inset-0 overflow-hidden">
 	{#if playback.now?.thumbnail && !artFailed}
 		<!-- 96px, not display size: blur-2xl is a 40px blur, so every detail above a handful of

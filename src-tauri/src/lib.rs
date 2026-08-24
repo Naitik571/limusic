@@ -520,6 +520,7 @@ pub fn run() {
             commands::get_lan_url,
             commands::get_remote_token,
             commands::pair_remote,
+            commands::get_remote_qr,
             commands::list_artist_packs,
             commands::install_artist_pack,
             commands::install_artist_pack_zip,

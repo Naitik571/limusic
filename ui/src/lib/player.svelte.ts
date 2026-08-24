@@ -944,7 +944,13 @@ export function initApp(mini = false): () => void {
 		api.onLoginDone(() => toast.success('Signed in')),
 		// Listen Together (context/19): mirror the Rust session state; surface notices as toasts.
 		api.onLtState((s) => applyLtState(s)),
-		api.onLtNotice((msg) => toast(msg))
+		api.onLtNotice((msg) => toast(msg)),
+		// A like made elsewhere in the UI (e.g. the heart on a search result): sync the playing
+		// track's heart and the row cache so every view agrees without a refetch.
+		api.onLikeStatus((videoId, liked) => {
+			if (playback.now?.videoId === videoId) playback.liked = liked;
+			likedSongs[videoId] = liked;
+		})
 	];
 	// Keyboard shortcuts: a plain listener (not a Tauri event) — the handler above lives in this
 	// module, so registering it here gives both the app window and the mini player the same keys.

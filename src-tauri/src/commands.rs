@@ -1703,6 +1703,21 @@ pub fn pair_remote(state: St<'_>, token: String) -> Result<bool, String> {
     }
 }
 
+/// The LAN pairing URL as a scannable QR code (SVG markup). The UI renders it in a light box —
+/// QR needs contrast against the dark theme to scan.
+#[tauri::command]
+pub fn get_remote_qr(state: St<'_>) -> Result<String, String> {
+    let url = crate::remote::lan_url(&state.db);
+    let code = qrcode::QrCode::with_error_correction_level(url.as_bytes(), qrcode::EcLevel::M)
+        .map_err(|e| format!("qr encode failed: {e}"))?;
+    Ok(code
+        .render::<qrcode::render::svg::Color>()
+        .dark_color(qrcode::render::svg::Color("#000000"))
+        .light_color(qrcode::render::svg::Color("#ffffff"))
+        .min_dimensions(220, 220)
+        .build())
+}
+
 // --- Artist Packs (#9) -------------------------------------------------------------------
 #[tauri::command]
 pub async fn list_artist_packs(

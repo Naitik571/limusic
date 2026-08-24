@@ -148,7 +148,7 @@
      ponytail: left offsets mirror Sidebar's w-16/lg:w-60 â€” keep in sync if those change. -->
 <div
 	transition:fly={{ y: '100%', duration: 320, easing: cubicOut }}
-	class="absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 lg:px-10 {inset}"
+	class="np-view absolute inset-y-0 left-16 right-0 z-20 flex justify-center overflow-hidden bg-background px-4 py-4 sm:px-6 sm:py-6 lg:left-60 {inset}"
 >
 	<!-- The artwork itself, blurred to a wash, is the background: same trick as HomeHero, and it
 	     needs no colour extraction (which a remote image would taint the canvas for anyway). The

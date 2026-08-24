@@ -31,8 +31,8 @@
 	class={expanded
 		? // ponytail: left offsets mirror Sidebar's w-16/lg:w-60, right offset mirrors QueuePanel's
 			// w-80 — keep in sync if those change.
-			`absolute inset-y-0 left-16 right-0 z-30 flex h-full flex-col border-l bg-card shadow-2xl lg:left-60 ${queueOpen ? 'lg:right-80' : ''}`
-		: `absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] flex-col border-l bg-card shadow-2xl ${queueOpen ? 'lg:right-80' : ''}`}
+			`side-panel absolute inset-y-0 left-16 right-0 z-30 flex h-full flex-col border-l bg-card shadow-2xl lg:left-60 ${queueOpen ? 'lg:right-80' : ''}`
+		: `side-panel absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] flex-col border-l bg-card shadow-2xl ${queueOpen ? 'lg:right-80' : ''}`}
 >
 	<div class="flex items-center justify-between border-b px-4 py-3">
 		<h2 class="font-heading text-sm font-semibold">Lyrics</h2>

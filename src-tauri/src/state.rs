@@ -71,6 +71,9 @@ pub struct AppState {
     last_pos_persist: AtomicU64,
     /// Wall-clock secs of the last position push to the OS media controls (throttled ~1s).
     last_media_push: AtomicU64,
+    /// videoId of the last background like-status probe (`like-status` event). A track whose
+    /// `liked` was unknown gets probed once; repeat plays of the same unknown track don't refetch.
+    like_probe: std::sync::Mutex<Option<String>>,
 }
 
 /// Repeat mode for the queue. Serialized lowercase for the UI + `queue_json`.
@@ -354,6 +357,7 @@ impl AppState {
             latest_position: AtomicU64::new(0),
             last_pos_persist: AtomicU64::new(0),
             last_media_push: AtomicU64::new(0),
+            like_probe: std::sync::Mutex::new(None),
         }
     }
 
@@ -1725,6 +1729,50 @@ impl AppState {
             .app
             .emit("now-playing", Self::now_playing_json(item, stream_client));
         let _ = self.app.emit("playback-state", "playing");
+        // Search/queue rows often carry no `likeStatus`, so a track played from search would show
+        // no heart even when it's in Liked Music. When the row didn't say, ask YouTube once in
+        // the background (a bare /next for this videoId returns its queue row with the real
+        // likeStatus) and tell the UI via `like-status`. Fire-and-forget: never blocks playback.
+        if item.liked.is_none()
+            && self.it.is_logged_in()
+            && !crate::local::is_local_song(&item.video_id)
+        {
+            let fresh = {
+                let mut probe = self.like_probe.lock().unwrap();
+                let fresh = probe.as_deref() != Some(item.video_id.as_str());
+                if fresh {
+                    *probe = Some(item.video_id.clone());
+                }
+                fresh
+            };
+            if fresh {
+                if let Some(client) = self.clients.get(innertube::METADATA_CLIENT).cloned() {
+                    let it = self.it.clone();
+                    let app = self.app.clone();
+                    let video_id = item.video_id.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match it.next(&client, Some(&video_id), None).await {
+                            Ok(next) => {
+                                if let Some(liked) = next
+                                    .items
+                                    .iter()
+                                    .find(|i| i.video_id == video_id)
+                                    .and_then(|i| i.liked)
+                                {
+                                    let _ = app.emit(
+                                        "like-status",
+                                        serde_json::json!({ "videoId": video_id, "liked": liked }),
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::debug!(error = %e, "like-status probe failed")
+                            }
+                        }
+                    });
+                }
+            }
+        }
         // Push the same metadata to the OS media widget (context/16) and Discord.
         if let Some(m) = &self.media {
             // MPRIS/SMTC want a URL; a local track's artwork is a path, so hand it a file:// one.

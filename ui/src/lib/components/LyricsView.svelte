@@ -23,89 +23,18 @@
 	let loading = $state(true);
 	let scroller: HTMLElement | undefined = $state();
 
-	// Kodama parity additions
-	let offsetMs = $state(0);
-	let translateLang = $state('es');
-	let translateOn = $state(false);
-	let romanizeOn = $state(false);
-	let voteBusy = $state(false);
-	let toolsOpen = $state(false);
-
-	const LANGS = [
-		{ code: 'en', label: 'English' },{ code: 'es', label: 'Español' },{ code: 'fr', label: 'Français' },{ code: 'de', label: 'Deutsch' },
-		{ code: 'ja', label: '日本語' },{ code: 'ko', label: '한국어' },{ code: 'zh', label: '中文' },{ code: 'ru', label: 'Русский' },
-		{ code: 'pt', label: 'Português' },{ code: 'it', label: 'Italiano' },{ code: 'ar', label: 'العربية' },{ code: 'hi', label: 'हिन्दी' },
-		{ code: 'tr', label: 'Türkçe' },{ code: 'pl', label: 'Polski' },{ code: 'nl', label: 'Nederlands' },{ code: 'vi', label: 'Tiếng Việt' },
-		{ code: 'th', label: 'ไทย' },{ code: 'id', label: 'Indonesia' },{ code: 'ms', label: 'Melayu' },{ code: 'uk', label: 'Українська' },
-		{ code: 'cs', label: 'Čeština' },{ code: 'sv', label: 'Svenska' },{ code: 'ro', label: 'Română' },{ code: 'el', label: 'Ελληνικά' },
-		{ code: 'he', label: 'עברית' },{ code: 'fa', label: 'فارسی' },{ code: 'hu', label: 'Magyar' },{ code: 'fi', label: 'Suomi' },
-		{ code: 'no', label: 'Norsk' },{ code: 'da', label: 'Dansk' },{ code: 'bg', label: 'Български' },{ code: 'sr', label: 'Српски' },
-		{ code: 'hr', label: 'Hrvatski' },{ code: 'sk', label: 'Slovenčina' },{ code: 'sl', label: 'Slovenščina' },{ code: 'ca', label: 'Català' },
-		{ code: 'bn', label: 'বাংলা' },{ code: 'ta', label: 'தமிழ்' },{ code: 'te', label: 'తెలుగు' },{ code: 'ur', label: 'اردو' },{ code: 'fil', label: 'Filipino' },{ code: 'sw', label: 'Kiswahili' },{ code: 'et', label: 'Eesti' },{ code: 'lv', label: 'Latviešu' }
-	];
-
-	async function nudgeOffset(delta: number) {
-		offsetMs = Math.max(-5000, Math.min(5000, offsetMs + delta));
-		const id = playback.now?.videoId;
-		if (!id) return;
-		await api.setLyricOffset(id, offsetMs).catch(()=>{});
-		// optimistic shift of cues so UI reacts instantly
-		if (lyrics) {
-			for (const l of lyrics.lines) {
-				if (l.time_ms !== undefined) l.time_ms = Math.max(0, l.time_ms + delta);
-				if (l.end_time_ms !== undefined) l.end_time_ms = Math.max(0, l.end_time_ms + delta);
-				if (l.words) for (const w of l.words) { w.start_ms = Math.max(0, w.start_ms + delta); w.end_ms = Math.max(0, w.end_ms + delta); }
-			}
-			lyrics = { ...lyrics };
+	/** Shift every cue by `delta` ms (the persisted per-song offset), clamped at 0. */
+	function shiftCues(l: api.Lyrics, delta: number) {
+		if (!delta) return;
+		for (const line of l.lines) {
+			if (line.time_ms !== undefined) line.time_ms = Math.max(0, line.time_ms + delta);
+			if (line.end_time_ms !== undefined) line.end_time_ms = Math.max(0, line.end_time_ms + delta);
+			if (line.words)
+				for (const w of line.words) {
+					w.start_ms = Math.max(0, w.start_ms + delta);
+					w.end_ms = Math.max(0, w.end_ms + delta);
+				}
 		}
-	}
-	function resetOffset() { nudgeOffset(-offsetMs); }
-
-	async function toggleTranslate() {
-		if (!lyrics) return;
-		if (translateOn) {
-			// off: clear translations
-			for (const l of lyrics.lines) l.translation = undefined;
-			lyrics = { ...lyrics };
-			translateOn = false;
-			return;
-		}
-		translateOn = true;
-		for (const l of lyrics.lines) {
-			if (!l.text.trim()) continue;
-			try {
-				const t = await api.translateLyrics(l.text, translateLang);
-				if (t && t !== l.text) l.translation = t;
-			} catch {}
-		}
-		lyrics = { ...lyrics };
-	}
-	async function toggleRomanize() {
-		if (!lyrics) return;
-		if (romanizeOn) {
-			for (const l of lyrics.lines) { if (l.translation && lyrics) l.translation = undefined; }
-			lyrics = { ...lyrics };
-			romanizeOn = false;
-			return;
-		}
-		romanizeOn = true;
-		for (const l of lyrics.lines) {
-			if (!l.text.trim()) continue;
-			try {
-				const r = await api.romanizeLyrics(l.text);
-				if (r && r !== l.text) l.translation = r;
-			} catch {}
-		}
-		lyrics = { ...lyrics };
-	}
-	async function vote(dir: 1 | -1) {
-		if (!lyrics || !playback.now) return;
-		voteBusy = true;
-		try { await api.lyricsVote(playback.now.videoId, lyrics.source, dir); } finally { voteBusy = false; }
-	}
-	async function report() {
-		if (!lyrics || !playback.now) return;
-		await api.lyricsReport(playback.now.videoId, lyrics.source, 'incorrect timing').catch(()=>{});
 	}
 
 	// videoId of the fetch whose result is (or will be) shown — guards stale responses.
@@ -139,10 +68,14 @@
 				lyrics = l;
 				loading = false;
 				hasScrolled = false; // first positioning on a new track is an instant jump
-				// fetch persisted offset for this song (Kodama per-song offset)
-				api.getLyricOffset(id).then((o) => (offsetMs = o ?? 0)).catch(()=>{});
-				translateOn = false;
-				romanizeOn = false;
+				// Kodama per-song offset: apply the persisted shift to this song's cues on load.
+				api.getLyricOffset(id)
+					.then((o) => {
+						if (requested !== id || !lyrics || !o) return;
+						shiftCues(lyrics, o);
+						lyrics = { ...lyrics };
+					})
+					.catch(() => {});
 			})
 			.catch(() => {
 				if (requested !== id) return;
@@ -304,44 +237,6 @@
 
 </script>
 
-{#if !compact && lyrics && !loading}
-	<div class="sticky top-0 z-10 -mx-5 -mt-6 mb-3 flex items-center gap-2 border-b glass px-4 py-2.5 text-xs">
-		<span class="rounded-full bg-primary px-2.5 py-1 font-bold text-primary-foreground shadow-sm">{lyrics.source}</span>
-		<!-- Tools live in a collapsed menu so the bar stays one quiet line (user request). -->
-		<div class="ml-auto flex items-center gap-1.5">
-			<button
-				onclick={() => (toolsOpen = !toolsOpen)}
-				class="cursor-pointer rounded-md border bg-card px-2.5 py-1 font-medium hover:bg-accent"
-				aria-expanded={toolsOpen}
-			>
-				{toolsOpen ? 'Hide tools' : 'Lyric tools'}
-			</button>
-		</div>
-	</div>
-	{#if toolsOpen}
-		<div class="mb-3 flex flex-wrap items-center gap-2 rounded-lg border glass px-3 py-2 text-xs">
-			<div class="flex items-center gap-1">
-				<span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Offset</span>
-				<button onclick={() => nudgeOffset(-500)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">-500</button>
-				<button onclick={() => nudgeOffset(-250)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">-250</button>
-				<span class="min-w-[3.2rem] text-center font-mono tabular-nums">{offsetMs > 0 ? `+${offsetMs}` : offsetMs}ms</span>
-				<button onclick={() => nudgeOffset(250)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">+250</button>
-				<button onclick={() => nudgeOffset(500)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent">+500</button>
-				<button onclick={resetOffset} class="cursor-pointer rounded-md bg-muted px-2 py-1 hover:bg-accent">Reset</button>
-			</div>
-			<div class="ml-auto flex items-center gap-1.5">
-				<select bind:value={translateLang} class="rounded-md border bg-card px-2 py-1 text-xs">
-					{#each LANGS as l}<option value={l.code}>{l.label}</option>{/each}
-				</select>
-				<button onclick={toggleTranslate} class="cursor-pointer rounded-md px-2.5 py-1 font-medium {translateOn ? 'bg-primary text-primary-foreground' : 'border bg-card hover:bg-accent'}">{translateOn ? 'Original' : 'Translate'}</button>
-				<button onclick={toggleRomanize} class="cursor-pointer rounded-md px-2.5 py-1 font-medium {romanizeOn ? 'bg-primary text-primary-foreground' : 'border bg-card hover:bg-accent'}">{romanizeOn ? 'Original' : 'Romanize'}</button>
-				<button disabled={voteBusy} onclick={() => vote(1)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent" title="Upvote this lyric source">👍</button>
-				<button disabled={voteBusy} onclick={() => vote(-1)} class="cursor-pointer rounded-md border bg-card px-2 py-1 hover:bg-accent" title="Downvote">👎</button>
-				<button onclick={report} class="cursor-pointer rounded-md border bg-card px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Report incorrect lyrics">Report</button>
-			</div>
-		</div>
-	{/if}
-{/if}
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
 <div
 	bind:this={scroller}

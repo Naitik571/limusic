@@ -12,6 +12,9 @@ use tokio::net::TcpListener;
 use crate::db::Db;
 use crate::state::AppState;
 
+/// The phone-side remote control page served on `GET /?token=…`. Inline CSS/JS, no dependencies.
+const REMOTE_HTML: &str = include_str!("../remote.html");
+
 /// Generate or load the pairing token (18B -> 24 char base64url).
 pub fn get_or_create_token(db: &Db) -> String {
     if let Some(t) = db.get_setting("remote_token") {
@@ -133,12 +136,27 @@ pub fn spawn(state: Arc<AppState>) {
                     return;
                 }
                 // Health without auth
-                if req.contains("GET / ") || req.contains("GET /?") {
-                    let body =
-                        serde_json::json!({"name":"limusic","version": env!("CARGO_PKG_VERSION")})
-                            .to_string();
-                    let resp = format!("HTTP/1.1 200 OK\r\n{cors}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{}", body.len(), body);
-                    let _ = stream.write_all(resp.as_bytes()).await;
+                // The root is the remote control page itself. A browser that scanned the QR
+                // lands on `/?token=…`; a valid token gets the HTML, anything else gets told to
+                // pair from the in-app QR instead of a bare JSON error.
+                if req.starts_with("GET / ") || req.starts_with("GET /?") {
+                    let authorized = extract_token(&req).as_deref() == Some(expected.as_str());
+                    if !authorized {
+                        let body = "Open this page from the in-app QR code (Settings ▸ Remote).";
+                        let resp = format!(
+                            "HTTP/1.1 401 Unauthorized\r\n{cors}Content-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    } else {
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\n{cors}Content-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
+                            REMOTE_HTML.len(),
+                            REMOTE_HTML
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    }
                     return;
                 }
                 // Pair endpoint: POST /pair with token validation or approve flow
@@ -204,6 +222,19 @@ pub fn spawn(state: Arc<AppState>) {
                 } else if req.contains("POST /api/prev") {
                     state.prev_in_queue().await;
                     serde_json::json!({"ok":true}).to_string()
+                } else if req.contains("POST /api/volup") || req.contains("POST /api/voldown") {
+                    // Volume nudge from the phone: ±10 perceptual points, persisted like the
+                    // in-app slider. No `volume` event — the desktop UI isn't the one asking.
+                    let up = req.contains("POST /api/volup");
+                    let current = state
+                        .db
+                        .get_setting("volume")
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .unwrap_or_else(|| state.player.get_volume());
+                    let volume = (current + if up { 10 } else { -10 }).clamp(0, 100);
+                    let _ = state.player.set_volume(volume);
+                    state.db.set_setting("volume", &volume.to_string());
+                    serde_json::json!({"ok":true,"volume":volume}).to_string()
                 } else {
                     serde_json::json!({"error":"not found"}).to_string()
                 };

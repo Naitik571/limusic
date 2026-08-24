@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>limusic remote</title>
+<style>
+	* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+	html, body { height: 100%; }
+	body {
+		font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+		background: radial-gradient(120% 90% at 20% 0%, #1c2030 0%, #12141d 55%, #0b0c12 100%);
+		color: #e8eaf2;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+		gap: 14px;
+		user-select: none;
+	}
+	.card {
+		width: 100%;
+		max-width: 480px;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.09);
+		border-radius: 18px;
+		backdrop-filter: blur(14px);
+		padding: 18px;
+	}
+	h1 { font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgba(232,234,242,.5); text-align: center; }
+	.cover {
+		width: 132px; height: 132px; border-radius: 14px; margin: 14px auto 12px;
+		object-fit: cover;
+		background: linear-gradient(135deg, #2a3047, #171a26);
+		display: block;
+	}
+	#title { font-size: 19px; font-weight: 700; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	#artist { font-size: 14px; color: rgba(232,234,242,.6); text-align: center; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.1); margin-top: 14px; overflow: hidden; }
+	#pos { height: 100%; width: 0%; border-radius: 2px; background: linear-gradient(90deg, #7c8cf8, #b48cf8); transition: width .4s linear; }
+	.times { display: flex; justify-content: space-between; font-size: 11px; color: rgba(232,234,242,.45); margin-top: 5px; font-variant-numeric: tabular-nums; }
+	.controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }
+	button {
+		appearance: none; border: 1px solid rgba(255,255,255,.1);
+		background: rgba(255,255,255,.06); color: #e8eaf2;
+		border-radius: 14px; min-height: 58px; font-size: 22px; cursor: pointer;
+		display: flex; align-items: center; justify-content: center;
+		touch-action: manipulation;
+	}
+	button:active { background: rgba(255,255,255,.16); transform: scale(.96); }
+	#play { background: linear-gradient(135deg, #6474f0, #9a6cf0); border-color: transparent; font-size: 26px; }
+	h2 { font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgba(232,234,242,.5); margin-bottom: 10px; }
+	ul { list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 42vh; overflow-y: auto; }
+	li { padding: 11px 12px; border-radius: 10px; font-size: 14px; color: rgba(232,234,242,.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	li.current { background: rgba(124,140,248,.16); color: #e8eaf2; font-weight: 600; }
+	li small { display: block; font-weight: 400; font-size: 12px; opacity: .6; }
+	#status { font-size: 12px; color: rgba(232,234,242,.4); text-align: center; min-height: 15px; }
+</style>
+</head>
+<body>
+	<h1>limusic remote</h1>
+	<div class="card">
+		<img id="art" class="cover" alt="" hidden />
+		<div id="title">Connecting…</div>
+		<div id="artist"></div>
+		<div class="bar"><div id="pos"></div></div>
+		<div class="times"><span id="tcur">0:00</span><span id="tdur">0:00</span></div>
+		<div class="controls">
+			<button id="prev" aria-label="Previous">⏮</button>
+			<button id="voldown" aria-label="Volume down">🔉</button>
+			<button id="play" aria-label="Play or pause">▶</button>
+			<button id="volup" aria-label="Volume up">🔊</button>
+			<button id="next" aria-label="Next">⏭</button>
+		</div>
+	</div>
+	<div class="card">
+		<h2>Up next</h2>
+		<ul id="queue"></ul>
+	</div>
+	<div id="status"></div>
+<script>
+	var token = new URLSearchParams(location.search).get('token') || '';
+	function url(path) { return path + '?token=' + encodeURIComponent(token); }
+	function post(path) {
+		return fetch(url(path), { method: 'POST' }).then(refresh).catch(function () {});
+	}
+	function fmt(secs) {
+		if (!isFinite(secs) || secs <= 0) return '0:00';
+		var m = Math.floor(secs / 60), s = Math.floor(secs % 60);
+		return m + ':' + (s < 10 ? '0' : '') + s;
+	}
+	function esc(t) {
+		var d = document.createElement('div');
+		d.textContent = t == null ? '' : String(t);
+		return d.innerHTML;
+	}
+	var el = function (id) { return document.getElementById(id); };
+	var art = el('art'), title = el('title'), artist = el('artist'), pos = el('pos'),
+		tcur = el('tcur'), tdur = el('tdur'), play = el('play'), queue = el('queue'), status = el('status');
+	function refresh() {
+		fetch(url('/api/playback')).then(function (r) {
+			if (!r.ok) throw new Error('auth');
+			return r.json();
+		}).then(function (pb) {
+			status.textContent = '';
+			var n = pb.now;
+			title.textContent = n ? n.title : 'Nothing playing';
+			artist.textContent = n ? n.artists : 'Open limusic and play something';
+			play.textContent = pb.paused ? '▶' : '⏸';
+			if (n && n.thumbnail) { art.src = n.thumbnail; art.hidden = false; } else { art.hidden = true; }
+			pos.style.width = (pb.duration > 0 ? Math.min(100, pb.position / pb.duration * 100) : 0) + '%';
+			tcur.textContent = fmt(pb.position);
+			tdur.textContent = fmt(pb.duration);
+			return fetch(url('/api/queue')).then(function (r) { return r.ok ? r.json() : null; }).then(function (q) {
+				var items = (q && q.items) || [], cur = q ? q.currentIndex : -1;
+				queue.innerHTML = items.slice(Math.max(cur, 0), Math.max(cur, 0) + 25).map(function (it, i) {
+					var isCur = Math.max(cur, 0) + i === cur;
+					return '<li class="' + (isCur ? 'current' : '') + '">' + esc(it.title) +
+						'<small>' + esc(it.artists) + (isCur ? ' • now playing' : '') + '</small></li>';
+				}).join('') || '<li>Queue is empty</li>';
+			});
+		}).catch(function (e) {
+			if (e && e.message === 'auth') status.textContent = 'Token invalid — re-open from the in-app QR.';
+			else status.textContent = 'Reconnecting…';
+		});
+	}
+	prev.onclick = function () { post('/api/prev'); };
+	next.onclick = function () { post('/api/next'); };
+	play.onclick = function () { post('/api/toggle'); };
+	volup.onclick = function () { post('/api/volup'); };
+	voldown.onclick = function () { post('/api/voldown'); };
+	refresh();
+	setInterval(refresh, 3000);
+</script>
+</body>
+</html>

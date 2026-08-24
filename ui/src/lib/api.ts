@@ -512,6 +512,14 @@ export const onAccountSelectionRequired = (cb: () => void): Promise<UnlistenFn> 
  */
 export const onLocalChanged = (cb: (removed: string[]) => void): Promise<UnlistenFn> =>
 	listen<{ removed: string[] }>('local-changed', (e) => cb(e.payload.removed));
+/**
+ * The real like state for the current track, resolved in Rust when the `now-playing` row carried
+ * none (search-sourced tracks). Fires once per unknown track — not on every position tick.
+ */
+export const onLikeStatus = (cb: (videoId: string, liked: boolean) => void): Promise<UnlistenFn> =>
+	listen<{ videoId: string; liked: boolean }>('like-status', (e) =>
+		cb(e.payload.videoId, e.payload.liked)
+	);
 
 /** videoId → play count over the trailing On Repeat window. Feeds the playlist page's "Most
  *  played" sort; absent keys simply mean the track hasn't been played this month. */
@@ -671,6 +679,8 @@ export const setBestMix = (on: boolean) => invoke<void>('set_best_mix', { on });
 export const getLanUrl = () => invoke<string>('get_lan_url');
 export const getRemoteToken = () => invoke<string>('get_remote_token');
 export const pairRemote = (token: string) => invoke<boolean>('pair_remote', { token });
+/** The LAN pairing URL as a scannable QR code (SVG markup from Rust). */
+export const getRemoteQr = () => invoke<string>('get_remote_qr');
 
 // --- Artist Packs (#9) ---------------------------------------------------------
 export interface ArtistPack {
