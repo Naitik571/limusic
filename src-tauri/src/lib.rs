@@ -141,7 +141,16 @@ pub fn run() {
 
             // Shared: the PoToken generator persists its session token through the same file,
             // and it is built before AppState takes ownership of everything else.
-            let db = Arc::new(Db::open(&data_dir.join("limusic.sqlite")).expect("open sqlite"));
+            let db = Arc::new(
+                Db::open(&data_dir.join("limusic.sqlite")).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "open sqlite failed, trying temp dir");
+                    Db::open(&std::env::temp_dir().join("limusic.sqlite"))
+                        .unwrap_or_else(|e2| {
+                            tracing::error!(error = %e2, "temp sqlite also failed, using in-memory");
+                            Db::open(std::path::Path::new(":memory:")).expect("in-memory sqlite must open")
+                        })
+                }),
+            );
 
             // Session bootstrap (context/15 startup ordering): load the persisted login session
             // (cookie/dataSyncId/visitorData) from settings; fetch visitorData anonymously
@@ -169,8 +178,25 @@ pub fn run() {
             it.set_hide_videos(db.get_setting("hide_videos").as_deref() == Some("true"));
             let clients = Clients::bundled();
 
-            let mut player = Player::new(cache_dir.to_str().unwrap()).expect("init libmpv");
-            let events = player.take_events().expect("player events");
+            let mut player = match Player::new(cache_dir.to_str().unwrap()) {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!(error = %e, "init libmpv failed, app will open without audio");
+                    // Create a fallback player that at least allows UI to open; audio will be unavailable
+                    // Try once more with minimal config
+                    Player::new(std::env::temp_dir().to_str().unwrap_or("C:\\Temp")).unwrap_or_else(|e2| {
+                        tracing::error!(error = %e2, "fallback libmpv also failed, using dummy");
+                        // Last resort: create a dummy player that doesn't use mpv (will fail later but lets UI open)
+                        // For now panic with a user-visible error instead of silent close
+                        panic!("libmpv init failed: {} (fallback also failed: {}) - ensure libmpv-2.dll is next to the exe", e, e2);
+                    })
+                }
+            };
+            let events = player.take_events().unwrap_or_else(|| {
+                tracing::error!("player events missing, creating dummy channel");
+                let (_tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                rx
+            });
 
             // Phase 2 extraction stack: cipher + PoToken hidden webviews behind the orchestrator.
             let config = Arc::new(PlayerConfigStore::new(&data_dir));

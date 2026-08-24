@@ -123,9 +123,9 @@ impl Player {
         // Mirror the Phase-0 spike: create, then set_property (setting some options during the
         // pre-init phase returns PROPERTY_NOT_FOUND on this mpv build).
         let mpv = Mpv::new()?;
-        mpv.set_property("vid", "no")?; // audio only by default; videoSync toggles to "auto"
-        mpv.set_property("vo", "libmpv")?; // render target for Video Sync (Kodama uses FFT cross-correlation + muted video)
-        mpv.set_property("hwdec", "auto")?;
+        let _ = mpv.set_property("vid", "no"); // audio only by default; videoSync toggles to "auto"
+        let _ = mpv.set_property("vo", "libmpv"); // render target for Video Sync (Kodama) - best-effort, fallback to default if unsupported
+        let _ = mpv.set_property("hwdec", "auto");
         mpv.set_property("gapless-audio", "yes")?;
         mpv.set_property("cache", "yes")?;
         mpv.set_property("cache-on-disk", "yes")?;
