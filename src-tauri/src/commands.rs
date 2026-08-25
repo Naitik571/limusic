@@ -218,7 +218,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 19] = [
+const UI_SETTINGS: [&str; 20] = [
     "proxy",
     "quality",
     "enable_history",
@@ -227,6 +227,7 @@ const UI_SETTINGS: [&str; 19] = [
     "close_to_tray",
     "autostart",
     "autoplay",
+    "auto_offline",
     "hide_videos",
     "prevent_duplicates",
     "ytdlp_enabled",
@@ -1486,10 +1487,22 @@ pub async fn download_playlist(
     state: St<'_>,
     id: String,
 ) -> Result<serde_json::Value, String> {
-    let client = metadata_client(&state)?;
+    download_playlist_walk(&app, state.inner(), &id).await
+}
+
+/// The playlist-download walk, shared by the command and the auto-offline backfill (which calls
+/// it with the Liked Music browse id at startup / on enable). Walks every page, dedupes, skips
+/// what's already on disk or a local file, then fetches the remainder `DOWNLOAD_CONCURRENCY` at
+/// a time. Summary shape: `{ ok, total, skipped, downloaded, failed, cancelled }`.
+async fn download_playlist_walk(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    id: &str,
+) -> Result<serde_json::Value, String> {
+    let client = metadata_client(state)?;
     let page = state
         .it
-        .playlist(client, &id)
+        .playlist(client, id)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -1525,7 +1538,7 @@ pub async fn download_playlist(
         if !seen.insert(item.video_id.clone()) {
             continue; // duplicate row — don't count it against anything, it's one song
         }
-        if crate::downloads::is_downloaded(&state, &item.video_id) {
+        if crate::downloads::is_downloaded(state, &item.video_id) {
             skipped += 1;
             continue;
         }
@@ -1541,7 +1554,7 @@ pub async fn download_playlist(
 
     let total = candidates.len() as u32 + skipped;
     let (completed, failed, cancelled) =
-        crate::downloads::download_many(&app, &state, &state.orchestrator, candidates).await;
+        crate::downloads::download_many(app, state, &state.orchestrator, candidates).await;
     Ok(serde_json::json!({
         "ok": true,
         "total": total,
@@ -1563,6 +1576,70 @@ pub async fn cancel_download(_state: St<'_>, video_id: String) -> Result<bool, S
 #[tauri::command]
 pub async fn cancel_all_downloads(_state: St<'_>) -> Result<u32, String> {
     Ok(crate::downloads::cancel_all_downloads() as u32)
+}
+
+/// Auto-offline: when enabled (Settings → Downloads), walk Liked Music once and fetch anything
+/// not yet in the offline catalogue. Runs at startup (delayed so it never slows the launch) and
+/// again when the setting is turned on mid-session. The playlist walk dedupes and skips
+/// what's already on disk, so a backfill costs exactly the missing tracks.
+pub async fn auto_offline_backfill(app: tauri::AppHandle, state: Arc<AppState>) {
+    let mode = state.db.get_setting("auto_offline").unwrap_or_default();
+    if mode != "liked" && mode != "liked_playlists" {
+        return;
+    }
+    tracing::info!("auto-offline: syncing Liked Music");
+    match download_playlist_walk(&app, &state, "VLLM").await {
+        Ok(v) => tracing::info!(summary = %v, "auto-offline: Liked Music sync finished"),
+        Err(e) => tracing::warn!(error = %e, "auto-offline: Liked Music sync failed"),
+    }
+}
+
+/// Same walk, invoked from the UI the moment the setting is switched on — so the user doesn't
+/// have to relaunch to get their first backfill. Errors when the setting is off.
+#[tauri::command]
+pub async fn auto_offline_sync(
+    app: tauri::AppHandle,
+    state: St<'_>,
+) -> Result<serde_json::Value, String> {
+    let mode = state.db.get_setting("auto_offline").unwrap_or_default();
+    if mode != "liked" && mode != "liked_playlists" {
+        return Err("auto-offline is off".into());
+    }
+    download_playlist_walk(&app, state.inner(), "VLLM").await
+}
+
+// --- listen history (the local play diary) ---------------------------------------------------
+
+/// One entry of the History page: what played, and when. `plays` is the same table On Repeat
+/// ranks — this is the chronological diary view of it, duplicates and all.
+#[derive(serde::Serialize)]
+pub struct HistoryEntry {
+    #[serde(rename = "playedAt")]
+    played_at: i64,
+    song: SongItem,
+}
+
+#[tauri::command]
+pub async fn get_history(state: St<'_>, limit: Option<u32>) -> Result<Vec<HistoryEntry>, String> {
+    let limit = limit.unwrap_or(500).clamp(1, 2000) as i64;
+    Ok(state
+        .db
+        .recent_plays(limit)
+        .into_iter()
+        .filter_map(
+            |(played_at, json)| match serde_json::from_str::<SongItem>(&json) {
+                Ok(song) => Some(HistoryEntry { played_at, song }),
+                Err(_) => None, // a row from an older schema — skip rather than break the page
+            },
+        )
+        .collect())
+}
+
+/// Wipe the play diary. On Repeat rebuilds from new plays; history goes blank.
+#[tauri::command]
+pub async fn clear_history(state: St<'_>) -> Result<(), String> {
+    state.db.clear_plays();
+    Ok(())
 }
 
 /// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings

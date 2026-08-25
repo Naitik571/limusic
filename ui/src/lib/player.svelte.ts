@@ -698,21 +698,61 @@ export function cycleRepeat(): Promise<void> {
 	return api.setRepeat(r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
 }
 
-/** Optimistic like toggle, reverted if YouTube rejects it. */
-export async function toggleLike(song: SongItem) {
-	const next = !isLiked(song);
-	const isNow = playback.now?.videoId === song.video_id;
-	likedSongs[song.video_id] = next;
-	if (isNow) playback.liked = next;
-	try {
-		await api.like(song.video_id, next);
-		toast.success(next ? 'Added to liked songs' : 'Removed from liked songs');
-	} catch (e) {
-		likedSongs[song.video_id] = !next;
-		if (isNow) playback.liked = !next;
-		toast.error(String(e));
+	/** Seconds → number for the download command's duration field. */
+	function durationToSecs(d?: string): number {
+		if (!d) return 0;
+		const parts = d.split(':').map(Number);
+		if (!parts.length || parts.some(Number.isNaN)) return 0;
+		return parts.reduce((a, b) => a * 60 + b, 0);
 	}
-}
+
+	/**
+	 * Auto-offline (Settings → Downloads): after a like or a playlist add, fetch the song in the
+	 * background so the offline catalogue grows on its own. 'liked' covers likes only;
+	 * 'liked_playlists' covers both. Fire-and-forget — never blocks the action it follows.
+	 */
+	export async function maybeAutoOffline(
+		song: Pick<SongItem, 'video_id' | 'title' | 'artists' | 'album' | 'duration' | 'thumbnail'>,
+		includePlaylists = false
+	): Promise<void> {
+		let mode = 'off';
+		try {
+			const s = await api.getSettings();
+			mode = (s.auto_offline as string) ?? 'off';
+		} catch {
+			return;
+		}
+		if (mode === 'off' || (includePlaylists && mode !== 'liked_playlists')) return;
+		if (downloadedIds.has(song.video_id)) return;
+		markDownloaded(song.video_id);
+		api
+			.downloadTrack({
+				videoId: song.video_id,
+				title: song.title,
+				artists: song.artists ?? '',
+				album: song.album ?? null,
+				duration: durationToSecs(song.duration),
+				thumb: song.thumbnail ?? null
+			})
+			.catch(() => {});
+	}
+
+	/** Optimistic like toggle, reverted if YouTube rejects it. */
+	export async function toggleLike(song: SongItem) {
+		const next = !isLiked(song);
+		const isNow = playback.now?.videoId === song.video_id;
+		likedSongs[song.video_id] = next;
+		if (isNow) playback.liked = next;
+		try {
+			await api.like(song.video_id, next);
+			if (next) maybeAutoOffline(song).catch(() => {});
+			toast.success(next ? 'Added to liked songs' : 'Removed from liked songs');
+		} catch (e) {
+			likedSongs[song.video_id] = !next;
+			if (isNow) playback.liked = !next;
+			toast.error(String(e));
+		}
+	}
 
 /**
  * Play a playlist/album/artist and record that it was played, which is what sorts the sidebar and
@@ -868,6 +908,8 @@ export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 		queued_by: undefined
 	}));
 	lastPlaylistAdd.epoch++;
+	// Auto-offline in the wide mode: everything just added to a playlist gets fetched too.
+	for (const s of songs) maybeAutoOffline(s, true).catch(() => {});
 }
 
 let started = false;

@@ -350,6 +350,21 @@ export const downloadPlaylist = (id: string) =>
 		'download_playlist',
 		{ id }
 	);
+/** Auto-offline: walk Liked Music once and fetch anything missing from the offline catalogue.
+ *  Errors when the setting is off. */
+export const autoOfflineSync = () =>
+	invoke<{ ok: boolean; total: number; skipped: number; downloaded: number; failed: number }>(
+		'auto_offline_sync'
+	);
+
+// --- listen history (local play diary) --------------------------------------------------------
+export interface HistoryEntry {
+	/** Unix seconds of the play. */
+	playedAt: number;
+	song: SongItem;
+}
+export const getHistory = (limit?: number) => invoke<HistoryEntry[]>('get_history', { limit });
+export const clearHistory = () => invoke<void>('clear_history');
 
 // --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
 /** One published release: the GitHub release description, verbatim markdown. */

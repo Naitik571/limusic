@@ -262,6 +262,22 @@
 		await api.setSetting('use_offline', settings.use_offline);
 	}
 
+	const AUTO_OFFLINE_MODES: { id: string; label: string }[] = [
+		{ id: 'off', label: 'Off' },
+		{ id: 'liked', label: 'Liked Music' },
+		{ id: 'liked_playlists', label: 'Likes + playlists' }
+	];
+	const autoOffline = $derived(settings.auto_offline ?? 'off');
+
+	async function setAutoOffline(mode: string) {
+		settings.auto_offline = mode;
+		await api.setSetting('auto_offline', mode);
+		if (mode !== 'off') {
+			toast.info('Syncing your Liked Music…');
+			api.autoOfflineSync().catch(() => {});
+		}
+	}
+
 	async function removeDownload(vid: string) {
 		await api.deleteDownload(vid);
 		markNotDownloaded(vid);
@@ -785,6 +801,17 @@
 									title: 'Use downloads when available',
 									desc: 'Play the saved file instead of streaming whenever you have one — works offline and saves bandwidth.',
 									control: offlineSwitch,
+									tall: true
+								})}
+							</div>
+						</section>
+						<section class={GROUP}>
+							<h3 class={LABEL}>Auto-offline</h3>
+							<div class={CARD}>
+								{@render row({
+									title: 'Keep new music offline automatically',
+									desc: 'New liked songs (and playlist adds, in the wider mode) are fetched in the background — no manual downloads. Turning this on also syncs everything already in your Liked Music right away; the walk skips what\'s on disk, so re-runs cost only what\'s missing.',
+									control: autoOfflinePicker,
 									tall: true
 								})}
 							</div>
@@ -1333,6 +1360,10 @@
 
 {#snippet downloadFormatPicker()}
 	{@render segmented(DOWNLOAD_FORMATS, downloadFormat, setDownloadFormat)}
+{/snippet}
+
+{#snippet autoOfflinePicker()}
+	{@render segmented(AUTO_OFFLINE_MODES, autoOffline, setAutoOffline)}
 {/snippet}
 
 {#snippet crossfadeSlider()}

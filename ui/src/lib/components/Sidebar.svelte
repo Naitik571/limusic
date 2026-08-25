@@ -12,7 +12,8 @@
 		Add01Icon,
 		PinIcon,
 		MusicNote01Icon,
-		ListRestartIcon
+		ListRestartIcon,
+		HistoryIcon
 	} from '@hugeicons/core-free-icons';
 	import { toggleMode } from 'mode-watcher';
 	import { Button } from '$lib/components/ui/button';
@@ -27,7 +28,8 @@
 	const nav = [
 		{ href: '/', label: 'Home', icon: Home01Icon },
 		{ href: '/search', label: 'Search', icon: Search01Icon },
-		{ href: '/library', label: 'Library', icon: LibraryIcon }
+		{ href: '/library', label: 'Library', icon: LibraryIcon },
+		{ href: '/history', label: 'History', icon: HistoryIcon }
 	];
 	const isActive = (href: string) =>
 		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);

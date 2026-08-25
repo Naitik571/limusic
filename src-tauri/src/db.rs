@@ -435,6 +435,29 @@ impl Db {
         out
     }
 
+    /// The raw play diary, newest first, as `(played_at, song_json)` — duplicates included. On
+    /// Repeat answers "what do I play most"; this answers "what did I play, when", which is what
+    /// the History page renders.
+    pub fn recent_plays(&self, limit: i64) -> Vec<(i64, String)> {
+        let conn = self.0.lock().unwrap();
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT played_at, song_json FROM plays ORDER BY played_at DESC, id DESC LIMIT ?1",
+        ) {
+            if let Ok(rows) = stmt.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?))) {
+                out.extend(rows.flatten());
+            }
+        }
+        out
+    }
+
+    /// Wipe the whole play diary (History page → Clear). On Repeat rebuilds from new plays.
+    pub fn clear_plays(&self) {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM plays", [])
+            .unwrap_or_else(warn_write("clear_plays", "plays"));
+    }
+
     /// Play count per videoId since `since`. [`Db::top_plays`] answers "what are my N most played
     /// songs"; this answers "how many times have I played each of these", which is what sorting an
     /// arbitrary playlist by plays needs. Same table, so the same trailing window applies.

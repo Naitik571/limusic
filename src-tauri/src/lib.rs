@@ -347,6 +347,18 @@ pub fn run() {
             remote::spawn(app_state.clone());
             artist_packs::spawn_index_poller(handle.clone(), app_state.db.clone());
 
+            // Auto-offline (Settings -> Downloads): when enabled, backfill Liked Music once per
+            // launch. Delayed so the walk never competes with startup; the walk skips everything
+            // already on disk, so steady-state launches cost one settings read.
+            {
+                let st = app_state.clone();
+                let h = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(8)).await;
+                    commands::auto_offline_backfill(h, st).await;
+                });
+            }
+
             spawn_sleep_timer(app_state.clone());
 
             // Pump mpv events â†’ UI events + queue advance. context/11 events, context/14 Â§TrackEnded.
@@ -419,6 +431,9 @@ pub fn run() {
             commands::cancel_all_downloads,
             commands::delete_download,
             commands::clear_downloads,
+            commands::auto_offline_sync,
+            commands::get_history,
+            commands::clear_history,
             commands::get_account,
             commands::get_account_identities,
             commands::switch_account,
