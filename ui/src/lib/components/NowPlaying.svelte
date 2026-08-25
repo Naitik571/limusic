@@ -97,26 +97,42 @@
 	});
 
 	// --- Artwork swipe pager --------------------------------------------------------------------
-	// Horizontal drags on the artwork flip tracks (left = next, right = previous); the cover
-	// follows the finger at 0.15× so the gesture reads without yanking the whole view. Capture is
-	// only taken once horizontal intent is proven (~8px), so plain taps still deliver their click
-	// to the play/pause button underneath and vertical drags still scroll (touch-action: pan-y).
-	// A fired swipe swallows the click that follows the pointerup.
+	// Horizontal drags on the artwork flip tracks (left = next, right = previous). While engaged
+	// the artwork follows the finger at 0.5× with a gentle scale/opacity falloff; a committed
+	// swipe flies it fully off-screen in the drag direction (ease-out) while next/prev fires, and
+	// everything is reset to centre instantly for the incoming track's art. A short release
+	// springs back over 250ms. All motion goes through WAAPI (or direct transform writes during
+	// the drag itself), and every path ends with the inline styles cleaned up — no lingering
+	// will-change/transform. Capture is only taken once horizontal intent is proven (~8px), so
+	// plain taps still deliver their click to the play/pause button underneath and vertical
+	// drags still scroll (touch-action: pan-y). A fired swipe swallows the follow-up click.
+	let artEl: HTMLElement | undefined = $state();
+	const SWIPE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+	let artAnim: Animation | undefined;
 	let swipeArmed = false; // pointer is down on the artwork
-	let swipeEngaged = $state(false); // horizontal intent proven — capturing + tracking
-	let swipeOffset = $state(0); // current visual offset, dx * 0.15
-	const artStyle = $derived(
-		swipeEngaged || swipeOffset !== 0
-			? `transform: translateX(${swipeOffset}px);${swipeEngaged ? '' : ' transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);'}`
-			: undefined // no transform while idle → no stacking-context side effects
-	);
+	let swipeEngaged = false; // horizontal intent proven — capturing + tracking
 	let swipeStartX = 0;
 	let swipeStartY = 0;
 	let swiped = false;
 	let swipedTimer: ReturnType<typeof setTimeout> | undefined;
 
+	/** Drop the running animation (and its forwards fill) plus every inline motion style. */
+	function clearArtMotion() {
+		if (artAnim) {
+			artAnim.onfinish = null;
+			artAnim.cancel();
+			artAnim = undefined;
+		}
+		if (artEl) {
+			artEl.style.transform = '';
+			artEl.style.opacity = '';
+			artEl.style.willChange = '';
+		}
+	}
+
 	function onArtPointerDown(e: PointerEvent) {
 		if (!e.isPrimary || e.button !== 0) return;
+		clearArtMotion(); // interrupt any spring-back / fly-out mid-flight
 		swipeArmed = true;
 		swipeStartX = e.clientX;
 		swipeStartY = e.clientY;
@@ -137,7 +153,13 @@
 				/* pointer already gone */
 			}
 		}
-		swipeOffset = dx * 0.15;
+		const el = artEl;
+		if (!el) return;
+		// Half-strength tracking; scale and opacity ease out as |dx| grows (clamped ~240px).
+		const t = Math.min(1, Math.abs(dx) / 240);
+		el.style.willChange = 'transform, opacity';
+		el.style.transform = `translateX(${dx * 0.5}px) scale(${1 - 0.04 * t})`;
+		el.style.opacity = String(1 - 0.2 * t);
 	}
 
 	function onArtPointerEnd(e: PointerEvent) {
@@ -145,15 +167,39 @@
 		const dx = e.clientX - swipeStartX;
 		const dy = e.clientY - swipeStartY;
 		swipeArmed = false;
-		if (swipeEngaged && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
-			swiped = true;
-			clearTimeout(swipedTimer);
-			swipedTimer = setTimeout(() => (swiped = false), 400);
-			(dx < 0 ? api.nextTrack() : api.prevTrack()).catch(() => {});
+		const el = artEl;
+		if (swipeEngaged && el && el.style.transform) {
+			if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+				swiped = true;
+				clearTimeout(swipedTimer);
+				swipedTimer = setTimeout(() => (swiped = false), 400);
+				// Fly off in the swipe direction, then reset to centre instantly — the np view has
+				// already re-rendered around the new track by the time the flight lands.
+				const dir = dx < 0 ? -1 : 1;
+				const exitX = dir * Math.max(el.offsetWidth * 1.25, window.innerWidth / 2);
+				artAnim = el.animate(
+					[
+						{ transform: el.style.transform, opacity: el.style.opacity },
+						{ transform: `translateX(${exitX}px) scale(0.96)`, opacity: 0 }
+					],
+					{ duration: 220, easing: SWIPE_EASE, fill: 'forwards' }
+				);
+				artAnim.onfinish = () => clearArtMotion();
+				(dx < 0 ? api.nextTrack() : api.prevTrack()).catch(() => {});
+			} else {
+				// Below threshold: spring home. fill:'forwards' + cleanup keeps the last frame
+				// painted until the styles drop, so there's no one-frame flash of the drag pose.
+				artAnim = el.animate(
+					[
+						{ transform: el.style.transform, opacity: el.style.opacity },
+						{ transform: 'translateX(0px) scale(1)', opacity: 1 }
+					],
+					{ duration: 250, easing: SWIPE_EASE, fill: 'forwards' }
+				);
+				artAnim.onfinish = () => clearArtMotion();
+			}
 		}
-		// Disengaging re-enables the transition, so wherever the cover sits it glides home.
 		swipeEngaged = false;
-		swipeOffset = 0;
 	}
 
 	// Google's CDN doesn't serve every rewritten size for every image (see MediaCard), and at this
@@ -306,11 +352,11 @@
 			class="relative w-full max-w-[var(--art)] touch-pan-y"
 			data-ctx
 			data-flight-target
+			bind:this={artEl}
 			onpointerdown={onArtPointerDown}
 			onpointermove={onArtPointerMove}
 			onpointerup={onArtPointerEnd}
 			onpointercancel={onArtPointerEnd}
-			style={artStyle}
 		>
 				{#if canvasUrl}
 					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
@@ -471,14 +517,19 @@
 	</div>
 
 	{#if sing}
-		<!-- Sing mode takeover: fixed and z-[90] so it clears everything inside the view, with the
-		     blurred artwork wash as the backdrop. LyricsView runs in its sing variant: giant active
-		     line, centred column, no footer. A separate mount — it fetches its own (Rust-cached)
-		     lyrics rather than fighting the panel instance for scroll position. -->
-		<div
-			transition:fade={{ duration: 180 }}
-			class="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-background"
-		>
+	<!-- Sing mode takeover: fixed and z-[90] so it clears everything inside the view, with the
+	     blurred artwork wash as the backdrop. It starts BELOW the titlebar (h-9 = 2.25rem) —
+	     inset-0 used to slide the ✕ under the window minimize/maximize/close cluster — and in
+	     canopy (transport lives in the top bar) it clears that taller 68px row instead. The exit
+	     ✕ and LyricsView's Translate pill sit inside this box, safely under both bars.
+	     LyricsView runs in its sing variant: giant active line, centred column, no footer (its
+	     Translate pill pins top-left instead). A separate mount — it fetches its own
+	     (Rust-cached) lyrics rather than fighting the panel instance for scroll position. -->
+	<div
+		transition:fade={{ duration: 180 }}
+		class="fixed inset-x-0 bottom-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-background"
+		style="top: {layout.id === 'canopy' ? '68px' : '2.25rem'}"
+	>
 			{#if appearance.artworkBackground && srcs[2] && !bgFailed}
 				<img
 					src={srcs[2]}

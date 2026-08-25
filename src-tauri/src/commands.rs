@@ -361,6 +361,69 @@ pub async fn set_app_icon(
     Ok(())
 }
 
+/// Built-in icon variants (Settings ▸ Appearance ▸ App icon). Each is a PNG baked into the
+/// binary, so applying one is a decode + persist of the `preset:` name — no file paths involved.
+/// Startup restore in lib.rs understands the same prefix.
+pub fn preset_image(name: &str) -> Result<tauri::image::Image<'static>, String> {
+    let bytes: &[u8] = match name {
+        "ytm" => include_bytes!("../icons/variants/ytm.png"),
+        "spotify" => include_bytes!("../icons/variants/spotify.png"),
+        "limusic_blue" => include_bytes!("../icons/variants/limusic_blue.png"),
+        "limusic_rose" => include_bytes!("../icons/variants/limusic_rose.png"),
+        "limusic_amber" => include_bytes!("../icons/variants/limusic_amber.png"),
+        other => return Err(format!("unknown icon preset: {other}")),
+    };
+    tauri::image::Image::from_bytes(bytes)
+        .map(|i| i.to_owned())
+        .map_err(|e| format!("preset icon failed to decode: {e}"))
+}
+
+/// Apply one of the built-in icon variants. `name` must match [`preset_image`].
+#[tauri::command]
+pub async fn set_app_icon_preset(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    name: String,
+) -> Result<(), String> {
+    let image = preset_image(&name)?;
+    apply_app_icon(&app, &image);
+    state
+        .db
+        .set_setting(APP_ICON_KEY, &format!("preset: {name}"));
+    Ok(())
+}
+
+/// The signed-in user's Liked Music video ids, newest first. Bounded walk (~30 pages ≈ 3k
+/// tracks) — this feeds the heart on every row: search/playlist rows don't carry `likeStatus`,
+/// so the UI checks membership here instead of trusting the row. Cached per call; likes made
+/// in-app update the frontend set locally, so this is a launch-time + on-demand snapshot.
+#[tauri::command]
+pub async fn get_liked_ids(state: St<'_>) -> Result<Vec<String>, String> {
+    let client = metadata_client(&state)?;
+    let page = state
+        .it
+        .playlist(client, "VLLM")
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut ids: Vec<String> = page.items.iter().map(|i| i.video_id.clone()).collect();
+    let mut token = page.continuation;
+    let mut pages = 0usize;
+    while let Some(t) = token {
+        if pages >= 30 {
+            break;
+        }
+        pages += 1;
+        let more = state
+            .it
+            .playlist_continuation(client, &t)
+            .await
+            .map_err(|e| e.to_string())?;
+        ids.extend(more.items.iter().map(|i| i.video_id.clone()));
+        token = more.continuation;
+    }
+    Ok(ids)
+}
+
 /// Status of the yt-dlp fallback for the settings screen: whether the toggle is on, whether
 /// the binary is installed, and the last download/update error (if any). The UI can also kick
 /// the install early, so a toggled-on user who's about to hit a restricted track can warm it.

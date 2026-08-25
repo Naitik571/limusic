@@ -10,7 +10,7 @@
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
-	import { isLiked, toggleLike, downloadedIds } from '$lib/player.svelte';
+	import { isLiked, toggleLike, downloadedIds, likeBursts } from '$lib/player.svelte';
 	import { flyPlus } from '$lib/fx';
 	import TrackMenu from './TrackMenu.svelte';
 	import ArtistLine from './ArtistLine.svelte';
@@ -64,17 +64,25 @@
 	const guestAdd = $derived(lt.role === 'guest');
 
 	// Like burst: a ~600ms class on the heart that runs the spark keyframes (layout.css). Only when
-	// the toggle turns liking ON — unliking stays quiet.
+	// the toggle turns liking ON — unliking stays quiet. The trigger is the shared `likeBursts`
+	// stamp (player.svelte), so EVERY like-on path for this song pops the heart — the row's own
+	// button, the ⋯ menu item, the player bar — not just whichever one was clicked. `shownAt`
+	// guards against replaying a stale entry when the list remounts.
 	let burst = $state(false);
 	let burstTimer: ReturnType<typeof setTimeout> | undefined;
+	let shownBurstAt = 0;
 
-	function like() {
-		const willLike = !isLiked(song);
-		toggleLike(song);
-		if (!willLike) return;
+	$effect(() => {
+		const at = likeBursts[song.video_id] ?? 0;
+		if (at === 0 || at <= shownBurstAt || Date.now() - at > 1000) return;
+		shownBurstAt = at;
 		burst = true;
 		clearTimeout(burstTimer);
 		burstTimer = setTimeout(() => (burst = false), 600);
+	});
+
+	function like() {
+		toggleLike(song);
 	}
 
 	// The add-to-playlist action lives in TrackMenu's items, so the click coordinates never reach

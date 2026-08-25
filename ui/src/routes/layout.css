@@ -1,4 +1,4 @@
-﻿@import 'tailwindcss';
+@import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
 @import '@fontsource-variable/oxanium';
@@ -1198,42 +1198,6 @@ html.layout-wide aside.glass > div.hidden {
 }
 html.layout-wide .app-root {
 	background-image: radial-gradient(110% 70% at 50% -8%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 65%);
-}
-
-/* --- Hover-expand sidebar (below lg) ---
-   The icon rail floats to its full labeled width over the content while hovered, and collapses
-   on mouse leave (Photoshop/Spotify hybrid). Sidebar.svelte toggles the class; at lg+ the
-   sidebar is already full width and these rules never apply. Unlayered, so the display
-   overrides beat the `hidden lg:*` utilities. */
-@media (max-width: 63.98rem) {
-	aside.sidebar-expanded {
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 15rem;
-		z-index: 40;
-		border-radius: 0 1rem 1rem 0;
-		box-shadow: 0 12px 44px rgb(0 0 0 / 0.45);
-	}
-	aside.sidebar-expanded .lg\:inline {
-		display: inline;
-	}
-	aside.sidebar-expanded .lg\:block {
-		display: block;
-	}
-	aside.sidebar-expanded .lg\:flex {
-		display: flex;
-	}
-	aside.sidebar-expanded .lg\:justify-between {
-		justify-content: space-between;
-	}
-	aside.sidebar-expanded .lg\:justify-start {
-		justify-content: flex-start;
-	}
-	aside.sidebar-expanded .lg\:w-60 {
-		width: 15rem;
-	}
 }
 
 /* --- Ambient mode (#7) ---

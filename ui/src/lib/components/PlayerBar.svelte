@@ -30,6 +30,7 @@
 		commitVolume,
 		cycleRepeat,
 		dragVolume,
+		likeBursts,
 		openAddToPlaylist,
 		openMiniPlayer,
 		setSleepTimer,
@@ -58,12 +59,26 @@
 		lyricsOpen: boolean;
 	} = $props();
 
-	// Pop the heart once when the user favourites (not when un-favouriting). Reset on animation end
-	// so the next like can replay it.
-	let justLiked = $state(false);
+	// Heart burst, same as TrackRow's: ~600ms of heart-pop + six sparks (layout.css) when the
+	// current track gets liked ON. Driven by the shared `likeBursts` stamp rather than only the
+	// bar's own click, so liking this track anywhere (row heart, ⋯ menu, another surface) pops the
+	// bar's heart too. `shownBurstAt` keeps a stale entry from replaying on remount or on an
+	// unlucky track change.
+	let burst = $state(false);
+	let burstTimer: ReturnType<typeof setTimeout> | undefined;
+	let shownBurstAt = 0;
+
+	$effect(() => {
+		const id = playback.now?.videoId;
+		const at = id ? (likeBursts[id] ?? 0) : 0;
+		if (at === 0 || at <= shownBurstAt || Date.now() - at > 1000) return;
+		shownBurstAt = at;
+		burst = true;
+		clearTimeout(burstTimer);
+		burstTimer = setTimeout(() => (burst = false), 600);
+	});
 
 	function toggleLike() {
-		if (!playback.liked) justLiked = true;
 		toggleNowPlayingLike();
 	}
 
@@ -248,17 +263,21 @@
 				     YTM playlist to add it to. -->
 				{#if !api.isLocalId(playback.now.videoId)}
 					<Button variant="ghost" size="icon-sm" onclick={toggleLike} aria-label="Like">
-						<span
-							class="inline-flex"
-							class:animate-heart-pop={justLiked}
-							onanimationend={() => (justLiked = false)}
-						>
-							<HugeiconsIcon
-								icon={FavouriteIcon}
-								class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : 'text-muted-foreground'}"
-							/>
-						</span>
-					</Button>
+					<span class="relative inline-flex">
+						{#if burst}
+							<!-- 6 sparks flying outward; angles are spread by --a in the keyframes (layout.css). -->
+							{#each Array(6) as _, i}
+								<span class="heart-spark" style="--a:{i * 60}deg" aria-hidden="true"></span>
+							{/each}
+						{/if}
+						<HugeiconsIcon
+							icon={FavouriteIcon}
+							class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : 'text-muted-foreground'} {burst
+								? 'heart-pop'
+								: ''}"
+						/>
+					</span>
+				</Button>
 					<Button
 						variant="ghost"
 						size="icon-sm"

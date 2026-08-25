@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -49,6 +49,7 @@
 		patchLibraryPlaylist,
 		lastPlaylistAdd,
 		lastPlaylistMove,
+		noteLike,
 		openAddManyToPlaylist,
 		openMoveToPlaylist,
 		playSong
@@ -318,6 +319,7 @@
 			pl = { ...pl, items: [...pl.items, rec] };
 			try {
 				await api.like(rec.video_id, true);
+						noteLike(rec.video_id, true);
 				cacheCurrent();
 				toast.success('Added to Liked Music');
 			} catch (e) {
@@ -600,6 +602,7 @@
 		pl = { ...pl, items: kept };
 		try {
 			if (isLiked) {
+						noteLike(track.video_id, false);
 				await api.like(track.video_id, false);
 				toast.success('Removed from Liked Music');
 			} else {
@@ -694,7 +697,7 @@
 		clearSelection();
 		try {
 			for (const t of removable) {
-				if (isLiked) await api.like(t.video_id, false);
+				if (isLiked) { await api.like(t.video_id, false); noteLike(t.video_id, false); }
 				else await api.removeFromPlaylist(id, t.video_id, t.set_video_id!);
 			}
 			if (!isLiked) bumpLibraryTrackCount(id, -removable.length);

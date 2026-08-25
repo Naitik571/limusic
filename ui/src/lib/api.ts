@@ -301,6 +301,11 @@ export const allowFontFile = (path: string) => invoke<void>('allow_font_file', {
 /** Custom app icon: applies to the window + tray immediately and persists across launches.
  *  `null` restores the bundled default. */
 export const setAppIcon = (path: string | null) => invoke<void>('set_app_icon', { path });
+/** Apply a built-in icon variant: 'ytm' | 'spotify' | 'limusic_blue' | 'limusic_rose' | 'limusic_amber'. */
+export const setAppIconPreset = (name: string) => invoke<void>('set_app_icon_preset', { name });
+
+/** The signed-in user's Liked Music video ids (bounded walk, ~3k). Feeds the heart on every row. */
+export const getLikedIds = () => invoke<string[]>('get_liked_ids');
 
 // --- offline downloads (Rust downloads.rs) ------------------------------------------------------
 export interface DownloadedTrack {

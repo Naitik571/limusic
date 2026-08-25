@@ -419,9 +419,45 @@ export function togglePin(id: string) {
 // stays owned by `playback.liked`, which the Rust side reseeds on every track change.
 const likedSongs = $state<Record<string, boolean>>({});
 
+// The signed-in account's Liked Music video ids (one bounded walk per sign-in), so every row shows
+// the right heart even when its source never carried a `liked` flag (search results, radio,
+// autoplay blocks…). Kept in step locally by every like/unlike this UI makes — see `toggleLike`
+// and the `like-status` listener — so hearts flip instantly everywhere without a refetch.
+export const likedIds = $state<Set<string>>(new Set());
+
+/** Keep the liked-ids set honest for like/unlike paths that bypass `toggleLike` (e.g. the
+ *  playlist page's bulk remove and its "add rec to Liked Music"). */
+export function noteLike(videoId: string, liked: boolean): void {
+	if (liked) likedIds.add(videoId);
+	else likedIds.delete(videoId);
+	likedSongs[videoId] = liked;
+}
+
+function loadLikedIds(): Promise<void> {
+	if (!auth.account?.signedIn) {
+		likedIds.clear();
+		return Promise.resolve();
+	}
+	return api
+		.getLikedIds()
+		.then((ids) => {
+			// Mutate in place, same rule as `downloadedIds` above: `.clear()/.add()` on a `$state`
+			// Set is reactive; reassigning this const binding would not be.
+			likedIds.clear();
+			for (const id of ids) likedIds.add(id);
+		})
+		.catch(() => {});
+}
+
+// Last like-ON per videoId (epoch ms). The heart burst lives here rather than in each component so
+// every like-on path — a row heart, the ⋯ menu, the player bar — pops every heart showing that
+// song, not just the one that was clicked. Components compare against their own last-shown stamp so
+// a stale entry can't replay on remount (see TrackRow / PlayerBar).
+export const likeBursts = $state<Record<string, number>>({});
+
 export function isLiked(song: SongItem): boolean {
 	if (playback.now?.videoId === song.video_id) return playback.liked;
-	return likedSongs[song.video_id] ?? song.liked ?? false;
+	return likedSongs[song.video_id] ?? (likedIds.has(song.video_id) || (song.liked ?? false));
 }
 
 /** Like/unlike whatever is playing. Thin wrapper so the player bar and the mini player share one
@@ -743,13 +779,18 @@ export function cycleRepeat(): Promise<void> {
 		const next = !isLiked(song);
 		const isNow = playback.now?.videoId === song.video_id;
 		likedSongs[song.video_id] = next;
+		if (next) likedIds.add(song.video_id);
+		else likedIds.delete(song.video_id);
 		if (isNow) playback.liked = next;
+		if (next) likeBursts[song.video_id] = Date.now();
 		try {
 			await api.like(song.video_id, next);
 			if (next) maybeAutoOffline(song).catch(() => {});
 			toast.success(next ? 'Added to liked songs' : 'Removed from liked songs');
 		} catch (e) {
 			likedSongs[song.video_id] = !next;
+			if (next) likedIds.delete(song.video_id);
+			else likedIds.add(song.video_id);
 			if (isNow) playback.liked = !next;
 			toast.error(String(e));
 		}
@@ -955,6 +996,9 @@ export function initApp(mini = false): () => void {
 		api.onAuthChanged((a) => {
 			auth.account = a;
 			resetLibraryForAccount();
+			// The liked-ids walk is per-account: drop the old channel's set and refetch (a sign-out
+			// just clears — no hearts should read as liked once nobody is signed in).
+			loadLikedIds();
 			// Signing out doesn't empty the library: On Repeat and anything saved on this machine
 			// are still there, and the backend answers both without touching YouTube.
 			if (!mini) loadLibrary(true);
@@ -973,10 +1017,15 @@ export function initApp(mini = false): () => void {
 		api.onLtState((s) => applyLtState(s)),
 		api.onLtNotice((msg) => toast(msg)),
 		// A like made elsewhere in the UI (e.g. the heart on a search result): sync the playing
-		// track's heart and the row cache so every view agrees without a refetch.
+		// track's heart and the row cache so every view agrees without a refetch. Also keeps the
+		// liked-ids set honest for likes this UI didn't route through toggleLike. Deliberately no
+		// burst here: this event also fires from the backend's per-track status probe, and seeding
+		// a heart on arrival is state, not an action.
 		api.onLikeStatus((videoId, liked) => {
 			if (playback.now?.videoId === videoId) playback.liked = liked;
 			likedSongs[videoId] = liked;
+			if (liked) likedIds.add(videoId);
+			else likedIds.delete(videoId);
 		})
 	];
 	// Keyboard shortcuts: a plain listener (not a Tauri event) — the handler above lives in this
@@ -997,7 +1046,26 @@ export function initApp(mini = false): () => void {
 		clearTimeout(gpNavTimer);
 		gpNavTimer = setTimeout(() => document.body.classList.remove('gamepad-nav'), 3000);
 	};
+	// Hold-repeat actions can arrive bursty (a stick crossing the deadzone, or the whole reading
+	// delta a controller replays when it wakes from an alt-tab). One action per 150ms per action
+	// keeps a burst from stacking into a volume landslide or a runaway seek, while staying faster
+	// than the Rust-side 10Hz repeat for genuine holds.
+	const GP_REPEAT_ACTIONS = new Set([
+		'volup',
+		'voldown',
+		'seekfwd',
+		'seekback',
+		'seekfwd_fast',
+		'seekback_fast'
+	]);
+	const GP_MIN_INTERVAL = 150;
+	const gpLastFired: Record<string, number> = {};
 	const onGamepad = (action: string) => {
+		if (GP_REPEAT_ACTIONS.has(action)) {
+			const now = Date.now();
+			if (now - (gpLastFired[action] ?? 0) < GP_MIN_INTERVAL) return;
+			gpLastFired[action] = now;
+		}
 		gpPing();
 		const pos = playback.position;
 		switch (action) {
@@ -1087,6 +1155,9 @@ export function initApp(mini = false): () => void {
 			}
 			loadLibrary();
 			if (a.signedIn) {
+				// Seed every row's heart with the account's real Liked Music ids — search/playlist
+				// rows don't carry a `liked` flag of their own (see `likedIds`).
+				loadLikedIds();
 				// Only when the stored answer might be the provisional one: databases that predate
 				// `canSwitch` default it to true so the action stays discoverable, and this is what
 				// demotes single-channel users back to no switcher. A stored `false` is already
