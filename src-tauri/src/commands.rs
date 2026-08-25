@@ -361,7 +361,6 @@ pub async fn set_app_icon(
     Ok(())
 }
 
-
 /// Status of the yt-dlp fallback for the settings screen: whether the toggle is on, whether
 /// the binary is installed, and the last download/update error (if any). The UI can also kick
 /// the install early, so a toggled-on user who's about to hit a restricted track can warm it.
