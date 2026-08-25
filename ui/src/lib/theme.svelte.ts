@@ -97,6 +97,7 @@ const KEY = 'primary-theme';
 const CUSTOM_KEY = 'custom-theme';
 const APPEARANCE_KEY = 'appearance';
 const LAYOUT_KEY = 'layout';
+const GLASS_KEY = 'glass-intensity';
 const PALETTE_CLASSES = THEMES.filter((t) => t.kind === 'palette').map((t) => `theme-${t.id}`);
 const LAYOUT_CLASSES = LAYOUTS.map((l) => `layout-${l.id}`);
 const ACCENT_VARS = ['--primary', '--primary-foreground', '--accent', '--accent-foreground'];
@@ -145,8 +146,36 @@ export const appearance = $state({
 	immersiveBackgroundIntensity: 0.12
 });
 
-export function setAppearance(patch: Partial<typeof appearance>): void {
-	Object.assign(appearance, patch);
+// --- Glass intensity -------------------------------------------------------------------------
+// Scales every frosted surface (`.glass`/`.glass-strong`/`.glass-edge`, layout.css) through two
+// CSS vars on <html>: --glass-blur (the backdrop blur radius) and --glass-alpha (a multiplier on
+// each palette's translucent fill). 100 = today's defaults; 0 = a subtle 4px, near-clear glass.
+
+export const glass = $state<{ intensity: number }>({ intensity: 100 });
+
+export function setGlassIntensity(v: number): void {
+	const clamped = Math.min(100, Math.max(0, Math.round(v)));
+	glass.intensity = clamped;
+	localStorage.setItem(GLASS_KEY, String(clamped));
+	const k = clamped / 100;
+	const root = document.documentElement;
+	root.style.setProperty('--glass-blur', `${(4 + k * 28).toFixed(1)}px`);
+	root.style.setProperty('--glass-alpha', k.toFixed(2));
+}
+
+/** Reads the persisted intensity at startup; anything unreadable falls back to the default. */
+function initGlass(): void {
+	let v = NaN;
+	try {
+		const raw = localStorage.getItem(GLASS_KEY);
+		if (raw !== null) v = Number(raw);
+	} catch {
+		// storage unavailable — keep the default
+	}
+	setGlassIntensity(Number.isFinite(v) ? v : 100);
+}
+
+export function setAppearance(patch: Partial<typeof appearance>): void {	Object.assign(appearance, patch);
 	// Keep immersiveBackgroundIntensity in sync with ambientIntensity when that changes
 	if (patch.ambientIntensity) {
 		const map: Record<AmbientIntensity, number> = { subtle: 0.06, balanced: 0.12, vivid: 0.22 };
@@ -521,6 +550,7 @@ export function initTheme(): void {
 	}
 	apply();
 	initLayout();
+	initGlass();
 	// Async (each file needs its URL granted first), so the app paints in the fallback font for a
 	// frame or two before a loaded font swaps in.
 	if (custom.fontFiles.length) registerFontFiles();

@@ -218,7 +218,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 20] = [
+const UI_SETTINGS: [&str; 21] = [
     "proxy",
     "quality",
     "enable_history",
@@ -242,7 +242,12 @@ const UI_SETTINGS: [&str; 20] = [
     "lyrics_apple_dev_token",
     "lyrics_apple_storefront",
     "lyrics_boidu",
+    // Custom app icon: an absolute file path on this machine, not a secret.
+    "app_icon_path",
 ];
+
+/// Settings key the custom app icon path lives under. Also restored at startup (lib.rs).
+pub const APP_ICON_KEY: &str = "app_icon_path";
 
 #[tauri::command]
 pub async fn get_settings(state: St<'_>) -> Result<serde_json::Value, String> {
@@ -302,6 +307,60 @@ pub async fn set_setting(
     );
     Ok(())
 }
+
+// --- app icon (Settings ▸ General) ----------------------------------------------------------
+
+/// Apply `image` to every native surface that wears the app icon: the main window and the tray.
+/// Shared by [`set_app_icon`] and the startup restore in lib.rs. Each surface is best-effort.
+pub fn apply_app_icon(app: &tauri::AppHandle, image: &tauri::image::Image<'_>) {
+    if let Some(w) = app.get_webview_window("main") {
+        if let Err(e) = w.set_icon(image.clone()) {
+            tracing::warn!(error = %e, "window icon update failed");
+        }
+    }
+    crate::tray::set_icon(app, image.clone());
+}
+
+/// Custom app icon. `Some(path)` loads the picked image (PNG/ICO/JPG) and applies it to the
+/// window + tray right away, then persists the absolute path under [`APP_ICON_KEY`] so later
+/// launches restore it. `None`/empty restores the bundled default and clears the setting.
+#[tauri::command]
+pub async fn set_app_icon(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    path: Option<String>,
+) -> Result<(), String> {
+    let Some(path) = path.as_deref().map(str::trim).filter(|p| !p.is_empty()) else {
+        state.db.delete_setting(APP_ICON_KEY);
+        let icon = app
+            .default_window_icon()
+            .ok_or_else(|| "no bundled app icon to restore".to_string())?;
+        apply_app_icon(&app, icon);
+        return Ok(());
+    };
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(ext.as_str(), "png" | "ico" | "jpg" | "jpeg") {
+        return Err("Pick a PNG, ICO or JPG image.".into());
+    }
+    if !std::path::Path::new(path).is_file() {
+        return Err(format!("Image file not found: {path}"));
+    }
+    let image =
+        tauri::image::Image::from_path(path).map_err(|e| format!("Couldn't load {path}: {e}"))?;
+    apply_app_icon(&app, &image);
+    // Canonicalize so the stored value is absolute even when the picker hands over something
+    // relative; verbatim fallback for paths the OS refuses to canonicalize (network shares).
+    let abs = std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string());
+    state.db.set_setting(APP_ICON_KEY, &abs);
+    Ok(())
+}
+
 
 /// Status of the yt-dlp fallback for the settings screen: whether the toggle is on, whether
 /// the binary is installed, and the last download/update error (if any). The UI can also kick

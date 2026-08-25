@@ -29,6 +29,8 @@
 		layout,
 		appearance,
 		setAppearance,
+		glass,
+		setGlassIntensity,
 		custom,
 		effective,
 		applyTheme,
@@ -123,6 +125,97 @@
 
 	let tab = $state<TabId>('general');
 	const currentTab = $derived(TABS.find((t) => t.id === tab) ?? TABS[0]);
+
+	// --- Settings search -----------------------------------------------------------------------------------
+	// One text field filters the current tab live and, when nothing matches here, points at the
+	// tabs that do. Two layers: `rowMatch` hides individual rows (inside the shared `row`
+	// snippet), `groupVisible` collapses a whole section once none of its rows survive. Both read
+	// the same static keyword index below — one entry per row's title+desc, so the chips and the
+	// collapsing always agree with what's on screen.
+	let search = $state('');
+	const qnorm = $derived(search.trim().toLowerCase());
+
+	type SearchEntry = { tab: TabId; group: string; text: string };
+	const SEARCH_INDEX: SearchEntry[] = [
+		// General
+		{ tab: 'general', group: 'gen-activity', text: 'Watch history Register plays in your YouTube Music history. Needs sign-in.' },
+		{ tab: 'general', group: 'gen-activity', text: "Discord rich presence Show what you're listening to on your Discord profile. Needs the Discord desktop app running." },
+		{ tab: 'general', group: 'gen-system', text: 'Close to tray Closing the window keeps music playing in the background. Restore or quit from the tray icon.' },
+		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
+		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
+		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token.' },
+		// Appearance
+		{ tab: 'themes', group: 'thm-theme', text: 'Preset Accent colors tint the default look; palettes swap every color.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Accent color Buttons, highlights and the progress bar. Applies over any preset.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Background tint Shades the greys: surfaces, borders and secondary text.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Roundness Corner radius of cards, buttons and artwork.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Glass intensity How strong the frosted-glass blur on surfaces is.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Reset customization Drop the color, roundness and font overrides. Keeps the preset.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'App icon Use your own PNG as the window and taskbar icon. Browse Reset.' },
+		{ tab: 'themes', group: 'thm-layout', text: 'Window layout Orchard window arrangement — Grove, Canopy and more.' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Interface font Everything except headings.' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Heading font Page and section titles.' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Font files Load a .ttf, .otf or .woff from anywhere on this computer.' },
+		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics in the player view Tabs and switching buttons in the player view.' },
+		{ tab: 'themes', group: 'thm-player', text: "Artwork background Tint the player view with the playing track's cover, blurred." },
+		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders." },
+		{ tab: 'themes', group: 'thm-backdrops', text: 'Ambient Mode Immersive blurred artwork backdrop behind the app.' },
+		{ tab: 'themes', group: 'thm-backdrops', text: 'Ambient intensity How strong the blurred backdrop is.' },
+		{ tab: 'themes', group: 'thm-backdrops', text: 'Spotify Canvas Show looping Canvas video in Now Playing when available.' },
+		{ tab: 'themes', group: 'thm-packs', text: 'Get packs Per-artist ZIPs indexed every 15min. Injects style.css on the artist page.' },
+		{ tab: 'themes', group: 'thm-packs', text: 'Installed packs Packs currently installed.' },
+		// Playback
+		{ tab: 'playback', group: 'pb-audio', text: 'Audio quality Preferred stream quality when resolving a track.' },
+		{ tab: 'playback', group: 'pb-audio', text: 'Autoplay Keep the music going with similar songs when your queue ends.' },
+		{ tab: 'playback', group: 'pb-audio', text: "Prevent duplicate tracks in queue Adding a track that's already in the queue moves it from its old position." },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Smart Crossfade Gapless via mpv gapless-audio; crossfade is a volume ramp hint.' },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Crossfade mode Standard Smart.' },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Best Mix' },
+		{ tab: 'playback', group: 'pb-video', text: "Hide music videos Keep only the audio version of a track, so the official video doesn't turn up beside it." },
+		{ tab: 'playback', group: 'pb-video', text: 'yt-dlp fallback Last resort for tracks every YouTube client refuses. Resolve them through a self-updating yt-dlp binary.' },
+		{ tab: 'playback', group: 'pb-video', text: 'Stream clients Turn a client off to skip it when resolving streams.' },
+		// Downloads
+		{ tab: 'downloads', group: 'dl-location', text: 'Download location Where offline tracks are saved. Defaults to the app data folder if empty.' },
+		{ tab: 'downloads', group: 'dl-quality', text: 'Default quality Quality used when you download a track for offline listening.' },
+		{ tab: 'downloads', group: 'dl-quality', text: 'Audio format Container/codec for saved files. M4A is the most compatible.' },
+		{ tab: 'downloads', group: 'dl-quality', text: 'Use downloads when available Play the saved file instead of streaming whenever you have one.' },
+		{ tab: 'downloads', group: 'dl-auto', text: 'Keep new music offline automatically New liked songs are fetched in the background — no manual downloads.' },
+		{ tab: 'downloads', group: 'dl-saved', text: 'Downloaded tracks Saved tracks and their size.' },
+		// Data & storage
+		{ tab: 'data', group: 'dt-network', text: 'Proxy HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.' },
+		{ tab: 'data', group: 'dt-storage', text: 'Cache Clear cached stream URLs and downloaded audio bytes.' },
+		// About
+		{ tab: 'about', group: 'ab-hero', text: 'Limusic cross-platform desktop YouTube Music client. Ad-free playback straight from YouTube private API, real library and OS media keys.' },
+		{ tab: 'about', group: 'ab-updates', text: 'Updates Check GitHub for a newer release. Version available. Update now. Download.' }
+	];
+
+	function rowMatch(title: string, desc?: string) {
+		if (!qnorm) return true;
+		return title.toLowerCase().includes(qnorm) || (desc ?? '').toLowerCase().includes(qnorm);
+	}
+
+	function groupVisible(group: string) {
+		if (!qnorm) return true;
+		return SEARCH_INDEX.some((e) => e.group === group && e.text.toLowerCase().includes(qnorm));
+	}
+
+	const tabHasMatches = $derived(
+		!qnorm || SEARCH_INDEX.some((e) => e.tab === tab && e.text.toLowerCase().includes(qnorm))
+	);
+	const otherTabsWithQuery = $derived(
+		qnorm
+			? TABS.filter(
+					(t) =>
+						t.id !== tab &&
+						SEARCH_INDEX.some((e) => e.tab === t.id && e.text.toLowerCase().includes(qnorm))
+				)
+			: []
+	);
+
+	function switchTab(t: TabId) {
+		tab = t; // query stays applied — that's the point of the chips
+	}
+
 	// Bring-your-own-token lyrics (Apple Music). Stored in the internal settings DB; empty means off.
 	let appleMediaToken = $state('');
 	let appleDevToken = $state('');
@@ -244,6 +337,37 @@
 		if (typeof picked === 'string' && picked) {
 			settings.download_dir = picked;
 			await api.setSetting('download_dir', picked);
+		}
+	}
+
+	// --- App icon (#appearance): the backend swaps the icon immediately and persists it; we only
+	// mirror the path into `settings` so the row shows what's active.
+	const appIconPath = $derived(settings.app_icon_path ?? '');
+
+	async function pickAppIcon() {
+		const picked = await open({
+			multiple: false,
+			title: 'Choose an app icon',
+			filters: [{ name: 'PNG image', extensions: ['png'] }]
+		});
+		const path = Array.isArray(picked) ? picked[0] : picked;
+		if (!path) return;
+		try {
+			await api.setAppIcon(path);
+			settings.app_icon_path = path;
+			toast.success('App icon updated');
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+
+	async function resetAppIcon() {
+		try {
+			await api.setAppIcon(null);
+			delete settings.app_icon_path;
+			toast.success('App icon reset');
+		} catch (e) {
+			toast.error(String(e));
 		}
 	}
 
@@ -456,31 +580,35 @@
 	below?: Snippet;
 	tall?: boolean;
 })}
-	<div class="px-4 py-3.5">
-		<div class="flex {o.tall ? 'items-start' : 'items-center'} justify-between gap-6">
-			<div class="min-w-0">
-				<div class="flex items-center gap-2">
-					<span class="text-sm font-medium">{o.title}</span>
-					{#if o.badge}
-						<span
-							class="rounded-full bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-						>
-							{o.badge}
-						</span>
+	<!-- Settings search: a non-empty query that matches neither the title nor the description
+	     skips the row entirely; sections collapse via groupVisible() when nothing survives. -->
+	{#if rowMatch(o.title, o.desc)}
+		<div class="px-4 py-3.5">
+			<div class="flex {o.tall ? 'items-start' : 'items-center'} justify-between gap-6">
+				<div class="min-w-0">
+					<div class="flex items-center gap-2">
+						<span class="text-sm font-medium">{o.title}</span>
+						{#if o.badge}
+							<span
+								class="rounded-full bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+							>
+								{o.badge}
+							</span>
+						{/if}
+					</div>
+					{#if o.desc}
+						<p class="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{o.desc}</p>
 					{/if}
 				</div>
-				{#if o.desc}
-					<p class="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{o.desc}</p>
+				{#if o.control}
+					<div class="shrink-0">{@render o.control()}</div>
 				{/if}
 			</div>
-			{#if o.control}
-				<div class="shrink-0">{@render o.control()}</div>
+			{#if o.below}
+				<div class="mt-3">{@render o.below()}</div>
 			{/if}
 		</div>
-		{#if o.below}
-			<div class="mt-3">{@render o.below()}</div>
-		{/if}
-	</div>
+	{/if}
 {/snippet}
 
 <Dialog.Root bind:open={ui.settingsOpen}>
@@ -525,10 +653,52 @@
 				</header>
 
 				<div class="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+					<!-- Settings search: sticky so it stays reachable while scrolling long tabs. -->
+					<div
+						class="sticky top-0 z-10 -mx-6 -mt-5 mb-4 flex items-center gap-2 border-b bg-background/95 px-6 py-2.5 backdrop-blur"
+					>
+						<Input
+							bind:value={search}
+							placeholder="Search settings…"
+							aria-label="Search settings"
+							class="h-8 flex-1"
+						/>
+						{#if search}
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Clear settings search"
+								onclick={() => (search = '')}
+							>
+								<HugeiconsIcon icon={Cancel01Icon} size={14} />
+							</Button>
+						{/if}
+					</div>
+
+					{#if qnorm && !tabHasMatches}
+						<div
+							class="mb-4 flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed bg-muted/40 px-3 py-2"
+						>
+							<span class="text-xs text-muted-foreground">
+								No matches in {currentTab.label} — found in:
+							</span>
+							{#each otherTabsWithQuery as t (t.id)}
+								<Button
+									size="sm"
+									variant="outline"
+									class="h-6 rounded-full px-2.5 text-xs"
+									onclick={() => switchTab(t.id)}
+								>
+									{t.label}
+								</Button>
+							{/each}
+						</div>
+					{/if}
+
 					{#if !loaded}
 						<p class="text-sm text-muted-foreground">Loading…</p>
 					{:else if tab === 'general'}
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('gen-activity') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Activity</h3>
 							<div class={CARD}>
 								{@render row({
@@ -543,7 +713,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('gen-system') ? '' : 'hidden'}">
 							<h3 class={LABEL}>System</h3>
 							<div class={CARD}>
 								{@render row({
@@ -558,7 +728,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('gen-lyrics') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Lyrics</h3>
 							<div class={CARD}>
 								{@render row({
@@ -569,7 +739,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('gen-remote') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Remote</h3>
 							<div class={CARD}>
 								{@render row({
@@ -580,7 +750,7 @@
 							</div>
 						</section>
 					{:else if tab === 'themes'}
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('thm-theme') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Theme</h3>
 							<div class={CARD}>
 								{@render row({
@@ -602,20 +772,31 @@
 											: 'Shades the greys: surfaces, borders and secondary text.',
 									control: tintSlider
 								})}
-								{@render row({
-									title: 'Roundness',
-									desc: 'Corner radius of cards, buttons and artwork.',
-									control: radiusSlider
-								})}
-								{@render row({
-									title: 'Reset customization',
-									desc: 'Drop the color, roundness and font overrides. Keeps the preset.',
-									control: resetButton
-								})}
+							{@render row({
+								title: 'Roundness',
+								desc: 'Corner radius of cards, buttons and artwork.',
+								control: radiusSlider
+							})}
+							{@render row({
+								title: 'Glass intensity',
+								desc: 'How strong the frosted-glass blur on surfaces is.',
+								control: glassSlider
+							})}
+							{@render row({
+								title: 'Reset customization',
+								desc: 'Drop the color, roundness and font overrides. Keeps the preset.',
+								control: resetButton
+							})}
+							{@render row({
+								title: 'App icon',
+								badge: 'Beta',
+								desc: 'Use your own PNG as the window and taskbar icon.',
+								below: appIconForm
+							})}
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('thm-layout') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Layout</h3>
 							<div class={CARD}>
 								{@render row({
@@ -627,7 +808,7 @@
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('thm-typography') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Typography</h3>
 							<div class={CARD}>
 								{#each FONT_ROWS as fr (fr.key)}
@@ -650,7 +831,7 @@
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('thm-player') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Player view</h3>
 							<div class={CARD}>
 								{@render row({
@@ -674,7 +855,7 @@
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('thm-backdrops') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Backdrops</h3>
 							<div class={CARD}>
 								{@render row({
@@ -697,7 +878,7 @@
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('thm-packs') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Artist packs</h3>
 							<div class={CARD}>
 								{@render row({
@@ -710,7 +891,7 @@
 							</div>
 						</section>
 					{:else if tab === 'playback'}
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('pb-audio') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Audio</h3>
 							<div class={CARD}>
 								{@render row({
@@ -732,7 +913,7 @@
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('pb-transitions') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Transitions</h3>
 							<div class={CARD}>
 								{@render row({
@@ -751,7 +932,7 @@
 							</div>
 						</section>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('pb-video') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Video & advanced</h3>
 							<div class={CARD}>
 								{@render row({
@@ -774,7 +955,7 @@
 							</div>
 						</section>
 					{:else if tab === 'downloads'}
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('dl-location') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Location</h3>
 							<div class={CARD}>
 								{@render row({
@@ -784,7 +965,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('dl-quality') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Quality & format</h3>
 							<div class={CARD}>
 								{@render row({
@@ -805,7 +986,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('dl-auto') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Auto-offline</h3>
 							<div class={CARD}>
 								{@render row({
@@ -816,7 +997,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('dl-saved') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Saved tracks</h3>
 							<div class={CARD}>
 								{@render row({
@@ -827,7 +1008,7 @@
 							</div>
 						</section>
 					{:else if tab === 'data'}
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('dt-network') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Network</h3>
 							<div class={CARD}>
 								{@render row({
@@ -837,7 +1018,7 @@
 								})}
 							</div>
 						</section>
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('dt-storage') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Storage</h3>
 							<div class={CARD}>
 								{@render row({
@@ -849,7 +1030,7 @@
 						</section>
 					{:else if tab === 'about'}
 						<div
-							class="mb-7 rounded-xl border bg-gradient-to-br from-primary/8 to-transparent px-4 py-4"
+							class="mb-7 rounded-xl border bg-gradient-to-br from-primary/8 to-transparent px-4 py-4 {groupVisible('ab-hero') ? '' : 'hidden'}"
 						>
 							<div class="flex items-center gap-2">
 								<span class="font-heading text-lg font-bold">Limusic</span>
@@ -867,7 +1048,7 @@
 							</p>
 						</div>
 
-						<section class={GROUP}>
+						<section class="{GROUP} {groupVisible('ab-updates') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Updates</h3>
 							<div class={CARD}>
 								{@render row({
@@ -1062,6 +1243,35 @@
 		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
 			{effective.radius.toFixed(2)}
 		</span>
+	</div>
+{/snippet}
+
+{#snippet glassSlider()}
+	<div class="flex w-44 shrink-0 items-center gap-3">
+		<Slider
+			type="single"
+			aria-label="Glass intensity"
+			min={0}
+			max={100}
+			step={5}
+			value={glass.intensity}
+			onValueChange={(v) => setGlassIntensity(v)}
+		/>
+		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+			{glass.intensity}
+		</span>
+	</div>
+{/snippet}
+
+{#snippet appIconForm()}
+	<!-- Browse/Reset hand the path straight to the backend; it applies and persists, we only
+	     mirror `settings.app_icon_path` so the field reflects reality. -->
+	<div class="flex items-center gap-2">
+		<Input class="flex-1" readonly value={appIconPath} placeholder="Default Limusic icon" />
+		<Button size="sm" variant="outline" onclick={pickAppIcon}>Browse…</Button>
+		<Button size="sm" variant="outline" disabled={!appIconPath} onclick={resetAppIcon}>
+			Reset
+		</Button>
 	</div>
 {/snippet}
 

@@ -59,6 +59,22 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.0`.
+
+**v0.6.0 — feel & finish (9 UI upgrades):**
+- **Shared-element artwork transition** — the cover on the card you clicked flies into the player and lands as the big artwork; the player stops sliding up from nowhere and starts arriving from *where you clicked*
+- **Artwork swipe pager** — swipe the big cover left/right to skip tracks, with drag-follow visual feedback
+- **Sing mode** — fullscreen lyrics-only view with huge karaoke type; one mic button to enter, Esc to leave
+- **Dual-language lyrics** — a Translate toggle in the lyrics footer renders a muted second line under the original, cached per line, works in Sing mode too
+- **Ctrl+K controls the whole app** — the palette gains an Actions group: switch layouts, toggle ambient/artwork-accent/tabbed-player, jump to any Settings tab, sleep timer, mini player, check updates
+- **Hover-expand sidebar** — below full-width windows the icon rail floats open to its labeled width while hovered and collapses on leave
+- **Heart burst + fly-to-playlist** — liking pops a spark burst; adding to a playlist flies a little "+" from the click
+- **Gamepad focus polish** — using the controller shows a clear focus ring and the queue auto-scrolls to the playing track
+- **Searchable settings** — a filter box in Settings matches rows live, with "found in" chips jumping between tabs
+- **Glass intensity slider** — dial the blur/translucency of every glass surface (Appearance)
+- **Custom app icon** — pick any PNG as the window + tray icon; persists across launches, reset anytime
+
+
 All available in the latest release. Fork tracks upstream versioning — this release is `v0.5.12`.
 
 **v0.5.12 — auto-offline & history:**

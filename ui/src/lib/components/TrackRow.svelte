@@ -11,6 +11,7 @@
 	import { thumb } from '$lib/thumb';
 	import { lt } from '$lib/lt.svelte';
 	import { isLiked, toggleLike, downloadedIds } from '$lib/player.svelte';
+	import { flyPlus } from '$lib/fx';
 	import TrackMenu from './TrackMenu.svelte';
 	import ArtistLine from './ArtistLine.svelte';
 
@@ -62,6 +63,43 @@
 	// reflect that in the hover icon + label so the row doesn't lie.
 	const guestAdd = $derived(lt.role === 'guest');
 
+	// Like burst: a ~600ms class on the heart that runs the spark keyframes (layout.css). Only when
+	// the toggle turns liking ON — unliking stays quiet.
+	let burst = $state(false);
+	let burstTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function like() {
+		const willLike = !isLiked(song);
+		toggleLike(song);
+		if (!willLike) return;
+		burst = true;
+		clearTimeout(burstTimer);
+		burstTimer = setTimeout(() => (burst = false), 600);
+	}
+
+	// The add-to-playlist action lives in TrackMenu's items, so the click coordinates never reach
+	// this component directly — track the last pointer press globally (capture phase, so menu
+	// item clicks included) and fly the "+" from there before handing off to onAdd.
+	let lastPoint = { x: 0, y: 0 };
+
+	$effect(() => {
+		const track = (e: PointerEvent) => {
+			lastPoint.x = e.clientX;
+			lastPoint.y = e.clientY;
+		};
+		window.addEventListener('pointerdown', track, true);
+		return () => window.removeEventListener('pointerdown', track, true);
+	});
+
+	const handleAdd = $derived(
+		onAdd
+			? () => {
+					flyPlus(lastPoint.x, lastPoint.y);
+					onAdd();
+				}
+			: undefined
+	);
+
 	// The whole row is a play target (role="button"), so mirror native button keyboard activation.
 	// Only when the key lands on the row itself — keydowns bubble up from nested interactive
 	// elements (⋯ menu, artist link), and hijacking those would play the row instead.
@@ -83,6 +121,7 @@
 	role="button"
 	tabindex="0"
 	data-ctx
+	data-active={active ? 'true' : undefined}
 	onclick={onplay}
 	onkeydown={onKey}
 	aria-label={guestAdd ? `Add ${song.title} to the session queue` : `Play ${song.title}`}
@@ -160,23 +199,29 @@
 		{#if compact}
 			<!-- Persistent, not hover-only: a filled heart is state the row has to keep showing. -->
 			<button
-				class="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground"
+				class="relative cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground"
 				aria-label={isLiked(song) ? 'Remove from liked songs' : 'Save to liked songs'}
 				aria-pressed={isLiked(song)}
 				onclick={(e) => {
 					e.stopPropagation();
-					toggleLike(song);
+					like();
 				}}
 			>
+				{#if burst}
+					<!-- 6 sparks flying outward; angles are spread by --a in the keyframes (layout.css). -->
+					{#each Array(6) as _, i}
+						<span class="heart-spark" style="--a:{i * 60}deg" aria-hidden="true"></span>
+					{/each}
+				{/if}
 				<HugeiconsIcon
 					icon={FavouriteIcon}
-					class="h-4 w-4 {isLiked(song) ? 'fill-current text-primary' : ''}"
+					class="h-4 w-4 {isLiked(song) ? 'fill-current text-primary' : ''} {burst ? 'heart-pop' : ''}"
 				/>
 			</button>
 		{/if}
 		<TrackMenu
 			{song}
-			{onAdd}
+			onAdd={handleAdd}
 			{onRemove}
 			{removeLabel}
 			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground focus-visible:opacity-100 {compact

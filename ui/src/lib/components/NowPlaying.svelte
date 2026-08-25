@@ -7,6 +7,7 @@
 		Maximize01Icon,
 		Minimize01Icon,
 		Mic01Icon,
+		Cancel01Icon,
 		MusicNote01Icon,
 		PauseIcon,
 		PlayIcon,
@@ -33,6 +34,7 @@
 	import { appearance, layout } from '$lib/theme.svelte';
 	import { thumb, thumbHQ } from '$lib/thumb';
 	import * as api from '$lib/api';
+	import { playFlight } from '$lib/flight';
 	import QueueList from './QueueList.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import LyricsView from './LyricsView.svelte';
@@ -59,6 +61,19 @@
 	// it back. beforeNavigate (not a pathname effect) so clicking the tab you're already on counts.
 	beforeNavigate(() => (np.open = false));
 
+	// Shared-element flight: when the view OPENS (false -> true, not track changes while open),
+	// fly the clicked card's cover into the big artwork. A no-op when nothing was recently
+	// clicked (restore, gapless advance) — the ordinary slide-up just plays.
+	let wasOpen = false;
+	$effect(() => {
+		const open = np.open;
+		const opened = open && !wasOpen;
+		wasOpen = open;
+		if (!opened) return;
+		const t = setTimeout(() => playFlight('[data-flight-target]'), 30);
+		return () => clearTimeout(t);
+	});
+
 	// The queue item matching what's actually playing — the track menu's song. Null when
 	// the queue and the player disagree about what is playing (mid-skip), same guard as PlayerBar.
 	const currentSong = $derived.by(() => {
@@ -73,6 +88,73 @@
 	$effect(() => {
 		if (np.tab !== 'lyrics') big = false; // nothing to enlarge on the queue tab
 	});
+
+	// Sing mode: a fixed full-view karaoke takeover above everything in the view. Esc or the ✕
+	// leaves; leaving the lyrics tab tears it down like `big`.
+	let sing = $state(false);
+	$effect(() => {
+		if (np.tab !== 'lyrics') sing = false;
+	});
+
+	// --- Artwork swipe pager --------------------------------------------------------------------
+	// Horizontal drags on the artwork flip tracks (left = next, right = previous); the cover
+	// follows the finger at 0.15× so the gesture reads without yanking the whole view. Capture is
+	// only taken once horizontal intent is proven (~8px), so plain taps still deliver their click
+	// to the play/pause button underneath and vertical drags still scroll (touch-action: pan-y).
+	// A fired swipe swallows the click that follows the pointerup.
+	let swipeArmed = false; // pointer is down on the artwork
+	let swipeEngaged = $state(false); // horizontal intent proven — capturing + tracking
+	let swipeOffset = $state(0); // current visual offset, dx * 0.15
+	const artStyle = $derived(
+		swipeEngaged || swipeOffset !== 0
+			? `transform: translateX(${swipeOffset}px);${swipeEngaged ? '' : ' transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);'}`
+			: undefined // no transform while idle → no stacking-context side effects
+	);
+	let swipeStartX = 0;
+	let swipeStartY = 0;
+	let swiped = false;
+	let swipedTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function onArtPointerDown(e: PointerEvent) {
+		if (!e.isPrimary || e.button !== 0) return;
+		swipeArmed = true;
+		swipeStartX = e.clientX;
+		swipeStartY = e.clientY;
+		swiped = false;
+	}
+
+	function onArtPointerMove(e: PointerEvent) {
+		if (!swipeArmed) return;
+		const dx = e.clientX - swipeStartX;
+		const dy = e.clientY - swipeStartY;
+		if (!swipeEngaged) {
+			// Horizontal intent only; until then the gesture belongs to taps and vertical scrolling.
+			if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
+			swipeEngaged = true;
+			try {
+				(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			} catch {
+				/* pointer already gone */
+			}
+		}
+		swipeOffset = dx * 0.15;
+	}
+
+	function onArtPointerEnd(e: PointerEvent) {
+		if (!swipeArmed && !swipeEngaged) return;
+		const dx = e.clientX - swipeStartX;
+		const dy = e.clientY - swipeStartY;
+		swipeArmed = false;
+		if (swipeEngaged && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+			swiped = true;
+			clearTimeout(swipedTimer);
+			swipedTimer = setTimeout(() => (swiped = false), 400);
+			(dx < 0 ? api.nextTrack() : api.prevTrack()).catch(() => {});
+		}
+		// Disengaging re-enables the transition, so wherever the cover sits it glides home.
+		swipeEngaged = false;
+		swipeOffset = 0;
+	}
 
 	// Google's CDN doesn't serve every rewritten size for every image (see MediaCard), and at this
 	// size a broken-image glyph *is* the page. So step down until one loads: crisp, then the size
@@ -163,6 +245,12 @@
 	}
 </script>
 
+<svelte:window
+	onkeydown={(e) => {
+		if (sing && e.key === 'Escape') sing = false;
+	}}
+/>
+
 <!-- Covers the page but not the sidebar (you navigate away to minimise) and not the player bar,
      which stays in charge of transport and paints above this on the way in and out.
      z-20 matches the highest a page uses for its own chrome (home's sticky mood chips) and wins the
@@ -213,7 +301,17 @@
 			>
 		<!-- A div, not a button: it is the [data-ctx] host, so right-clicking anywhere on the
 		     artwork opens the track menu at the pointer (ctxHost on the hidden TrackMenu). -->
-			<div class="relative w-full max-w-[var(--art)]" data-ctx>
+			<!-- svelte-ignore a11y_no_static_element_interactions -- pointer events implement the swipe pager -->
+		<div
+			class="relative w-full max-w-[var(--art)] touch-pan-y"
+			data-ctx
+			data-flight-target
+			onpointerdown={onArtPointerDown}
+			onpointermove={onArtPointerMove}
+			onpointerup={onArtPointerEnd}
+			onpointercancel={onArtPointerEnd}
+			style={artStyle}
+		>
 				{#if canvasUrl}
 					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
 					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
@@ -233,7 +331,7 @@
 						<button
 							type="button"
 							class="absolute inset-0 cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-							onclick={(e) => { e.stopPropagation(); toggle(); }}
+							onclick={(e) => { e.stopPropagation(); if (swiped) return; toggle(); }}
 							onwheel={onMaxWheel}
 							aria-label={playback.paused ? 'Play' : 'Pause'}
 						></button>
@@ -252,6 +350,7 @@
 					class="relative block w-full max-w-[var(--art)] cursor-pointer rounded-2xl bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 					onclick={(e) => {
 						e.stopPropagation();
+						if (swiped) return; // a swipe just fired — this click is its aftermath
 						toggle();
 					}}
 					onwheel={onMaxWheel}
@@ -344,6 +443,14 @@
 								class="h-4 w-4"
 							/>
 						</button>
+						<button
+							onclick={() => (sing = true)}
+							class="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+							aria-label="Sing mode"
+							title="Sing mode"
+						>
+							<HugeiconsIcon icon={Mic01Icon} class="h-4 w-4" />
+						</button>
 					{/if}
 				</div>
 				<!-- Only the open tab is mounted: bits-ui keeps inactive content in the DOM, which would
@@ -362,6 +469,36 @@
 		{/if}
 	</div>
 	</div>
+
+	{#if sing}
+		<!-- Sing mode takeover: fixed and z-[90] so it clears everything inside the view, with the
+		     blurred artwork wash as the backdrop. LyricsView runs in its sing variant: giant active
+		     line, centred column, no footer. A separate mount — it fetches its own (Rust-cached)
+		     lyrics rather than fighting the panel instance for scroll position. -->
+		<div
+			transition:fade={{ duration: 180 }}
+			class="fixed inset-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-background"
+		>
+			{#if appearance.artworkBackground && srcs[2] && !bgFailed}
+				<img
+					src={srcs[2]}
+					alt=""
+					class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl dark:opacity-40"
+				/>
+			{/if}
+			<div class="flex min-h-0 flex-1 flex-col px-6 py-10 sm:px-14">
+				<LyricsView expanded sing />
+			</div>
+			<button
+				onclick={() => (sing = false)}
+				class="glass absolute top-4 right-4 z-10 cursor-pointer rounded-md p-2 text-muted-foreground transition-colors hover:text-foreground"
+				aria-label="Exit sing mode"
+				title="Exit sing mode (Esc)"
+			>
+				<HugeiconsIcon icon={Cancel01Icon} class="h-5 w-5" />
+			</button>
+		</div>
+	{/if}
 
 	<!-- Canopy-only transport: this layout unmounts the bottom player bar, so the takeover view
 	     carries its own. Every other layout keeps the bar below the row and renders no footer. -->

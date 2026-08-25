@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { onMount } from 'svelte';
 	import { scale } from 'svelte/transition';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -77,10 +78,29 @@
 	}
 
 	// Account lives in the titlebar now — see AccountMenu.svelte.
+
+	// Hover-expand (Photoshop/Spotify hybrid): below lg the sidebar is an icon rail; hovering it
+	// floats the full labeled width OVER the content instead of pushing it, and it collapses on
+	// mouse leave. At lg+ the sidebar is already full width, so hover does nothing.
+	let hovered = $state(false);
+	let narrow = $state(false);
+	let expanded = $derived(narrow && hovered);
+	let mq: MediaQueryList | undefined;
+	onMount(() => {
+		mq = matchMedia('(max-width: 63.98rem)');
+		narrow = mq.matches;
+		const on = (e: MediaQueryListEvent) => (narrow = e.matches);
+		mq.addEventListener('change', on);
+		return () => mq?.removeEventListener('change', on);
+	});
 </script>
 
 <aside
-	class="relative flex h-full w-16 shrink-0 flex-col border-l-0 border-t-0 border-b-0 glass p-3 text-sidebar-foreground lg:w-60"
+	class="relative flex h-full w-16 shrink-0 flex-col border-l-0 border-t-0 border-b-0 glass p-3 text-sidebar-foreground lg:w-60 {expanded
+		? 'sidebar-expanded'
+		: ''}"
+	onmouseenter={() => (hovered = true)}
+	onmouseleave={() => (hovered = false)}
 >
 	<div class="flex items-center justify-center px-2 py-2 lg:justify-between">
 		<span class="hidden font-heading text-lg font-bold tracking-tight lg:block">Limusic</span>

@@ -298,6 +298,9 @@ export const getStreamClients = () => invoke<string[]>('get_stream_clients');
 export const clearCaches = () => invoke<void>('clear_caches');
 /** Grant the webview a URL for one font file the user picked, so `@font-face` can load it. */
 export const allowFontFile = (path: string) => invoke<void>('allow_font_file', { path });
+/** Custom app icon: applies to the window + tray immediately and persists across launches.
+ *  `null` restores the bundled default. */
+export const setAppIcon = (path: string | null) => invoke<void>('set_app_icon', { path });
 
 // --- offline downloads (Rust downloads.rs) ------------------------------------------------------
 export interface DownloadedTrack {

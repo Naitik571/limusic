@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as api from '$lib/api';
-	import { onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
+	import { onDestroy, untrack } from 'svelte';
 	import { playback } from '$lib/player.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
@@ -8,8 +9,36 @@
 	// component, or the lyrics refetch and the scroll position is lost.
 	// `compact` is the mini-player: a ~220px column with no room for the source footer or a
 	// scrollbar. It only shrinks the type and chrome; the sync/auto-scroll logic is identical.
-	let { expanded = false, compact = false }: { expanded?: boolean; compact?: boolean } =
-		$props();
+	// `sing` is the full-view karaoke takeover: giant active line, roomier spacing, no footer.
+	let {
+		expanded = false,
+		compact = false,
+		sing = false
+	}: { expanded?: boolean; compact?: boolean; sing?: boolean } = $props();
+
+	// --- Dual-language lyrics -------------------------------------------------------------------
+	// A persisted Translate toggle. Lines resolve lazily through api.translateLyrics into a cache
+	// keyed by `${lang}:${text}`, so flipping the toggle off/on and moving between tracks never
+	// refetches a line that already landed. Netease-provided translations short-circuit the fetch.
+	let translate = $state(false);
+	let transLang = $state('en');
+	const transCache = $state(new Map<string, string>());
+
+	if (browser) {
+		translate = localStorage.getItem('lyrics-translate') === '1';
+		transLang = localStorage.getItem('lyrics-translate-lang') || navigator.language.split('-')[0] || 'en';
+	}
+
+	function toggleTranslate() {
+		translate = !translate;
+		if (browser) localStorage.setItem('lyrics-translate', translate ? '1' : '0');
+	}
+
+	/** The translation to show under a line, or undefined when hidden/not yet fetched. */
+	function translationFor(line: api.LyricLine): string | undefined {
+		if (!translate || !line.text?.trim()) return undefined;
+		return line.translation ?? transCache.get(`${transLang}:${line.text}`);
+	}
 
 	/** "3:21" / "1:02:03" → seconds. */
 	function durationSecs(d?: string): number | undefined {
@@ -83,6 +112,32 @@
 			});
 	});
 
+	// Sequential translation worker — one request at a time keeps us polite to the free endpoint.
+	// A re-run (track change, toggle on, offset shift replacing the object) only fills the gaps:
+	// cache hits are checked untracked so completed lines don't re-trigger this very effect.
+	let transRun = 0;
+	$effect(() => {
+		if (!translate || !lyrics) return;
+		const run = ++transRun;
+		const lang = transLang;
+		void (async () => {
+			for (const line of lyrics.lines) {
+				if (run !== transRun || !translate) return; // superseded or switched off mid-flight
+				const text = line.text?.trim();
+				if (!text || line.translation) continue;
+				const key = `${lang}:${text}`;
+				if (untrack(() => transCache.has(key))) continue;
+				try {
+					const t = await api.translateLyrics(text, lang);
+					if (run !== transRun) return;
+					if (t) transCache.set(key, t); // reactive: lines fill in as they arrive
+				} catch {
+					/* left uncached — a later pass retries */
+				}
+			}
+		})();
+	});
+
 	// Last synced line whose cue has passed (lines arrive sorted by time).
 	const activeIndex = $derived.by(() => {
 		if (!lyrics?.synced) return -1;
@@ -105,7 +160,7 @@
 		userScrollUntil = Date.now() + 3000;
 		cancelScrollTween();
 	}
-	let wasExpanded: boolean | undefined;
+	let wasMode: string | undefined;
 
 	// rAF-driven scroll tween. `scrollIntoView({ behavior: 'smooth' })` delegates to the browser,
 	// whose curve and duration are unsteerable and visibly different per platform (WebView2 glides,
@@ -146,8 +201,9 @@
 		const i = activeIndex;
 		// Re-centre after the layout width/font changes, and jump rather than glide across it.
 		// (Also fires on the first run, where both values are already at their defaults.)
-		if (expanded !== wasExpanded) {
-			wasExpanded = expanded;
+		const mode = `${expanded ? 'e' : ''}${sing ? 's' : ''}`;
+		if (mode !== wasMode) {
+			wasMode = mode;
 			hasScrolled = false;
 			userScrollUntil = 0;
 		}
@@ -267,7 +323,13 @@
 					data-line={i}
 					onclick={() => seekTo(line)}
 					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
-						{expanded ? 'py-3 text-3xl' : compact ? 'py-1 text-sm' : 'py-2 text-xl'}
+						{sing
+						? `py-4 ${isActive ? 'text-4xl md:text-6xl' : 'text-2xl md:text-3xl'}`
+						: expanded
+							? 'py-3 text-3xl'
+							: compact
+								? 'py-1 text-sm'
+								: 'py-2 text-xl'}
 						{isActive
 						? line.words?.length
 								? 'scale-[1.04]'
@@ -324,10 +386,16 @@
 						<span>{line.text || '♪'}</span>
 					{/if}
 
-					<!-- Translation line rendering -->
-					{#if line.translation}
-						<p class="mt-1 text-sm font-normal italic tracking-wide opacity-80 transition-opacity">
-							{line.translation}
+					<!-- Translation line rendering (Translate toggle; also Netease-provided ones) -->
+					{#if translationFor(line)}
+						<p
+							class="font-normal italic tracking-wide opacity-80 {sing
+								? isActive
+									? 'mt-3 text-xl font-medium md:text-2xl'
+									: 'mt-2 text-base'
+								: 'mt-1 text-sm'}"
+						>
+							{translationFor(line)}
 						</p>
 					{/if}
 				</button>
@@ -343,24 +411,38 @@
 		>
 			{#each lyrics.lines as line, i (i)}
 				{#if line.text}
-					<div>
+					<div class={sing ? 'text-2xl md:text-3xl' : ''}>
 						<p>{line.text}</p>
-							{#if line.translation}
-								<p class="text-xs italic text-muted-foreground">{line.translation}</p>
-							{/if}
-						</div>
-					{:else}
-						<div class="h-4"></div>
-					{/if}
-				{/each}
+						{#if translationFor(line)}
+							<p class="{sing ? 'mt-1 text-base' : 'text-xs'} italic text-muted-foreground">
+								{translationFor(line)}
+							</p>
+						{/if}
+					</div>
+				{:else}
+					<div class="h-4"></div>
+				{/if}
+			{/each}
 			</div>
 		{:else}
 			<p class="py-8 text-center text-sm text-muted-foreground">No lyrics found for this track.</p>
 		{/if}
 </div>
-{#if lyrics && !loading && !compact}
-	<p class="border-t px-4 py-2 text-xs text-muted-foreground">
-		{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
+{#if lyrics && !loading && !compact && !sing}
+	<p class="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
+		<span class="truncate">
+			{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
+		</span>
+		<button
+			onclick={toggleTranslate}
+			aria-pressed={translate}
+			title="Show line-by-line translations ({transLang})"
+			class="ml-auto shrink-0 cursor-pointer rounded border border-muted-foreground/25 px-1.5 py-0.5 text-[11px] tracking-wide transition-colors {translate
+				? 'border-primary/50 bg-primary/10 text-primary'
+				: 'hover:border-muted-foreground/50 hover:text-foreground'}"
+		>
+			Translate
+		</button>
 	</p>
 {/if}
 

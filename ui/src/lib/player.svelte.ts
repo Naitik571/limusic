@@ -3,6 +3,7 @@
 // context/11 UI contract — this module only calls commands / subscribes to events.
 import { browser } from '$app/environment';
 import * as api from './api';
+import { initFlightCapture } from './flight';
 import type { Account, AccountIdentity, BrowseItem, NowPlaying, QueueState, SongItem } from './api';
 import { applyLtState, lt } from './lt.svelte';
 import { clearCached } from './pagecache';
@@ -983,9 +984,21 @@ export function initApp(mini = false): () => void {
 	const onKey = (e: KeyboardEvent) => onShortcut(e);
 	window.addEventListener('keydown', onKey);
 	subs.push(Promise.resolve(() => window.removeEventListener('keydown', onKey)));
+	// Shared-element flight: remember the cover of whatever card was clicked so the player view
+	// can fly it into place (see flight.ts / NowPlaying).
+	subs.push(Promise.resolve(initFlightCapture()));
 	// Gamepad: the Rust poller emits `gamepad` with an action string; handle it exactly like the
 	// matching keyboard shortcut so a controller works while the app is backgrounded/tray-minimized.
+	// Any event also lights up `gamepad-nav` on <body> (focus outlines etc. only show while a pad
+	// is actually in use); it clears after 3s of silence.
+	let gpNavTimer: ReturnType<typeof setTimeout> | undefined;
+	const gpPing = () => {
+		document.body.classList.add('gamepad-nav');
+		clearTimeout(gpNavTimer);
+		gpNavTimer = setTimeout(() => document.body.classList.remove('gamepad-nav'), 3000);
+	};
 	const onGamepad = (action: string) => {
+		gpPing();
 		const pos = playback.position;
 		switch (action) {
 			case 'playpause':
@@ -993,9 +1006,11 @@ export function initApp(mini = false): () => void {
 				break;
 			case 'next':
 				api.nextTrack();
+				gpRevealActive();
 				break;
 			case 'prev':
 				api.prevTrack();
+				gpRevealActive();
 				break;
 			case 'mute':
 				toggleMute();
@@ -1025,6 +1040,13 @@ export function initApp(mini = false): () => void {
 	};
 	const gp = api.onGamepad(onGamepad);
 	subs.push(gp);
+	// After next/prev, keep the active queue row on screen. Delayed so the queue-changed event (and
+	// TrackRow's re-render with its data-active row) lands before we go looking for it.
+	function gpRevealActive() {
+		setTimeout(() => {
+			document.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		}, 300);
+	}
 	const teardown = () => subs.forEach((u) => u.then((f) => f()));
 	api.getQueue()
 		.then((q) => (playback.queue = q))

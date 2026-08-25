@@ -275,6 +275,19 @@ pub fn run() {
                 tracing::warn!(error = %e, "tray init failed (continuing without tray)");
             }
 
+            // Restore the custom app icon (Settings ▸ General) onto window + tray. Best-effort:
+            // a file that vanished since last launch just leaves the bundled icon in place.
+            if let Some(p) = app_state
+                .db
+                .get_setting(commands::APP_ICON_KEY)
+                .filter(|p| std::path::Path::new(p).is_file())
+            {
+                match tauri::image::Image::from_path(&p) {
+                    Ok(img) => commands::apply_app_icon(&handle, &img),
+                    Err(e) => tracing::warn!(error = %e, path = %p, "custom app icon failed to load"),
+                }
+            }
+
             // Bridge: apply Listen Together sync commands (guest playback / host seed) to AppState.
             {
                 let st = app_state.clone();
@@ -509,6 +522,7 @@ pub fn run() {
             commands::remove_artist_pack,
             commands::get_artist_pack,
             commands::fetch_artist_packs_index,
+            commands::set_app_icon,
         ])
         .on_window_event(|window, event| {
             // Close-to-tray: âœ• hides the main window and playback keeps running; real quit is

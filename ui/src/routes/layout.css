@@ -51,8 +51,8 @@
 	--border: oklch(0.922 0.005 var(--hue));
 	--input: oklch(0.922 0.005 var(--hue));
 	--ring: oklch(0.711 0.019 var(--hue));
-	--glass: oklch(1 0 0 / 0.5);
-	--glass-strong: oklch(1 0 0 / 0.66);
+	--glass: oklch(1 0 0 / calc(0.5 * var(--glass-alpha, 1)));
+	--glass-strong: oklch(1 0 0 / calc(0.66 * var(--glass-alpha, 1)));
 	--glass-border: oklch(0.35 0.02 var(--hue) / 0.14);
 	--glass-highlight: oklch(1 0 0 / 0.6);
 	--glow-1: oklch(0.62 0.22 15.458);
@@ -106,8 +106,8 @@
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
 	--ring: oklch(0.542 0.034 var(--hue));
-	--glass: oklch(1 0 0 / 0.045);
-	--glass-strong: oklch(1 0 0 / 0.085);
+	--glass: oklch(1 0 0 / calc(0.045 * var(--glass-alpha, 1)));
+	--glass-strong: oklch(1 0 0 / calc(0.085 * var(--glass-alpha, 1)));
 	--glass-border: oklch(1 0 0 / 0.09);
 	--glass-highlight: oklch(1 0 0 / 0.07);
 	--glow-1: oklch(0.62 0.22 15.458);
@@ -1200,6 +1200,42 @@ html.layout-wide .app-root {
 	background-image: radial-gradient(110% 70% at 50% -8%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 65%);
 }
 
+/* --- Hover-expand sidebar (below lg) ---
+   The icon rail floats to its full labeled width over the content while hovered, and collapses
+   on mouse leave (Photoshop/Spotify hybrid). Sidebar.svelte toggles the class; at lg+ the
+   sidebar is already full width and these rules never apply. Unlayered, so the display
+   overrides beat the `hidden lg:*` utilities. */
+@media (max-width: 63.98rem) {
+	aside.sidebar-expanded {
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 15rem;
+		z-index: 40;
+		border-radius: 0 1rem 1rem 0;
+		box-shadow: 0 12px 44px rgb(0 0 0 / 0.45);
+	}
+	aside.sidebar-expanded .lg\:inline {
+		display: inline;
+	}
+	aside.sidebar-expanded .lg\:block {
+		display: block;
+	}
+	aside.sidebar-expanded .lg\:flex {
+		display: flex;
+	}
+	aside.sidebar-expanded .lg\:justify-between {
+		justify-content: space-between;
+	}
+	aside.sidebar-expanded .lg\:justify-start {
+		justify-content: flex-start;
+	}
+	aside.sidebar-expanded .lg\:w-60 {
+		width: 15rem;
+	}
+}
+
 /* --- Ambient mode (#7) ---
    One app-wide backdrop lives in +layout.svelte: the playing cover blurred to a wash at
    --ambient-opacity (the artwork layer's opacity: subtle 0.5 / balanced 0.7 / vivid 0.85) with a
@@ -1475,26 +1511,29 @@ input[type='range'].range:active::-webkit-slider-thumb {
    Frosted surfaces: translucent fill + backdrop blur + hairline border + a 1px inner
    highlight along the top edge (the "glass catching light" look). Blur is only used on
    static chrome (sidebar, titlebar, player bar, drawers, dialogs) â€” never on the scrolling
-   content area, so WebKitGTK's tile-rasterization never re-blurs moving content. */
+   content area, so WebKitGTK's tile-rasterization never re-blurs moving content.
+   Blur radius and fill alpha are driven by theme.svelte.ts's glass-intensity setting via
+   --glass-blur / --glass-alpha on <html>; the fallbacks here are today's untouched values,
+   so with no JS applied (or intensity 100 pre-mapping) these render exactly as before. */
 @layer components {
 	.glass {
 		background: var(--glass);
-		-webkit-backdrop-filter: blur(24px) saturate(160%);
-		backdrop-filter: blur(24px) saturate(160%);
+		-webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(160%);
+		backdrop-filter: blur(var(--glass-blur, 24px)) saturate(160%);
 		border: 1px solid var(--glass-border);
 		box-shadow: inset 0 1px 0 0 var(--glass-highlight);
 	}
 	.glass-strong {
 		background: var(--glass-strong);
-		-webkit-backdrop-filter: blur(32px) saturate(180%);
-		backdrop-filter: blur(32px) saturate(180%);
+		-webkit-backdrop-filter: blur(var(--glass-blur, 32px)) saturate(180%);
+		backdrop-filter: blur(var(--glass-blur, 32px)) saturate(180%);
 		border: 1px solid var(--glass-border);
 		box-shadow: inset 0 1px 0 0 var(--glass-highlight);
 	}
 	/* Hairline-only frosted edge for surfaces that keep their own background. */
 	.glass-edge {
-		-webkit-backdrop-filter: blur(24px) saturate(160%);
-		backdrop-filter: blur(24px) saturate(160%);
+		-webkit-backdrop-filter: blur(var(--glass-blur, 24px)) saturate(160%);
+		backdrop-filter: blur(var(--glass-blur, 24px)) saturate(160%);
 		border-bottom: 1px solid var(--glass-border);
 	}
 	/* The signature headline treatment: accent â†’ violet gradient text. */
@@ -1546,4 +1585,48 @@ input[type='range'].range::-webkit-slider-thumb {
 	backdrop-filter: blur(32px) saturate(180%);
 	border-color: var(--glass-border);
 	box-shadow: inset 0 1px 0 0 var(--glass-highlight), 0 24px 48px -12px rgb(0 0 0 / 0.5);
+}
+
+/* --- Like burst (TrackRow's heart) ---
+   The icon pops while six sparks (absolutely positioned dots carrying an --a angle from the
+   component) fly outward and dissolve. The classes are toggled for ~600ms by the component. */
+@keyframes heart-pop {
+	0% { transform: scale(1); }
+	35% { transform: scale(1.45); }
+	100% { transform: scale(1); }
+}
+@keyframes heart-spark-fly {
+	from {
+		transform: rotate(var(--a, 0deg)) translateX(4px) scale(1);
+		opacity: 1;
+	}
+	to {
+		transform: rotate(var(--a, 0deg)) translateX(20px) scale(0.2);
+		opacity: 0;
+	}
+}
+.heart-pop {
+	animation: heart-pop 600ms ease-out;
+	transform-origin: center;
+}
+.heart-spark {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 4px;
+	height: 4px;
+	margin: -2px;
+	border-radius: 9999px;
+	background: var(--primary);
+	pointer-events: none;
+	animation: heart-spark-fly 600ms ease-out forwards;
+}
+
+/* Gamepad focus polish: outlines only show while a controller is actually in use — the class is
+   added on any gamepad event and cleared after 3s of silence (player.svelte.ts). */
+body.gamepad-nav :focus-visible,
+body.gamepad-nav :focus {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+	border-radius: 6px;
 }

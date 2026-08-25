@@ -13,7 +13,9 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { BrowseItem } from '$lib/api';
 	import { asSong, openItem, searchPreview } from '$lib/browse';
-	import { ui } from '$lib/player.svelte';
+	import { ui, toast, openMiniPlayer, setSleepTimer } from '$lib/player.svelte';
+	import { LAYOUTS, layout, applyLayout, appearance, setAppearance } from '$lib/theme.svelte';
+	import { checkForUpdatesInteractive } from '$lib/updater.svelte';
 	import { thumb } from '$lib/thumb';
 	import TrackMenu from './TrackMenu.svelte';
 	import PlaylistMenu from './PlaylistMenu.svelte';
@@ -72,6 +74,80 @@
 		ui.paletteOpen = false;
 		goto(`/search?q=${encodeURIComponent(q)}`);
 	}
+
+	// --- Actions: app control from the palette ------------------------------------------------------------
+	// Static list — every mutation goes through the stores' own setters, so nothing here needs to
+	// be reactive. `layoutId` (layouts only) marks the active arrangement in the row.
+	type PaletteAction = { label: string; hint?: string; layoutId?: (typeof LAYOUTS)[number]['id']; run: () => void };
+
+	const SETTINGS_TABS: [string, string][] = [
+		['general', 'General'],
+		['themes', 'Appearance'],
+		['playback', 'Playback'],
+		['downloads', 'Downloads'],
+		['data', 'Data'],
+		['about', 'About']
+	];
+
+	const ACTIONS: PaletteAction[] = [
+		...LAYOUTS.map((l): PaletteAction => ({
+			label: `Layout: ${l.label}`,
+			hint: l.description,
+			layoutId: l.id,
+			run: () => applyLayout(l.id)
+		})),
+		{
+			label: 'Toggle ambient mode',
+			hint: 'Blurred artwork backdrop',
+			run: () => setAppearance({ ambientMode: !appearance.ambientMode })
+		},
+		{
+			label: 'Toggle artwork accent',
+			hint: 'Recolor from the cover',
+			run: () => setAppearance({ artworkAccent: !appearance.artworkAccent })
+		},
+		{
+			label: 'Toggle tabbed player',
+			hint: 'Queue/lyrics tabs in the player view',
+			run: () => setAppearance({ tabbedPlayer: !appearance.tabbedPlayer })
+		},
+		...SETTINGS_TABS.map(([id, label]): PaletteAction => ({
+			label: `Settings: ${label}`,
+			hint: 'Open Settings',
+			run: () => {
+				ui.settingsTab = id;
+				ui.settingsOpen = true;
+			}
+		})),
+		{ label: 'Open mini player', hint: 'Floating widget', run: () => openMiniPlayer() },
+		{ label: 'Sleep timer: 15 min', run: () => setSleepTimer('minutes', 15) },
+		{ label: 'Sleep timer: 30 min', run: () => setSleepTimer('minutes', 30) },
+		{ label: 'Sleep timer: 60 min', run: () => setSleepTimer('minutes', 60) },
+		{ label: 'Sleep timer: End of song', run: () => setSleepTimer('end_of_song') },
+		{ label: 'Sleep timer: Off', run: () => setSleepTimer('off') },
+		{
+			label: 'Check for updates',
+			run: () => {
+				checkForUpdatesInteractive().then((r) =>
+					r.error ? toast.error(r.message) : toast.success(r.message)
+				);
+			}
+		}
+	];
+
+	function runAction(a: PaletteAction) {
+		ui.paletteOpen = false;
+		a.run();
+	}
+
+	const actionQuery = $derived(query.trim().toLowerCase());
+	// Substring match on the label; empty query shows a few quick actions. The results themselves
+	// are unfiltered here (shouldFilter={false}) — this list is ours alone.
+	const visibleActions = $derived(
+		actionQuery
+			? ACTIONS.filter((a) => a.label.toLowerCase().includes(actionQuery)).slice(0, 6)
+			: ACTIONS.slice(0, 4)
+	);
 </script>
 
 <Command.Dialog
@@ -85,6 +161,28 @@
 >
 	<Command.Input bind:value={query} placeholder="Search songs, albums, artists, playlists…" />
 	<Command.List class="max-h-[22rem]">
+		{#if visibleActions.length}
+			<Command.Group heading="Actions">
+				{#each visibleActions as a (a.label)}
+					<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
+						<span class="truncate">{a.label}</span>
+						{#if a.layoutId === layout.id}
+							<span
+								class="rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+							>
+								Active
+							</span>
+						{/if}
+						{#if a.hint}
+							<span class="ml-auto shrink-0 truncate pl-4 text-xs text-muted-foreground">
+								{a.hint}
+							</span>
+						{/if}
+					</Command.Item>
+				{/each}
+			</Command.Group>
+		{/if}
+
 		{#if loading}
 			{#each Array(4) as _, i (i)}
 				<div class="flex items-center gap-3 px-3 py-2">
