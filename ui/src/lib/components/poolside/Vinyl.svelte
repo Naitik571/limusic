@@ -1,8 +1,7 @@
 <script lang="ts">
-	// Skeuomorphic picture-disc vinyl, ported from the reference mockups:
-	// art + dark tint stacked into the background, static ::before grooves,
-	// conic sheen that spins with the record, layered spindle.
-	// `playing` drives the rotation via the .playing class.
+	// Skeuomorphic picture-disc vinyl — reference-material pass.
+	// .spin wraps what rotates (art + grooves); sheen spins too; label-ring + spindle stay put.
+	// Spin/pause animation lives in poolside.css (global scope).
 	let {
 		src,
 		playing = false,
@@ -38,6 +37,15 @@
 		: undefined}
 	data-flight-target={flightTarget ? 'true' : undefined}
 >
-	<div class="sheen"></div>
+	<!-- everything that rotates -->
+	<div class="spin">
+		<div class="art"></div>
+		<div class="grooves"></div>
+	</div>
+	<!-- sheens rotate too -->
+	<div class="sheen-a"></div>
+	<div class="sheen-b"></div>
+	<!-- these stay put -->
+	<div class="label-ring"></div>
 	<div class="spindle"></div>
 </div>

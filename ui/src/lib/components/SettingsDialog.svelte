@@ -1251,18 +1251,10 @@
 							<div class="flex-1 rounded-sm bg-muted"></div>
 							<div class="h-1.5 rounded-sm bg-primary/60"></div>
 						</div>
-					{:else if l.id === 'compact'}
-						<div class="w-1/5 rounded-sm bg-sidebar/50"></div>
-						<div class="mx-auto flex w-3/5 flex-col gap-0.5">
-							<div class="flex-1 rounded-sm bg-muted"></div>
-							<div class="h-1.5 rounded-sm bg-primary/60"></div>
-						</div>
-						<div class="w-1/5"></div>
-					{:else if l.id === 'wide'}
-						<div class="w-[12%] rounded-sm bg-sidebar/50"></div>
-						<div class="flex flex-1 flex-col gap-0.5">
-							<div class="flex-1 rounded-sm bg-muted"></div>
-							<div class="h-1.5 rounded-sm bg-primary/60"></div>
+					{:else if l.id === 'poolside'}
+						<div class="flex w-full items-center justify-center gap-1 rounded-sm bg-cyan-100/30 py-1">
+							<div class="h-3 w-3 rounded-full bg-cyan-400/60"></div>
+							<div class="h-3 w-3 rounded-full bg-coral-400/60"></div>
 						</div>
 					{/if}
 				</div>

@@ -212,7 +212,7 @@
 <div
 	class="ps-root {dusk ? 'dusk' : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce
 		? 'reduce'
-		: ''}"
+		: ''} {playback.paused ? 'paused' : ''}"
 	style="--ps-spin:{spin}"
 	data-view={view}
 >

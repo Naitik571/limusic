@@ -1,9 +1,5 @@
-<!-- Poolside water background. Three parts:
-     1. Base gradient + drifting caustic layers wrapped in an SVG displacement filter
-        (CSS-Realistic-Water technique: SMIL-animated feTurbulence + feDisplacementMap)
-     2. Mesh-gradient color field — a slow-rotating conic layer (transform-only, GPU cheap)
-        in the style of gradients.juangarcia.ch
-     3. Pre-blurred glow blobs + koi -->
+<!-- Poolside water background: gradient + mesh color field + caustics (displacement-refracted)
+     + glow blobs + koi. All transform-only animations; no animated filters on moving nodes. -->
 <div class="ps-water" aria-hidden="true">
 	<div class="ps-mesh" aria-hidden="true"></div>
 	<div class="ps-caustic-wrap">
@@ -12,32 +8,54 @@
 	</div>
 	<div class="ps-blob coral"></div>
 	<div class="ps-blob sky"></div>
-	<svg class="ps-koi k1" viewBox="0 0 120 54">
-		<path d="M8 27c14-16 34-22 56-20 18 2 34 9 42 20-8 11-24 18-42 20-22 2-42-4-56-20z" fill="#F28C3B" />
-		<path d="M8 27c10 4 20 6 30 6-6 6-14 9-24 9-4-4-6-9-6-15z" fill="#E86A1F" />
-		<path d="M104 27l14-12c-2 8-2 16 0 24l-14-12z" fill="#E86A1F" />
-		<circle cx="24" cy="24" r="2.6" fill="#1a1a1a" />
+
+	<!-- koi 1: orange-and-white butterfly koi -->
+	<svg class="ps-koi k1" viewBox="0 0 200 90">
+		<defs>
+			<radialGradient id="kb1" cx="35%" cy="40%" r="70%">
+				<stop offset="0%" stop-color="#FFF8F0"/><stop offset="45%" stop-color="#F5E6D0"/>
+				<stop offset="72%" stop-color="#F28C3B"/><stop offset="100%" stop-color="#D96A1F"/>
+			</radialGradient>
+			<linearGradient id="kt1" x1="0" y1="0" x2="1" y2="0">
+				<stop offset="0%" stop-color="#E86A1F" stop-opacity=".9"/><stop offset="100%" stop-color="#F28C3B" stop-opacity=".4"/>
+			</linearGradient>
+		</defs>
+		<!-- tail -->
+		<path d="M158 45 C172 30 188 22 198 18 C192 32 190 40 192 48 C194 56 190 62 184 66 C176 60 166 52 158 45 Z" fill="url(#kt1)" opacity=".85"/>
+		<!-- body -->
+		<ellipse cx="85" cy="45" rx="78" ry="28" fill="url(#kb1)"/>
+		<!-- head patch -->
+		<ellipse cx="32" cy="40" rx="20" ry="14" fill="#E86A1F" opacity=".55"/>
+		<!-- mid patch -->
+		<ellipse cx="90" cy="42" rx="28" ry="16" fill="#D96A1F" opacity=".35"/>
+		<!-- pectoral fins -->
+		<path d="M52 62 C46 74 36 80 26 80 C32 70 36 62 42 56 Z" fill="#F5E6D0" opacity=".7"/>
+		<path d="M118 62 C114 74 106 80 98 80 C104 70 110 62 114 56 Z" fill="#F5E6D0" opacity=".6"/>
+		<!-- dorsal hint -->
+		<path d="M60 18 C80 12 110 12 130 18 C118 14 80 14 60 18 Z" fill="#FFF8F0" opacity=".5"/>
+		<!-- eye -->
+		<circle cx="18" cy="38" r="3.2" fill="#1a1a1a"/>
+		<circle cx="17.2" cy="37.2" r="1" fill="#fff"/>
 	</svg>
-	<svg class="ps-koi k2" viewBox="0 0 120 54">
-		<path d="M8 27c14-16 34-22 56-20 18 2 34 9 42 20-8 11-24 18-42 20-22 2-42-4-56-20z" fill="#F7F1E6" />
-		<path d="M44 9c12-2 26 1 38 8-6 8-18 13-30 13-5-6-8-13-8-21z" fill="#F28C3B" />
-		<path d="M104 27l14-12c-2 8-2 16 0 24l-14-12z" fill="#D9CFBA" />
-		<circle cx="24" cy="24" r="2.6" fill="#1a1a1a" />
+
+	<!-- koi 2: white-and-red kohaku -->
+	<svg class="ps-koi k2" viewBox="0 0 200 90">
+		<defs>
+			<radialGradient id="kb2" cx="40%" cy="38%" r="70%">
+				<stop offset="0%" stop-color="#FFFFFF"/><stop offset="60%" stop-color="#F7F1E6"/>
+				<stop offset="100%" stop-color="#E8DFC8"/>
+			</radialGradient>
+			<linearGradient id="kt2" x1="0" y1="0" x2="1" y2="0">
+				<stop offset="0%" stop-color="#D9CFBA" stop-opacity=".9"/><stop offset="100%" stop-color="#F7F1E6" stop-opacity=".4"/>
+			</linearGradient>
+		</defs>
+		<path d="M158 45 C172 30 188 22 198 18 C192 32 190 40 192 48 C194 56 190 62 184 66 C176 60 166 52 158 45 Z" fill="url(#kt2)" opacity=".85"/>
+		<ellipse cx="85" cy="45" rx="78" ry="28" fill="url(#kb2)"/>
+		<ellipse cx="48" cy="38" rx="18" ry="12" fill="#E02020" opacity=".5"/>
+		<ellipse cx="100" cy="48" rx="22" ry="13" fill="#E02020" opacity=".38"/>
+		<path d="M52 62 C46 74 36 80 26 80 C32 70 36 62 42 56 Z" fill="#F7F1E6" opacity=".7"/>
+		<path d="M118 62 C114 74 106 80 98 80 C104 70 110 62 114 56 Z" fill="#F7F1E6" opacity=".6"/>
+		<circle cx="18" cy="38" r="3.2" fill="#1a1a1a"/>
+		<circle cx="17.2" cy="37.2" r="1" fill="#fff"/>
 	</svg>
 </div>
-
-<!-- the displacement filter lives at root scope so `filter: url(#ps-sea)` can reach it -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-	<filter id="ps-sea" x="0" y="0" width="100%" height="100%">
-		<feTurbulence id="ps-sea-turb" type="turbulence" numOctaves="3" seed="2" baseFrequency="0.02 0.05" result="n" />
-		<feDisplacementMap in="SourceGraphic" in2="n" scale="18" />
-		<animate
-			xlink:href="#ps-sea-turb"
-			attributeName="baseFrequency"
-			dur="60s"
-			keyTimes="0;0.5;1"
-			values="0.02 0.05;0.04 0.08;0.02 0.05"
-			repeatCount="indefinite"
-		/>
-	</filter>
-</svg>
