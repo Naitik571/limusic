@@ -40,7 +40,7 @@ permissions:
 # The only release workflow: it owns latest.json outright (single-platform fork).
 concurrency:
   group: windows-release-${{ inputs.tag }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   # Pinned libmpv dev build (shinchiro). Baseline x86_64 — NOT the `-v3-` variant, which requires
