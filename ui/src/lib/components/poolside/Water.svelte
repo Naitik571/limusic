@@ -1,9 +1,15 @@
-<!-- Poolside water background: drifting caustic layers, glow blobs, koi. All transform-only
-     animations on oversized layers; the turbulence textures are static data-URIs (no animated
-     filters). aria-hidden — purely decorative. -->
+<!-- Poolside water background. Three parts:
+     1. Base gradient + drifting caustic layers wrapped in an SVG displacement filter
+        (CSS-Realistic-Water technique: SMIL-animated feTurbulence + feDisplacementMap)
+     2. Mesh-gradient color field — a slow-rotating conic layer (transform-only, GPU cheap)
+        in the style of gradients.juangarcia.ch
+     3. Pre-blurred glow blobs + koi -->
 <div class="ps-water" aria-hidden="true">
-	<div class="ps-caustic c1"></div>
-	<div class="ps-caustic c2"></div>
+	<div class="ps-mesh" aria-hidden="true"></div>
+	<div class="ps-caustic-wrap">
+		<div class="ps-caustic c1"></div>
+		<div class="ps-caustic c2"></div>
+	</div>
 	<div class="ps-blob coral"></div>
 	<div class="ps-blob sky"></div>
 	<svg class="ps-koi k1" viewBox="0 0 120 54">
@@ -19,3 +25,19 @@
 		<circle cx="24" cy="24" r="2.6" fill="#1a1a1a" />
 	</svg>
 </div>
+
+<!-- the displacement filter lives at root scope so `filter: url(#ps-sea)` can reach it -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+	<filter id="ps-sea" x="0" y="0" width="100%" height="100%">
+		<feTurbulence id="ps-sea-turb" type="turbulence" numOctaves="3" seed="2" baseFrequency="0.02 0.05" result="n" />
+		<feDisplacementMap in="SourceGraphic" in2="n" scale="18" />
+		<animate
+			xlink:href="#ps-sea-turb"
+			attributeName="baseFrequency"
+			dur="60s"
+			keyTimes="0;0.5;1"
+			values="0.02 0.05;0.04 0.08;0.02 0.05"
+			repeatCount="indefinite"
+		/>
+	</filter>
+</svg>

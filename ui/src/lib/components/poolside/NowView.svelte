@@ -1,5 +1,7 @@
 <script lang="ts">
-	// Poolside Now Playing: two vinyl decks (current + up next), queue strip, seek + transport.
+	// Poolside Now Playing — ported from the reference: two deck discs (current in its kraft
+	// sleeve + SIDE A sticker, up-next bare), glass queue panel, hairline seek, transport,
+	// recently-played strip.
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		PlayIcon,
@@ -31,20 +33,10 @@
 	const paused = $derived(playback.paused);
 	const q = $derived(playback.queue);
 	const nextItem = $derived(q.items[q.currentIndex + 1] ?? null);
-
-	const artCur = $derived(cur?.thumbnail ?? '');
-	const artNext = $derived(nextItem?.thumbnail ?? '');
-
-	// upcoming queue strip (after the current track)
 	const upcoming = $derived(q.items.slice(q.currentIndex + 1, q.currentIndex + 8));
-	// recently played strip (before the current track, newest first)
 	const recents = $derived(
-		q.items
-			.slice(Math.max(0, q.currentIndex - 5), q.currentIndex)
-			.slice()
-			.reverse()
+		q.items.slice(Math.max(0, q.currentIndex - 5), q.currentIndex).slice().reverse()
 	);
-
 	const pos = $derived(Math.min(playback.position, playback.duration || playback.position));
 	const dur = $derived(playback.duration || 0);
 
@@ -53,7 +45,6 @@
 		const t = Math.max(0, Math.floor(s));
 		return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 	}
-
 	function seek(e: Event) {
 		const v = Number((e.currentTarget as HTMLInputElement).value);
 		api.seek(v).catch(() => {});
@@ -63,46 +54,45 @@
 	}
 </script>
 
-<div class="ps-view on ps-np">
+<div class="ps-np">
 	<div class="ps-np-head">
-		<div class="kicker">Now Playing · 33⅓ RPM</div>
-		<div class="title ps-title-glow">{cur ? cur.title.toUpperCase() : 'Nothing playing'}</div>
-		<div class="artist">{cur ? cur.artists : 'Pick something from the library'}</div>
+		<div class="ps-np-kicker">NOW PLAYING</div>
+		<div class="ps-np-title">{cur ? cur.title.toUpperCase() : 'NOTHING PLAYING'}</div>
+		<div class="ps-np-artist">{cur ? cur.artists : 'Pick something from the library'}</div>
 	</div>
 
 	<div class="ps-stage">
-		<!-- current disc, sliding out of its kraft sleeve -->
-		<div class="ps-deck-unit">
-			<div class="ps-sleeve"><div class="mouth"></div></div>
+		<!-- current: vinyl sliding out of its kraft sleeve -->
+		<div class="ps-deck-wrap {paused ? '' : 'playing'}">
+			<div class="ps-sleeve">
+				<div class="mouth"></div>
+				<svg class="ps-sticker" style="right:-14px;top:-12px;transform:rotate(9deg)" width="56" height="56" viewBox="0 0 58 58">
+					<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />
+					<text x="29" y="26" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#111">SIDE</text>
+					<text x="29" y="41" text-anchor="middle" font-family="monospace" font-size="13" font-weight="bold" fill="#E02020">A</text>
+				</svg>
+			</div>
 			<Vinyl
-				src={artCur}
+				src={cur?.thumbnail ?? ''}
 				playing={!paused}
 				style="width:100%"
 				flightTarget
-				title="Current track"
+				title="Current track — click for album"
 			/>
-			<!-- SIDE A sticker -->
-			<svg class="ps-sticker-badge" width="56" height="56" viewBox="0 0 58 58">
-				<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />
-				<text x="29" y="26" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#111">SIDE</text>
-				<text x="29" y="41" text-anchor="middle" font-family="monospace" font-size="13" font-weight="bold" fill="#E02020">A</text>
-			</svg>
-			<div class="ps-deck-label">Picture disc · side A</div>
+			<div class="ps-deck-label">33⅓ RPM · PICTURE DISC</div>
 		</div>
 
-		<!-- up-next disc -->
+		<!-- up next: bare disc -->
 		{#if nextItem}
-			<div class="ps-deck-unit">
-				<div class="ps-sleeve"><div class="mouth"></div></div>
-				<Vinyl src={artNext} playing={false} style="width:100%" title="Up next" />
-				<div class="ps-deck-label">Up next</div>
+			<div class="ps-deck-wrap">
+				<Vinyl src={nextItem.thumbnail ?? ''} playing={false} style="width:100%" title="Up next" />
+				<div class="ps-deck-label">UP NEXT</div>
 			</div>
 		{/if}
 
-		<!-- queue panel -->
 		{#if upcoming.length}
 			<aside class="ps-queue-panel ps-glass" aria-label="Up next queue">
-				<div class="ps-q-label"><span class="ps-q-dot"></span>Up next</div>
+				<div class="ps-q-label"><span class="ps-q-dot"></span>UP NEXT</div>
 				{#each upcoming as item, i (item.video_id + i)}
 					<div
 						class="ps-queue-row"
@@ -111,9 +101,7 @@
 						onclick={() => playIndex(q.currentIndex + 1 + i)}
 						onkeydown={(e) => e.key === 'Enter' && playIndex(q.currentIndex + 1 + i)}
 					>
-						{#if item.thumbnail}
-							<img src={item.thumbnail} alt="" />
-						{/if}
+						{#if item.thumbnail}<img src={item.thumbnail} alt="" />{/if}
 						<div class="min-w-0">
 							<div class="t">{item.title.toUpperCase()}</div>
 							<div class="a">{item.artists}</div>
@@ -207,7 +195,6 @@
 						onclick={() => {
 							const idx = q.items.indexOf(item);
 							if (idx >= 0) playIndex(idx);
-							else playSong(item);
 						}}
 					>
 						{#if item.thumbnail}<img src={item.thumbnail} alt={item.title} />{/if}
@@ -217,7 +204,5 @@
 		{/if}
 	</div>
 
-	<div class="absolute bottom-4 left-6 text-[9px] tracking-[0.28em] uppercase opacity-70">
-		<button class="hover:text-white cursor-pointer" onclick={onOpenLibrary}>Logo = library · click a sleeve for the album</button>
-	</div>
+	<div class="ps-hint">click a record sleeve · logo = library</div>
 </div>

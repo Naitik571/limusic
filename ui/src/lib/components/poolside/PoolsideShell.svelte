@@ -1,9 +1,15 @@
 <script lang="ts">
-	// Poolside Vinyl shell (beta): a full-app reskin — animated pool water, skeuomorphic
-	// picture-discs, coverflow library. Routes internally between NOW / LIBRARY / ALBUM views
-	// with camera-dolly transitions; all playback goes through the same stores/commands as the
-	// classic shell. Settings (gear) and the Ctrl+K palette remain the escape hatches; the
-	// EXIT BETA chip returns to the Default layout.
+	// Poolside Vinyl shell (beta). Fonts + the poolside stylesheet are imported HERE — the
+	// stylesheet is what styles every poolside component (missing this import was why the first
+	// build rendered as raw unstyled HTML).
+	import '@fontsource/space-mono/400.css';
+	import '@fontsource/space-mono/700.css';
+	import '@fontsource/space-mono/400-italic.css';
+	import '@fontsource/silkscreen/400.css';
+	import '@fontsource/silkscreen/700.css';
+	import '@fontsource/audiowide/400.css';
+	import './poolside.css';
+
 	import { onMount } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -12,20 +18,12 @@
 		Sun01Icon,
 		Moon02Icon,
 		Mic01Icon,
-		Logout01Icon,
-		Search01Icon
+		Search01Icon,
+		Folder01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
-	import {
-		auth,
-		local,
-		playback,
-		playFrom,
-		scanLocal,
-		ui,
-		toast
-	} from '$lib/player.svelte';
+	import { auth, local, playback, playFrom, ui, toast } from '$lib/player.svelte';
 	import { applyLayout } from '$lib/theme.svelte';
 	import Water from './Water.svelte';
 	import Vinyl from './Vinyl.svelte';
@@ -41,19 +39,44 @@
 	let lyricsOpen = $state(false);
 	let ccOpen = $state(false);
 	let ccAlbum = $state<BrowseItem | null>(null);
+	let ccFileInput: HTMLInputElement | undefined = $state();
+	let settingsOpen = $state(false);
 	// album id -> data URL printed onto the disc (localStorage, poolside-local)
 	let covers = $state<Record<string, string>>({});
 
-	let albums = $state<BrowseItem[]>([]);
-	let album = $state<BrowseItem | null>(null);
-	let albumsLoaded = $state(false);
+	// poolside visual prefs (settings popover)
+	let caustics = $state(localStorage.getItem('ps-caustics') !== 'false');
+	let koi = $state(localStorage.getItem('ps-koi') !== 'false');
+	let reduce = $state(localStorage.getItem('ps-reduce') === 'true');
+	let spin = $state(localStorage.getItem('ps-spin') ?? '3s');
 
-	let ccFileInput: HTMLInputElement | undefined = $state();
+	// library data — loaded once signed in; local data comes from the `local` store
+	let ytmAlbums = $state<BrowseItem[]>([]);
+	let likedSongs = $state<SongItem[]>([]);
+	let albumsLoaded = $state(false);
+	let album = $state<BrowseItem | null>(null);
+
+	// local album tiles: group local songs by album name
+	const localAlbumTiles = $derived.by(() => {
+		const byName = new Map<string, SongItem>();
+		for (const s of local.songs) {
+			const key = s.album || 'Unknown Album';
+			if (!byName.has(key)) byName.set(key, s);
+		}
+		return [...byName.entries()].map(([albumName, first]) => ({
+			kind: 'album' as const,
+			id: `LOCALALBUM:${albumName}`,
+			title: albumName,
+			subtitle: first.artists || 'Local',
+			thumbnail: first.thumbnail
+		}));
+	});
+	const mergedAlbums = $derived([...localAlbumTiles, ...ytmAlbums]);
+	const songs = $derived([...likedSongs, ...local.songs]);
 
 	function artFor(item: BrowseItem): string {
 		return covers[item.id] ?? item.thumbnail ?? '';
 	}
-
 	function saveCovers() {
 		try {
 			localStorage.setItem('ps-covers', JSON.stringify(covers));
@@ -66,28 +89,35 @@
 		view = v;
 	}
 
-	// Load the library albums once signed in; local album tiles are merged in LibraryView.
 	$effect(() => {
 		if (auth.account?.signedIn && !albumsLoaded) {
 			albumsLoaded = true;
 			api
 				.getLibraryAlbums()
-				.then((a) => (albums = a))
+				.then((a) => (ytmAlbums = a))
+				.catch(() => {});
+			api
+				.getPlaylist(api.LIKED_MUSIC_ID)
+				.then((p) => (likedSongs = p.items))
 				.catch(() => {});
 		}
 	});
 
-	// Album detail: pick a real album from the grid; the fan shows the rest of the collection.
 	function openAlbum(item: BrowseItem) {
-		if (item.id.startsWith('LOCALALBUM:')) {
-			// local albums play directly from the grid — no detail view in beta
-			return;
-		}
 		album = item;
 		go('album');
 	}
-
 	function playAlbum(item: BrowseItem) {
+		if (item.id.startsWith('LOCALALBUM:')) {
+			const tracks = local.songs.filter((s) => (s.album || 'Unknown Album') === item.title);
+			if (!tracks.length) {
+				toast.error('No tracks found for this album');
+				return;
+			}
+			playFrom(item, tracks, 0);
+			go('now');
+			return;
+		}
 		api
 			.getAlbum(item.id)
 			.then((alb) => {
@@ -100,16 +130,22 @@
 			})
 			.catch((e) => toast.error(String(e)));
 	}
+	function playSongInList(s: SongItem, i: number, list: SongItem[]) {
+		if (s.video_id.startsWith('LOCAL:')) {
+			import('$lib/player.svelte').then((m) => m.playSong(s));
+			return;
+		}
+		playFrom({ kind: 'playlist', id: 'ps-songs', title: 'Poolside' }, list, i);
+	}
 
 	function openCustomCover() {
-		ccAlbum = album ?? albums[0] ?? null;
+		ccAlbum = album ?? mergedAlbums[0] ?? null;
 		if (!ccAlbum) {
 			toast.error('Open an album first');
 			return;
 		}
 		ccOpen = true;
 	}
-
 	function onCcFile(e: Event) {
 		const input = e.currentTarget as HTMLInputElement;
 		const f = input.files?.[0];
@@ -124,7 +160,6 @@
 		rd.readAsDataURL(f);
 		input.value = '';
 	}
-
 	function resetCover() {
 		if (!ccAlbum) return;
 		const next = { ...covers };
@@ -138,130 +173,162 @@
 		dusk = !dusk;
 		localStorage.setItem('ps-dusk', String(dusk));
 	}
-
-	onMount(() => {
-		// local folders feed the FOLDERS tab + local album tiles
-		scanLocalSafe();
-	});
-	async function scanLocalSafe() {
-		try {
-			await scanLocal();
-		} catch {
-			/* beta: local tab just stays empty */
+	function setSpin(v: string) {
+		spin = v;
+		localStorage.setItem('ps-spin', v);
+	}
+	function setPref(key: 'caustics' | 'koi' | 'reduce', v: boolean) {
+		if (key === 'caustics') {
+			caustics = v;
+			localStorage.setItem('ps-caustics', String(v));
+		} else if (key === 'koi') {
+			koi = v;
+			localStorage.setItem('ps-koi', String(v));
+		} else {
+			reduce = v;
+			localStorage.setItem('ps-reduce', String(v));
 		}
 	}
 
-	// keep a SongItem shape for the local album tiles the LibraryView emits
-	function isLocalAlbum(item: BrowseItem): boolean {
-		return item.id.startsWith('LOCALALBUM:');
+	async function importFolder() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const picked = await open({ directory: true, multiple: false, title: 'Add a music folder' });
+			const path = Array.isArray(picked) ? picked[0] : picked;
+			if (!path) return;
+			toast.info('Scanning folder…');
+			await api.addLocalFolder(path);
+			toast.success('Folder added — local songs are in FOLDERS + SONGS');
+		} catch (e) {
+			toast.error(String(e));
+		}
 	}
-	function localTracksFor(item: BrowseItem): SongItem[] {
-		return local.songs.filter((s) => (s.album || 'Unknown Album') === item.title);
-	}
+
+	onMount(() => {
+		import('$lib/player.svelte').then((m) => m.scanLocal().catch(() => {}));
+	});
 </script>
 
-<div class="ps-root {dusk ? 'dusk' : ''}">
+<div
+	class="ps-root {dusk ? 'dusk' : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce
+		? 'reduce'
+		: ''}"
+	style="--ps-spin:{spin}"
+	data-view={view}
+>
 	<Water />
 
-	<!-- NOW PLAYING -->
-	{#if view === 'now'}
-		<div in:fade={{ duration: 300 }} class="absolute inset-0">
+	<!-- all three views stay mounted — the .on toggle drives the camera-dolly transition -->
+	<div class="ps-views">
+		<div class="ps-view" class:on={view === 'now'}>
 			<NowView onOpenLibrary={() => go('library')} />
 		</div>
-	<!-- LIBRARY -->
-	{:else if view === 'library'}
-		<div in:fade={{ duration: 300 }} class="absolute inset-0">
+		<div class="ps-view" class:on={view === 'library'}>
 			<LibraryView
+				albums={mergedAlbums}
+				songs={songs}
 				onOpenNow={() => go('now')}
-				onOpenAlbum={(item) => {
-					if (isLocalAlbum(item)) {
-						const tracks = localTracksFor(item);
-						if (tracks.length) playFrom(item, tracks, 0);
-						else toast.error('No tracks found for this album');
-						return;
-					}
-					openAlbum(item);
-				}}
+				onOpenAlbum={openAlbum}
+				onPlayLocalAlbum={playAlbum}
+				onPlaySong={playSongInList}
+				onImport={importFolder}
 			/>
 		</div>
-	<!-- ALBUM DETAIL -->
-	{:else if view === 'album' && album}
-		<div in:fade={{ duration: 300 }} class="absolute inset-0">
-			<AlbumView
-				{albums}
-				album={album}
-				{artFor}
-				onBack={() => go('library')}
-				onPlayAlbum={playAlbum}
-				onOpenCustom={openCustomCover}
-			/>
+		<div class="ps-view" class:on={view === 'album'}>
+			{#if album}
+				<AlbumView
+					albums={mergedAlbums}
+					{album}
+					{artFor}
+					onBack={() => go('library')}
+					onSelect={(a) => (album = a)}
+					onPlayAlbum={playAlbum}
+					onOpenCustom={openCustomCover}
+				/>
+			{/if}
 		</div>
-	{/if}
+	</div>
 
 	<!-- mini player -->
 	<MiniPlayer onOpenNow={() => go('now')} />
 
 	<!-- edge buttons -->
 	<div class="ps-edge mid">
-		<button class="ps-edge-btn" onclick={() => (ui.settingsOpen = true)} title="Settings" aria-label="Settings">
+		<button
+			class="ps-edge-btn gear"
+			onclick={(e) => {
+				e.stopPropagation();
+				settingsOpen = !settingsOpen;
+			}}
+			title="Pool settings"
+			aria-label="Pool settings"
+		>
 			<HugeiconsIcon icon={Settings01Icon} />
 		</button>
-		<button
-			class="ps-edge-btn"
-			onclick={toggleDusk}
-			title={dusk ? 'Switch to day pool' : 'Switch to dusk pool'}
-			aria-label="Toggle dusk"
-		>
+		<button class="ps-edge-btn" onclick={toggleDusk} title={dusk ? 'Day pool' : 'Dusk pool'} aria-label="Toggle dusk">
 			<HugeiconsIcon icon={dusk ? Moon02Icon : Sun01Icon} />
 		</button>
 		{#if playback.now}
-			<button
-				class="ps-edge-btn"
-				onclick={() => (lyricsOpen = !lyricsOpen)}
-				title="Lyrics"
-				aria-label="Lyrics"
-			>
+			<button class="ps-edge-btn" onclick={() => (lyricsOpen = !lyricsOpen)} title="Lyrics" aria-label="Lyrics">
 				<HugeiconsIcon icon={Mic01Icon} />
 			</button>
 		{/if}
-		<button
-			class="ps-edge-btn ps-exit"
-			onclick={() => {
-				applyLayout('default');
-				toast.info('Exited Poolside — back to Default layout');
-			}}
-			title="Exit Poolside beta"
-		>
-			<HugeiconsIcon icon={Logout01Icon} class="w-3.5 h-3.5" />
-			Exit beta
-		</button>
 	</div>
 
-	<!-- search shortcut: Ctrl+K palette still searches YouTube; add a visible hint button top-left -->
-	<button
-		class="ps-edge-btn absolute left-6 top-6 flex items-center gap-2 w-auto px-4"
-		onclick={() => (ui.paletteOpen = true)}
-		title="Search (Ctrl+K)"
-	>
-		<HugeiconsIcon icon={Search01Icon} />
-		<span class="text-[8px] font-bold tracking-[0.2em] uppercase">Search</span>
-	</button>
+	<!-- pool settings popover -->
+	{#if settingsOpen}
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_static_element_interactions -->
+		<div class="ps-settings ps-glass open" role="dialog" aria-label="Pool settings">
+			<h3>POOL SETTINGS</h3>
+			<div class="ps-setrow">
+				<span>CAUSTICS</span>
+				<button class="ps-sw {caustics ? 'on' : ''}" role="switch" aria-checked={caustics} onclick={() => setPref('caustics', !caustics)} aria-label="Toggle caustics"></button>
+			</div>
+			<div class="ps-setrow">
+				<span>KOI</span>
+				<button class="ps-sw {koi ? 'on' : ''}" role="switch" aria-checked={koi} onclick={() => setPref('koi', !koi)} aria-label="Toggle koi"></button>
+			</div>
+			<div class="ps-setrow">
+				<span>REDUCE MOTION</span>
+				<button class="ps-sw {reduce ? 'on' : ''}" role="switch" aria-checked={reduce} onclick={() => setPref('reduce', !reduce)} aria-label="Toggle reduce motion"></button>
+			</div>
+			<div class="ps-setrow">
+				<span>SPIN</span>
+				<select value={spin} onchange={(e) => setSpin(e.currentTarget.value)} aria-label="Record spin speed">
+					<option value="2s">2S / REV</option>
+					<option value="3s">3S / REV</option>
+					<option value="4s">4S / REV</option>
+				</select>
+			</div>
+			<div class="ps-setrow">
+				<span>EXIT BETA</span>
+				<button
+					class="ps-sw"
+					style="background: var(--red); width: auto; padding: 0 10px; font-size: 7.5px; color: #fff; display: grid; place-items: center;"
+					onclick={() => {
+						applyLayout('default');
+						toast.info('Exited Poolside — back to Default layout');
+					}}
+					aria-label="Exit Poolside beta"
+				>
+					EXIT
+				</button>
+			</div>
+			<div class="foot">LIMUSIC · POOLSIDE VINYL BETA</div>
+		</div>
+	{/if}
 
 	<!-- lyrics overlay -->
 	{#if lyricsOpen && playback.now}
-		<div
-			class="ps-lyrics-frame"
-			transition:fade={{ duration: 220 }}
-			role="dialog"
-			aria-label="Lyrics"
-		>
+		<div class="ps-lyrics-frame" role="dialog" aria-label="Lyrics">
 			<button class="ps-lyrics-close" onclick={() => (lyricsOpen = false)} aria-label="Close lyrics">✕</button>
 			<LyricsView expanded />
 		</div>
 	{/if}
 
 	<!-- custom CD cover overlay -->
-	{#if ccOpen}
+	{#if ccOpen && ccAlbum}
+		{@const ca = ccAlbum}
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<div
 			class="ps-overlay open"
@@ -283,11 +350,50 @@
 				>
 					✕
 				</button>
-				<h2 class="ps-serif-big">Add Custom CD Covers!</h2>
-				<p class="sub">Print your own art onto the picture disc for<br />“{ccAlbum?.title}”</p>
-				<div class="my-6 flex items-center justify-center gap-6">
-					<div style="width:140px">
-						<Vinyl src={ccAlbum ? artFor(ccAlbum) : ''} playing={false} style="width:100%" />
+				<h2 class="serif-big">Add Custom CD Covers!</h2>
+				<p class="sub">Print your own art onto the picture disc for “{ca.title}”</p>
+
+				<!-- CSS-art quick options, straight from the reference -->
+				<div class="ps-cc-opts justify-center">
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+					<div
+						class="ps-cc-opt {covers[ca.id] === 'css:spider' ? 'sel' : ''}"
+						role="button"
+						tabindex="0"
+						onclick={() => {
+							covers = { ...covers, [ca.id]: 'css:spider' };
+							saveCovers();
+						}}
+						onkeydown={(e) => e.key === 'Enter' && (covers = { ...covers, [ca.id]: 'css:spider' })}
+					>
+						<div class="ps-vinyl" style="--art:none">
+							<div class="ps-cc-art ps-art-spider"></div>
+							<div class="spindle" style="z-index:3"></div>
+						</div>
+						<span>Spider Disc</span>
+					</div>
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+					<div
+						class="ps-cc-opt {covers[ca.id] === 'css:smiley' ? 'sel' : ''}"
+						role="button"
+						tabindex="0"
+						onclick={() => {
+							covers = { ...covers, [ca.id]: 'css:smiley' };
+							saveCovers();
+						}}
+						onkeydown={(e) => e.key === 'Enter' && (covers = { ...covers, [ca.id]: 'css:smiley' })}
+					>
+						<div class="ps-vinyl" style="--art:none">
+							<div class="ps-cc-art ps-art-smiley"></div>
+							<div class="spindle" style="z-index:3"></div>
+						</div>
+						<span>Smiley Disc</span>
+					</div>
+				</div>
+
+				<div class="ps-cc-body">
+					<div style="width:120px">
+						<Vinyl src={artFor(ca)} playing={false} style="width:100%" />
 					</div>
 					<div class="flex flex-col items-start gap-3">
 						<button class="ps-aqua px-4 py-2.5 text-[9px]" onclick={() => ccFileInput?.click()}>
