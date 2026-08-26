@@ -94,7 +94,7 @@ All available in the latest release. Fork tracks upstream versioning — this re
 - **Auto-offline** — Settings ▸ Downloads: new liked songs (and playlist adds, in the wider mode) download themselves in the background. Turning it on syncs your existing Liked Music immediately and again at each launch — the walk skips what's already on disk, so it only ever fetches what's missing
 - **History page** — new sidebar entry between Library and Settings: everything you played, newest first, grouped by day, with shuffle-all and a one-click clear. It's the same local diary On Repeat ranks, and it never leaves the machine
 
-**v0.5.11 — the big feature drop (Orchard / Kodama / pear / SimpMusic ports):**
+**v0.5.11 — the big feature drop:**
 - **Smart crossfade** — 1–12s overlap between tracks, standard or smart, plus **Best Mix** harmonic queue sorting
 - **Karaoke lyrics from 8 sources** — LRCLIB, Boidu, Unison, QRC, NetEase, Musixmatch, Kugou and SimpMusic in priority order, with a per-song sync offset that persists
 - **Ambient mode** — the playing cover becomes an app-wide backdrop, with a veil solved per-artwork so text always stays readable (subtle / balanced / vivid)
