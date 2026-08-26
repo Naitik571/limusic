@@ -147,14 +147,11 @@ impl Orchestrator {
         };
 
         // Age/login gate on WEB_REMIX → retry with WEB_CREATOR (login-only). context/06 §4, seam #7.
-        // ponytail: metadata + structure are correct now, but WEB_CREATOR streams are ciphered, so
-        // this only becomes *audible* once KI-1 (sig/n extraction) is solved. Until then it degrades
-        // exactly as before (falls through to the direct clients / rustypipe) — no regression.
-        if logged_in
-            && main_resp
-                .as_ref()
-                .is_some_and(|r| r.playability_status.is_age_gated())
-        {
+        // ponytail: WEB_CREATOR streams are ciphered, so this depends on the whole web path working
+        // (decipher, then a PoToken googlevideo accepts). With BotGuard now running outside the
+        // webview the path has a real chance; when it fails it still falls through to the direct
+        // clients / rustypipe exactly as before.
+        if logged_in && main_resp.as_ref().is_some_and(|r| r.playability_status.is_age_gated()) {
             if let Some(cc) = self.clients.get("WEB_CREATOR") {
                 let cc_pot = if cc.use_web_po_tokens {
                     session_pot
