@@ -59,7 +59,21 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.0`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.1`.
+
+**v0.6.1 — Poolside Vinyl (BETA layout):**
+- A full-app reskin: **Y2K / Frutiger Aero poolwater** — the whole app floats over an animated swimming-pool surface with drifting light caustics, glow blobs and swimming koi
+- **Skeuomorphic picture-disc vinyls** — album art printed on the disc, concentric grooves, specular sheen, spindle hole; records **spin while playing** and stop when paused, sliding out of **kraft paper sleeves**
+- **Now Playing deck** — current + up-next discs side by side, queue panel, hairline seek, full transport, recently-played thumbnail strip
+- **Poolside Library** — ALBUMS / SONGS / ARTISTS / FOLDERS pill tabs, frosted search, glossy **Import Music** button (local folders), tilted cover grid with hover spring, featured enlarged tile
+- **Album coverflow** — 3D perspective fan of sleeves with tooltip + back button; the selected album slides its disc out
+- **Poolside mini-player** — spinning disc, mono uppercase title, hairline progress, aqua play button
+- **"Add Custom CD Covers!"** — serif-overlay feature: print your own image onto any album's disc (persists per album)
+- **Dusk mode** — darker poolwater variant; **Exit beta** chip returns to the Default layout anytime
+- Beta: find it in Settings ▸ Appearance ▸ Layout ▸ **Poolside (Beta)**
+
+
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.1`.
 
 **v0.6.0 — feel & finish (9 UI upgrades):**
 - **Shared-element artwork transition** — the cover on the card you clicked flies into the player and lands as the big artwork; the player stops sliding up from nowhere and starts arriving from *where you clicked*

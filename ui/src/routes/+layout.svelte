@@ -27,6 +27,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Titlebar from '$lib/components/Titlebar.svelte';
 	import CanopyTitlebar from '$lib/components/CanopyTitlebar.svelte';
+	import PoolsideShell from '$lib/components/poolside/PoolsideShell.svelte';
 	import ResizeBorders from '$lib/components/ResizeBorders.svelte';
 	import PlayerBar from '$lib/components/PlayerBar.svelte';
 	import QueuePanel from '$lib/components/QueuePanel.svelte';
@@ -117,6 +118,10 @@
     and no toasts (a banner would cover most of a 560x180 widget). -->
 {#if isMini}
 	<MiniPlayer />
+{:else if layout.id === 'poolside'}
+	<!-- Poolside Vinyl (beta): full-app reskin — water, picture-discs, coverflow. The classic
+	     shell (sidebar/routes/player bar) is replaced wholesale; dialogs below stay mounted. -->
+	<PoolsideShell />
 {:else}
 	<!-- The window itself is transparent; this root paints the background and, when not maximized,
 	     rounds the corners (the compositor can't round an undecorated window for us). `app-root` is
@@ -186,7 +191,9 @@
 			</div>
 		{/if}
 	</div>
+{/if}
 
+{#if !isMini}
 	<CommandPalette />
 	<AddToPlaylist />
 	<SettingsDialog />

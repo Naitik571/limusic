@@ -32,14 +32,15 @@ export type ThemeId =
 	| 'gruvbox'
 	| 'nord';
 
-export type LayoutId = 'default' | 'grove' | 'canopy' | 'compact' | 'wide';
+export type LayoutId = 'default' | 'grove' | 'canopy' | 'compact' | 'wide' | 'poolside';
 
 export const LAYOUTS: { id: LayoutId; label: string; description: string }[] = [
 	{ id: 'default', label: 'Default', description: 'Balanced sidebar + feed - the classic Limusic look' },
 	{ id: 'grove', label: 'Grove', description: 'Rounded feed card + floating player island' },
 	{ id: 'canopy', label: 'Canopy', description: 'Transport in the top bar - no bottom bar at all' },
 	{ id: 'compact', label: 'Compact', description: 'Narrow centered focus with docked panels' },
-	{ id: 'wide', label: 'Wide', description: 'Collapsed sidebar + 1400px content' }
+	{ id: 'wide', label: 'Wide', description: 'Collapsed sidebar + 1400px content' },
+	{ id: 'poolside', label: 'Poolside (Beta)', description: 'Y2K aqua-pool vinyl deck — full-app reskin' }
 ];
 
 // `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (lime,
