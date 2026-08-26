@@ -12,19 +12,6 @@ use crate::state::AppState;
 
 pub use imp::{init, set_playing};
 
-/// Swap the tray's icon at runtime (custom app icon, Settings ▸ General). The builder registers
-/// the tray as `"main"`, so `tray_by_id` hands back a handle onto the live icon. Best-effort:
-/// a failure is logged, never fatal.
-pub fn set_icon(app: &AppHandle, icon: tauri::image::Image<'_>) {
-    let Some(tray) = app.tray_by_id("main") else {
-        tracing::warn!("tray not initialized, custom icon skipped");
-        return;
-    };
-    if let Err(e) = tray.set_icon(Some(icon)) {
-        tracing::warn!(error = %e, "tray icon update failed");
-    }
-}
-
 /// Bring the main window back from close-to-tray, minimize, or the mini player. Every "come back"
 /// path â€” tray menu, tray click, second launch, the widget's restore button â€” goes through here so
 /// they can't drift apart.

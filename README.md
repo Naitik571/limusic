@@ -72,7 +72,6 @@ All available in the latest release. Fork tracks upstream versioning — this re
 - **Gamepad focus polish** — using the controller shows a clear focus ring and the queue auto-scrolls to the playing track
 - **Searchable settings** — a filter box in Settings matches rows live, with "found in" chips jumping between tabs
 - **Glass intensity slider** — dial the blur/translucency of every glass surface (Appearance)
-- **Custom app icon** — pick any PNG as the window + tray icon; persists across launches, reset anytime
 
 
 All available in the latest release. Fork tracks upstream versioning — this release is `v0.5.12`.

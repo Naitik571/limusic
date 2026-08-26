@@ -218,7 +218,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 21] = [
+const UI_SETTINGS: [&str; 20] = [
     "proxy",
     "quality",
     "enable_history",
@@ -243,11 +243,7 @@ const UI_SETTINGS: [&str; 21] = [
     "lyrics_apple_storefront",
     "lyrics_boidu",
     // Custom app icon: an absolute file path on this machine, not a secret.
-    "app_icon_path",
 ];
-
-/// Settings key the custom app icon path lives under. Also restored at startup (lib.rs).
-pub const APP_ICON_KEY: &str = "app_icon_path";
 
 #[tauri::command]
 pub async fn get_settings(state: St<'_>) -> Result<serde_json::Value, String> {
@@ -308,95 +304,10 @@ pub async fn set_setting(
     Ok(())
 }
 
-// --- app icon (Settings ▸ General) ----------------------------------------------------------
-
-/// Apply `image` to every native surface that wears the app icon: the main window and the tray.
-/// Shared by [`set_app_icon`] and the startup restore in lib.rs. Each surface is best-effort.
-pub fn apply_app_icon(app: &tauri::AppHandle, image: &tauri::image::Image<'_>) {
-    if let Some(w) = app.get_webview_window("main") {
-        if let Err(e) = w.set_icon(image.clone()) {
-            tracing::warn!(error = %e, "window icon update failed");
-        }
-    }
-    crate::tray::set_icon(app, image.clone());
-}
-
-/// Custom app icon. `Some(path)` loads the picked image (PNG/ICO/JPG) and applies it to the
-/// window + tray right away, then persists the absolute path under [`APP_ICON_KEY`] so later
-/// launches restore it. `None`/empty restores the bundled default and clears the setting.
-#[tauri::command]
-pub async fn set_app_icon(
-    app: tauri::AppHandle,
-    state: St<'_>,
-    path: Option<String>,
-) -> Result<(), String> {
-    let Some(path) = path.as_deref().map(str::trim).filter(|p| !p.is_empty()) else {
-        state.db.delete_setting(APP_ICON_KEY);
-        let icon = app
-            .default_window_icon()
-            .ok_or_else(|| "no bundled app icon to restore".to_string())?;
-        apply_app_icon(&app, icon);
-        return Ok(());
-    };
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if !matches!(ext.as_str(), "png" | "ico" | "jpg" | "jpeg") {
-        return Err("Pick a PNG, ICO or JPG image.".into());
-    }
-    if !std::path::Path::new(path).is_file() {
-        return Err(format!("Image file not found: {path}"));
-    }
-    let image =
-        tauri::image::Image::from_path(path).map_err(|e| format!("Couldn't load {path}: {e}"))?;
-    apply_app_icon(&app, &image);
-    // Canonicalize so the stored value is absolute even when the picker hands over something
-    // relative; verbatim fallback for paths the OS refuses to canonicalize (network shares).
-    let abs = std::fs::canonicalize(path)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| path.to_string());
-    state.db.set_setting(APP_ICON_KEY, &abs);
-    Ok(())
-}
-
-/// Built-in icon variants (Settings ▸ Appearance ▸ App icon). Each is a PNG baked into the
-/// binary, so applying one is a decode + persist of the `preset:` name — no file paths involved.
-/// Startup restore in lib.rs understands the same prefix.
-pub fn preset_image(name: &str) -> Result<tauri::image::Image<'static>, String> {
-    let bytes: &[u8] = match name {
-        "ytm" => include_bytes!("../icons/variants/ytm.png"),
-        "spotify" => include_bytes!("../icons/variants/spotify.png"),
-        "limusic_blue" => include_bytes!("../icons/variants/limusic_blue.png"),
-        "limusic_rose" => include_bytes!("../icons/variants/limusic_rose.png"),
-        "limusic_amber" => include_bytes!("../icons/variants/limusic_amber.png"),
-        other => return Err(format!("unknown icon preset: {other}")),
-    };
-    tauri::image::Image::from_bytes(bytes)
-        .map(|i| i.to_owned())
-        .map_err(|e| format!("preset icon failed to decode: {e}"))
-}
-
-/// Apply one of the built-in icon variants. `name` must match [`preset_image`].
-#[tauri::command]
-pub async fn set_app_icon_preset(
-    app: tauri::AppHandle,
-    state: St<'_>,
-    name: String,
-) -> Result<(), String> {
-    let image = preset_image(&name)?;
-    apply_app_icon(&app, &image);
-    state
-        .db
-        .set_setting(APP_ICON_KEY, &format!("preset: {name}"));
-    Ok(())
-}
-
 /// The signed-in user's Liked Music video ids, newest first. Bounded walk (~30 pages ≈ 3k
 /// tracks) — this feeds the heart on every row: search/playlist rows don't carry `likeStatus`,
-/// so the UI checks membership here instead of trusting the row. Cached per call; likes made
-/// in-app update the frontend set locally, so this is a launch-time + on-demand snapshot.
+/// so the UI checks membership here instead of trusting the row. A launch-time + on-demand
+/// snapshot; likes made in-app update the frontend set locally.
 #[tauri::command]
 pub async fn get_liked_ids(state: St<'_>) -> Result<Vec<String>, String> {
     let client = metadata_client(&state)?;

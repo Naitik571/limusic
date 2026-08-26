@@ -275,23 +275,6 @@ pub fn run() {
                 tracing::warn!(error = %e, "tray init failed (continuing without tray)");
             }
 
-            // Restore the custom app icon (Settings ▸ Appearance) onto window + tray. Two shapes:
-            // "preset: <name>" decodes a bundled variant; anything else is a file path. Best-effort:
-            // a file that vanished since last launch just leaves the bundled icon in place.
-            if let Some(p) = app_state.db.get_setting(commands::APP_ICON_KEY) {
-                if let Some(preset) = p.strip_prefix("preset: ") {
-                    match commands::preset_image(preset) {
-                        Ok(img) => commands::apply_app_icon(&handle, &img),
-                        Err(e) => tracing::warn!(error = %e, "app icon preset failed to load"),
-                    }
-                } else if std::path::Path::new(&p).is_file() {
-                    match tauri::image::Image::from_path(&p) {
-                        Ok(img) => commands::apply_app_icon(&handle, &img),
-                        Err(e) => tracing::warn!(error = %e, path = %p, "custom app icon failed to load"),
-                    }
-                }
-            }
-
             // Bridge: apply Listen Together sync commands (guest playback / host seed) to AppState.
             {
                 let st = app_state.clone();
@@ -526,8 +509,6 @@ pub fn run() {
             commands::remove_artist_pack,
             commands::get_artist_pack,
             commands::fetch_artist_packs_index,
-            commands::set_app_icon,
-            commands::set_app_icon_preset,
             commands::get_liked_ids,
         ])
         .on_window_event(|window, event| {

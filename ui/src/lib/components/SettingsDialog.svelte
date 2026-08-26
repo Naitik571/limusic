@@ -148,7 +148,6 @@
 		{ tab: 'themes', group: 'thm-theme', text: 'Background tint Shades the greys: surfaces, borders and secondary text.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Roundness Corner radius of cards, buttons and artwork.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Reset customization Drop the color, roundness and font overrides. Keeps the preset.' },
-		{ tab: 'themes', group: 'thm-theme', text: 'App icon Use your own PNG or a built-in preset as the window and taskbar icon. Browse Reset.' },
 		{ tab: 'themes', group: 'thm-layout', text: 'Window layout Orchard window arrangement — Grove, Canopy and more.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Interface font Everything except headings.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Heading font Page and section titles.' },
@@ -337,52 +336,19 @@
 		}
 	}
 
-	// --- App icon (#appearance): the backend swaps the icon immediately and persists it; we only
-	// mirror the path into `settings` so the row shows what's active.
-	const appIconPath = $derived(settings.app_icon_path ?? '');
-
-	async function pickAppIcon() {
-		const picked = await open({
-			multiple: false,
-			title: 'Choose an app icon',
-			filters: [{ name: 'PNG image', extensions: ['png'] }]
-		});
-		const path = Array.isArray(picked) ? picked[0] : picked;
-		if (!path) return;
-		try {
-			await api.setAppIcon(path);
-			settings.app_icon_path = path;
-			toast.success('App icon updated');
-		} catch (e) {
-			toast.error(String(e));
-		}
-	}
-
-	async function resetAppIcon() {
-		try {
-			await api.setAppIcon(null);
-			delete settings.app_icon_path;
-			toast.success('App icon reset');
-		} catch (e) {
-			toast.error(String(e));
-		}
-	}
-
-	const ICON_PRESETS: { id: string; label: string; color: string }[] = [
-		{ id: 'ytm', label: 'YouTube Music', color: '#FF0033' },
-		{ id: 'spotify', label: 'Spotify', color: '#1DB954' },
-		{ id: 'limusic_blue', label: 'Limusic Blue', color: '#3b82f6' },
-		{ id: 'limusic_rose', label: 'Limusic Rose', color: '#f43f5e' },
-		{ id: 'limusic_amber', label: 'Limusic Amber', color: '#f59e0b' }
+	const AUTO_OFFLINE_MODES: { id: string; label: string }[] = [
+		{ id: 'off', label: 'Off' },
+		{ id: 'liked', label: 'Liked Music' },
+		{ id: 'liked_playlists', label: 'Likes + playlists' }
 	];
+	const autoOffline = $derived(settings.auto_offline ?? 'off');
 
-	async function usePreset(id: string) {
-		try {
-			await api.setAppIconPreset(id);
-			settings.app_icon_path = `preset: ${id}`;
-			toast.success('App icon updated');
-		} catch (e) {
-			toast.error(String(e));
+	async function setAutoOffline(mode: string) {
+		settings.auto_offline = mode;
+		await api.setSetting('auto_offline', mode);
+		if (mode !== 'off') {
+			toast.info('Syncing your Liked Music…');
+			api.autoOfflineSync().catch(() => {});
 		}
 	}
 
@@ -399,22 +365,6 @@
 	async function setUseOffline(on: boolean) {
 		settings.use_offline = on ? 'true' : 'false';
 		await api.setSetting('use_offline', settings.use_offline);
-	}
-
-	const AUTO_OFFLINE_MODES: { id: string; label: string }[] = [
-		{ id: 'off', label: 'Off' },
-		{ id: 'liked', label: 'Liked Music' },
-		{ id: 'liked_playlists', label: 'Likes + playlists' }
-	];
-	const autoOffline = $derived(settings.auto_offline ?? 'off');
-
-	async function setAutoOffline(mode: string) {
-		settings.auto_offline = mode;
-		await api.setSetting('auto_offline', mode);
-		if (mode !== 'off') {
-			toast.info('Syncing your Liked Music…');
-			api.autoOfflineSync().catch(() => {});
-		}
 	}
 
 	async function removeDownload(vid: string) {
@@ -791,16 +741,10 @@
 								desc: 'Corner radius of cards, buttons and artwork.',
 								control: radiusSlider
 							})}
-							{@render row({
-									title: 'Reset customization',
+						{@render row({
+								title: 'Reset customization',
 								desc: 'Drop the color, roundness and font overrides. Keeps the preset.',
 								control: resetButton
-							})}
-							{@render row({
-								title: 'App icon',
-								badge: 'Beta',
-								desc: 'Use your own PNG as the window and taskbar icon.',
-								below: appIconForm
 							})}
 							</div>
 						</section>
@@ -1257,39 +1201,7 @@
 
 
 
-{#snippet appIconForm()}
-	<!-- Presets first: one click, no file picker. Chips show the icon's color so they read at a
-	     glance; the backend ships the artwork. -->
-	<div class="mb-3 flex flex-wrap items-center gap-1.5">
-		<button
-			class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors {appIconPath
-				? 'border-border text-muted-foreground hover:bg-accent/10'
-				: 'border-primary bg-primary/10 text-primary'}"
-			onclick={resetAppIcon}
-		>
-			<span class="h-3 w-3 rounded-sm bg-gradient-to-br from-primary to-accent"></span>
-			Default
-		</button>
-		{#each ICON_PRESETS as p (p.id)}
-			<button
-				class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors {appIconPath ===
-				'preset: ' + p.id
-					? 'border-primary bg-primary/10 text-primary'
-					: 'border-border text-muted-foreground hover:bg-accent/10'}"
-				onclick={() => usePreset(p.id)}
-			>
-				<span class="h-3 w-3 rounded-sm" style="background:{p.color}"></span>
-				{p.label}
-			</button>
-		{/each}
-	</div>
-	<!-- Browse/Reset hand the path straight to the backend; it applies and persists, we only
-	     mirror `settings.app_icon_path` so the field reflects reality. -->
-	<div class="flex items-center gap-2">
-		<Input class="flex-1" readonly value={appIconPath} placeholder="Default Limusic icon" />
-		<Button size="sm" variant="outline" onclick={pickAppIcon}>Browse…</Button>
-	</div>
-{/snippet}
+
 
 {#snippet layoutSelect()}
 	<Select.Root type="single" value={layout.id} onValueChange={(v) => applyLayout(v as LayoutId)}>
