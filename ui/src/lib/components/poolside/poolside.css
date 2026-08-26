@@ -25,17 +25,18 @@
 	overflow: hidden;
 	font-family: var(--mono);
 	color: #fff;
+	background: var(--pool-deep);
 	user-select: none;
 	-webkit-font-smoothing: antialiased;
 }
-.ps-root.dusk .ps-water-bg {
+.ps-root.dusk .ps-water {
 	background: linear-gradient(158deg, #8C4A3E 0%, #D97E62 46%, #F2B98A 100%);
 }
 .ps-root button { font-family: inherit; border: 0; background: none; cursor: pointer; color: inherit; padding: 0; }
 .ps-root :focus-visible { outline: 2.5px solid #fff; outline-offset: 3px; border-radius: 8px; }
 
 /* ============ 1. WATER — vivid, high-contrast, alive ============ */
-.ps-water-bg {
+.ps-water {
 	position: absolute; inset: 0; z-index: 0;
 	background: linear-gradient(158deg,
 		#0E7C8C 0%,
@@ -46,7 +47,7 @@
 	);
 	transition: filter .6s var(--ease-spring);
 }
-.ps-root[data-view='album'] .ps-water-bg { filter: blur(12px) saturate(1.15) brightness(0.92); }
+.ps-root[data-view='album'] .ps-water { filter: blur(12px) saturate(1.15) brightness(0.92); }
 /* caustic ripple layers — bright white, high contrast, clearly visible */
 .ps-rip {
 	position: absolute; inset: -700px;
