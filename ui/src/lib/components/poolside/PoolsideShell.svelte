@@ -285,26 +285,21 @@
 				<button class="ps-sw {caustics ? 'on' : ''}" role="switch" aria-checked={caustics} onclick={() => setPref('caustics', !caustics)} aria-label="Toggle caustics"></button>
 			</div>
 			<div class="ps-setrow">
-				<span>KOI</span>
-				<button class="ps-sw {koi ? 'on' : ''}" role="switch" aria-checked={koi} onclick={() => setPref('koi', !koi)} aria-label="Toggle koi"></button>
-			</div>
-			<div class="ps-setrow">
 				<span>REDUCE MOTION</span>
 				<button class="ps-sw {reduce ? 'on' : ''}" role="switch" aria-checked={reduce} onclick={() => setPref('reduce', !reduce)} aria-label="Toggle reduce motion"></button>
 			</div>
 			<div class="ps-setrow">
-				<span>SPIN</span>
+				<span>SPIN SPEED</span>
 				<select value={spin} onchange={(e) => setSpin(e.currentTarget.value)} aria-label="Record spin speed">
-					<option value="2s">2S / REV</option>
-					<option value="3s">3S / REV</option>
-					<option value="4s">4S / REV</option>
+					<option value="2s">FAST · 2S</option>
+					<option value="3s">NORMAL · 3S</option>
+					<option value="4s">SLOW · 4S</option>
 				</select>
 			</div>
-			<div class="ps-setrow">
+			<div class="ps-setrow" style="border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px;">
 				<span>EXIT BETA</span>
 				<button
-					class="ps-sw"
-					style="background: var(--red); width: auto; padding: 0 10px; font-size: 7.5px; color: #fff; display: grid; place-items: center;"
+					class="ps-exit-btn"
 					onclick={() => {
 						applyLayout('default');
 						toast.info('Exited Poolside — back to Default layout');

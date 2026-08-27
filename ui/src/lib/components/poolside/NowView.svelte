@@ -1,6 +1,6 @@
 <script lang="ts">
-	// Poolside Now Playing — discs are the heroes, big and centered.
-	// Queue = quiet thumbnail strip at the bottom. Transport has aqua-gloss hierarchy.
+	// Poolside Now Playing — real turntable with draggable disc.
+	// Pull the disc off the platter to stop music; drop it back to play.
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		PlayIcon, PauseIcon, PreviousIcon, NextIcon,
@@ -21,9 +21,6 @@
 	const q = $derived(playback.queue);
 	const nextItem = $derived(q.items[q.currentIndex + 1] ?? null);
 	const upcoming = $derived(q.items.slice(q.currentIndex + 1, q.currentIndex + 7));
-	const recents = $derived(
-		q.items.slice(Math.max(0, q.currentIndex - 5), q.currentIndex).slice().reverse()
-	);
 	const pos = $derived(Math.min(playback.position, playback.duration || playback.position));
 	const dur = $derived(playback.duration || 0);
 
@@ -38,38 +35,105 @@
 	function playIndex(i: number) {
 		api.playIndex(i).catch((e) => toast.error(String(e)));
 	}
+
+	// drag-to-eject: pull disc off = stop, drop back = play
+	let dragX = $state(0);
+	let dragY = $state(0);
+	let isDragging = $state(false);
+	let dragStartX = 0;
+	let dragStartY = 0;
+
+	function onDiscPointerDown(e: PointerEvent) {
+		if (!cur) return;
+		isDragging = true;
+		dragStartX = e.clientX;
+		dragStartY = e.clientY;
+		(e.target as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function onDiscPointerMove(e: PointerEvent) {
+		if (!isDragging) return;
+		dragX = e.clientX - dragStartX;
+		dragY = e.clientY - dragStartY;
+	}
+	function onDiscPointerUp() {
+		if (!isDragging) return;
+		const distance = Math.sqrt(dragX * dragX + dragY * dragY);
+		if (distance > 100) {
+			// ejected — stop playback
+			if (!paused) api.togglePause().catch(() => {});
+			toast.info('Disc removed — music paused');
+		}
+		// snap back
+		dragX = 0;
+		dragY = 0;
+		isDragging = false;
+	}
+	function onDiscDoubleClick() {
+		if (!cur) return;
+		// drop disc back = play
+		if (paused) api.togglePause().catch(() => {});
+	}
 </script>
 
 <div class="ps-np">
-	<!-- deck: two big discs with sleeves -->
+	<!-- turntable with plinth, platter, and tonearm -->
+	<div class="ps-turntable">
+		<div class="ps-plinth">
+			<div class="ps-platter"></div>
+			<div class="ps-tonearm">
+				<div class="ps-arm-pivot"></div>
+				<div class="ps-arm-shaft">
+					<div class="ps-arm-head"></div>
+				</div>
+			</div>
+			<div class="ps-speed-badge">33⅓ RPM</div>
+			<div class="ps-power-led"></div>
+		</div>
+	</div>
+
+	<!-- deck: disc sitting on the turntable -->
 	<div class="ps-deck">
-		<div class="ps-deck-unit">
+		<div
+			class="ps-deck-unit"
+			class:ejecting={isDragging && Math.sqrt(dragX * dragX + dragY * dragY) > 60}
+			onpointerdown={onDiscPointerDown}
+			onpointermove={onDiscPointerMove}
+			onpointerup={onDiscPointerUp}
+			onpointercancel={onDiscPointerUp}
+			ondblclick={onDiscDoubleClick}
+		>
 			<div class="ps-sleeve"><div class="mouth"></div></div>
-			<Vinyl
-				src={cur?.thumbnail ?? ''}
-				playing={!paused}
-				style="width:100%"
-				flightTarget
-				title="Now playing"
-			/>
+			<div style="
+				position: absolute; width: 78%; left: -14%; top: 50%;
+				transform: translateY(-50%) translate({dragX}px, {dragY}px);
+				transition: {isDragging ? 'none' : 'left .7s var(--ease-spring), transform .5s'};
+			">
+				<Vinyl
+					src={cur?.thumbnail ?? ''}
+					playing={!paused && !isDragging}
+					style="width:100%"
+					flightTarget
+					title="Drag to eject · Double-click to drop back"
+				/>
+			</div>
 			<svg class="ps-sticker" style="right:-4%;top:-7%" width="56" height="56" viewBox="0 0 58 58">
 				<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />
-				<text x="29" y="26" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#111">SIDE</text>
-				<text x="29" y="41" text-anchor="middle" font-family="monospace" font-size="13" font-weight="bold" fill="#E02020">A</text>
+				<text x="29" y="33" text-anchor="middle" font-family="monospace" font-size="7" font-weight="bold" letter-spacing="1.5" fill="#111">NOW PLAYING</text>
 			</svg>
 		</div>
 		{#if nextItem}
 			<div class="ps-deck-unit">
 				<div class="ps-sleeve"><div class="mouth"></div></div>
 				<Vinyl src={nextItem.thumbnail ?? ''} playing={false} style="width:100%" title="Up next" />
+				<div class="ps-eject-hint">UP NEXT</div>
 			</div>
 		{/if}
 	</div>
 
 	<!-- caption: clear size hierarchy -->
 	<div class="ps-track-caption">
-		<span class="np-label">Now Playing · 33⅓ RPM</span>
-		<span class="np-title">{cur ? cur.title : 'Nothing playing'}</span>
+		<span class="np-label">{cur ? 'NOW PLAYING' : 'NO TRACK LOADED'}</span>
+		<span class="np-title">{cur ? cur.title : 'Drop a disc onto the turntable'}</span>
 		<span class="np-artist">{cur ? cur.artists : ''}</span>
 	</div>
 

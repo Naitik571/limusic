@@ -1,11 +1,10 @@
 /* ============================================================
-   POOLSIDE VINYL — rebuilt against the reference mockups.
-   Key principle: VIVID + HIGH CONTRAST. Sunlit pool, not murky aquarium.
+   POOLSIDE VINYL — realistic swimming pool + turntable.
    ============================================================ */
 .ps-root {
-	--pool-deep: #0E7C8C;
-	--pool-mid: #19B3C4;
-	--pool-bright: #3FD4DE;
+	--pool-deep: #0A5C6A;
+	--pool-mid: #15A5B5;
+	--pool-bright: #5DE0EC;
 	--caustic-w: rgba(255,255,255,.85);
 	--accent: #4FC3E8;
 	--coral: #F2A093;
@@ -29,30 +28,70 @@
 	user-select: none;
 	-webkit-font-smoothing: antialiased;
 }
-.ps-root.dusk .ps-water {
-	background: linear-gradient(158deg, #8C4A3E 0%, #D97E62 46%, #F2B98A 100%);
-}
 .ps-root button { font-family: inherit; border: 0; background: none; cursor: pointer; color: inherit; padding: 0; }
 .ps-root :focus-visible { outline: 2.5px solid #fff; outline-offset: 3px; border-radius: 8px; }
 
-/* ============ 1. WATER — vivid, high-contrast, alive ============ */
+/* ============ 1. WATER — realistic swimming pool ============ */
 .ps-water {
 	position: absolute; inset: 0; z-index: 0;
-	background: linear-gradient(158deg,
-		#0E7C8C 0%,
-		#19B3C4 30%,
-		#2FC8D6 55%,
-		#3FD4DE 78%,
-		#5ADDE6 100%
+	/* Deep pool gradient — turquoise to deep teal */
+	background: linear-gradient(175deg,
+		#7DD3E8 0%,
+		#4DC0D8 12%,
+		#2EB5CC 24%,
+		#1AABB8 36%,
+		#0F8FA8 48%,
+		#0A7A96 60%,
+		#076880 72%,
+		#05586E 84%,
+		#044A5E 100%
 	);
-	transition: filter .6s var(--ease-spring);
+	transition: filter .6s var(--ease-spring), background .8s;
+	overflow: hidden;
 }
-.ps-root[data-view='album'] .ps-water { filter: blur(12px) saturate(1.15) brightness(0.92); }
-/* caustic ripple layers — bright white, high contrast, clearly visible */
+/* pool tile pattern overlay — the hallmark of a real pool */
+.ps-water::before {
+	content: '';
+	position: absolute; inset: 0;
+	background-image:
+		linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+	background-size: 48px 48px;
+	transform: perspective(600px) rotateX(12deg) translateY(-30px);
+	transform-origin: center top;
+	opacity: 0.7;
+	pointer-events: none;
+}
+/* sunlight shimmer — bright rippling caustic light on the pool floor */
+.ps-water::after {
+	content: '';
+	position: absolute; inset: -50%;
+	width: 200%; height: 200%;
+	background-image:
+		radial-gradient(ellipse 180px 120px at 15% 25%, rgba(255,255,255,.35) 0%, transparent 70%),
+		radial-gradient(ellipse 220px 140px at 65% 15%, rgba(255,255,255,.28) 0%, transparent 65%),
+		radial-gradient(ellipse 160px 100px at 35% 65%, rgba(255,255,255,.32) 0%, transparent 68%),
+		radial-gradient(ellipse 200px 130px at 85% 55%, rgba(255,255,255,.25) 0%, transparent 72%),
+		radial-gradient(ellipse 140px 90px at 50% 85%, rgba(255,255,255,.3) 0%, transparent 66%),
+		radial-gradient(ellipse 170px 110px at 25% 45%, rgba(255,255,255,.22) 0%, transparent 70%),
+		radial-gradient(ellipse 190px 125px at 75% 75%, rgba(255,255,255,.27) 0%, transparent 68%);
+	background-size: 600px 600px;
+	mix-blend-mode: soft-light;
+	animation: ps-shimmer 8s ease-in-out infinite;
+	pointer-events: none;
+}
+@keyframes ps-shimmer {
+	0%, 100% { transform: translate3d(0,0,0) scale(1); }
+	33% { transform: translate3d(20px,-15px,0) scale(1.02); }
+	66% { transform: translate3d(-15px,10px,0) scale(0.98); }
+}
+
+/* caustic ripple layers */
 .ps-rip {
 	position: absolute; inset: -700px;
 	will-change: transform;
 	pointer-events: none;
+	transition: opacity .6s;
 }
 .ps-rip.a {
 	background-image:
@@ -78,14 +117,8 @@
 }
 @keyframes ps-driftA { from { transform: translate3d(0,0,0); } to { transform: translate3d(640px,640px,0); } }
 @keyframes ps-driftB { from { transform: translate3d(0,0,0); } to { transform: translate3d(-460px,-460px,0); } }
-/* turbulence texture — static, rasterized once */
-.ps-turb { position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: .18; mix-blend-mode: overlay; }
-/* vignette */
-.ps-vignette {
-	position: absolute; inset: 0; z-index: 2; pointer-events: none;
-	background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(6,50,60,.32) 100%);
-}
-/* glow blobs — luminous, not muddy */
+
+/* glow blobs — luminous underwater light pools */
 .ps-blob { position: absolute; z-index: 1; pointer-events: none; will-change: transform; }
 .ps-blob.coral {
 	width: 64vmin; height: 64vmin; left: 18%; top: 16%;
@@ -100,13 +133,142 @@
 	animation: ps-bob 17s ease-in-out infinite reverse;
 }
 @keyframes ps-bob { 0%,100% { transform: translate3d(0,0,0); } 50% { transform: translate3d(3vmin,-4vmin,0); } }
-.ps-veil {
-	position: absolute; inset: 0; z-index: 3; pointer-events: none;
-	background: radial-gradient(ellipse at 50% 45%, rgba(226,248,250,.38), rgba(200,238,244,.5));
-	opacity: 0; transition: opacity .6s var(--ease-spring);
+
+/* sunlight rays from above */
+.ps-blob.sun-ray {
+	width: 100%; height: 100%; left: 0; top: 0;
+	background:
+		conic-gradient(from 190deg at 60% -10%,
+			transparent 0deg, rgba(255,255,255,.06) 8deg, transparent 16deg,
+			transparent 30deg, rgba(255,255,255,.04) 38deg, transparent 46deg,
+			transparent 60deg, rgba(255,255,255,.05) 68deg, transparent 76deg
+		);
+	animation: ps-sway 11s ease-in-out infinite;
+	pointer-events: none;
 }
-.ps-root[data-view='now'] .ps-veil { opacity: .18; }
-.ps-root[data-view='album'] .ps-veil { opacity: .8; }
+@keyframes ps-sway { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(2deg); } }
+
+/* light shafts — tall blurred beams from the surface, screen-blended */
+.ps-shaft {
+	position: absolute;
+	top: -20vh; height: 140vh;
+	background: linear-gradient(to bottom, rgba(255,255,255,.32) 0%, transparent 70%);
+	filter: blur(20px);
+	mix-blend-mode: screen;
+	pointer-events: none;
+	z-index: 1;
+	animation: ps-shaft-sway 14s ease-in-out infinite alternate;
+}
+.ps-shaft:nth-child(2) { animation-duration: 18s; animation-delay: -3s; }
+.ps-shaft:nth-child(3) { animation-duration: 16s; animation-delay: -7s; }
+.ps-shaft:nth-child(4) { animation-duration: 20s; animation-delay: -11s; }
+@keyframes ps-shaft-sway {
+	0% { transform: var(--shaft-rot, rotate(8deg)) translateX(0); }
+	100% { transform: var(--shaft-rot, rotate(8deg)) translateX(2vw); }
+}
+
+/* surface glare — bright edge at the waterline */
+.ps-glare {
+	position: absolute; left: 0; right: 0; top: 0; height: 10vh;
+	z-index: 2; pointer-events: none;
+	background:
+		radial-gradient(ellipse 60% 100% at 30% 0%, rgba(255,255,255,.5) 0%, transparent 60%),
+		radial-gradient(ellipse 50% 100% at 70% 0%, rgba(255,255,255,.35) 0%, transparent 60%);
+	filter: blur(3px);
+}
+
+/* SVG turbulence — displacement filter for realistic caustic distortion */
+.ps-turb-svg { position: absolute; width: 0; height: 0; pointer-events: none; }
+.ps-water > .ps-rip {
+	filter: url(#ps-turbulence);
+}
+
+/* floating light motes — tiny particles drifting through the water */
+.ps-mote {
+	position: absolute;
+	border-radius: 50%;
+	background: rgba(255,255,255,.7);
+	box-shadow: 0 0 6px 2px rgba(255,255,255,.4);
+	will-change: transform, opacity;
+	pointer-events: none;
+	z-index: 2;
+	animation: ps-mote-float 16s ease-in-out infinite;
+}
+@keyframes ps-mote-float {
+	0% { transform: translate3d(0, 0, 0); opacity: 0; }
+	10% { opacity: .8; }
+	50% { transform: translate3d(2vmin, -12vmin, 0); opacity: .6; }
+	90% { opacity: .7; }
+	100% { transform: translate3d(-1vmin, -24vmin, 0); opacity: 0; }
+}
+
+/* caustic disable — also hides shafts, glare, turbulence, and motes */
+.ps-root.no-caustics .ps-rip { opacity: 0; pointer-events: none; }
+.ps-root.no-caustics .ps-water::after { opacity: 0; }
+.ps-root.no-caustics .ps-shaft { opacity: 0 !important; }
+.ps-root.no-caustics .ps-glare { opacity: 0; }
+.ps-root.no-caustics .ps-mote { animation: none; opacity: 0; }
+.ps-root.no-caustics .ps-water > .ps-rip { filter: none; }
+
+/* ============ EVENING MODE — golden hour with warm amber/copper/wine ============ */
+.ps-root.dusk .ps-water {
+	background: linear-gradient(175deg,
+		#D4915E 0%,
+		#C47E4F 10%,
+		#B86E44 20%,
+		#A86040 30%,
+		#955440 40%,
+		#804A3E 50%,
+		#6C4040 60%,
+		#5A3842 70%,
+		#4A3040 80%,
+		#3C2838 90%,
+		#30202E 100%
+	);
+}
+.ps-root.dusk .ps-water::before {
+	opacity: 0.35;
+	background-image:
+		linear-gradient(rgba(255,180,120,.06) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255,180,120,.06) 1px, transparent 1px);
+}
+.ps-root.dusk .ps-water::after {
+	opacity: 0.45;
+	background-image:
+		radial-gradient(ellipse 180px 120px at 15% 25%, rgba(255,170,90,.35) 0%, transparent 70%),
+		radial-gradient(ellipse 220px 140px at 65% 15%, rgba(255,150,70,.28) 0%, transparent 65%),
+		radial-gradient(ellipse 160px 100px at 35% 65%, rgba(255,160,80,.32) 0%, transparent 68%),
+		radial-gradient(ellipse 200px 130px at 85% 55%, rgba(255,140,65,.25) 0%, transparent 72%),
+		radial-gradient(ellipse 140px 90px at 50% 85%, rgba(255,155,75,.3) 0%, transparent 66%);
+}
+.ps-root.dusk .ps-blob.coral {
+	background: radial-gradient(circle at 50% 50%,
+		rgba(255,160,80,.55) 0%, rgba(255,130,50,.28) 38%, transparent 68%);
+}
+.ps-root.dusk .ps-blob.blue {
+	background: radial-gradient(circle at 50% 50%,
+		rgba(200,120,70,.45) 0%, rgba(180,100,55,.22) 40%, transparent 70%);
+}
+.ps-root.dusk .ps-blob.sun-ray {
+	background:
+		conic-gradient(from 190deg at 60% -10%,
+			transparent 0deg, rgba(255,160,80,.09) 8deg, transparent 16deg,
+			transparent 30deg, rgba(255,140,60,.07) 38deg, transparent 46deg
+		);
+}
+.ps-root.dusk .ps-shaft {
+	background: linear-gradient(to bottom, rgba(255,180,100,.28) 0%, transparent 70%);
+}
+.ps-root.dusk .ps-glare {
+	background:
+		radial-gradient(ellipse 60% 100% at 30% 0%, rgba(255,180,100,.45) 0%, transparent 60%),
+		radial-gradient(ellipse 50% 100% at 70% 0%, rgba(255,160,80,.3) 0%, transparent 60%);
+}
+.ps-root.dusk .ps-mote {
+	background: rgba(255,200,140,.65);
+	box-shadow: 0 0 6px 2px rgba(255,180,100,.35);
+}
+.ps-root[data-view='album'] .ps-water { filter: blur(12px) saturate(1.15) brightness(0.92); }
 
 /* ============ 2. VIEW SYSTEM — camera dolly ============ */
 .ps-view {
@@ -117,7 +279,7 @@
 }
 .ps-view.on { opacity: 1; transform: scale(1); pointer-events: auto; }
 
-/* ============ 3. VINYL — bright picture disc, alive ============ */
+/* ============ 3. VINYL — bright picture disc ============ */
 .ps-vinyl {
 	position: relative; border-radius: 50%;
 	aspect-ratio: 1;
@@ -128,14 +290,12 @@
 		0 6px 16px rgba(8,60,70,.3),
 		inset 0 0 0 1.5px rgba(255,255,255,.3);
 }
-/* spinning wrapper — hard-clipped, art + grooves rotate inside */
 .ps-vinyl .spin {
 	position: absolute; inset: 0; border-radius: 50%;
 	clip-path: circle(50% at 50% 50%);
 	contain: paint; isolation: isolate;
 	will-change: transform;
 }
-/* printed art fills the disc, only SLIGHTLY darkened so it pops */
 .ps-vinyl .art {
 	position: absolute; inset: 0; border-radius: 50%;
 	background-image:
@@ -143,7 +303,6 @@
 		var(--art);
 	background-size: cover; background-position: center;
 }
-/* fine grooves OVER the art — subtle, not harsh */
 .ps-vinyl .grooves {
 	position: absolute; inset: 0; border-radius: 50%;
 	pointer-events: none;
@@ -155,7 +314,6 @@
 			transparent 55%, rgba(0,0,0,.2) 80%, rgba(0,0,0,.4) 100%
 		);
 }
-/* dual sheen — wide soft sweep + narrow sharp highlight */
 .ps-vinyl .sheen-a {
 	position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
 	background: linear-gradient(128deg, transparent 30%, rgba(255,255,255,.42) 44%, rgba(255,255,255,.1) 50%, transparent 60%);
@@ -166,7 +324,6 @@
 	background: linear-gradient(308deg, transparent 40%, rgba(255,255,255,.12) 50%, transparent 58%);
 	mix-blend-mode: screen; opacity: .5;
 }
-/* center label ring — paper white, clean */
 .ps-vinyl .label-ring {
 	position: absolute; left: 50%; top: 50%;
 	width: 22%; aspect-ratio: 1;
@@ -175,7 +332,6 @@
 	background: radial-gradient(circle, #fff 0 50%, #f0ece0 50% 75%, rgba(255,255,255,.7) 75% 88%, transparent 88%);
 	box-shadow: 0 1px 3px rgba(0,30,40,.25);
 }
-/* spindle hole */
 .ps-vinyl .spindle {
 	position: absolute; left: 50%; top: 50%;
 	width: 6%; aspect-ratio: 1;
@@ -194,6 +350,139 @@
 .ps-root.paused .ps-vinyl .sheen-a,
 .ps-root.paused .ps-vinyl .sheen-b {
 	animation-play-state: paused;
+}
+
+/* ============ TURNTABLE — real record player ============ */
+.ps-turntable {
+	position: relative;
+	display: flex; flex-direction: column; align-items: center;
+}
+.ps-plinth {
+	position: relative;
+	width: min(50vmin, 460px); aspect-ratio: 1.15;
+	background: linear-gradient(160deg, #2A2018 0%, #1E1610 40%, #14100C 100%);
+	border-radius: 24px;
+	box-shadow:
+		0 30px 80px rgba(0,0,0,.5),
+		0 8px 30px rgba(0,0,0,.3),
+		inset 0 1px 0 rgba(255,255,255,.08),
+		inset 0 -2px 0 rgba(0,0,0,.4);
+	overflow: hidden;
+}
+/* wood grain texture */
+.ps-plinth::before {
+	content: '';
+	position: absolute; inset: 0;
+	background-image:
+		repeating-linear-gradient(175deg,
+			rgba(255,255,255,.02) 0px, transparent 1px,
+			transparent 8px, rgba(255,255,255,.01) 9px
+		);
+	border-radius: 24px;
+	pointer-events: none;
+}
+/* felt mat on the platter */
+.ps-platter {
+	position: absolute;
+	left: 12%; top: 8%;
+	width: 70%; aspect-ratio: 1;
+	border-radius: 50%;
+	background: radial-gradient(circle,
+		#1a1a1a 0%, #222 30%, #1a1a1a 50%, #222 70%, #1a1a1a 100%
+	);
+	box-shadow:
+		0 0 0 3px rgba(255,255,255,.06),
+		0 0 0 6px rgba(0,0,0,.3),
+		inset 0 2px 8px rgba(0,0,0,.5);
+}
+.ps-platter::after {
+	content: '';
+	position: absolute; inset: 4%;
+	border-radius: 50%;
+	background: radial-gradient(circle,
+		rgba(50,50,50,.4) 0%,
+		rgba(40,40,40,.2) 40%,
+		transparent 70%
+	);
+}
+/* tonearm */
+.ps-tonearm {
+	position: absolute;
+	right: 6%; top: 4%;
+	width: 30%; height: 60%;
+	transform-origin: 90% 8%;
+	transform: rotate(-15deg);
+	transition: transform .8s var(--ease-spring);
+	pointer-events: none;
+}
+.ps-root:not(.paused) .ps-tonearm {
+	transform: rotate(-28deg);
+}
+.ps-arm-pivot {
+	position: absolute; right: 0; top: 0;
+	width: 20px; height: 20px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 40% 35%, #aaa, #555);
+	box-shadow: 0 2px 8px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.3);
+}
+/* counterweight behind the pivot */
+.ps-arm-pivot::before {
+	content: '';
+	position: absolute; right: -10px; top: -6px;
+	width: 14px; height: 14px; border-radius: 50%;
+	background: radial-gradient(circle at 45% 40%, #777, #333);
+	box-shadow: 0 2px 4px rgba(0,0,0,.4);
+}
+.ps-arm-shaft {
+	position: absolute;
+	right: 8px; top: 10px;
+	width: 3px; height: 83%;
+	background: linear-gradient(180deg, #aaa, #777, #555);
+	border-radius: 2px;
+	transform-origin: top center;
+	transform: rotate(18deg);
+	box-shadow: 1px 2px 4px rgba(0,0,0,.3);
+}
+.ps-arm-head {
+	position: absolute;
+	bottom: -2px; left: -5px;
+	width: 12px; height: 16px;
+	background: linear-gradient(180deg, #888, #555);
+	border-radius: 3px 3px 1px 1px;
+	box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+/* headshell detail — cartridge line */
+.ps-arm-head::after {
+	content: '';
+	position: absolute; bottom: 2px; left: 2px; right: 2px;
+	height: 2px; border-radius: 1px;
+	background: #333;
+}
+/* speed badge */
+.ps-speed-badge {
+	position: absolute;
+	right: 8%; bottom: 8%;
+	padding: 5px 12px;
+	border-radius: 8px;
+	font-family: var(--mono);
+	font-size: 8px;
+	letter-spacing: .15em;
+	color: rgba(255,255,255,.5);
+	background: rgba(255,255,255,.06);
+	border: 1px solid rgba(255,255,255,.08);
+}
+/* power LED — glows green when playing */
+.ps-power-led {
+	position: absolute;
+	left: 8%; bottom: 8%;
+	width: 6px; height: 6px; border-radius: 50%;
+	background: #333;
+	box-shadow: 0 0 0 1px rgba(255,255,255,.1);
+	transition: background .4s, box-shadow .4s;
+}
+.ps-root:not(.paused) .ps-power-led {
+	background: #4ade80;
+	box-shadow: 0 0 4px 1px rgba(74,222,128,.6), 0 0 10px 2px rgba(74,222,128,.25);
 }
 
 /* ============ kraft sleeve ============ */
@@ -220,16 +509,22 @@
 .ps-np {
 	display: flex; flex-direction: column;
 	align-items: center; justify-content: center;
-	gap: 2.8vh;
+	gap: 2vh;
 	height: 100%;
-	padding-bottom: 40px;
+	padding-bottom: 30px;
 }
-.ps-deck { display: flex; align-items: center; gap: 4vw; }
+.ps-deck {
+	display: flex; align-items: center; gap: 3vw;
+}
 .ps-deck-unit {
 	position: relative; display: flex; align-items: center;
-	cursor: pointer;
-	/* soft elliptical shadow ON the water beneath each disc */
+	cursor: grab;
 	filter: drop-shadow(0 22px 20px rgba(8,60,70,.3));
+	transition: filter .3s;
+}
+.ps-deck-unit:active { cursor: grabbing; }
+.ps-deck-unit.ejecting {
+	filter: drop-shadow(0 30px 30px rgba(8,60,70,.4));
 }
 .ps-deck-unit .ps-sleeve {
 	width: min(42vmin, 400px); aspect-ratio: 1/.96;
@@ -237,9 +532,14 @@
 .ps-deck-unit .ps-vinyl {
 	position: absolute; width: 78%; left: -14%; top: 50%;
 	transform: translateY(-50%);
-	transition: left .7s var(--ease-spring);
+	transition: left .7s var(--ease-spring), transform .5s var(--ease-spring), opacity .4s;
 }
 .ps-deck-unit:hover .ps-vinyl { left: -26%; }
+.ps-deck-unit.ejected .ps-vinyl {
+	left: -100%;
+	opacity: 0;
+	transform: translateY(-50%) rotate(-45deg);
+}
 .ps-deck-unit .ps-sticker { right: -4%; top: -7%; }
 .ps-track-caption {
 	text-align: center;
@@ -271,6 +571,14 @@
 	position: absolute; bottom: 18px; left: 22px;
 	font-size: 9px; letter-spacing: .28em; opacity: .7; text-transform: uppercase;
 }
+/* eject hint */
+.ps-eject-hint {
+	font-size: 8px; letter-spacing: .2em; text-transform: uppercase;
+	opacity: 0; transition: opacity .3s;
+	color: rgba(255,255,255,.6);
+	text-align: center; margin-top: 8px;
+}
+.ps-deck-unit:hover .ps-eject-hint { opacity: 1; }
 
 /* ============ 5. LIBRARY ============ */
 .ps-library { padding: 26px 30px; }
@@ -498,6 +806,7 @@
 /* ============ 8. EDGE BUTTONS ============ */
 .ps-edge { position: fixed; right: 22px; z-index: 20; display: flex; flex-direction: column; gap: 12px; }
 .ps-edge.bottom { bottom: 96px; }
+.ps-edge.mid { bottom: 96px; }
 .ps-edge-btn {
 	all: unset; cursor: pointer;
 	width: 40px; height: 40px; border-radius: 50%;
@@ -510,8 +819,8 @@
 }
 .ps-edge-btn:hover { transform: scale(1.1); background: var(--glass-strong, rgba(255,255,255,.5)); }
 
-/* ============ 9. SETTINGS POPOVER — bigger, cleaner ============ */
-.ps-settings-pop {
+/* ============ 9. SETTINGS POPOVER ============ */
+.ps-settings {
 	position: fixed; right: 82px; bottom: 96px; z-index: 32;
 	border-radius: 24px; padding: 28px 30px; width: 340px;
 	background: var(--glass-strong, rgba(255,255,255,.5));
@@ -522,8 +831,8 @@
 	transition: all .3s var(--ease-spring);
 	transform: translateY(8px);
 }
-.ps-settings-pop.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
-.ps-settings-pop h3 {
+.ps-settings.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.ps-settings h3 {
 	font-family: var(--mono); font-size: 11px; font-weight: 700;
 	letter-spacing: .28em; text-transform: uppercase; margin-bottom: 18px;
 }
@@ -533,6 +842,7 @@
 	font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
 }
 .ps-setrow + .ps-setrow { border-top: 1px solid rgba(255,255,255,.12); }
+/* toggle switch */
 .ps-sw {
 	position: relative; width: 42px; height: 23px; border-radius: 999px;
 	background: rgba(255,255,255,.25); transition: background .2s; flex: none;
@@ -545,22 +855,26 @@
 }
 .ps-sw.on { background: var(--accent); }
 .ps-sw.on::after { left: 22px; }
-.ps-settings-pop select {
+/* exit button — NOT a toggle, sits on its own row */
+.ps-exit-btn {
+	all: unset; cursor: pointer;
+	padding: 8px 18px; border-radius: 999px;
+	font-size: 8px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+	color: #fff;
+	background: var(--red); opacity: .85;
+	transition: opacity .2s, transform .2s var(--ease-spring);
+}
+.ps-exit-btn:hover { opacity: 1; transform: scale(1.05); }
+.ps-settings select {
 	font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
 	border-radius: 8px; border: 1px solid rgba(255,255,255,.4);
 	padding: 5px 8px; background: rgba(255,255,255,.25); color: #fff;
 }
-.ps-settings-pop .exit {
-	all: unset; cursor: pointer;
-	display: block; width: 100%; text-align: center;
-	padding: 10px; margin-top: 16px; border-radius: 999px;
-	font-size: 8px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
-	color: rgba(255,255,255,.85);
-	background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
-	transition: background .2s;
+.ps-settings select:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px rgba(79,195,232,.3);
 }
-.ps-settings-pop .exit:hover { background: rgba(255,255,255,.3); }
-.ps-settings-pop .foot {
+.ps-settings .foot {
 	margin-top: 14px; padding-top: 10px;
 	border-top: 1px solid rgba(255,255,255,.12);
 	font-size: 7.5px; opacity: .72; letter-spacing: .1em; text-transform: uppercase;
@@ -604,7 +918,7 @@
 	box-shadow: 0 5px 16px rgba(14,110,140,.45), inset 0 1px 0 rgba(255,255,255,.9);
 }
 
-/* ============ lyrics overlay — palette-respecting, doesn't cover discs ============ */
+/* lyrics overlay */
 .ps-lyrics-frame {
 	position: fixed;
 	right: 3vw; top: 10vh; bottom: 12vh;
@@ -626,29 +940,8 @@
 .ps-lyrics-close:hover { background: rgba(255,255,255,.3); }
 
 /* ============ COMPATIBILITY BRIDGE — maps Svelte component classes ============ */
-
-/* ---- Shell ---- */
 .ps-views { position: absolute; inset: 0; }
-.ps-edge.mid { bottom: 96px; }
-.ps-settings {
-	position: fixed; right: 82px; bottom: 96px; z-index: 32;
-	border-radius: 24px; padding: 28px 30px; width: 340px;
-	background: var(--glass-strong, rgba(255,255,255,.5));
-	backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
-	border: 1px solid rgba(255,255,255,.65);
-	box-shadow: var(--shadow-teal);
-	opacity: 0; pointer-events: none;
-	transition: all .3s var(--ease-spring);
-	transform: translateY(8px);
-}
-.ps-settings.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
-.ps-settings h3 { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .28em; text-transform: uppercase; margin-bottom: 18px; }
-.ps-settings select { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; border-radius: 8px; border: 1px solid rgba(255,255,255,.4); padding: 5px 8px; background: rgba(255,255,255,.25); color: #fff; }
-.ps-settings .exit { all: unset; cursor: pointer; display: block; width: 100%; text-align: center; padding: 10px; margin-top: 16px; border-radius: 999px; font-size: 8px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: rgba(255,255,255,.85); background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3); transition: background .2s; }
-.ps-settings .exit:hover { background: rgba(255,255,255,.3); }
-.ps-settings .foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.12); font-size: 7.5px; opacity: .72; letter-spacing: .1em; text-transform: uppercase; }
-
-/* ---- MiniPlayer ---- */
+/* MiniPlayer */
 .ps-mini .meta { display: flex; flex-direction: column; gap: 7px; min-width: 150px; }
 .ps-mini .mt { font-size: 8.5px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; text-shadow: 0 1px 3px rgba(8,60,70,.5); }
 .ps-mini .ma { font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; opacity: .65; }
@@ -662,7 +955,7 @@
 .ps-mini .aqua-play:hover { transform: scale(1.08); }
 .ps-mini .aqua-play::before { content: ''; position: absolute; left: 14%; right: 14%; top: 8%; height: 40%; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.05)); pointer-events: none; }
 
-/* ---- NowView transport + seek ---- */
+/* NowView transport + seek */
 .ps-bottom { display: flex; flex-direction: column; align-items: center; gap: 16px; width: min(560px, 80vw); }
 .ps-seek-row { display: flex; align-items: center; gap: 12px; width: 100%; font-size: 9px; letter-spacing: .1em; color: rgba(255,255,255,.9); }
 .ps-seek { -webkit-appearance: none; appearance: none; flex: 1; height: 18px; background: transparent; cursor: pointer; }
@@ -680,7 +973,7 @@
 .ps-play svg { width: 22px !important; height: 22px !important; }
 .ps-aqua { background: linear-gradient(180deg, #8FDDF6, var(--accent) 55%, #2E9ECB) !important; border: 1px solid rgba(255,255,255,.8) !important; box-shadow: 0 5px 14px rgba(14,110,140,.5), inset 0 1px 0 rgba(255,255,255,.9) !important; }
 
-/* ---- Library two-column layout ---- */
+/* Library two-column layout */
 .ps-lib { display: grid; grid-template-columns: minmax(280px, 34%) 1fr; gap: 36px; align-items: stretch; height: 100%; padding: 26px 30px; }
 .ps-lib-left { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
 .ps-lib-right { display: flex; flex-direction: column; gap: 18px; min-width: 0; border-radius: 26px; padding: 22px 24px; overflow: hidden; }
@@ -715,7 +1008,7 @@
 .ps-folderrow .fc { font-size: 9px; opacity: .65; letter-spacing: .1em; text-transform: uppercase; margin-left: auto; }
 .ps-empty { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; opacity: .65; padding: 30px 6px; text-align: center; }
 
-/* ---- AlbumView ---- */
+/* AlbumView */
 .ps-back { all: unset; cursor: pointer; position: absolute; left: 26px; top: 26px; width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--glass-strong, rgba(255,255,255,.5)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.6); box-shadow: var(--shadow-soft); color: #0E5A6A; transition: transform .25s var(--ease-spring); }
 .ps-back:hover { transform: scale(1.1); }
 .ps-fan-tip { position: fixed; padding: 8px 14px; border-radius: 12px; pointer-events: none; background: rgba(10,20,24,.78); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-size: 8px; letter-spacing: .2em; text-transform: uppercase; color: #fff; z-index: 10; white-space: nowrap; }
@@ -728,7 +1021,7 @@
 .ps-ghost:hover { background: rgba(255,255,255,.2); }
 .ps-alb-deck { position: relative; margin: 0 auto; }
 
-/* ---- Custom CD cover overlay ---- */
+/* Custom CD cover overlay */
 .ps-card { position: relative; background: var(--glass-strong, rgba(255,255,255,.5)); backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); border: 1px solid rgba(255,255,255,.65); border-radius: 26px; box-shadow: var(--shadow-teal); padding: 34px 40px; text-align: center; max-width: 520px; transform: scale(1.06); transition: transform .4s var(--ease-spring); }
 .ps-overlay.open .ps-card { transform: scale(1); }
 .ps-card .serif-big { font-family: var(--serif); font-weight: 400; font-size: 30px; color: #fff; text-shadow: 0 2px 12px rgba(8,60,70,.55); margin-bottom: 8px; }
@@ -742,17 +1035,46 @@
 .ps-cc-body { display: flex; gap: 24px; align-items: center; margin-top: 20px; }
 .ps-card-actions { display: flex; justify-content: center; gap: 11px; margin-top: 22px; }
 
-/* ============ reduced motion: slow everything, don't stop ============ */
-.ps-root.reduce *, .ps-root.reduce *::before, .ps-root.reduce *::after {
-	animation-duration: calc(var(--ps-spin, 3.4s) * 5) !important;
-	animation-iteration-count: infinite !important;
-	transition-duration: .5s !important;
+/* ============ REDUCE MOTION — actual reduction ============ */
+.ps-root.reduce .ps-rip,
+.ps-root.reduce .ps-water::after,
+.ps-root.reduce .ps-blob,
+.ps-root.reduce .ps-blob.sun-ray,
+.ps-root.reduce .ps-shaft,
+.ps-root.reduce .ps-mote {
+	animation: none !important;
+}
+.ps-root.reduce .ps-shaft { opacity: 0 !important; }
+.ps-root.reduce .ps-mote { opacity: 0; }
+.ps-root.reduce .ps-glare { filter: none; }
+.ps-root.reduce .ps-water > .ps-rip { filter: none; }
+.ps-root.reduce .ps-vinyl.playing .spin,
+.ps-root.reduce .ps-vinyl.playing .sheen-a,
+.ps-root.reduce .ps-vinyl.playing .sheen-b {
+	animation-duration: 12s !important;
+}
+.ps-root.reduce * {
+	transition-duration: .15s !important;
 }
 @media (prefers-reduced-motion: reduce) {
-	.ps-root *, .ps-root *::before, .ps-root *::after {
-		animation-duration: calc(var(--ps-spin, 3.4s) * 5) !important;
-		transition-duration: .3s !important;
+	.ps-root .ps-rip,
+	.ps-root .ps-water::after,
+	.ps-root .ps-blob,
+	.ps-root .ps-blob.sun-ray,
+	.ps-root .ps-shaft,
+	.ps-root .ps-mote {
+		animation: none !important;
 	}
+	.ps-root .ps-shaft { opacity: 0 !important; }
+	.ps-root .ps-mote { opacity: 0; }
+	.ps-root .ps-glare { filter: none; }
+	.ps-root .ps-water > .ps-rip { filter: none; }
+	.ps-root .ps-vinyl.playing .spin,
+	.ps-root .ps-vinyl.playing .sheen-a,
+	.ps-root .ps-vinyl.playing .sheen-b {
+		animation-duration: 12s !important;
+	}
+	.ps-root * { transition-duration: .15s !important; }
 }
 
 @media (max-width: 820px) {
