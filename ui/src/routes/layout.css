@@ -1082,7 +1082,7 @@ html.layout-grove main {
 	border-radius: calc(var(--radius) * 2.2);
 	background: color-mix(in oklch, var(--card) 92%, transparent);
 	box-shadow: inset 0 1px 0 0 var(--glass-highlight);
-	overflow: hidden;
+	overflow-x: hidden;
 }
 /* The player bar becomes Orchard's floating island: fixed, inset from the sidebar, rounded,
    floating OVER the now-playing takeover (which is why the takeover needs no per-layout offsets —
