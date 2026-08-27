@@ -96,6 +96,8 @@
 		<div
 			class="ps-deck-unit"
 			class:ejecting={isDragging && Math.sqrt(dragX * dragX + dragY * dragY) > 60}
+			role="application"
+			aria-label="Vinyl disc — drag to eject, double-click to drop back"
 			onpointerdown={onDiscPointerDown}
 			onpointermove={onDiscPointerMove}
 			onpointerup={onDiscPointerUp}
