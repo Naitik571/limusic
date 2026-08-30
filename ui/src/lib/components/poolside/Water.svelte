@@ -2,10 +2,10 @@
   Poolside water background — deep blue vinyl-pool with koi swimming through it.
 
   Stack (back -> front, all under .ps-root):
-    1. base gradient (surface teal -> deep navy) gives the pool its depth
+    1. base gradient (now tinted by --ps-album-accent when an album is playing) gives the
+       pool its depth and reflects what's currently on the turntable
     2. tile-grid floor, perspective-tilted so the back rows look further away
-    3. waterline highlight at the top (drifts horizontally — the bright rim that
-       reads as "water surface" in motion, like sky reflection moving)
+    3. waterline highlight at the top (drifts horizontally — sky reflection moving)
     4. two caustic layers drifting in opposite directions, large & slow
     5. four light shafts from above, gently swaying
     6. two ambient color blobs (coral + cyan)
@@ -13,12 +13,19 @@
     8. floating motes drifting up, soft
     9. surface glare cap
     10. SVG turbulence filter — displacement for the caustics
+
+  The base gradient stops are HSL triplets that are pushed onto the root element by
+  the shell's $effect when a track plays (so per-track the pool becomes "this album's
+  pool", not a static blue one). When no track is playing the default pool-blue values
+  are used.
 -->
 <script lang="ts">
 	import Koi from './Koi.svelte';
+
+	let { accent = null }: { accent?: string | null } = $props();
 </script>
 
-<div class="ps-water" aria-hidden="true">
+<div class="ps-water" aria-hidden="true" style={accent ? `--ps-album-accent: ${accent};` : ''}>
 	<svg class="ps-turb-svg" width="0" height="0" aria-hidden="true">
 		<defs>
 			<filter id="ps-turbulence" x="0%" y="0%" width="100%" height="100%">
@@ -49,9 +56,6 @@
 	<div class="ps-waterline"></div>
 	<div class="ps-glare"></div>
 
-	<!-- Koi — four fish at different depths, speeds, colors. Paths are keyframed in CSS;
-	     the path itself does a long S-curve and flips at the midpoint so the fish turns
-	     around at the edge of the pool. -->
 	<div class="ps-koi a"><div class="body"><Koi color="#F4A078" size={68} /></div></div>
 	<div class="ps-koi b"><div class="body"><Koi color="#F8C9A4" size={56} /></div></div>
 	<div class="ps-koi c"><div class="body"><Koi color="#E07856" size={48} /></div></div>

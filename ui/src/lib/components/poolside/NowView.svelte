@@ -136,89 +136,79 @@
 </script>
 
 <div class="ps-np">
-	<!-- turntable with plinth, platter, and tonearm -->
-	<div class="ps-turntable">
-		<div class="ps-plinth">
-			<div class="ps-platter" class:spin={platterSpinning}></div>
+	<!-- One vertical column: deck (turntable + disc sleeve + disc) -> caption -> transport.
+	     Z-stack inside the deck (low to high): plinth (z:0) -> sleeve (z:1) -> disc (z:2) ->
+	     tonearm (z:3, above disc so it can hover over the record). The deck itself is the
+	     only "hero" element; caption and transport are clearly below it. -->
+
+	<div class="ps-np-deck">
+		<div class="ps-turntable">
+			<div class="ps-plinth">
+				<div class="ps-platter" class:spin={platterSpinning}></div>
+				<div class="ps-speed-badge">33⅓ RPM</div>
+				<div class="ps-power-led"></div>
+			</div>
 			<div class="ps-tonearm" style="transform: rotate({tonearmAngle()}deg);">
 				<div class="ps-arm-pivot"></div>
 				<div class="ps-arm-shaft">
 					<div class="ps-arm-head"></div>
 				</div>
 			</div>
-			<div class="ps-speed-badge">33⅓ RPM</div>
-			<div class="ps-power-led"></div>
 		</div>
-	</div>
 
-	<!-- deck: disc sitting on the turntable -->
-	<div class="ps-deck">
-		<div
-			class="ps-deck-unit"
-			class:ejecting={isDragging && Math.sqrt(dragX * dragX + dragY * dragY) > 60}
-			class:ejected
-			role="application"
-			aria-label="Vinyl disc — drag off to pause, drop back to resume"
-			onpointerdown={onDiscPointerDown}
-			onpointermove={onDiscPointerMove}
-			onpointerup={onDiscPointerUp}
-			onpointercancel={onDiscPointerUp}
-			ondblclick={onDiscDoubleClick}
-		>
-			<div class="ps-sleeve"><div class="mouth"></div></div>
-			<div style="
-				position: absolute; width: 78%; left: -14%; top: 50%;
-				transform: translateY(-50%) translate({dragX}px, {dragY}px);
-				transition: {isDragging ? 'none' : 'left .7s var(--ease-spring), transform .5s'};
-			">
-				<Vinyl
-					src={cur?.thumbnail ?? ''}
-					playing={!paused && !isDragging}
-					style="width:100%"
-					flightTarget
-					title="Drag to eject · Double-click to drop back"
-				/>
-			</div>
-			<svg class="ps-sticker" style="right:-4%;top:-7%" width="56" height="56" viewBox="0 0 58 58">
-				<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />
-				<text x="29" y="33" text-anchor="middle" font-family="monospace" font-size="7" font-weight="bold" letter-spacing="1.5" fill="#111">NOW PLAYING</text>
-			</svg>
-		</div>
-		{#if nextItem}
-			<div class="ps-deck-unit">
+		<!-- Disc sleeve + disc are inside the same .ps-deck-unit so the disc slides
+		     out of the sleeve as the user drags. Sleeve z:1, disc z:2, NOW PLAYING sticker
+		     z:3, UP NEXT hint z:3. Tonearm lives in the turntable wrapper so it can
+		     hover above the record. -->
+		<div class="ps-deck">
+			{#if nextItem}
+				<div class="ps-deck-unit ps-deck-unit--next" aria-hidden="true">
+					<div class="ps-sleeve"><div class="mouth"></div></div>
+					<Vinyl src={nextItem.thumbnail ?? ''} playing={false} style="width:100%" title="Up next" />
+					<div class="ps-eject-hint">UP NEXT</div>
+				</div>
+			{/if}
+			<div
+				class="ps-deck-unit"
+				class:ejecting={isDragging && Math.sqrt(dragX * dragX + dragY * dragY) > 60}
+				class:ejected
+				role="application"
+				aria-label="Vinyl disc — drag off to pause, drop back to resume"
+				onpointerdown={onDiscPointerDown}
+				onpointermove={onDiscPointerMove}
+				onpointerup={onDiscPointerUp}
+				onpointercancel={onDiscPointerUp}
+				ondblclick={onDiscDoubleClick}
+			>
 				<div class="ps-sleeve"><div class="mouth"></div></div>
-				<Vinyl src={nextItem.thumbnail ?? ''} playing={false} style="width:100%" title="Up next" />
-				<div class="ps-eject-hint">UP NEXT</div>
+				<div class="ps-deck-disc-wrap" style="
+					transform: translate({dragX}px, {dragY}px);
+					transition: {isDragging ? 'none' : 'transform .5s var(--ease-spring)'};
+				">
+					<Vinyl
+						src={cur?.thumbnail ?? ''}
+						playing={!paused && !isDragging}
+						style="width:100%"
+						flightTarget
+						title="Drag to eject · Double-click to drop back"
+					/>
+				</div>
+				<svg class="ps-sticker" style="right:-4%;top:-7%" width="56" height="56" viewBox="0 0 58 58">
+					<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />
+					<text x="29" y="33" text-anchor="middle" font-family="monospace" font-size="7" font-weight="bold" letter-spacing="1.5" fill="#111">NOW PLAYING</text>
+				</svg>
 			</div>
-		{/if}
+		</div>
 	</div>
 
-	<!-- caption: clear size hierarchy -->
+	<!-- caption: clear size hierarchy, sits below the deck, no z-conflict with discs -->
 	<div class="ps-track-caption">
 		<span class="np-label">{cur ? 'NOW PLAYING' : 'NO TRACK LOADED'}</span>
 		<span class="np-title">{cur ? cur.title : 'Drop a disc onto the turntable'}</span>
 		<span class="np-artist">{cur ? cur.artists : ''}</span>
 	</div>
 
-	<!-- queue strip: quiet thumbnails at the bottom -->
-	{#if upcoming.length}
-		<div class="ps-queue-strip">
-			{#each upcoming as item (item.video_id + item.queued_from)}
-				<button
-					class="qtile"
-					title={item.title}
-					onclick={() => {
-						const idx = q.items.indexOf(item);
-						if (idx >= 0) playIndex(idx);
-					}}
-				>
-					{#if item.thumbnail}<img src={item.thumbnail} alt={item.title} />{/if}
-				</button>
-			{/each}
-		</div>
-	{/if}
-
-	<!-- seek + transport -->
+	<!-- seek + transport, all in one clean column -->
 	<div class="ps-bottom">
 		<div class="ps-seek-row">
 			<span>{fmt(pos)}</span>
@@ -257,6 +247,8 @@
 	</div>
 
 	<div class="ps-hint">
-		<button onclick={onOpenLibrary} class="cursor-pointer hover:text-white">Logo = library</button>
+		<button onclick={onOpenLibrary} class="cursor-pointer hover:text-white">Library</button>
+		<span class="ps-hint-sep">·</span>
+		<button onclick={() => window.dispatchEvent(new CustomEvent('ps:open-lyrics'))} class="cursor-pointer hover:text-white">Lyrics</button>
 	</div>
 </div>

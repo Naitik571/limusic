@@ -1,5 +1,23 @@
+<!--
+  Poolside Vinyl shell — sidebar-first beta layout.
+
+  Structure (z-order, back -> front):
+    .ps-water             contextual pool background (now reflects currently-playing album)
+    .ps-shell             grid: [sidebar | main | (drawer)]
+    .ps-sidebar           persistent left rail, hover-expand (icon-only at rest, labeled on hover)
+    .ps-views             main column, scrollable; one view at a time, camera-dolly on switch
+    .ps-mini              bottom-bar mini player, sits over main column
+    .ps-lyrics-drawer     right-side lyrics, slides in/out, displaces main content
+    .ps-notifications     fixed top-right toast region
+    .ps-settings-panel    right-side settings popover (separate from lyrics)
+    .ps-overlay           centered modals (custom cover, etc.)
+
+  vs. the previous version:
+    - was: bottom tab bar floating above content; mini player in corner; lyrics as floating
+      panel; settings as floating panel; everything piled on the same z-stack
+    - now: each surface has a defined slot in the grid, no overlap, no in-place modals
+-->
 <script lang="ts">
-	// Poolside Vinyl shell — full-layout beta. Fonts + poolside stylesheet imported HERE.
 	import '@fontsource/space-mono/400.css';
 	import '@fontsource/space-mono/700.css';
 	import '@fontsource/space-mono/400-italic.css';
@@ -22,7 +40,8 @@
 		LibraryIcon,
 		HistoryIcon,
 		Playlist02Icon,
-		Queue01Icon
+		Queue01Icon,
+		ArrowLeft01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
@@ -42,6 +61,7 @@
 
 	type View = 'home' | 'search' | 'library' | 'history' | 'now' | 'queue' | 'album';
 	let view = $state<View>('home');
+	let album = $state<BrowseItem | null>(null);
 	let dusk = $state(localStorage.getItem('ps-dusk') === 'true');
 	let lyricsOpen = $state(false);
 	let ccOpen = $state(false);
@@ -50,32 +70,98 @@
 	let settingsOpen = $state(false);
 	let covers = $state<Record<string, string>>({});
 
+	// Sidebar hover-expand. Default = collapsed (icons only), expand on hover.
+	let sidebarHover = $state(false);
+
 	// poolside visual prefs
 	let caustics = $state(localStorage.getItem('ps-caustics') !== 'false');
 	let koi = $state(localStorage.getItem('ps-koi') !== 'false');
 	let reduce = $state(localStorage.getItem('ps-reduce') === 'true');
 	let spin = $state(localStorage.getItem('ps-spin') ?? '3s');
 
+	// Contextual background — the gradient derives from the currently-playing album art.
+	// We pre-blur + boost saturation via CSS so it's cheap. When nothing's playing we fall
+	// back to the static pool gradient.
+	let albumHue = $state<number | null>(null);
+	let albumAccent = $state<string | null>(null);
+	$effect(() => {
+		const url = playback.now?.thumbnail;
+		if (!url) {
+			albumHue = null;
+			albumAccent = null;
+			return;
+		}
+		// Sample the dominant hue via a tiny offscreen canvas. Cheap enough to do on track
+		// change (not per-frame).
+		const img = new Image();
+		img.crossOrigin = 'anonymous';
+		img.src = url;
+		img.onload = () => {
+			try {
+				const c = document.createElement('canvas');
+				c.width = 16; c.height = 16;
+				const ctx = c.getContext('2d', { willReadFrequently: true })!;
+				ctx.drawImage(img, 0, 0, 16, 16);
+				const d = ctx.getImageData(0, 0, 16, 16).data;
+				let r = 0, g = 0, b = 0, n = 0;
+				for (let i = 0; i < d.length; i += 4) {
+					// skip near-white and near-black pixels (text / pure shadows bias the average)
+					if (d[i] > 230 && d[i+1] > 230 && d[i+2] > 230) continue;
+					if (d[i] < 25 && d[i+1] < 25 && d[i+2] < 25) continue;
+					r += d[i]; g += d[i+1]; b += d[i+2]; n++;
+				}
+				if (n === 0) return;
+				r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+				// HSL hue (we only need H for the gradient stops)
+				const max = Math.max(r, g, b), min = Math.min(r, g, b);
+				let h = 0; const dlt = max - min;
+				if (dlt !== 0) {
+					if (max === r) h = ((g - b) / dlt) % 6;
+					else if (max === g) h = (b - r) / dlt + 2;
+					else h = (r - g) / dlt + 4;
+					h = Math.round(h * 60); if (h < 0) h += 360;
+				}
+				const s = max === 0 ? 0 : Math.round((dlt / max) * 100);
+				const l = Math.round((max + min) / 2 / 255 * 100);
+				albumHue = h;
+				// push to CSS as the accent variable so existing .ps-aqua etc. follow
+				document.documentElement.style.setProperty(
+					'--ps-album-accent',
+					`hsl(${h} ${Math.min(80, s)}% ${Math.max(40, Math.min(60, l + 5))}%)`
+				);
+			} catch { /* CORS-tainted canvas — leave default */ }
+		};
+	});
+
 	// library data
 	let ytmAlbums = $state<BrowseItem[]>([]);
 	let likedSongs = $state<SongItem[]>([]);
 	let albumsLoaded = $state(false);
-	let album = $state<BrowseItem | null>(null);
 
 	const localAlbumTiles = $derived.by(() => {
-		const byName = new Map<string, SongItem>();
+		// Group local songs by album name. A real album has 2+ songs sharing the same
+		// album string; single songs with no siblings go to the "Singles" bucket, not
+		// their own one-song "album". (This is the "1 tracks" bug the user flagged.)
+		const byName = new Map<string, SongItem[]>();
 		for (const s of local.songs) {
-			const key = s.album || 'Unknown Album';
-			if (!byName.has(key)) byName.set(key, s);
+			const key = (s.album || '').trim() || '__singles__';
+			if (!byName.has(key)) byName.set(key, []);
+			byName.get(key)!.push(s);
 		}
-		return [...byName.entries()].map(([albumName, first]) => ({
-			kind: 'album' as const,
-			id: `LOCALALBUM:${albumName}`,
-			title: albumName,
-			subtitle: first.artists || 'Local',
-			thumbnail: first.thumbnail
-		}));
+		const tiles: BrowseItem[] = [];
+		for (const [albumName, songs] of byName) {
+			if (albumName === '__singles__' || songs.length === 0) continue;
+			tiles.push({
+				kind: 'album',
+				id: `LOCALALBUM:${albumName}`,
+				title: albumName,
+				subtitle: songs[0].artists || 'Local',
+				thumbnail: songs[0].thumbnail
+			});
+		}
+		return tiles;
 	});
+	const localSingles = $derived(local.songs.filter((s) => !(s.album || '').trim()));
 	const mergedAlbums = $derived([...localAlbumTiles, ...ytmAlbums]);
 	const songs = $derived([...likedSongs, ...local.songs]);
 
@@ -88,6 +174,9 @@
 
 	function go(v: View) {
 		view = v;
+		// Closing the lyrics drawer when navigating away so the content doesn't get
+		// stranded behind the next view's mount.
+		if (v !== 'now' && lyricsOpen) lyricsOpen = false;
 	}
 
 	$effect(() => {
@@ -104,7 +193,8 @@
 	}
 	function playAlbum(item: BrowseItem) {
 		if (item.id.startsWith('LOCALALBUM:')) {
-			const tracks = local.songs.filter((s) => (s.album || 'Unknown Album') === item.title);
+			const albumName = item.id.slice('LOCALALBUM:'.length);
+			const tracks = local.songs.filter((s) => (s.album || '').trim() === albumName);
 			if (!tracks.length) { toast.error('No tracks found for this album'); return; }
 			playFrom(item, tracks, 0);
 			go('now');
@@ -165,169 +255,217 @@
 
 	onMount(() => {
 		import('$lib/player.svelte').then((m) => m.scanLocal().catch(() => {}));
+		// Wire the NowView's "Lyrics" hint to actually open the lyrics drawer.
+		const onOpenLyrics = () => {
+			if (playback.now) lyricsOpen = true;
+		};
+		window.addEventListener('ps:open-lyrics', onOpenLyrics);
+		return () => window.removeEventListener('ps:open-lyrics', onOpenLyrics);
 	});
 
-	// nav items
 	const navItems: { id: View; icon: typeof Home02Icon; label: string }[] = [
 		{ id: 'home', icon: Home02Icon, label: 'Home' },
 		{ id: 'search', icon: Search01Icon, label: 'Search' },
 		{ id: 'library', icon: LibraryIcon, label: 'Library' },
 		{ id: 'history', icon: HistoryIcon, label: 'History' },
-		{ id: 'queue', icon: Queue01Icon, label: 'Queue' },
+		{ id: 'queue', icon: Queue01Icon, label: 'Queue' }
 	];
 </script>
 
 <div
-	class="ps-root {dusk ? 'dusk' : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {playback.paused ? 'paused' : ''}"
+	class="ps-root {dusk ? 'dusk' : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
 	style="--ps-spin:{spin}"
 	data-view={view}
+	data-album-hue={albumHue ?? ''}
 >
-	<Water />
+	<!-- Contextual water: the gradient stops now derive from the current album's hue
+	     (set by the $effect above via --ps-album-accent). When nothing's playing it
+	     stays on the static pool blue. -->
+	<Water accent={albumAccent} />
 
-	<!-- all views stay mounted — .on toggle drives the camera-dolly transition -->
-	<div class="ps-views">
-		<div class="ps-view" class:on={view === 'home'}>
-			<div class="ps-scroll-area">
-				<HomeView onOpenAlbum={openAlbum} />
-			</div>
-		</div>
-		<div class="ps-view" class:on={view === 'search'}>
-			<div class="ps-scroll-area">
-				<SearchView onOpenAlbum={openAlbum} />
-			</div>
-		</div>
-		<div class="ps-view" class:on={view === 'library'}>
-			<LibraryView
-				albums={mergedAlbums}
-				{songs}
-				onOpenNow={() => go('now')}
-				onOpenAlbum={openAlbum}
-				onPlayLocalAlbum={playAlbum}
-				onPlaySong={playSongInList}
-				onImport={importFolder}
-			/>
-		</div>
-		<div class="ps-view" class:on={view === 'history'}>
-			<div class="ps-scroll-area">
-				<HistoryView />
-			</div>
-		</div>
-		<div class="ps-view" class:on={view === 'now'}>
-			<NowView onOpenLibrary={() => go('library')} />
-		</div>
-		<div class="ps-view" class:on={view === 'queue'}>
-			<div class="ps-scroll-area">
-				<QueueView />
-			</div>
-		</div>
-		<div class="ps-view" class:on={view === 'album'}>
-			{#if album}
-				<AlbumView
-					albums={mergedAlbums}
-					{album}
-					{artFor}
-					onBack={() => go('library')}
-					onSelect={(a) => (album = a)}
-					onPlayAlbum={playAlbum}
-					onOpenCustom={openCustomCover}
-				/>
-			{/if}
-		</div>
-	</div>
-
-	<!-- bottom navigation bar -->
-	<nav class="ps-nav" aria-label="Poolside navigation">
-		{#each navItems as item (item.id)}
-			<button
-				class="ps-nav-btn {view === item.id ? 'on' : ''}"
-				onclick={() => go(item.id)}
-				aria-label={item.label}
-				title={item.label}
-			>
-				<span class="bubble" aria-hidden="true"></span>
-				<HugeiconsIcon icon={item.icon} />
-				<span class="ps-nav-label">{item.label}</span>
+	<div class="ps-shell">
+		<!-- ============================================================
+		     SIDEBAR — persistent left rail, hover-expand
+		     ============================================================ -->
+		<aside
+			class="ps-sidebar"
+			aria-label="Main navigation"
+			onmouseenter={() => (sidebarHover = true)}
+			onmouseleave={() => (sidebarHover = false)}
+			role="navigation"
+		>
+			<button class="ps-sidebar-logo" onclick={() => go('home')} title="Limusic · Poolside Vinyl" aria-label="Limusic · Poolside Vinyl — go home">
+				<span class="ps-sidebar-mark" aria-hidden="true"></span>
+				<span class="ps-sidebar-word">Limusic</span>
+				<span class="ps-sidebar-badge">BETA</span>
 			</button>
-		{/each}
-		{#if playback.now}
-			<button class="ps-nav-btn {view === 'now' ? 'on' : ''}" onclick={() => go('now')} aria-label="Now Playing" title="Now Playing">
-				<span class="bubble" aria-hidden="true"></span>
-				<div class="ps-nav-disc">
-					{#if playback.now.thumbnail}
-						<img src={playback.now.thumbnail} alt="" />
-					{:else}
-						<div class="ps-nav-disc-fallback"></div>
+
+			<nav class="ps-sidebar-nav">
+				{#each navItems as item (item.id)}
+					<button
+						class="ps-sidebar-btn {view === item.id ? 'on' : ''}"
+						onclick={() => go(item.id)}
+						aria-label={item.label}
+						aria-current={view === item.id ? 'page' : undefined}
+						title={item.label}
+					>
+						<HugeiconsIcon icon={item.icon} />
+						<span class="ps-sidebar-label">{item.label}</span>
+					</button>
+				{/each}
+			</nav>
+
+			<div class="ps-sidebar-foot">
+				<button
+					class="ps-sidebar-btn {view === 'now' ? 'on' : ''} {playback.now ? 'has-track' : ''}"
+					onclick={() => go('now')}
+					aria-label="Now Playing"
+					title="Now Playing"
+				>
+					<div class="ps-sidebar-disc" class:spin={!playback.paused && !!playback.now}>
+						{#if playback.now?.thumbnail}
+							<img src={playback.now.thumbnail} alt="" />
+						{:else}
+							<div class="ps-sidebar-disc-fallback"></div>
+						{/if}
+					</div>
+					<span class="ps-sidebar-label">Playing</span>
+				</button>
+				<button
+					class="ps-sidebar-btn"
+					onclick={(e) => { e.stopPropagation(); settingsOpen = !settingsOpen; }}
+					aria-label="Pool settings"
+					title="Pool settings"
+				>
+					<HugeiconsIcon icon={Settings01Icon} />
+					<span class="ps-sidebar-label">Settings</span>
+				</button>
+			</div>
+		</aside>
+
+		<!-- ============================================================
+		     MAIN COLUMN — one view at a time, scrollable
+		     ============================================================ -->
+		<main class="ps-main">
+			<div class="ps-views">
+				<div class="ps-view" class:on={view === 'home'}>
+					<div class="ps-scroll-area">
+						<HomeView onOpenAlbum={openAlbum} />
+					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'search'}>
+					<div class="ps-scroll-area">
+						<SearchView onOpenAlbum={openAlbum} />
+					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'library'}>
+					<div class="ps-scroll-area">
+						<LibraryView
+							albums={mergedAlbums}
+							{songs}
+							singles={localSingles}
+							onOpenNow={() => go('now')}
+							onOpenAlbum={openAlbum}
+							onPlayLocalAlbum={playAlbum}
+							onPlaySong={playSongInList}
+							onImport={importFolder}
+						/>
+					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'history'}>
+					<div class="ps-scroll-area">
+						<HistoryView />
+					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'queue'}>
+					<div class="ps-scroll-area">
+						<QueueView />
+					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'now'}>
+					<NowView onOpenLibrary={() => go('library')} />
+				</div>
+				<div class="ps-view" class:on={view === 'album'}>
+					{#if album}
+						<AlbumView
+							albums={mergedAlbums}
+							{album}
+							{artFor}
+							onBack={() => go('library')}
+							onSelect={(a) => (album = a)}
+							onPlayAlbum={playAlbum}
+							onOpenCustom={openCustomCover}
+						/>
 					{/if}
 				</div>
-				<span class="ps-nav-label">Playing</span>
-			</button>
+			</div>
+
+			<!-- Mini player sits at the bottom of the main column, not floating in a
+			     corner. It auto-hides on the Now view to avoid double-decking. -->
+			{#if view !== 'now'}
+				<div class="ps-mini-wrap">
+					<MiniPlayer onOpenNow={() => go('now')} />
+				</div>
+			{/if}
+		</main>
+
+		<!-- ============================================================
+		     LYRICS DRAWER — right side, displaces main content. Closes via
+		     the X button or by toggling the sidebar's "Playing" button.
+		     ============================================================ -->
+		{#if lyricsOpen && playback.now}
+			<aside class="ps-lyrics-drawer" aria-label="Lyrics">
+				<button class="ps-drawer-close" onclick={() => (lyricsOpen = false)} aria-label="Close lyrics">✕</button>
+				<LyricsView expanded />
+			</aside>
 		{/if}
-	</nav>
 
-	<!-- mini player -->
-	<MiniPlayer onOpenNow={() => go('now')} />
-
-	<!-- edge buttons -->
-	<div class="ps-edge mid">
-		<button class="ps-edge-btn gear" onclick={(e) => { e.stopPropagation(); settingsOpen = !settingsOpen; }} title="Pool settings" aria-label="Pool settings">
-			<HugeiconsIcon icon={Settings01Icon} />
-		</button>
-		<button class="ps-edge-btn" onclick={toggleDusk} title={dusk ? 'Day pool' : 'Dusk pool'} aria-label="Toggle dusk">
-			<HugeiconsIcon icon={dusk ? Moon02Icon : Sun01Icon} />
-		</button>
-		{#if playback.now}
-			<button class="ps-edge-btn" onclick={() => (lyricsOpen = !lyricsOpen)} title="Lyrics" aria-label="Lyrics">
-				<HugeiconsIcon icon={Mic01Icon} />
-			</button>
+		<!-- ============================================================
+		     SETTINGS PANEL — right side, separate slot from lyrics. Both
+		     can theoretically be open but they're in different columns.
+		     ============================================================ -->
+		{#if settingsOpen}
+			<div class="ps-settings-panel ps-glass" role="dialog" aria-label="Pool settings" aria-modal="false">
+				<header class="ps-settings-head">
+					<h3>POOL SETTINGS</h3>
+					<button class="ps-drawer-close" onclick={() => (settingsOpen = false)} aria-label="Close settings">✕</button>
+				</header>
+				<div class="ps-setrow">
+					<span>CAUSTICS</span>
+					<button class="ps-sw {caustics ? 'on' : ''}" role="switch" aria-checked={caustics} onclick={() => setPref('caustics', !caustics)} aria-label="Toggle caustics"></button>
+				</div>
+				<div class="ps-setrow">
+					<span>REDUCE MOTION</span>
+					<button class="ps-sw {reduce ? 'on' : ''}" role="switch" aria-checked={reduce} onclick={() => setPref('reduce', !reduce)} aria-label="Toggle reduce motion"></button>
+				</div>
+				<div class="ps-setrow">
+					<span>SPIN SPEED</span>
+					<select value={spin} onchange={(e) => setSpin(e.currentTarget.value)} aria-label="Record spin speed">
+						<option value="2s">FAST · 2S</option>
+						<option value="3s">NORMAL · 3S</option>
+						<option value="4s">SLOW · 4S</option>
+					</select>
+				</div>
+				<div class="ps-setrow">
+					<span>APP SETTINGS</span>
+					<button class="ps-setbtn" onclick={() => { ui.settingsOpen = true; settingsOpen = false; }} aria-label="Open full settings">
+						OPEN
+					</button>
+				</div>
+				<div class="ps-setrow ps-setrow--exit">
+					<span>EXIT BETA</span>
+					<button class="ps-setbtn ps-setbtn--exit" onclick={() => { applyLayout('default'); toast.info('Exited Poolside — back to Default layout'); }} aria-label="Exit Poolside beta">
+						EXIT
+					</button>
+				</div>
+				<div class="ps-setfoot">LIMUSIC · POOLSIDE VINYL BETA</div>
+			</div>
 		{/if}
 	</div>
 
-	<!-- pool settings popover -->
-	{#if settingsOpen}
-		<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_static_element_interactions -->
-		<div class="ps-settings ps-glass open" role="dialog" aria-label="Pool settings">
-			<h3>POOL SETTINGS</h3>
-			<div class="ps-setrow">
-				<span>CAUSTICS</span>
-				<button class="ps-sw {caustics ? 'on' : ''}" role="switch" aria-checked={caustics} onclick={() => setPref('caustics', !caustics)} aria-label="Toggle caustics"></button>
-			</div>
-			<div class="ps-setrow">
-				<span>REDUCE MOTION</span>
-				<button class="ps-sw {reduce ? 'on' : ''}" role="switch" aria-checked={reduce} onclick={() => setPref('reduce', !reduce)} aria-label="Toggle reduce motion"></button>
-			</div>
-			<div class="ps-setrow">
-				<span>SPIN SPEED</span>
-				<select value={spin} onchange={(e) => setSpin(e.currentTarget.value)} aria-label="Record spin speed">
-					<option value="2s">FAST · 2S</option>
-					<option value="3s">NORMAL · 3S</option>
-					<option value="4s">SLOW · 4S</option>
-				</select>
-			</div>
-			<div class="ps-setrow" style="border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px;">
-				<span>APP SETTINGS</span>
-				<button class="ps-exit-btn" style="background:var(--accent)" onclick={() => { ui.settingsOpen = true; settingsOpen = false; }} aria-label="Open full settings">
-					OPEN
-				</button>
-			</div>
-			<div class="ps-setrow" style="border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px;">
-				<span>EXIT BETA</span>
-				<button class="ps-exit-btn" onclick={() => { applyLayout('default'); toast.info('Exited Poolside — back to Default layout'); }} aria-label="Exit Poolside beta">
-					EXIT
-				</button>
-			</div>
-			<div class="foot">LIMUSIC · POOLSIDE VINYL BETA</div>
-		</div>
-	{/if}
-
-	<!-- lyrics overlay -->
-	{#if lyricsOpen && playback.now}
-		<div class="ps-lyrics-frame" role="dialog" aria-label="Lyrics">
-			<button class="ps-lyrics-close" onclick={() => (lyricsOpen = false)} aria-label="Close lyrics">✕</button>
-			<LyricsView expanded />
-		</div>
-	{/if}
-
-	<!-- custom CD cover overlay -->
+	<!-- ============================================================
+	     CENTERED MODALS — custom CD cover (and anything else later).
+	     ============================================================ -->
 	{#if ccOpen && ccAlbum}
 		{@const ca = ccAlbum}
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
@@ -373,8 +511,3 @@
 		</div>
 	{/if}
 </div>
-
-<!-- CommandPalette + SettingsDialog are mounted by the parent +layout.svelte — no need to
-     re-mount or dynamic-import them here. (Earlier this used {#await import(...)} which
-     re-bundled and re-mounted a second copy, and rendered nothing until the dynamic import
-     resolved.) -->

@@ -1,7 +1,9 @@
 <script lang="ts">
-	// Poolside Library — reference layout: left column (logo pill, hero sleeve with the disc
-	// sliding out, caption), right glass panel (search + IMPORT MUSIC, pill tabs, panels).
-	// Presentational: albums/songs come from the shell (YTM library + Liked Music + local).
+	// Poolside Library — left column (hero sleeve with the disc sliding out, caption),
+	// right glass panel (search + IMPORT MUSIC, pill tabs, panels).
+	// The BETA logo is in the sidebar now (PoolsideShell) — the library is just content.
+	// Local songs come from the shell: `albums` are real albums (>= 2 songs with shared
+	// album string), `singles` are songs with no album tag (the "1 tracks" bug fix).
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Search01Icon, PlusSignIcon, Folder01Icon } from '@hugeicons/core-free-icons';
 	import type { BrowseItem, SongItem } from '$lib/api';
@@ -11,6 +13,7 @@
 	let {
 		albums,
 		songs,
+		singles = [],
 		onOpenNow,
 		onOpenAlbum,
 		onPlayLocalAlbum,
@@ -19,6 +22,7 @@
 	}: {
 		albums: BrowseItem[];
 		songs: SongItem[];
+		singles?: SongItem[];
 		onOpenNow: () => void;
 		onOpenAlbum: (item: BrowseItem) => void;
 		onPlayLocalAlbum: (item: BrowseItem) => void;
@@ -26,15 +30,16 @@
 		onImport: () => void;
 	} = $props();
 
-	type Tab = 'albums' | 'songs' | 'artists' | 'folders';
+	type Tab = 'albums' | 'songs' | 'artists' | 'folders' | 'singles';
 	let tab = $state<Tab>('albums');
 	let search = $state('');
-	const tabs: { id: Tab; label: string }[] = [
+	const tabs: { id: Tab; label: string }[] = $derived([
 		{ id: 'albums', label: 'Albums' },
 		{ id: 'songs', label: 'Songs' },
 		{ id: 'artists', label: 'Artists' },
+		{ id: 'singles', label: 'Singles' },
 		{ id: 'folders', label: 'Folders' }
-	];
+	]);
 
 	const q = $derived(search.trim().toLowerCase());
 	const filteredAlbums = $derived(
@@ -51,17 +56,24 @@
 				(s.album ?? '').toLowerCase().includes(q)
 		)
 	);
+	const filteredSingles = $derived(
+		singles.filter(
+			(s) => !q || s.title.toLowerCase().includes(q) || (s.artists ?? '').toLowerCase().includes(q)
+		)
+	);
+	// Artist groups — only include artists that have >= 2 tracks, otherwise they'd
+	// show as a "1 tracks" group which is a metadata bug, not real artist grouping.
 	const artistGroups = $derived.by(() => {
 		const by = new Map<string, SongItem[]>();
 		for (const s of filteredSongs) {
-			const a = s.artists || 'Unknown';
+			const a = (s.artists || '').trim() || 'Unknown Artist';
 			if (!by.has(a)) by.set(a, []);
 			by.get(a)!.push(s);
 		}
-		return [...by.entries()].sort((x, y) => x[0].localeCompare(y[0]));
+		return [...by.entries()]
+			.filter(([, list]) => list.length >= 2)
+			.sort((x, y) => x[0].localeCompare(y[0]));
 	});
-	// Tile tilt is driven by CSS :nth-child(3n) and :nth-child(4n+1) selectors — no per-tile
-	// class is needed (and adding one would just be dead weight in the markup).
 	const isFeatured = (i: number) => i === 0;
 
 	function openOrPlay(item: BrowseItem) {
@@ -75,15 +87,6 @@
 
 <div class="ps-lib">
 	<div class="ps-lib-left">
-		<button class="ps-logo" onclick={onOpenNow} title="Back to now playing">
-			<span
-				class="inline-block h-6 w-6 rounded-full"
-				style="background:conic-gradient(from 210deg,#e8e8e8,#9fb6bc,#ffffff,#7fa6ae,#e8e8e8);box-shadow:inset 0 0 0 2px rgba(255,255,255,.7),0 1px 3px rgba(0,40,50,.4)"
-			></span>
-			<span class="word">Limusic</span>
-			<span class="badge">BETA</span>
-		</button>
-
 		{#if filteredAlbums.length}
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 			<div
@@ -101,7 +104,7 @@
 						<text x="32" y="25" text-anchor="middle" font-family="monospace" font-size="11" font-weight="bold" fill="#111">33⅓ RPM</text>
 					</svg>
 				</div>
-				<div style="position:absolute;width:86%;top:7%;left:-24%">
+				<div class="ps-hero-disc">
 					<Vinyl src={filteredAlbums[0].thumbnail ?? ''} playing={false} style="width:100%" />
 				</div>
 			</div>
@@ -201,9 +204,29 @@
 						</div>
 					</div>
 				{:else}
-					<div class="ps-empty">No artists yet.</div>
-				{/each}
-			{:else}
+						<div class="ps-empty">No artists yet.</div>
+					{/each}
+				{:else if tab === 'singles'}
+					<div class="ps-songlist">
+						{#each filteredSingles as s, i (s.video_id + i)}
+							<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+							<div
+								class="ps-songrow"
+								onclick={() => playSongRow(s, i, filteredSingles)}
+								onkeydown={(e) => e.key === 'Enter' && playSongRow(s, i, filteredSingles)}
+								role="button"
+								tabindex="0"
+							>
+								<span class="n">{String(i + 1).padStart(2, '0')}</span>
+								<span class="st">{s.title.toUpperCase()}</span>
+								<span class="sa">{s.artists}</span>
+								<span class="sd">{s.duration ?? ''}</span>
+							</div>
+						{:else}
+							<div class="ps-empty">No standalone tracks — every local song is in an album.</div>
+						{/each}
+					</div>
+				{:else}
 				{#each local.folders as folder (folder)}
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 					<div

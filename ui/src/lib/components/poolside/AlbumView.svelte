@@ -1,12 +1,22 @@
 <script lang="ts">
-	// Poolside album detail — coverflow ported from ashishgogula/coverflow (continuous spring
-	// scrollX: cards swing through center with rotateY, stack beyond ±1, brightness dim,
-	// click-to-snap, drag + wheel) plus addyosmani/threejs-coverflow (reflections under each
-	// cover, expo-out settle). All CSS 3D — no WebGL dependency.
+	// Poolside album detail — top: cover + title + play button. Below: full track list,
+	// scrollable, each row tappable to play. At the very top: the coverflow of the
+	// library's other albums (so you can flip through without going back), with the
+	// current album pinned in the centre.
+	//
+	// Z-stack (top -> bottom in document order):
+	//   .ps-albumview
+	//     .ps-alb-back  (back button, top-left, fixed)
+	//     .ps-alb-cover (cover + title + meta + play button, in a row)
+	//     .ps-alb-tracks (the actual track list — this is what was missing before)
+	//     .ps-alb-coverflow (horizontal carousel of other albums, bottom)
 	import { Spring } from 'svelte/motion';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { ArrowLeft01Icon, PlayIcon } from '@hugeicons/core-free-icons';
-	import type { BrowseItem } from '$lib/api';
+	import { ArrowLeft01Icon, PlayIcon, PauseIcon } from '@hugeicons/core-free-icons';
+	import { onMount } from 'svelte';
+	import * as api from '$lib/api';
+	import type { BrowseItem, SongItem } from '$lib/api';
+	import { playback, toast } from '$lib/player.svelte';
 	import Vinyl from './Vinyl.svelte';
 
 	let {
@@ -27,30 +37,82 @@
 		onOpenCustom: () => void;
 	} = $props();
 
+	// Track list — loaded on demand from the album. Empty array until the fetch resolves.
+	let tracks = $state<SongItem[]>([]);
+	let tracksLoading = $state(false);
+	let tracksError = $state<string | null>(null);
+	const isPlayingThis = $derived(
+		playback.now?.videoId &&
+		(tracks.some((t) => t.video_id === playback.now?.videoId) ?? false)
+	);
+	const playingIndex = $derived.by(() => {
+		if (!isPlayingThis) return -1;
+		const vid = playback.now?.videoId;
+		return tracks.findIndex((t) => t.video_id === vid);
+	});
+
+	async function loadTracks() {
+		if (tracksLoading || tracks.length > 0) return;
+		// Local album shortcut
+		if (album.id.startsWith('LOCALALBUM:')) {
+			const albumName = album.id.slice('LOCALALBUM:'.length);
+			// Read from the player store — local songs share the album string.
+			const m = await import('$lib/player.svelte');
+			tracks = m.local.songs.filter((s) => (s.album || '').trim() === albumName);
+			return;
+		}
+		tracksLoading = true;
+		tracksError = null;
+		try {
+			const a = await api.getAlbum(album.id);
+			tracks = a.items ?? [];
+		} catch (e) {
+			tracksError = String(e);
+		} finally {
+			tracksLoading = false;
+		}
+	}
+
+	// Load on mount + on album change
+	$effect(() => {
+		// depend on album.id so reloading the page with a new album refetches
+		const _ = album.id;
+		tracks = [];
+		loadTracks();
+	});
+
+	async function playTrack(track: SongItem, i: number) {
+		try {
+			// Play from this album as the playlist context. The Rust backend will build
+			// the queue from this playlist starting at index i.
+			const m = await import('$lib/player.svelte');
+			m.playFrom(album, tracks, i);
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+
+	// ====================================================================
+	// Coverflow (kept from before — the album carousel at the bottom)
+	// ====================================================================
 	const CENTER_GAP = 150;
 	const STACK_SPACING = 92;
 	const ROTATION = 34;
-
 	const n = $derived(albums.length);
-	// continuous scroll position — the heart of the coverflow feel
 	const scroll = new Spring(0, { stiffness: 150, damping: 30 });
-
-	// keep the spring synced to the selected album (back-navigation, shell-driven changes)
 	$effect(() => {
 		const i = albums.findIndex((a) => a.id === album.id);
 		if (i >= 0) scroll.target = i;
 	});
 
-	// idle drift: if the user hasn't touched the coverflow in 5s, slowly advance one
-	// album at a time so the carousel feels alive (like a lazy Susan). Any drag/wheel/
-	// keypress resets the timer.
+	// idle drift
 	let lastTouch = Date.now();
 	const IDLE_MS = 5000;
 	const IDLE_STEP_MS = 2200;
 	let idleTimer: ReturnType<typeof setTimeout> | null = null;
 	function bumpTouch() { lastTouch = Date.now(); }
 	$effect(() => {
-		void scroll.current; // subscribe so the timer reschedules while settling
+		void scroll.current;
 		if (idleTimer) clearTimeout(idleTimer);
 		idleTimer = setTimeout(function tick() {
 			if (Date.now() - lastTouch > IDLE_MS && n > 1) {
@@ -64,13 +126,11 @@
 	const activeIdx = $derived(Math.round(scroll.current));
 
 	const cards = $derived.by(() => {
-		void scroll.current; // subscribe
+		void scroll.current;
 		return albums.map((a, i) => {
 			const pos = i - scroll.current;
 			const abs = Math.abs(pos);
-			// swing through center: near |pos|<0.5 the card rotates proportionally
 			const rotateY = abs < 0.5 ? -pos * (ROTATION * 2) : pos < 0 ? ROTATION : -ROTATION;
-			// continuous spread near center, stacked beyond ±1
 			const x =
 				abs < 1 ? pos * CENTER_GAP : (pos < 0 ? -1 : 1) * (CENTER_GAP + (abs - 1) * STACK_SPACING);
 			const z = abs > 0.5 ? -200 : -abs * 400;
@@ -87,7 +147,6 @@
 	let tip = $state('');
 	let tipX = $state(0);
 	let tipY = $state(0);
-
 	const clamp = (v: number) => Math.max(0, Math.min(n - 1, v));
 
 	function onPointerDown(e: PointerEvent) {
@@ -98,22 +157,15 @@
 		bumpTouch();
 	}
 	function onPointerMove(e: PointerEvent) {
-		if (!dragging) {
-			return;
-		}
+		if (!dragging) return;
 		const dx = e.clientX - dragStartX;
-		if (Math.abs(dx) > 6) {
-			moved = true;
-		}
+		if (Math.abs(dx) > 6) moved = true;
 		scroll.target = clamp(dragStartScroll - dx / 140);
 		if (moved) bumpTouch();
 	}
 	function onPointerUp() {
-		if (!dragging) {
-			return;
-		}
+		if (!dragging) return;
 		dragging = false;
-		// snap to the nearest card, expo-out via the spring
 		scroll.target = clamp(Math.round(scroll.current));
 	}
 	function onWheel(e: WheelEvent) {
@@ -122,34 +174,30 @@
 		bumpTouch();
 	}
 	function onCardClick(i: number) {
-		if (moved) {
-			return;
-		}
-		if (i === activeIdx) {
-			onPlayAlbum(albums[i]);
-		} else {
+		if (moved) return;
+		if (i === activeIdx) onPlayAlbum(albums[i]);
+		else {
 			scroll.target = i;
 			onSelect(albums[i]);
 		}
 	}
 	function onKeyDown(e: KeyboardEvent) {
-		// Left/Right arrow keys navigate the coverflow. Space/Enter plays the active album.
 		if (e.key === 'ArrowLeft') {
 			e.preventDefault();
 			const i = clamp(activeIdx - 1);
-			scroll.target = i;
-			onSelect(albums[i]);
-			bumpTouch();
+			scroll.target = i; onSelect(albums[i]); bumpTouch();
 		} else if (e.key === 'ArrowRight') {
 			e.preventDefault();
 			const i = clamp(activeIdx + 1);
-			scroll.target = i;
-			onSelect(albums[i]);
-			bumpTouch();
+			scroll.target = i; onSelect(albums[i]); bumpTouch();
 		} else if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			onPlayAlbum(albums[activeIdx]);
 		}
+	}
+
+	function fmtDur(s: string | undefined): string {
+		return s || '';
 	}
 </script>
 
@@ -158,127 +206,158 @@
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="18"><path d="M15 5l-7 7 7 7" /></svg>
 	</button>
 
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<div
-		class="ps-fan"
-		class:dragging
-		onpointerdown={onPointerDown}
-		onpointermove={onPointerMove}
-		onpointerup={onPointerUp}
-		onpointercancel={onPointerUp}
-		onwheel={onWheel}
-		onkeydown={onKeyDown}
-		role="region"
-		aria-label="Album coverflow — use left and right arrow keys to navigate"
-		tabindex="0"
-	>
-		{#each cards as c (c.a.id)}
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-			<div
-				class="ps-fcard {c.abs >= 0.5 ? 'dim' : ''}"
-				style="
-					transform: translate(-50%, -50%) translateX({c.x}px) translateZ({c.z}px) rotateY({c.rotateY}deg);
-					z-index: {c.zi};
-					filter: brightness({c.brightness});
-					transition-delay: 0ms;
-				"
-				onclick={() => onCardClick(c.i)}
-				onmousemove={(e) => {
-					tip = c.abs < 0.5 ? `${c.a.title} / ${c.a.subtitle ?? ''}` : c.a.title;
-					tipX = e.clientX + 16;
-					tipY = e.clientY - 10;
-				}}
-				onmouseleave={() => (tip = '')}
-			>
-				<div class="cov"><img src={artFor(c.a)} alt={c.a.title} draggable="false" /></div>
-				{#if c.abs < 0.5}
-					<div class="play-chip" title="Play this album">
-						<HugeiconsIcon icon={PlayIcon} class="w-3.5 h-3.5" />
-					</div>
-				{/if}
-				<!-- reflection: flipped copy under the cover, like the threejs reference -->
-				<div class="reflection" aria-hidden="true">
-					<img src={artFor(c.a)} alt="" draggable="false" />
-				</div>
+	<!-- Hero: cover + meta + play button, all in a clean vertical flow -->
+	<div class="ps-alb-hero">
+		<div class="ps-alb-cover">
+			<img src={artFor(album)} alt={album.title} />
+			{#if album.id.startsWith('LOCALALBUM:')}
+				<div class="ps-alb-cover-badge">LOCAL</div>
+			{/if}
+		</div>
+		<div class="ps-alb-meta">
+			<span class="ps-alb-kind">{album.kind === 'artist' ? 'ARTIST' : 'ALBUM'}</span>
+			<h2 class="ps-alb-title">{album.title}</h2>
+			{#if album.subtitle}
+				<p class="ps-alb-artist">{album.subtitle}</p>
+			{/if}
+			<div class="ps-alb-actions">
+				<button class="ps-aqua ps-alb-play" onclick={() => onPlayAlbum(album)} aria-label="Play album">
+					<HugeiconsIcon icon={isPlayingThis && !playback.paused ? PauseIcon : PlayIcon} class="w-3.5 h-3.5" />
+					{isPlayingThis && !playback.paused ? 'PAUSE' : 'PLAY ALBUM'}
+				</button>
+				<button class="ps-ghost" onclick={onOpenCustom}>Add custom CD cover</button>
 			</div>
-		{/each}
+		</div>
 	</div>
 
-	{#if tip}
-		<div class="ps-fan-tip" style="left:{tipX}px;top:{tipY}px;opacity:1">{tip}</div>
+	<!-- Track list — the missing piece. Scrollable, rows are 56px tall with a hover
+	     aqua bar (see .ps-songrow::before). Currently-playing track gets a glow. -->
+	<div class="ps-alb-tracks">
+		<h3 class="ps-section-title">TRACKS</h3>
+		{#if tracksLoading}
+			<div class="ps-alb-track ps-alb-track--skeleton">
+				<span class="ps-skeleton" style="height: 12px; width: 24px;"></span>
+				<span class="ps-skeleton" style="height: 12px; width: 60%;"></span>
+				<span class="ps-skeleton" style="height: 12px; width: 22%;"></span>
+			</div>
+			<div class="ps-alb-track ps-alb-track--skeleton">
+				<span class="ps-skeleton" style="height: 12px; width: 24px;"></span>
+				<span class="ps-skeleton" style="height: 12px; width: 50%;"></span>
+				<span class="ps-skeleton" style="height: 12px; width: 22%;"></span>
+			</div>
+		{:else if tracksError}
+			<div class="ps-empty">Couldn't load tracks — {tracksError}</div>
+		{:else if tracks.length === 0}
+			<div class="ps-empty">This album has no tracks.</div>
+		{:else}
+			{#each tracks as t, i (t.video_id + i)}
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+				<div
+					class="ps-alb-track {playingIndex === i ? 'is-playing' : ''}"
+					role="button"
+					tabindex="0"
+					onclick={() => playTrack(t, i)}
+					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && playTrack(t, i)}
+				>
+					<span class="ps-alb-track-n">
+						{#if playingIndex === i && !playback.paused}
+							<span class="ps-alb-track-eq" aria-hidden="true">
+								<i></i><i></i><i></i><i></i>
+							</span>
+						{:else}
+							{String(i + 1).padStart(2, '0')}
+						{/if}
+					</span>
+					<span class="ps-alb-track-title">{t.title}</span>
+					<span class="ps-alb-track-artist">{t.artists ?? ''}</span>
+					<span class="ps-alb-track-dur">{fmtDur(t.duration)}</span>
+				</div>
+			{/each}
+		{/if}
+	</div>
+
+	<!-- Coverflow: horizontal carousel of OTHER albums from the library, with
+	     reflections. Lives at the bottom so it doesn't compete with the hero. -->
+	{#if albums.length > 1}
+		<div class="ps-alb-more">
+			<h3 class="ps-section-title">MORE IN LIBRARY</h3>
+			<!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+			<div
+				class="ps-fan"
+				class:dragging
+				onpointerdown={onPointerDown}
+				onpointermove={onPointerMove}
+				onpointerup={onPointerUp}
+				onpointercancel={onPointerUp}
+				onwheel={onWheel}
+				onkeydown={onKeyDown}
+				role="region"
+				aria-label="Album coverflow — use left and right arrow keys to navigate"
+				tabindex="0"
+			>
+				{#each cards as c (c.a.id)}
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+					<div
+						class="ps-fcard {c.abs >= 0.5 ? 'dim' : ''}"
+						style="
+							transform: translate(-50%, -50%) translateX({c.x}px) translateZ({c.z}px) rotateY({c.rotateY}deg);
+							z-index: {c.zi};
+							filter: brightness({c.brightness});
+							transition-delay: 0ms;
+						"
+						onclick={() => onCardClick(c.i)}
+						onmousemove={(e) => {
+							tip = c.abs < 0.5 ? `${c.a.title} / ${c.a.subtitle ?? ''}` : c.a.title;
+							tipX = e.clientX + 16; tipY = e.clientY - 10;
+						}}
+						onmouseleave={() => (tip = '')}
+					>
+						<div class="cov"><img src={artFor(c.a)} alt={c.a.title} draggable="false" /></div>
+						{#if c.abs < 0.5}
+							<div class="play-chip" title="Play this album">
+								<HugeiconsIcon icon={PlayIcon} class="w-3.5 h-3.5" />
+							</div>
+						{/if}
+						<div class="reflection" aria-hidden="true">
+							<img src={artFor(c.a)} alt="" draggable="false" />
+						</div>
+					</div>
+				{/each}
+			</div>
+			{#if tip}<div class="ps-fan-tip" style="left:{tipX}px;top:{tipY}px;opacity:1">{tip}</div>{/if}
+		</div>
 	{/if}
-
-	<div class="ps-alb-meta">
-		<h3>{album.title.toUpperCase()}</h3>
-		<p>{album.subtitle ?? ''}</p>
-	</div>
-
-	<div class="ps-alb-actions">
-		<button class="ps-aqua px-4.5 py-2.5 text-[9px] flex items-center gap-1.5" onclick={() => onPlayAlbum(album)}>
-			<HugeiconsIcon icon={PlayIcon} class="w-3.5 h-3.5" />
-			Play album
-		</button>
-		<button class="ps-ghost" onclick={onOpenCustom}>Add custom CD cover</button>
-	</div>
-
-	<div class="ps-alb-deck relative" style="width:min(20vh,180px);margin-top:-6px">
-		<div class="ps-sleeve" style="aspect-ratio:1;width:100%"><div class="mouth"></div></div>
-		<Vinyl src={artFor(album)} playing={true} style="width:88%;position:absolute;top:6%;left:6%;transform:translateX(24%)" />
-	</div>
 </div>
 
 <style>
-	.ps-fan {
-		touch-action: pan-y;
-	}
-	.ps-fan.dragging {
-		cursor: grabbing;
-	}
-	.ps-fcard {
-		will-change: transform, filter;
-		/* no overflow clip here — the reflection lives below the cover */
-	}
-	/* cover: rounded, clipped, top half of the card root */
+	.ps-fan { touch-action: pan-y; }
+	.ps-fan.dragging { cursor: grabbing; }
+	.ps-fcard { will-change: transform, filter; }
 	.ps-fcard .cov {
-		position: absolute;
-		inset: 0 0 auto 0;
-		aspect-ratio: 1;
-		border-radius: 16px;
-		overflow: hidden;
+		position: absolute; inset: 0 0 auto 0;
+		aspect-ratio: 1; border-radius: 16px; overflow: hidden;
 		border: 1.5px solid rgba(255, 255, 255, 0.9);
 	}
-	.ps-fcard .cov img {
-		width: 100%; height: 100%;
-		object-fit: cover; display: block;
-	}
+	.ps-fcard .cov img { width: 100%; height: 100%; object-fit: cover; display: block; }
 	.ps-fcard .play-chip {
-		position: absolute;
-		right: 10px; bottom: 10px;
+		position: absolute; right: 10px; bottom: 10px;
 		width: 38px; height: 38px; border-radius: 50%;
 		display: grid; place-items: center; color: #fff;
 		background: linear-gradient(180deg, #8fdcf2, var(--ps-accent));
 		border: 1px solid rgba(255, 255, 255, 0.8);
 		box-shadow: 0 4px 12px rgba(8, 60, 70, 0.4);
 	}
-	/* reflection: flipped copy under the cover, perspective tilt, faded + masked out
-	   (threejs-coverflow's reflection plane, as CSS) */
 	.ps-fcard .reflection {
-		position: absolute;
-		left: 0; top: calc(100% + 1px);
+		position: absolute; left: 0; top: calc(100% + 1px);
 		width: 100%; height: 42%;
-		pointer-events: none;
-		transform-origin: top center;
+		pointer-events: none; transform-origin: top center;
 		transform: rotateX(12deg);
 		will-change: transform;
 		-webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.4), transparent 85%);
 		mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.4), transparent 85%);
 	}
 	.ps-fcard .reflection img {
-		width: 100%; aspect-ratio: 1;
-		object-fit: cover; display: block;
-		transform: scaleY(-1);
-		opacity: 0.4;
+		width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+		transform: scaleY(-1); opacity: 0.4;
 	}
 </style>

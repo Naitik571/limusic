@@ -69,8 +69,8 @@
 			<input
 				bind:value={query}
 				type="search"
-				placeholder="SEARCH YOUTUBE MUSIC…"
-				aria-label="Search YouTube Music"
+				placeholder="SEARCH LIMUSIC…"
+				aria-label="Search Limusic"
 				oninput={onInput}
 				onkeydown={onKeyDown}
 			/>
