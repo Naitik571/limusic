@@ -56,10 +56,13 @@
 	<div class="ps-waterline"></div>
 	<div class="ps-glare"></div>
 
-	<div class="ps-koi a"><div class="body"><Koi color="#F4A078" size={68} /></div></div>
-	<div class="ps-koi b"><div class="body"><Koi color="#F8C9A4" size={56} /></div></div>
-	<div class="ps-koi c"><div class="body"><Koi color="#E07856" size={48} /></div></div>
-	<div class="ps-koi d"><div class="body"><Koi color="#FFD8B8" size={42} /></div></div>
+	<!-- Koi — four fish at different depths, sizes, colors. Paths are keyframed in CSS;
+	     the path itself does a long S-curve and flips at the midpoint so the fish turns
+	     around at the edge of the pool. The sprite auto-orients via rAF inside Koi.svelte. -->
+	<div class="ps-koi a"><div class="body"><Koi color="#F4A078" size={80} /></div></div>
+	<div class="ps-koi b"><div class="body"><Koi color="#F8C9A4" size={64} /></div></div>
+	<div class="ps-koi c"><div class="body"><Koi color="#E07856" size={56} /></div></div>
+	<div class="ps-koi d"><div class="body"><Koi color="#FFD8B8" size={48} /></div></div>
 
 	<div class="ps-mote" style="left:15%;top:20%;animation-delay:0s;width:4px;height:4px"></div>
 	<div class="ps-mote" style="left:42%;top:55%;animation-delay:3s;width:3px;height:3px"></div>

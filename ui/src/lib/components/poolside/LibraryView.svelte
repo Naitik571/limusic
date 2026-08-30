@@ -87,7 +87,7 @@
 
 <div class="ps-lib">
 	<div class="ps-lib-left">
-		{#if filteredAlbums.length}
+		{#if tab === 'albums' && filteredAlbums.length}
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 			<div
 				class="ps-hero-sleeve"
@@ -111,8 +111,50 @@
 			<div class="ps-hero-cap">
 				{filteredAlbums[0].title.toUpperCase()}<br />{filteredAlbums[0].subtitle ?? ''}
 			</div>
+		{:else if tab === 'songs' && filteredSongs.length}
+			<!-- Songs tab: show a single disc for the first track + the total count -->
+			<div class="ps-hero-track">
+				<Vinyl src={filteredSongs[0].thumbnail ?? ''} playing={false} size={200} />
+				<div class="ps-hero-cap">
+					{filteredSongs[0].title.toUpperCase()}<br />{filteredSongs[0].artists}
+				</div>
+				<div class="ps-hero-meta">{filteredSongs.length} SONGS</div>
+			</div>
+		{:else if tab === 'singles' && filteredSingles.length}
+			<div class="ps-hero-track">
+				<Vinyl src={filteredSingles[0].thumbnail ?? ''} playing={false} size={200} />
+				<div class="ps-hero-cap">
+					{filteredSingles[0].title.toUpperCase()}<br />{filteredSingles[0].artists}
+				</div>
+				<div class="ps-hero-meta">{filteredSingles.length} SINGLES</div>
+			</div>
+		{:else if tab === 'artists' && artistGroups.length}
+			<div class="ps-hero-artists">
+				<div class="ps-hero-meta">{artistGroups.length} ARTISTS</div>
+				<div class="ps-hero-artists-list">
+					{#each artistGroups.slice(0, 5) as [artist, songsOf]}
+						<div class="ps-hero-artist-row">
+							<span class="ps-hero-artist-n">{songsOf.length}</span>
+							<span class="ps-hero-artist-name">{artist}</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{:else if tab === 'folders' && local.folders.length}
+			<div class="ps-hero-folders">
+				<div class="ps-hero-meta">{local.folders.length} FOLDERS</div>
+				{#each local.folders.slice(0, 4) as folder}
+					<div class="ps-hero-folder-row">{folder.toUpperCase()}</div>
+				{/each}
+			</div>
 		{:else}
-			<div class="ps-empty" style="padding:60px 10px">Your albums land here —<br />sign in or import a folder.</div>
+			<div class="ps-empty" style="padding:60px 10px">
+				{tab === 'albums' ? 'Your albums land here — sign in or import a folder.' : ''}
+				{tab === 'songs' ? 'No songs in your library yet.' : ''}
+				{tab === 'singles' ? 'No standalone tracks — every local song is in an album.' : ''}
+				{tab === 'artists' ? 'No artists yet.' : ''}
+				{tab === 'folders' ? 'No folders yet — use IMPORT MUSIC above.' : ''}
+			</div>
 		{/if}
 	</div>
 

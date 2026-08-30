@@ -170,7 +170,7 @@
 	{#if !hasSearched}
 		<div class="ps-search-empty ps-anim-fade-up">
 			<HugeiconsIcon icon={Search01Icon} />
-			<p>Search for songs, albums, artists, and playlists on YouTube Music.</p>
+			<p>Search for songs, albums, artists, and playlists in your Limusic library.</p>
 		</div>
 	{/if}
 </div>

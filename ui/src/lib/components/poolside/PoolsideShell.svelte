@@ -26,7 +26,7 @@
 	import '@fontsource/audiowide/400.css';
 	import './poolside.css';
 
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { fade, scale, fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -41,7 +41,7 @@
 		HistoryIcon,
 		Playlist02Icon,
 		Queue01Icon,
-		ArrowLeft01Icon
+		Radio01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
@@ -56,10 +56,27 @@
 	import SearchView from './SearchView.svelte';
 	import HistoryView from './HistoryView.svelte';
 	import QueueView from './QueueView.svelte';
-	import MiniPlayer from './MiniPlayer.svelte';
 	import LyricsView from '../LyricsView.svelte';
+	import CoverFlowCarousel from './CoverFlowCarousel.svelte';
+	import RadioBrowse from './RadioBrowse.svelte';
+	import RadioNowPlaying from './RadioNowPlaying.svelte';
+	import EdgeVinyl from './EdgeVinyl.svelte';
+	import CustomCoverPicker from './CustomCoverPicker.svelte';
+	import FeatureCallout from './FeatureCallout.svelte';
+	import MiniPlayer from './MiniPlayer.svelte';
+	import MiniPlayerPill from './MiniPlayerPill.svelte';
 
-	type View = 'home' | 'search' | 'library' | 'history' | 'now' | 'queue' | 'album';
+	type View =
+		| 'home'
+		| 'search'
+		| 'library'
+		| 'library-carousel'
+		| 'history'
+		| 'now'
+		| 'queue'
+		| 'album'
+		| 'radio'
+		| 'radio-now';
 	let view = $state<View>('home');
 	let album = $state<BrowseItem | null>(null);
 	let dusk = $state(localStorage.getItem('ps-dusk') === 'true');
@@ -72,6 +89,50 @@
 
 	// Sidebar hover-expand. Default = collapsed (icons only), expand on hover.
 	let sidebarHover = $state(false);
+
+	// Feature callout — fades in over the current view when the view first activates.
+	let callout = $state<{ text: string; sectionId: string; key: number } | null>(null);
+	let calloutTimer: ReturnType<typeof setTimeout> | null = null;
+	const SEEN_KEY = 'ps-callouts-seen';
+	let seenSet = $state<Set<string>>(new Set());
+	$effect(() => {
+		// Map view -> callout text. The first time a user lands on each view, show
+		// the callout. Once they've seen it, don't show again. We read seenSet via
+		// untrack() so the effect only re-runs on view changes, not when we
+		// update the seen set ourselves below.
+		const v = view;
+		const map: Record<string, string> = {
+			radio: 'You can now use the radio!!!',
+			'library-carousel': 'Browse your library as a coverflow!',
+			'radio-now': 'Live radio stations, all in one place.',
+			lyrics: 'Lyrics auto-scroll and highlight the current line.',
+			album: 'Tap any track to play it instantly.'
+		};
+		const text = map[v];
+		if (!text) return;
+		if (untrack(() => seenSet.has(v))) return;
+		untrack(() => {
+			seenSet = new Set([...seenSet, v]);
+			try { localStorage.setItem(SEEN_KEY, JSON.stringify([...seenSet])); } catch { /* quota */ }
+		});
+		// re-mount the component on each new view so the entrance animation plays
+		callout = { text, sectionId: v, key: Date.now() };
+		if (calloutTimer) clearTimeout(calloutTimer);
+		calloutTimer = setTimeout(() => (callout = null), 3600);
+	});
+	onMount(() => {
+		try {
+			const raw = localStorage.getItem(SEEN_KEY);
+			if (raw) seenSet = new Set(JSON.parse(raw));
+		} catch { /* quota */ }
+	});
+
+	// radio: the currently-selected station (for the radio-now view)
+	const currentStation = $derived(
+		playback.now
+			? { id: 'live', name: playback.now.title || 'Live Mix', genre: 'Live', location: 'Now Playing', isLive: true, listeners: 0, isFavorite: false }
+			: { id: 'lush-fm', name: 'Lush FM', genre: 'Lo-Fi', location: 'Tokyo', isLive: true, listeners: 1284, isFavorite: true }
+	);
 
 	// poolside visual prefs
 	let caustics = $state(localStorage.getItem('ps-caustics') !== 'false');
@@ -267,6 +328,8 @@
 		{ id: 'home', icon: Home02Icon, label: 'Home' },
 		{ id: 'search', icon: Search01Icon, label: 'Search' },
 		{ id: 'library', icon: LibraryIcon, label: 'Library' },
+		{ id: 'library-carousel', icon: LibraryIcon, label: 'Cover Flow' },
+		{ id: 'radio', icon: Radio01Icon, label: 'Radio' },
 		{ id: 'history', icon: HistoryIcon, label: 'History' },
 		{ id: 'queue', icon: Queue01Icon, label: 'Queue' }
 	];
@@ -282,6 +345,14 @@
 	     (set by the $effect above via --ps-album-accent). When nothing's playing it
 	     stays on the static pool blue. -->
 	<Water accent={albumAccent} />
+
+	<!-- ============================================================
+	     EDGE VINYLS — ambient depth decoration. Two large vinyl records anchored
+	     off the left and right edges, ~65% cropped. They sit BEHIND the shell
+	     grid (z-index between Water and .ps-shell) so the UI reads on top of them.
+	     Each rotates slowly and uses the current album art as a blurred label. -->
+	<EdgeVinyl side="left" art={playback.now?.thumbnail ?? ''} />
+	<EdgeVinyl side="right" art={playback.now?.thumbnail ?? ''} />
 
 	<div class="ps-shell">
 		<!-- ============================================================
@@ -371,6 +442,22 @@
 							onImport={importFolder}
 						/>
 					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'library-carousel'}>
+					<CoverFlowCarousel
+						albums={mergedAlbums}
+						{artFor}
+						onOpenAlbum={openAlbum}
+						onPlayAlbum={playAlbum}
+					/>
+				</div>
+				<div class="ps-view" class:on={view === 'radio'}>
+					<div class="ps-scroll-area">
+						<RadioBrowse />
+					</div>
+				</div>
+				<div class="ps-view" class:on={view === 'radio-now'}>
+					<RadioNowPlaying station={currentStation} />
 				</div>
 				<div class="ps-view" class:on={view === 'history'}>
 					<div class="ps-scroll-area">
@@ -507,7 +594,31 @@
 					<button class="ps-ghost" onclick={() => (ccOpen = false)}>Done</button>
 				</div>
 				<input bind:this={ccFileInput} type="file" accept="image/*" hidden onchange={onCcFile} />
-			</div>
-		</div>
-	{/if}
-</div>
+				</div>
+				</div>
+				{/if}
+				</div>
+
+				<!-- ============================================================
+				MINI PLAYER PILL — floating transport chip fixed to the bottom-center.
+				Always visible (even on the Now view) so the user has transport controls
+				anywhere in the app, but doesn't sit on top of the Now deck's own transport.
+				Hides on the coverflow view so the user can see the covers unobstructed. -->
+				{#if playback.now && view !== 'library-carousel'}
+				<MiniPlayerPill onOpenNow={() => go('now')} />
+				{/if}
+
+				<!-- ============================================================
+				     FEATURE CALLOUTS — first-time-visit announcements for the new sections.
+				     A glowing red serif-font banner on a soft halo, fades in on view change
+				     and out after 4s. The seen-set is persisted by the effect that creates
+				     the callout, so we just pass `seen` to tell the child not to re-fire
+				     if the user has already seen this view's callout.
+				     The child takes `text` and `sectionId` (not `message`/`view`).
+				-->
+				{#if callout}
+					<FeatureCallout
+						text={callout.text}
+						sectionId={callout.sectionId}
+					/>
+				{/if}

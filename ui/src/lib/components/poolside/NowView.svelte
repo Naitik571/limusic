@@ -41,13 +41,83 @@
 	// "ejecting" class and the eject action, so there's no dead zone where it looks like it's
 	// ejecting but does nothing.
 	const EJECT_PX = 60;
+	const SNAP_PX = 14; // within this distance of the spindle, drop snaps to center
 	let dragX = $state(0);
 	let dragY = $state(0);
 	let isDragging = $state(false);
 	let dragStartX = 0;
 	let dragStartY = 0;
 	let dragStartState: { paused: boolean } | null = null;
-	let ejected = $state(false);
+	// Local "drag intent" — true while the disc is being dragged past the eject
+	// threshold. Distinct from the visual "ejected" class so we can show a strong
+	// visual only during the drag itself.
+	let dragPastEject = $state(false);
+	// True briefly after a successful eject so we can fire the toast once.
+	let ejectJustHappened = $state(false);
+	// True for ~280ms after the disc snaps home (used for the "click into place"
+	// animation that scales the disc up briefly).
+	let justSnapped = $state(false);
+	let snapTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// The disc is considered "ejected" (visually slid off, label says "Drop a disc back")
+	// whenever playback is paused AND there's a track loaded. This means the
+	// "ejected" state and the actual pause state can never get out of sync.
+	const ejected = $derived(!!cur && paused);
+
+	function onDiscPointerDown(e: PointerEvent) {
+		if (!cur) return;
+		isDragging = true;
+		dragStartX = e.clientX;
+		dragStartY = e.clientY;
+		dragStartState = { paused };
+		dragPastEject = false;
+		(e.target as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function onDiscPointerMove(e: PointerEvent) {
+		if (!isDragging) return;
+		dragX = e.clientX - dragStartX;
+		dragY = e.clientY - dragStartY;
+		const dist = Math.sqrt(dragX * dragX + dragY * dragY);
+		const past = dist > EJECT_PX;
+		if (past !== dragPastEject) dragPastEject = past;
+	}
+	async function onDiscPointerUp() {
+		if (!isDragging) return;
+		const distance = Math.sqrt(dragX * dragX + dragY * dragY);
+		const withinSnapRadius = distance < SNAP_PX;
+		isDragging = false;
+
+		if (distance > EJECT_PX && dragStartState && !dragStartState.paused) {
+			// user dragged the disc off the platter while it was playing
+			await api.togglePause().catch(() => {});
+			toast.info('Disc removed — drop it back to resume');
+			ejectJustHappened = true;
+		} else if (ejected && withinSnapRadius) {
+			// user dragged a paused disc back to center -> resume
+			await api.togglePause().catch(() => {});
+			triggerSnap();
+		}
+		// snap back to spindle visually
+		dragX = 0;
+		dragY = 0;
+		dragPastEject = false;
+	}
+	function triggerSnap() {
+		if (snapTimer) clearTimeout(snapTimer);
+		justSnapped = true;
+		snapTimer = setTimeout(() => {
+			justSnapped = false;
+			snapTimer = null;
+		}, 280);
+	}
+	function onDiscDoubleClick() {
+		// explicit "drop the disc back" gesture, even without a drag — useful for the
+		// small quick tap that doesn't register as a drag.
+		if (ejected) {
+			api.togglePause().catch(() => {});
+			triggerSnap();
+		}
+	}
 
 	// Tonearm angle: -15° (rest) -> -28° (cue-down, track start) and then drifts toward
 	// -34° (track end, near the center). Real tonearms don't really do this, but it
@@ -91,49 +161,7 @@
 		onPlayPress(e);
 		await api.togglePause().catch(() => {});
 	}
-
-	function onDiscPointerDown(e: PointerEvent) {
-		if (!cur) return;
-		isDragging = true;
-		dragStartX = e.clientX;
-		dragStartY = e.clientY;
-		// remember the playing state at the start of the drag so we only resume if the user
-		// was actually playing when they grabbed the disc (don't un-pause a paused track).
-		dragStartState = { paused };
-		(e.target as HTMLElement).setPointerCapture(e.pointerId);
-	}
-	function onDiscPointerMove(e: PointerEvent) {
-		if (!isDragging) return;
-		dragX = e.clientX - dragStartX;
-		dragY = e.clientY - dragStartY;
-	}
-	function onDiscPointerUp() {
-		if (!isDragging) return;
-		const distance = Math.sqrt(dragX * dragX + dragY * dragY);
-		if (distance > EJECT_PX && !ejected) {
-			// drag-out: pause and "eject" — the disc slides off-screen
-			if (!paused) api.togglePause().catch(() => {});
-			toast.info('Disc removed — music paused');
-			ejected = true;
-		} else if (distance <= EJECT_PX && ejected) {
-			// drag-back from ejected: resume only if we were playing when the drag started
-			if (dragStartState && !dragStartState.paused) api.togglePause().catch(() => {});
-			ejected = false;
-		}
-		// snap back
-		dragX = 0;
-		dragY = 0;
-		isDragging = false;
-	}
-	function onDiscDoubleClick() {
-		// explicit "drop the disc back" gesture, even without a drag — useful for the small
-		// quick tap that doesn't register as a drag.
-		if (ejected) {
-			if (dragStartState && !dragStartState.paused) api.togglePause().catch(() => {});
-			ejected = false;
-		}
-	}
-</script>
+	</script>
 
 <div class="ps-np">
 	<!-- One vertical column: deck (turntable + disc sleeve + disc) -> caption -> transport.
@@ -168,9 +196,15 @@
 					<div class="ps-eject-hint">UP NEXT</div>
 				</div>
 			{/if}
+			<!-- The deck-unit always renders; the inner disc-wrap holds the disc.
+			     `key={cur?.videoId ?? 'none'}` re-mounts the disc on every track change
+			     so we never get a frame where the previous track's artwork bleeds
+			     through (Vinyl caches its own image internally, and remounting is
+			     the simplest way to ensure the swap is clean). -->
 			<div
 				class="ps-deck-unit"
-				class:ejecting={isDragging && Math.sqrt(dragX * dragX + dragY * dragY) > 60}
+				class:ejecting={dragPastEject}
+				class:snapped={justSnapped}
 				class:ejected
 				role="application"
 				aria-label="Vinyl disc — drag off to pause, drop back to resume"
@@ -185,13 +219,15 @@
 					transform: translate({dragX}px, {dragY}px);
 					transition: {isDragging ? 'none' : 'transform .5s var(--ease-spring)'};
 				">
-					<Vinyl
-						src={cur?.thumbnail ?? ''}
-						playing={!paused && !isDragging}
-						style="width:100%"
-						flightTarget
-						title="Drag to eject · Double-click to drop back"
-					/>
+					{#key cur?.videoId ?? 'none'}
+						<Vinyl
+							src={cur?.thumbnail ?? ''}
+							playing={!paused && !isDragging}
+							style="width:100%"
+							flightTarget
+							title="Drag to eject · Double-click to drop back"
+						/>
+					{/key}
 				</div>
 				<svg class="ps-sticker" style="right:-4%;top:-7%" width="56" height="56" viewBox="0 0 58 58">
 					<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />

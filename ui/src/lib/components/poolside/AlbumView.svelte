@@ -11,9 +11,9 @@
 	//     .ps-alb-tracks (the actual track list — this is what was missing before)
 	//     .ps-alb-coverflow (horizontal carousel of other albums, bottom)
 	import { Spring } from 'svelte/motion';
+	import { untrack } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { ArrowLeft01Icon, PlayIcon, PauseIcon } from '@hugeicons/core-free-icons';
-	import { onMount } from 'svelte';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
 	import { playback, toast } from '$lib/player.svelte';
@@ -37,48 +37,71 @@
 		onOpenCustom: () => void;
 	} = $props();
 
-	// Track list — loaded on demand from the album. Empty array until the fetch resolves.
+	// Track list state. Loading is keyed by album.id so navigating between albums
+	// always cancels the in-flight load and starts fresh (no stale skeletons, no
+	// bleeding in of the previous album's tracks).
 	let tracks = $state<SongItem[]>([]);
 	let tracksLoading = $state(false);
 	let tracksError = $state<string | null>(null);
+	let loadedFor = $state<string | null>(null);
+
+	async function loadTracks(albumId: string) {
+		tracksLoading = true;
+		tracksError = null;
+		tracks = [];
+		try {
+			if (albumId.startsWith('LOCALALBUM:')) {
+				const albumName = albumId.slice('LOCALALBUM:'.length);
+				const m = await import('$lib/player.svelte');
+				const list = m.local.songs.filter((s) => (s.album || '').trim() === albumName);
+				// Guard: only commit if the user is still on this album when the await resolves.
+				if (loadedFor === albumId || loadedFor === null) {
+					tracks = list;
+					loadedFor = albumId;
+				}
+			} else {
+				// Liked Music, playlists, and remote albums all funnel through getPlaylist,
+				// which returns a PlaylistPage with `items`. getAlbum also works for
+				// MPRE… albums but is a separate codepath; for the library's "click an
+				// item" use-case getPlaylist is the universal loader.
+				const a = await api.getPlaylist(albumId);
+				if (loadedFor === albumId || loadedFor === null) {
+					tracks = a.items ?? [];
+					loadedFor = albumId;
+				}
+			}
+		} catch (e) {
+			if (loadedFor === albumId || loadedFor === null) {
+				tracksError = e instanceof Error ? e.message : String(e);
+				loadedFor = albumId;
+			}
+		} finally {
+			if (loadedFor === albumId || loadedFor === null) {
+				tracksLoading = false;
+			}
+		}
+	}
+
+	// One effect, no state writes inside it. Keyed on album.id + the loadedFor guard
+	// so the user can navigate A -> B -> A and each transition kicks off its own load.
+	$effect(() => {
+		const id = album.id;
+		// Mark "this is the album we want" before the async work, but write through
+		// untrack so Svelte doesn't re-run this effect when loadedFor flips.
+		untrack(() => { loadedFor = id; });
+		loadTracks(id);
+	});
+
+	// Reactive: is this album currently playing? Used to flip the play button to
+	// PAUSE and to highlight the playing track in the list.
 	const isPlayingThis = $derived(
-		playback.now?.videoId &&
-		(tracks.some((t) => t.video_id === playback.now?.videoId) ?? false)
+		!!playback.now?.videoId &&
+		tracks.some((t) => t.video_id === playback.now?.videoId)
 	);
 	const playingIndex = $derived.by(() => {
 		if (!isPlayingThis) return -1;
 		const vid = playback.now?.videoId;
 		return tracks.findIndex((t) => t.video_id === vid);
-	});
-
-	async function loadTracks() {
-		if (tracksLoading || tracks.length > 0) return;
-		// Local album shortcut
-		if (album.id.startsWith('LOCALALBUM:')) {
-			const albumName = album.id.slice('LOCALALBUM:'.length);
-			// Read from the player store — local songs share the album string.
-			const m = await import('$lib/player.svelte');
-			tracks = m.local.songs.filter((s) => (s.album || '').trim() === albumName);
-			return;
-		}
-		tracksLoading = true;
-		tracksError = null;
-		try {
-			const a = await api.getAlbum(album.id);
-			tracks = a.items ?? [];
-		} catch (e) {
-			tracksError = String(e);
-		} finally {
-			tracksLoading = false;
-		}
-	}
-
-	// Load on mount + on album change
-	$effect(() => {
-		// depend on album.id so reloading the page with a new album refetches
-		const _ = album.id;
-		tracks = [];
-		loadTracks();
 	});
 
 	async function playTrack(track: SongItem, i: number) {
@@ -236,17 +259,29 @@
 		<h3 class="ps-section-title">TRACKS</h3>
 		{#if tracksLoading}
 			<div class="ps-alb-track ps-alb-track--skeleton">
-				<span class="ps-skeleton" style="height: 12px; width: 24px;"></span>
-				<span class="ps-skeleton" style="height: 12px; width: 60%;"></span>
-				<span class="ps-skeleton" style="height: 12px; width: 22%;"></span>
+				<span class="ps-alb-track-n"><span class="ps-skeleton" style="height: 10px; width: 18px; display: block;"></span></span>
+				<span class="ps-alb-track-title"><span class="ps-skeleton" style="height: 12px; width: 50%; display: block;"></span></span>
+				<span class="ps-alb-track-artist"><span class="ps-skeleton" style="height: 10px; width: 30%; display: block;"></span></span>
+				<span class="ps-alb-track-dur"><span class="ps-skeleton" style="height: 10px; width: 24px; display: block;"></span></span>
 			</div>
 			<div class="ps-alb-track ps-alb-track--skeleton">
-				<span class="ps-skeleton" style="height: 12px; width: 24px;"></span>
-				<span class="ps-skeleton" style="height: 12px; width: 50%;"></span>
-				<span class="ps-skeleton" style="height: 12px; width: 22%;"></span>
+				<span class="ps-alb-track-n"><span class="ps-skeleton" style="height: 10px; width: 18px; display: block;"></span></span>
+				<span class="ps-alb-track-title"><span class="ps-skeleton" style="height: 12px; width: 65%; display: block;"></span></span>
+				<span class="ps-alb-track-artist"><span class="ps-skeleton" style="height: 10px; width: 22%; display: block;"></span></span>
+				<span class="ps-alb-track-dur"><span class="ps-skeleton" style="height: 10px; width: 24px; display: block;"></span></span>
+			</div>
+			<div class="ps-alb-track ps-alb-track--skeleton">
+				<span class="ps-alb-track-n"><span class="ps-skeleton" style="height: 10px; width: 18px; display: block;"></span></span>
+				<span class="ps-alb-track-title"><span class="ps-skeleton" style="height: 12px; width: 40%; display: block;"></span></span>
+				<span class="ps-alb-track-artist"><span class="ps-skeleton" style="height: 10px; width: 28%; display: block;"></span></span>
+				<span class="ps-alb-track-dur"><span class="ps-skeleton" style="height: 10px; width: 24px; display: block;"></span></span>
 			</div>
 		{:else if tracksError}
-			<div class="ps-empty">Couldn't load tracks — {tracksError}</div>
+			<div class="ps-alb-error">
+				<strong>Couldn't load tracks.</strong>
+				<span>{tracksError}</span>
+				<button class="ps-ghost" onclick={() => loadTracks(album.id)}>Retry</button>
+			</div>
 		{:else if tracks.length === 0}
 			<div class="ps-empty">This album has no tracks.</div>
 		{:else}
