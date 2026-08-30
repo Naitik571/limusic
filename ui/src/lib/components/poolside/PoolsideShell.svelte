@@ -244,12 +244,14 @@
 				aria-label={item.label}
 				title={item.label}
 			>
+				<span class="bubble" aria-hidden="true"></span>
 				<HugeiconsIcon icon={item.icon} />
 				<span class="ps-nav-label">{item.label}</span>
 			</button>
 		{/each}
 		{#if playback.now}
 			<button class="ps-nav-btn {view === 'now' ? 'on' : ''}" onclick={() => go('now')} aria-label="Now Playing" title="Now Playing">
+				<span class="bubble" aria-hidden="true"></span>
 				<div class="ps-nav-disc">
 					{#if playback.now.thumbnail}
 						<img src={playback.now.thumbnail} alt="" />

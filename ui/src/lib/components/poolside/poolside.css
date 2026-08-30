@@ -311,6 +311,15 @@
 	overflow: visible;
 	background: transparent;
 	box-shadow: none;
+	transform: translateY(0);
+	transition: transform .25s var(--ease-spring);
+	animation: ps-vinyl-drop 0.7s var(--ease-spring) both;
+}
+.ps-vinyl:hover { transform: translateY(-6px); }
+@keyframes ps-vinyl-drop {
+	0%   { opacity: 0; transform: scale(.7) translateY(8px); }
+	60%  { opacity: 1; transform: scale(1.04) translateY(-2px); }
+	100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 /* the actual disc — drawn as an inner element so the pool-shadow can spill outside its bounds */
 .ps-vinyl::before {
@@ -321,6 +330,7 @@
 		0 20px 50px rgba(8,60,70,.45),
 		0 6px 16px rgba(8,60,70,.3),
 		inset 0 0 0 1.5px rgba(255,255,255,.3);
+	z-index: 1;
 }
 /* the blue pool bloom underneath the disc — a soft cyan/teal glow that bleeds out around the
    rim, like the disc is resting on water and refracting the pool's color through its edge.
@@ -337,6 +347,16 @@
 	filter: blur(16px);
 	pointer-events: none;
 	z-index: 0;
+	transition: filter .25s var(--ease-spring), opacity .25s var(--ease-spring);
+}
+.ps-vinyl:hover .pool-shadow { filter: blur(20px); opacity: 1.3; }
+/* The .spin-wrap carries the wobble (a tiny rAF-driven rotation) so the inner .spin and
+   sheens can still use their own CSS keyframes for the constant spin without fighting. */
+.ps-vinyl .spin-wrap {
+	position: absolute; inset: 0; border-radius: 50%;
+	transform: rotate(var(--ps-wobble, 0deg));
+	will-change: transform;
+	z-index: 2;
 }
 .ps-vinyl::before { z-index: 1; }
 .ps-vinyl .spin,
@@ -397,11 +417,13 @@
 	box-shadow: 0 0 0 2px rgba(255,255,255,.8), 0 0 0 3px rgba(0,30,40,.25);
 }
 @keyframes ps-spin { to { transform: rotate(360deg); } }
-.ps-vinyl.playing .spin,
-.ps-vinyl.playing .sheen-a,
-.ps-vinyl.playing .sheen-b {
-	animation: ps-spin var(--ps-spin, 3.4s) linear infinite;
-}
+/* The .spin is the disc face, and the two sheens rotate at slightly different speeds
+   so the surface looks like it has multiple reflections catching light at different
+   angles. .sheen-b even reverses direction — like two fluorescent tubes on the ceiling
+   each spinning in the disc's reflection at different rates. */
+.ps-vinyl.playing .spin    { animation: ps-spin var(--ps-spin, 3.4s) linear infinite; }
+.ps-vinyl.playing .sheen-a { animation: ps-spin calc(var(--ps-spin, 3.4s) * 1.18) linear infinite; }
+.ps-vinyl.playing .sheen-b { animation: ps-spin calc(var(--ps-spin, 3.4s) * 0.82) linear infinite reverse; }
 .ps-root.paused .ps-vinyl .spin,
 .ps-root.paused .ps-vinyl .sheen-a,
 .ps-root.paused .ps-vinyl .sheen-b {
@@ -450,7 +472,10 @@
 		0 0 0 3px rgba(255,255,255,.06),
 		0 0 0 6px rgba(0,0,0,.3),
 		inset 0 2px 8px rgba(0,0,0,.5);
+	transition: transform .8s var(--ease-spring);
 }
+.ps-platter.spin { animation: ps-platter-spin 1.4s linear infinite; }
+@keyframes ps-platter-spin { to { transform: rotate(360deg); } }
 .ps-platter::after {
 	content: '';
 	position: absolute; inset: 4%;
@@ -461,18 +486,17 @@
 		transparent 70%
 	);
 }
-/* tonearm */
+/* tonearm — the rotation is set inline by NowView from playback.position so the arm
+   tracks the track from cue (-28°) to end-of-side (-34°). Lifted off entirely when
+   the disc is ejected (-8°). Default transform here is the rest position. */
 .ps-tonearm {
 	position: absolute;
 	right: 6%; top: 4%;
 	width: 30%; height: 60%;
 	transform-origin: 90% 8%;
 	transform: rotate(-15deg);
-	transition: transform .8s var(--ease-spring);
+	transition: transform 1.2s var(--ease-spring);
 	pointer-events: none;
-}
-.ps-root:not(.paused) .ps-tonearm {
-	transform: rotate(-28deg);
 }
 .ps-arm-pivot {
 	position: absolute; right: 0; top: 0;
@@ -770,6 +794,17 @@
 	display: flex; align-items: center; justify-content: space-between;
 	padding: 12px 0;
 	font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+	animation: ps-setrow-in .35s var(--ease-spring) both;
+}
+.ps-setrow:nth-child(2) { animation-delay: .04s; }
+.ps-setrow:nth-child(3) { animation-delay: .08s; }
+.ps-setrow:nth-child(4) { animation-delay: .12s; }
+.ps-setrow:nth-child(5) { animation-delay: .16s; }
+.ps-setrow:nth-child(6) { animation-delay: .20s; }
+.ps-setrow:nth-child(7) { animation-delay: .24s; }
+@keyframes ps-setrow-in {
+	from { opacity: 0; transform: translateX(-8px); }
+	to   { opacity: 1; transform: translateX(0); }
 }
 .ps-setrow + .ps-setrow { border-top: 1px solid rgba(255,255,255,.12); }
 /* toggle switch */
@@ -824,7 +859,7 @@
    dialog); the .ps-overlay .card style below was dead weight — a near-duplicate of .ps-card
    that the markup never targeted. If you ever switch the card class, restore it here. */
 
-/* lyrics overlay */
+/* lyrics overlay — slides up from the bottom with a subtle bounce, like surfacing */
 .ps-lyrics-frame {
 	position: fixed;
 	right: 3vw; top: 10vh; bottom: 12vh;
@@ -835,6 +870,11 @@
 	backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
 	border: 1px solid rgba(255,255,255,.3);
 	box-shadow: var(--shadow-teal);
+	animation: ps-lyrics-in .55s var(--ease-spring) both;
+}
+@keyframes ps-lyrics-in {
+	0%   { opacity: 0; transform: translateY(40px) scale(.95); }
+	100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .ps-lyrics-close {
 	position: absolute; right: 16px; top: 14px;
@@ -875,7 +915,7 @@
 .ps-tbtn:hover { background: rgba(255,255,255,.3); transform: translateY(-2px); }
 .ps-tbtn.on { background: rgba(6,48,58,.85); box-shadow: 0 0 0 2px rgba(255,255,255,.5) inset; }
 .ps-tbtn svg { width: 17px; height: 17px; }
-.ps-play { width: 60px !important; height: 60px !important; color: #111 !important; }
+.ps-play { width: 60px !important; height: 60px !important; color: #111 !important; position: relative; overflow: visible; }
 .ps-play svg { width: 22px !important; height: 22px !important; }
 .ps-aqua { background: linear-gradient(180deg, #8FDDF6, var(--accent) 55%, #2E9ECB) !important; border: 1px solid rgba(255,255,255,.8) !important; box-shadow: 0 5px 14px rgba(14,110,140,.5), inset 0 1px 0 rgba(255,255,255,.9) !important; }
 
@@ -947,11 +987,23 @@
 .ps-root.reduce .ps-blob,
 .ps-root.reduce .ps-blob.sun-ray,
 .ps-root.reduce .ps-shaft,
-.ps-root.reduce .ps-mote {
+.ps-root.reduce .ps-mote,
+.ps-root.reduce .ps-waterline,
+.ps-root.reduce .ps-waterline::after,
+.ps-root.reduce .ps-koi,
+.ps-root.reduce .ps-koi .body,
+.ps-root.reduce .ps-fcard .reflection,
+.ps-root.reduce .ps-logo .word,
+.ps-root.reduce .ps-hero-sleeve .ps-sleeve,
+.ps-root.reduce .ps-hero-sleeve > div[style],
+.ps-root.reduce .ps-empty,
+.ps-root.reduce .ps-nav-disc::after,
+.ps-root.reduce .ps-platter.spin {
 	animation: none !important;
 }
 .ps-root.reduce .ps-shaft { opacity: 0 !important; }
 .ps-root.reduce .ps-mote { opacity: 0; }
+.ps-root.reduce .ps-koi { display: none; }
 .ps-root.reduce .ps-glare { filter: none; }
 .ps-root.reduce .ps-water > .ps-rip { filter: none; }
 .ps-root.reduce .ps-vinyl.playing .spin,
@@ -959,20 +1011,35 @@
 .ps-root.reduce .ps-vinyl.playing .sheen-b {
 	animation-duration: 12s !important;
 }
-.ps-root.reduce * {
-	transition-duration: .15s !important;
+.ps-root.reduce .ps-view.on { animation: none !important; }
+.ps-root.reduce .ps-day-label::after { animation: none !important; width: 36px; }
+.ps-root.reduce .ps-lyrics-frame { animation: none !important; }
+.ps-root.reduce .ps-setrow { animation: none !important; opacity: 1; transform: none; }
+.ps-root.reduce .ps-hero-sleeve .ps-sleeve,
+.ps-root.reduce .ps-hero-sleeve > div[style] {
+	animation: none !important; opacity: 1; transform: none;
 }
+.ps-root.reduce * { transition-duration: .15s !important; }
 @media (prefers-reduced-motion: reduce) {
 	.ps-root .ps-rip,
 	.ps-root .ps-water::after,
 	.ps-root .ps-blob,
 	.ps-root .ps-blob.sun-ray,
 	.ps-root .ps-shaft,
-	.ps-root .ps-mote {
+	.ps-root .ps-mote,
+	.ps-root .ps-waterline,
+	.ps-root .ps-waterline::after,
+	.ps-root .ps-koi,
+	.ps-root .ps-koi .body,
+	.ps-root .ps-fcard .reflection,
+	.ps-root .ps-logo .word,
+	.ps-root .ps-empty,
+	.ps-root .ps-nav-disc::after {
 		animation: none !important;
 	}
 	.ps-root .ps-shaft { opacity: 0 !important; }
 	.ps-root .ps-mote { opacity: 0; }
+	.ps-root .ps-koi { display: none; }
 	.ps-root .ps-glare { filter: none; }
 	.ps-root .ps-water > .ps-rip { filter: none; }
 	.ps-root .ps-vinyl.playing .spin,
@@ -980,6 +1047,20 @@
 	.ps-root .ps-vinyl.playing .sheen-b {
 		animation-duration: 12s !important;
 	}
+	.ps-root .ps-view.on,
+	.ps-root .ps-day-label::after,
+	.ps-root .ps-hero-sleeve .ps-sleeve,
+	.ps-root .ps-hero-sleeve > div[style],
+	.ps-root .ps-lyrics-frame,
+	.ps-root .ps-setrow {
+		animation: none !important;
+	}
+	.ps-root .ps-hero-sleeve .ps-sleeve,
+	.ps-root .ps-hero-sleeve > div[style] {
+		opacity: 1; transform: none;
+	}
+	.ps-root .ps-day-label::after { width: 36px; }
+	.ps-root .ps-setrow { opacity: 1; transform: none; }
 	.ps-root * { transition-duration: .15s !important; }
 }
 
@@ -1249,7 +1330,314 @@
 	}
 }
 
-/* ============ 18. RESPONSIVE ============ */
+/* ============ 18. SHARED MOTION — ripples, koi, waterline shimmer, view-tilt, splash ============ */
+
+/* Generic press-ripple appended by motion.ts spawnRipple() — sits absolutely in the
+   element's local coord space, scales out from a 0 circle to 1.4× the button's size. */
+.ps-ripple {
+	position: absolute; border-radius: 50%;
+	pointer-events: none;
+	transform: translate(-50%, -50%) scale(0);
+	opacity: 0.7;
+	animation: ps-ripple 0.65s var(--ease-spring, cubic-bezier(.22,1,.36,1)) forwards;
+	mix-blend-mode: screen;
+}
+@keyframes ps-ripple {
+	to { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+}
+
+/* View-switch 3D tilt: when .on is applied to .ps-view, the view does a tiny camera
+   dolly-in with a 5° rotateX, then settles flat. Already had scale(1.07)->scale(1);
+   this stacks on top. */
+.ps-view.on {
+	animation: ps-view-tilt 0.6s var(--ease-spring, cubic-bezier(.22,1,.36,1)) both;
+}
+@keyframes ps-view-tilt {
+	0%   { opacity: 0; transform: scale(1.04) rotateX(5deg) translateZ(-40px); }
+	100% { opacity: 1; transform: scale(1) rotateX(0) translateZ(0); }
+}
+
+/* Waterline shimmer — the bright top band drifts horizontally and pulses opacity, like
+   sky reflection moving across a pool's surface. Already had a static .ps-waterline; the
+   motion is the missing piece. */
+.ps-waterline {
+	position: absolute; left: 0; right: 0; top: 0; height: 14vh;
+	background: linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,.28) 30%, rgba(255,255,255,.08) 70%, transparent 100%);
+	pointer-events: none; z-index: 1;
+	filter: blur(8px);
+	animation: ps-waterline-drift 18s ease-in-out infinite alternate;
+}
+@keyframes ps-waterline-drift {
+	0%   { transform: translateX(-2%) scaleY(1);    opacity: .9; }
+	100% { transform: translateX(2%)  scaleY(1.05); opacity: 1; }
+}
+.ps-waterline::after {
+	content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+	background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.7) 20%, rgba(255,255,255,.9) 50%, rgba(255,255,255,.7) 80%, transparent 100%);
+	animation: ps-waterline-spec 6s ease-in-out infinite alternate;
+}
+@keyframes ps-waterline-spec {
+	0%   { transform: translateX(-3%); opacity: .85; }
+	100% { transform: translateX(3%);  opacity: 1; }
+}
+
+/* Koi — fish-shaped SVG that swims across the pool with a sine-wave path. Three sizes,
+   three speeds, two colors. Path is hand-tuned: a long lazy S-curve repeated 2x. */
+.ps-koi {
+	position: absolute; pointer-events: none; z-index: 1;
+	will-change: transform;
+	filter: drop-shadow(0 2px 4px rgba(0,30,40,.4));
+}
+.ps-koi svg { display: block; overflow: visible; }
+.ps-koi.a { animation: ps-koi-a 38s linear infinite; }
+.ps-koi.b { animation: ps-koi-b 52s linear infinite reverse; }
+.ps-koi.c { animation: ps-koi-c 28s linear infinite; }
+.ps-koi.d { animation: ps-koi-d 44s linear infinite reverse; }
+@keyframes ps-koi-a {
+	0%   { transform: translate(-15vw, 70vh) scaleX(1)   rotate(0deg); }
+	48%  { transform: translate(45vw,  62vh) scaleX(1)   rotate(-2deg); }
+	52%  { transform: translate(47vw,  62vh) scaleX(-1)  rotate(178deg); }
+	100% { transform: translate(115vw, 70vh) scaleX(-1)  rotate(176deg); }
+}
+@keyframes ps-koi-b {
+	0%   { transform: translate(115vw, 30vh) scaleX(-1)  rotate(176deg); }
+	48%  { transform: translate(60vw,  22vh) scaleX(-1)  rotate(178deg); }
+	52%  { transform: translate(58vw,  22vh) scaleX(1)   rotate(-4deg); }
+	100% { transform: translate(-15vw, 30vh) scaleX(1)   rotate(-2deg); }
+}
+@keyframes ps-koi-c {
+	0%   { transform: translate(-10vw, 50vh) scaleX(1); }
+	100% { transform: translate(110vw, 50vh) scaleX(1); }
+}
+@keyframes ps-koi-d {
+	0%   { transform: translate(110vw, 85vh) scaleX(-1); }
+	100% { transform: translate(-10vw, 85vh) scaleX(-1); }
+}
+/* All koi also bob with a vertical sine — applied via inner element so it stacks cleanly. */
+.ps-koi .body {
+	animation: ps-koi-bob 4s ease-in-out infinite;
+}
+.ps-koi.b .body { animation-duration: 5.5s; animation-delay: -1.5s; }
+.ps-koi.c .body { animation-duration: 3.2s; animation-delay: -.8s; }
+.ps-koi.d .body { animation-duration: 4.8s; animation-delay: -2.4s; }
+@keyframes ps-koi-bob {
+	0%, 100% { transform: translateY(0)      rotate(0deg); }
+	50%      { transform: translateY(-1.2vh) rotate(2deg); }
+}
+
+/* Splash — burst of aqua drops that flies out from a point. Used by the play-button press
+   and the tile-splash on click. Pure CSS, runs once. */
+.ps-splash {
+	position: absolute; pointer-events: none; left: 0; top: 0; width: 100%; height: 100%;
+}
+.ps-splash::before, .ps-splash::after {
+	content: ''; position: absolute; left: 50%; top: 50%;
+	width: 6px; height: 6px; border-radius: 50%;
+	background: rgba(140,225,240,.9);
+	box-shadow: 0 0 8px rgba(79,195,232,.6);
+	transform: translate(-50%,-50%);
+	animation: ps-splash-out .6s var(--ease-spring) forwards;
+	opacity: 0;
+}
+.ps-splash::after { animation-delay: .08s; }
+@keyframes ps-splash-out {
+	0%   { transform: translate(-50%,-50%) scale(0);  opacity: 1; }
+	100% { transform: translate(calc(-50% - 60px), calc(-50% - 40px)) scale(0); opacity: 0; }
+}
+
+/* Skeleton loader for in-flight data — a horizontal swim with a wavelike alpha pulse. */
+.ps-skeleton {
+	background: linear-gradient(90deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.22) 50%, rgba(255,255,255,.08) 100%);
+	background-size: 200% 100%;
+	animation: ps-skeleton 1.4s linear infinite;
+	border-radius: 8px;
+}
+@keyframes ps-skeleton {
+	0%   { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+/* Bubble — a tiny circle that floats up from the play button and pops. Used by the
+   aqua-play button in NowView (auto-spawned by the JS). */
+.ps-bubble {
+	position: absolute; border-radius: 50%;
+	background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.95), rgba(180,230,240,.4) 60%, transparent 70%);
+	pointer-events: none;
+	animation: ps-bubble-up 1.4s ease-out forwards;
+}
+@keyframes ps-bubble-up {
+	0%   { transform: translate(0, 0) scale(.4); opacity: 0; }
+	20%  { transform: translate(var(--bx, 0), -8px) scale(1); opacity: .9; }
+	100% { transform: translate(calc(var(--bx, 0) * 2), -80px) scale(.6); opacity: 0; }
+}
+
+/* Tab pill slide — the active tab in the .ps-tabs row gets a sliding pill behind it. */
+.ps-tabs button.on {
+	background: linear-gradient(180deg, #ffffff, #d9f2f8);
+	color: #0E6A7A;
+	box-shadow: 0 3px 10px rgba(8,60,70,.3), inset 0 1px 0 #fff;
+	text-shadow: none;
+	transition: color .25s var(--ease-spring), box-shadow .25s var(--ease-spring);
+}
+.ps-tabs button { transition: all .35s var(--ease-spring); }
+
+/* Chip ripple — already a chip; the ripple adds on click. */
+.ps-chip { position: relative; overflow: hidden; }
+.ps-tile, .ps-rail-card, .ps-songrow { position: relative; overflow: hidden; }
+
+/* Aqua bar fill — the seeking-progress fill flows like water when playing. Used in mini
+   and now-view. The fill element gets a left-to-right animated background. */
+.ps-bar-fill {
+	background: linear-gradient(90deg,
+		rgba(255,255,255,.95) 0%,
+		rgba(255,255,255,.95) 60%,
+		rgba(140,225,240,.95) 100%);
+	background-size: 200% 100%;
+	animation: ps-bar-flow 1.6s linear infinite;
+}
+@keyframes ps-bar-flow {
+	0%   { background-position: 0% 0; }
+	100% { background-position: -200% 0; }
+}
+
+/* Tab slider background — sliding pill in a segmented control. Driven by JS for the
+   active index; this is just the underlying look. */
+.ps-tab-track { position: relative; }
+.ps-tab-pill {
+	position: absolute; top: 4px; bottom: 4px; left: 0; width: 80px;
+	border-radius: 999px;
+	background: linear-gradient(180deg, #ffffff, #d9f2f8);
+	box-shadow: 0 3px 10px rgba(8,60,70,.3), inset 0 1px 0 #fff;
+	transition: left .35s var(--ease-spring), width .35s var(--ease-spring);
+	z-index: 0;
+}
+
+/* Coverfly reflection — the .reflection under each album card gets a slow opacity breath. */
+.ps-fcard .reflection {
+	animation: ps-reflect-breath 5s ease-in-out infinite;
+}
+@keyframes ps-reflect-breath {
+	0%, 100% { opacity: .32; }
+	50%      { opacity: .48; }
+}
+
+/* Idle drift — when the coverflow hasn't been touched for 6s, the spring target gets
+   nudged right so the coverflow slowly spins like a lazy Susan. The CSS isn't driving
+   this — it's a JS hook in AlbumView that just calls scroll.target = ... on a timer. */
+
+/* Tile hover splash — the aqua glow that pulses on hover (already a box-shadow in the
+   rail-card; adding a subtle scale lift here) */
+.ps-rail-card:hover { transform: translateY(-6px) scale(1.05); }
+.ps-tile:hover { transform: rotate(0) translateY(-8px) scale(1.06); }
+
+/* Logo chrome wordmark slow rotation — the conic-gradient mark gets a slow 12s rotation
+   for a subtle "wet chrome" feel. */
+.ps-logo .word { background-size: 200% 200%; animation: ps-chrome 8s ease-in-out infinite; }
+@keyframes ps-chrome {
+	0%, 100% { background-position: 0% 0%; }
+	50%      { background-position: 100% 100%; }
+}
+
+/* Sleeve peek — the hero library sleeve vinyl slides out a bit on mount */
+.ps-hero-sleeve .ps-sleeve {
+	animation: ps-sleeve-peek 1.2s var(--ease-spring) both;
+	animation-delay: .15s;
+	transform: translateX(8px);
+	opacity: 0;
+}
+@keyframes ps-sleeve-peek {
+	0%   { transform: translateX(8px); opacity: 0; }
+	60%  { transform: translateX(-2px); opacity: 1; }
+	100% { transform: translateX(0); opacity: 1; }
+}
+.ps-hero-sleeve > div[style] {
+	animation: ps-disc-slide 1s var(--ease-spring) both;
+	animation-delay: .35s;
+	opacity: 0;
+}
+@keyframes ps-disc-slide {
+	0%   { transform: translateX(0); opacity: 0; }
+	100% { transform: translateX(9%) rotate(8deg); opacity: 1; }
+}
+
+/* Splash on the play button — the aqua play button gets a ring that pulses on click */
+.ps-play::after {
+	content: ''; position: absolute; inset: -8px; border-radius: 50%;
+	border: 2px solid rgba(140,225,240,.8);
+	opacity: 0; transform: scale(.8);
+	pointer-events: none;
+}
+.ps-play.pressed::after { animation: ps-play-ring .6s var(--ease-spring); }
+@keyframes ps-play-ring {
+	0%   { opacity: 1; transform: scale(.8); }
+	100% { opacity: 0; transform: scale(1.5); }
+}
+
+/* Nav bubble — the active bottom-nav item gets a float-up "pool float" wrap. */
+.ps-nav-btn .bubble {
+	position: absolute; left: 50%; top: 50%;
+	width: 36px; height: 36px; border-radius: 50%;
+	background: linear-gradient(180deg, rgba(255,255,255,.4), rgba(140,225,240,.25));
+	border: 1px solid rgba(255,255,255,.5);
+	transform: translate(-50%, -50%) scale(0);
+	opacity: 0; pointer-events: none;
+	z-index: -1;
+	transition: transform .35s var(--ease-spring), opacity .25s;
+}
+.ps-nav-btn.on .bubble { transform: translate(-50%, -50%) scale(1); opacity: 1; animation: ps-bubble-bob 4s ease-in-out infinite; }
+@keyframes ps-bubble-bob {
+	0%, 100% { transform: translate(-50%, -50%) scale(1)    translateY(0); }
+	50%      { transform: translate(-50%, -50%) scale(1.05) translateY(-1.5px); }
+}
+
+/* Orbits the now-playing disc thumbnail in the bottom nav */
+.ps-nav-disc::after {
+	content: ''; position: absolute; inset: -4px; border-radius: 50%;
+	border: 1.5px solid transparent;
+	border-top-color: rgba(140,225,240,.7);
+	animation: ps-orbit 2.2s linear infinite;
+	pointer-events: none;
+}
+@keyframes ps-orbit {
+	to { transform: rotate(360deg); }
+}
+
+/* Empty-state bob */
+.ps-empty { animation: ps-bob-empty 3.5s ease-in-out infinite; }
+@keyframes ps-bob-empty {
+	0%, 100% { transform: translateY(0); }
+	50%      { transform: translateY(-4px); }
+}
+
+/* Aqua left-bar on row hover — a thin bar that grows from 0->4px on hover */
+.ps-songrow::before {
+	content: ''; position: absolute; left: 6px; top: 12px; bottom: 12px;
+	width: 3px; border-radius: 3px; background: var(--accent);
+	transform: scaleY(0); transform-origin: center;
+	transition: transform .25s var(--ease-spring);
+	opacity: .8;
+}
+.ps-songrow:hover::before { transform: scaleY(1); width: 4px; }
+
+/* Day-label underline grow on appear */
+.ps-day-label { position: relative; }
+.ps-day-label::after {
+	content: ''; position: absolute; left: 0; bottom: -2px; height: 1px; width: 0;
+	background: rgba(255,255,255,.6);
+	animation: ps-day-grow .8s var(--ease-spring) both;
+	animation-delay: .3s;
+}
+@keyframes ps-day-grow { to { width: 36px; } }
+
+/* Focus rings — aqua ring on any keyboard focus */
+.ps-root :focus-visible {
+	outline: 2.5px solid #fff;
+	outline-offset: 3px;
+	border-radius: 8px;
+	box-shadow: 0 0 0 6px rgba(79,195,232,.3);
+}
+
+/* ============ 19. RESPONSIVE ============ */
 @media (max-width: 820px) {
 	.ps-deck { flex-direction: column; gap: 0; }
 	.ps-deck-unit .ps-sleeve { width: min(58vmin, 340px); }

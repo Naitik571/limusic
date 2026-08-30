@@ -41,6 +41,26 @@
 		if (i >= 0) scroll.target = i;
 	});
 
+	// idle drift: if the user hasn't touched the coverflow in 5s, slowly advance one
+	// album at a time so the carousel feels alive (like a lazy Susan). Any drag/wheel/
+	// keypress resets the timer.
+	let lastTouch = Date.now();
+	const IDLE_MS = 5000;
+	const IDLE_STEP_MS = 2200;
+	let idleTimer: ReturnType<typeof setTimeout> | null = null;
+	function bumpTouch() { lastTouch = Date.now(); }
+	$effect(() => {
+		void scroll.current; // subscribe so the timer reschedules while settling
+		if (idleTimer) clearTimeout(idleTimer);
+		idleTimer = setTimeout(function tick() {
+			if (Date.now() - lastTouch > IDLE_MS && n > 1) {
+				scroll.target = (Math.round(scroll.current) + 1) % n;
+			}
+			idleTimer = setTimeout(tick, IDLE_STEP_MS);
+		}, IDLE_STEP_MS);
+		return () => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } };
+	});
+
 	const activeIdx = $derived(Math.round(scroll.current));
 
 	const cards = $derived.by(() => {
@@ -75,6 +95,7 @@
 		moved = false;
 		dragStartX = e.clientX;
 		dragStartScroll = scroll.target;
+		bumpTouch();
 	}
 	function onPointerMove(e: PointerEvent) {
 		if (!dragging) {
@@ -85,6 +106,7 @@
 			moved = true;
 		}
 		scroll.target = clamp(dragStartScroll - dx / 140);
+		if (moved) bumpTouch();
 	}
 	function onPointerUp() {
 		if (!dragging) {
@@ -97,6 +119,7 @@
 	function onWheel(e: WheelEvent) {
 		e.preventDefault();
 		scroll.target = clamp(scroll.target + e.deltaY * 0.0022);
+		bumpTouch();
 	}
 	function onCardClick(i: number) {
 		if (moved) {
@@ -116,11 +139,13 @@
 			const i = clamp(activeIdx - 1);
 			scroll.target = i;
 			onSelect(albums[i]);
+			bumpTouch();
 		} else if (e.key === 'ArrowRight') {
 			e.preventDefault();
 			const i = clamp(activeIdx + 1);
 			scroll.target = i;
 			onSelect(albums[i]);
+			bumpTouch();
 		} else if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			onPlayAlbum(albums[activeIdx]);

@@ -49,6 +49,49 @@
 	let dragStartState: { paused: boolean } | null = null;
 	let ejected = $state(false);
 
+	// Tonearm angle: -15° (rest) -> -28° (cue-down, track start) and then drifts toward
+	// -34° (track end, near the center). Real tonearms don't really do this, but it
+	// sells "this turntable is reading the record".
+	const tonearmAngle = $derived(() => {
+		if (!cur) return -15;
+		if (ejected) return -8; // lifted off entirely
+		if (paused) return -15;
+		if (dur <= 0) return -28;
+		// 0 -> -28 (cue), 1 -> -34 (end of side)
+		return -28 - Math.min(1, pos / dur) * 6;
+	});
+	// Spinning the platter independently of the disc gives a sense of "the platter
+	// is what drives the disc". The disc has its own wobble + sheen rotation.
+	const platterSpinning = $derived(!paused && !!cur);
+
+	// Play button: brief "pressed" class adds a ring ripple, and on every play action
+	// we spawn 2-3 aqua bubbles that float up from the button.
+	let playBtn = $state<HTMLButtonElement>();
+	let playPressed = $state(false);
+	function onPlayPress(e: MouseEvent) {
+		playPressed = true;
+		setTimeout(() => (playPressed = false), 650);
+		// spawn bubbles from the click point
+		if (playBtn) {
+			const r = playBtn.getBoundingClientRect();
+			const cx = e.clientX - r.left;
+			const cy = e.clientY - r.top;
+			for (let i = 0; i < 3; i++) {
+				const b = document.createElement('span');
+				b.className = 'ps-bubble';
+				const size = 4 + Math.random() * 5;
+				b.style.cssText = `width:${size}px;height:${size}px;left:${cx}px;top:${cy}px;--bx:${(Math.random() - 0.5) * 30}px;`;
+				playBtn.appendChild(b);
+				setTimeout(() => b.remove(), 1500);
+			}
+		}
+	}
+
+	async function onPlayClick(e: MouseEvent) {
+		onPlayPress(e);
+		await api.togglePause().catch(() => {});
+	}
+
 	function onDiscPointerDown(e: PointerEvent) {
 		if (!cur) return;
 		isDragging = true;
@@ -96,8 +139,8 @@
 	<!-- turntable with plinth, platter, and tonearm -->
 	<div class="ps-turntable">
 		<div class="ps-plinth">
-			<div class="ps-platter"></div>
-			<div class="ps-tonearm">
+			<div class="ps-platter" class:spin={platterSpinning}></div>
+			<div class="ps-tonearm" style="transform: rotate({tonearmAngle()}deg);">
 				<div class="ps-arm-pivot"></div>
 				<div class="ps-arm-shaft">
 					<div class="ps-arm-head"></div>
@@ -189,7 +232,7 @@
 			<button class="ps-tbtn" onclick={() => api.prevTrack().catch(() => {})} title="Previous" aria-label="Previous">
 				<HugeiconsIcon icon={PreviousIcon} />
 			</button>
-			<button class="ps-tbtn ps-play ps-aqua" onclick={() => api.togglePause().catch(() => {})} title="Play / pause" aria-label="Play or pause">
+			<button bind:this={playBtn} class="ps-tbtn ps-play ps-aqua {playPressed ? 'pressed' : ''}" onclick={onPlayClick} title="Play / pause" aria-label="Play or pause">
 				{#if paused}<HugeiconsIcon icon={PlayIcon} />{:else}<HugeiconsIcon icon={PauseIcon} />{/if}
 			</button>
 			<button class="ps-tbtn" onclick={() => api.nextTrack().catch(() => {})} title="Next" aria-label="Next">

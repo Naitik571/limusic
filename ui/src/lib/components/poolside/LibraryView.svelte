@@ -29,6 +29,12 @@
 	type Tab = 'albums' | 'songs' | 'artists' | 'folders';
 	let tab = $state<Tab>('albums');
 	let search = $state('');
+	const tabs: { id: Tab; label: string }[] = [
+		{ id: 'albums', label: 'Albums' },
+		{ id: 'songs', label: 'Songs' },
+		{ id: 'artists', label: 'Artists' },
+		{ id: 'folders', label: 'Folders' }
+	];
 
 	const q = $derived(search.trim().toLowerCase());
 	const filteredAlbums = $derived(
@@ -119,11 +125,11 @@
 			</button>
 		</div>
 
-		<div class="ps-tabs" role="tablist">
-			<button class:on={tab === 'albums'} onclick={() => (tab = 'albums')} role="tab">Albums</button>
-			<button class:on={tab === 'songs'} onclick={() => (tab = 'songs')} role="tab">Songs</button>
-			<button class:on={tab === 'artists'} onclick={() => (tab = 'artists')} role="tab">Artists</button>
-			<button class:on={tab === 'folders'} onclick={() => (tab = 'folders')} role="tab">Folders</button>
+		<div class="ps-tabs ps-tab-track" role="tablist">
+			<div class="ps-tab-pill" style="left: {4 + tabs.findIndex(t => t.id === tab) * 84}px; width: 80px;"></div>
+			{#each tabs as t (t.id)}
+				<button class:on={tab === t.id} onclick={() => (tab = t.id)} role="tab">{t.label}</button>
+			{/each}
 		</div>
 
 		<div class="ps-panels">
