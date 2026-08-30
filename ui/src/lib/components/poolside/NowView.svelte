@@ -36,18 +36,27 @@
 		api.playIndex(i).catch((e) => toast.error(String(e)));
 	}
 
-	// drag-to-eject: pull disc off = stop, drop back = play
+	// drag-to-eject: pull the disc past the threshold and release -> music pauses. Drag back
+	// to centre and release -> the disc snaps home. One threshold (60px) for both the visual
+	// "ejecting" class and the eject action, so there's no dead zone where it looks like it's
+	// ejecting but does nothing.
+	const EJECT_PX = 60;
 	let dragX = $state(0);
 	let dragY = $state(0);
 	let isDragging = $state(false);
 	let dragStartX = 0;
 	let dragStartY = 0;
+	let dragStartState: { paused: boolean } | null = null;
+	let ejected = $state(false);
 
 	function onDiscPointerDown(e: PointerEvent) {
 		if (!cur) return;
 		isDragging = true;
 		dragStartX = e.clientX;
 		dragStartY = e.clientY;
+		// remember the playing state at the start of the drag so we only resume if the user
+		// was actually playing when they grabbed the disc (don't un-pause a paused track).
+		dragStartState = { paused };
 		(e.target as HTMLElement).setPointerCapture(e.pointerId);
 	}
 	function onDiscPointerMove(e: PointerEvent) {
@@ -58,10 +67,15 @@
 	function onDiscPointerUp() {
 		if (!isDragging) return;
 		const distance = Math.sqrt(dragX * dragX + dragY * dragY);
-		if (distance > 100) {
-			// ejected — stop playback
+		if (distance > EJECT_PX && !ejected) {
+			// drag-out: pause and "eject" — the disc slides off-screen
 			if (!paused) api.togglePause().catch(() => {});
 			toast.info('Disc removed — music paused');
+			ejected = true;
+		} else if (distance <= EJECT_PX && ejected) {
+			// drag-back from ejected: resume only if we were playing when the drag started
+			if (dragStartState && !dragStartState.paused) api.togglePause().catch(() => {});
+			ejected = false;
 		}
 		// snap back
 		dragX = 0;
@@ -69,9 +83,12 @@
 		isDragging = false;
 	}
 	function onDiscDoubleClick() {
-		if (!cur) return;
-		// drop disc back = play
-		if (paused) api.togglePause().catch(() => {});
+		// explicit "drop the disc back" gesture, even without a drag — useful for the small
+		// quick tap that doesn't register as a drag.
+		if (ejected) {
+			if (dragStartState && !dragStartState.paused) api.togglePause().catch(() => {});
+			ejected = false;
+		}
 	}
 </script>
 
@@ -96,8 +113,9 @@
 		<div
 			class="ps-deck-unit"
 			class:ejecting={isDragging && Math.sqrt(dragX * dragX + dragY * dragY) > 60}
+			class:ejected
 			role="application"
-			aria-label="Vinyl disc — drag to eject, double-click to drop back"
+			aria-label="Vinyl disc — drag off to pause, drop back to resume"
 			onpointerdown={onDiscPointerDown}
 			onpointermove={onDiscPointerMove}
 			onpointerup={onDiscPointerUp}

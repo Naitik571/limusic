@@ -34,50 +34,52 @@
 /* ============ 1. WATER — realistic swimming pool ============ */
 .ps-water {
 	position: absolute; inset: 0; z-index: 0;
-	/* Deep pool gradient — turquoise to deep teal */
-	background: linear-gradient(175deg,
-		#7DD3E8 0%,
-		#4DC0D8 12%,
-		#2EB5CC 24%,
-		#1AABB8 36%,
-		#0F8FA8 48%,
-		#0A7A96 60%,
-		#076880 72%,
-		#05586E 84%,
-		#044A5E 100%
-	);
+	/* Surface teal at the top (where sky reflects) -> deep navy at the bottom (the deep end).
+	   Strong vertical contrast is what makes a pool *feel* like a pool — a uniform blue looks
+	   like a colored wall. Two stops get a 1-2% bump so the bands don't band. */
+	background:
+		linear-gradient(180deg,
+			#5BC8DC 0%,
+			#2EA7C0 14%,
+			#1B92A8 26%,
+			#127F92 40%,
+			#0B6E80 54%,
+			#075E6E 70%,
+			#044E5C 86%,
+			#023A48 100%
+		);
 	transition: filter .6s var(--ease-spring), background .8s;
 	overflow: hidden;
 }
-/* pool tile pattern overlay — the hallmark of a real pool */
+/* pool tile floor — stronger grout, perspective-tilted so the back rows recede. The grid sells
+   "this is a tiled pool floor" more than any caustic can. */
 .ps-water::before {
 	content: '';
 	position: absolute; inset: 0;
 	background-image:
-		linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
-	background-size: 48px 48px;
-	transform: perspective(600px) rotateX(12deg) translateY(-30px);
+		linear-gradient(rgba(255,255,255,.09) 1.5px, transparent 1.5px),
+		linear-gradient(90deg, rgba(255,255,255,.09) 1.5px, transparent 1.5px);
+	background-size: 64px 64px;
+	transform: perspective(900px) rotateX(28deg) translateY(40px) scale(1.4);
 	transform-origin: center top;
-	opacity: 0.7;
+	opacity: 0.75;
 	pointer-events: none;
+	mix-blend-mode: overlay;
 }
-/* sunlight shimmer — bright rippling caustic light on the pool floor */
+/* sunlight shimmer — broader, fewer hot spots, the gentle moving wash on the pool floor */
 .ps-water::after {
 	content: '';
 	position: absolute; inset: -50%;
 	width: 200%; height: 200%;
 	background-image:
-		radial-gradient(ellipse 180px 120px at 15% 25%, rgba(255,255,255,.35) 0%, transparent 70%),
-		radial-gradient(ellipse 220px 140px at 65% 15%, rgba(255,255,255,.28) 0%, transparent 65%),
-		radial-gradient(ellipse 160px 100px at 35% 65%, rgba(255,255,255,.32) 0%, transparent 68%),
-		radial-gradient(ellipse 200px 130px at 85% 55%, rgba(255,255,255,.25) 0%, transparent 72%),
-		radial-gradient(ellipse 140px 90px at 50% 85%, rgba(255,255,255,.3) 0%, transparent 66%),
-		radial-gradient(ellipse 170px 110px at 25% 45%, rgba(255,255,255,.22) 0%, transparent 70%),
-		radial-gradient(ellipse 190px 125px at 75% 75%, rgba(255,255,255,.27) 0%, transparent 68%);
-	background-size: 600px 600px;
+		radial-gradient(ellipse 320px 200px at 18% 28%, rgba(255,255,255,.32) 0%, transparent 72%),
+		radial-gradient(ellipse 380px 240px at 72% 18%, rgba(255,255,255,.26) 0%, transparent 68%),
+		radial-gradient(ellipse 280px 180px at 38% 68%, rgba(255,255,255,.30) 0%, transparent 70%),
+		radial-gradient(ellipse 360px 220px at 88% 58%, rgba(255,255,255,.24) 0%, transparent 74%),
+		radial-gradient(ellipse 240px 160px at 52% 88%, rgba(255,255,255,.28) 0%, transparent 68%);
+	background-size: 800px 800px;
 	mix-blend-mode: soft-light;
-	animation: ps-shimmer 8s ease-in-out infinite;
+	animation: ps-shimmer 14s ease-in-out infinite;
 	pointer-events: none;
 }
 @keyframes ps-shimmer {
@@ -86,7 +88,8 @@
 	66% { transform: translate3d(-15px,10px,0) scale(0.98); }
 }
 
-/* caustic ripple layers */
+/* caustic ripple layers — large soft spots that drift slowly, with turbulence displacement
+   applied via the .ps-turb-svg filter on the .ps-water > .ps-rip selector below. */
 .ps-rip {
 	position: absolute; inset: -700px;
 	will-change: transform;
@@ -95,28 +98,28 @@
 }
 .ps-rip.a {
 	background-image:
-		radial-gradient(ellipse 90px 60px at 12% 22%, transparent 34px, rgba(255,255,255,.85) 38px, transparent 44px),
-		radial-gradient(ellipse 130px 80px at 68% 12%, transparent 52px, rgba(255,255,255,.65) 57px, transparent 64px),
-		radial-gradient(ellipse 70px 110px at 38% 64%, transparent 28px, rgba(255,255,255,.75) 32px, transparent 39px),
-		radial-gradient(ellipse 150px 90px at 86% 58%, transparent 58px, rgba(255,255,255,.6) 64px, transparent 72px),
-		radial-gradient(ellipse 100px 70px at 22% 88%, transparent 38px, rgba(255,255,255,.7) 43px, transparent 50px);
-	background-size: 640px 640px;
+		radial-gradient(ellipse 140px 90px at 12% 22%, transparent 52px, rgba(255,255,255,.85) 58px, transparent 66px),
+		radial-gradient(ellipse 200px 120px at 68% 12%, transparent 78px, rgba(255,255,255,.65) 85px, transparent 96px),
+		radial-gradient(ellipse 110px 160px at 38% 64%, transparent 42px, rgba(255,255,255,.75) 48px, transparent 58px),
+		radial-gradient(ellipse 220px 130px at 86% 58%, transparent 86px, rgba(255,255,255,.6) 94px, transparent 108px),
+		radial-gradient(ellipse 150px 100px at 22% 88%, transparent 58px, rgba(255,255,255,.7) 64px, transparent 74px);
+	background-size: 900px 900px;
 	mix-blend-mode: soft-light;
-	animation: ps-driftA 26s linear infinite;
+	animation: ps-driftA 42s linear infinite;
 }
 .ps-rip.b {
 	background-image:
-		radial-gradient(ellipse 60px 40px at 52% 34%, transparent 20px, rgba(255,255,255,.9) 24px, transparent 29px),
-		radial-gradient(ellipse 90px 55px at 8% 52%, transparent 34px, rgba(255,255,255,.65) 39px, transparent 45px),
-		radial-gradient(ellipse 75px 95px at 78% 84%, transparent 28px, rgba(255,255,255,.8) 33px, transparent 39px),
-		radial-gradient(ellipse 110px 60px at 42% 8%, transparent 42px, rgba(255,255,255,.6) 47px, transparent 54px);
-	background-size: 460px 460px;
+		radial-gradient(ellipse 90px 60px at 52% 34%, transparent 32px, rgba(255,255,255,.9) 38px, transparent 46px),
+		radial-gradient(ellipse 140px 80px at 8% 52%, transparent 52px, rgba(255,255,255,.65) 60px, transparent 70px),
+		radial-gradient(ellipse 120px 140px at 78% 84%, transparent 42px, rgba(255,255,255,.8) 50px, transparent 60px),
+		radial-gradient(ellipse 170px 90px at 42% 8%, transparent 64px, rgba(255,255,255,.6) 72px, transparent 84px);
+	background-size: 640px 640px;
 	mix-blend-mode: screen;
 	opacity: .5;
-	animation: ps-driftB 34s linear infinite;
+	animation: ps-driftB 56s linear infinite;
 }
-@keyframes ps-driftA { from { transform: translate3d(0,0,0); } to { transform: translate3d(640px,640px,0); } }
-@keyframes ps-driftB { from { transform: translate3d(0,0,0); } to { transform: translate3d(-460px,-460px,0); } }
+@keyframes ps-driftA { from { transform: translate3d(0,0,0); } to { transform: translate3d(900px,900px,0); } }
+@keyframes ps-driftB { from { transform: translate3d(0,0,0); } to { transform: translate3d(-640px,-640px,0); } }
 
 /* glow blobs — luminous underwater light pools */
 .ps-blob { position: absolute; z-index: 1; pointer-events: none; will-change: transform; }
@@ -167,14 +170,36 @@
 	100% { transform: var(--shaft-rot, rotate(8deg)) translateX(2vw); }
 }
 
-/* surface glare — bright edge at the waterline */
+/* waterline — the bright reflective band at the top of the pool. This is THE thing that sells
+   "this is water" — without it the top edge looks like a colored wall. */
+.ps-water .ps-waterline {
+	position: absolute; left: 0; right: 0; top: 0; height: 14vh;
+	background:
+		linear-gradient(180deg,
+			rgba(255,255,255,.55) 0%,
+			rgba(255,255,255,.28) 30%,
+			rgba(255,255,255,.08) 70%,
+			transparent 100%
+		);
+	pointer-events: none; z-index: 1;
+	filter: blur(8px);
+}
+/* thin specular highlight strip right at the very top edge */
+.ps-water .ps-waterline::after {
+	content: '';
+	position: absolute; left: 0; right: 0; top: 0; height: 2px;
+	background: linear-gradient(90deg,
+		transparent 0%, rgba(255,255,255,.7) 20%, rgba(255,255,255,.9) 50%, rgba(255,255,255,.7) 80%, transparent 100%);
+}
+
+/* surface glare — broader, brighter at the waterline */
 .ps-glare {
-	position: absolute; left: 0; right: 0; top: 0; height: 10vh;
+	position: absolute; left: 0; right: 0; top: 0; height: 12vh;
 	z-index: 2; pointer-events: none;
 	background:
-		radial-gradient(ellipse 60% 100% at 30% 0%, rgba(255,255,255,.5) 0%, transparent 60%),
-		radial-gradient(ellipse 50% 100% at 70% 0%, rgba(255,255,255,.35) 0%, transparent 60%);
-	filter: blur(3px);
+		radial-gradient(ellipse 80% 100% at 30% 0%, rgba(255,255,255,.6) 0%, transparent 65%),
+		radial-gradient(ellipse 70% 100% at 70% 0%, rgba(255,255,255,.45) 0%, transparent 65%);
+	filter: blur(4px);
 }
 
 /* SVG turbulence — displacement filter for realistic caustic distortion */
@@ -283,13 +308,42 @@
 .ps-vinyl {
 	position: relative; border-radius: 50%;
 	aspect-ratio: 1;
-	overflow: hidden;
+	overflow: visible;
+	background: transparent;
+	box-shadow: none;
+}
+/* the actual disc — drawn as an inner element so the pool-shadow can spill outside its bounds */
+.ps-vinyl::before {
+	content: '';
+	position: absolute; inset: 0; border-radius: 50%;
 	background: #0a0a0a;
 	box-shadow:
 		0 20px 50px rgba(8,60,70,.45),
 		0 6px 16px rgba(8,60,70,.3),
 		inset 0 0 0 1.5px rgba(255,255,255,.3);
 }
+/* the blue pool bloom underneath the disc — a soft cyan/teal glow that bleeds out around the
+   rim, like the disc is resting on water and refracting the pool's color through its edge.
+   Sits in its own stacking context (z-index 0) so it can render *under* the disc face but
+   *over* the page background — the disc is drawn on ::before at the same z-index. */
+.ps-vinyl .pool-shadow {
+	position: absolute; left: 4%; right: 4%; top: 6%; bottom: 4%;
+	border-radius: 50%;
+	background: radial-gradient(circle at 50% 55%,
+		rgba(120,220,235,.5) 0%,
+		rgba(79,195,232,.3) 28%,
+		rgba(10,90,110,.12) 55%,
+		rgba(10,90,110,0) 75%);
+	filter: blur(16px);
+	pointer-events: none;
+	z-index: 0;
+}
+.ps-vinyl::before { z-index: 1; }
+.ps-vinyl .spin,
+.ps-vinyl .sheen-a,
+.ps-vinyl .sheen-b,
+.ps-vinyl .label-ring,
+.ps-vinyl .spindle { z-index: 2; }
 .ps-vinyl .spin {
 	position: absolute; inset: 0; border-radius: 50%;
 	clip-path: circle(50% at 50% 50%);
@@ -316,11 +370,13 @@
 }
 .ps-vinyl .sheen-a {
 	position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+	clip-path: circle(50% at 50% 50%);
 	background: linear-gradient(128deg, transparent 30%, rgba(255,255,255,.42) 44%, rgba(255,255,255,.1) 50%, transparent 60%);
 	mix-blend-mode: screen; opacity: .85;
 }
 .ps-vinyl .sheen-b {
 	position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+	clip-path: circle(50% at 50% 50%);
 	background: linear-gradient(308deg, transparent 40%, rgba(255,255,255,.12) 50%, transparent 58%);
 	mix-blend-mode: screen; opacity: .5;
 }
@@ -581,26 +637,6 @@
 .ps-deck-unit:hover .ps-eject-hint { opacity: 1; }
 
 /* ============ 5. LIBRARY ============ */
-.ps-library { padding: 26px 30px; }
-.ps-lib-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.ps-logo-pill {
-	display: inline-flex; align-items: center; gap: 9px;
-	background: linear-gradient(180deg, rgba(255,255,255,.65), rgba(255,255,255,.28));
-	backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
-	border: 1px solid rgba(255,255,255,.55); border-radius: 999px;
-	padding: 8px 18px 8px 12px; box-shadow: var(--shadow-soft); cursor: pointer;
-}
-.ps-logo-pill .mark {
-	width: 24px; height: 24px; border-radius: 50%;
-	background: conic-gradient(from 210deg, #e8e8e8, #9fb6bc, #ffffff, #7fa6ae, #e8e8e8);
-	box-shadow: inset 0 0 0 2px rgba(255,255,255,.7), 0 1px 3px rgba(0,40,50,.4);
-}
-.ps-logo-pill b {
-	font-family: var(--display); font-style: italic; font-weight: 800; font-size: 15px; letter-spacing: .14em;
-	background: linear-gradient(180deg, #ffffff, #bcd9e2 55%, #5f8894);
-	-webkit-background-clip: text; background-clip: text; color: transparent;
-	filter: drop-shadow(0 1px 1px rgba(255,255,255,.6));
-}
 .ps-tabs {
 	display: inline-flex; gap: 4px; padding: 5px; border-radius: 999px;
 	background: var(--glass, rgba(255,255,255,.32));
@@ -635,47 +671,6 @@
 	text-transform: uppercase; color: #fff;
 }
 .ps-search input::placeholder { color: rgba(255,255,255,.75); }
-.ps-import-btn {
-	all: unset; cursor: pointer; position: relative;
-	font-family: var(--mono); font-size: 9px; font-weight: 700;
-	letter-spacing: .22em; text-transform: uppercase;
-	color: #fff; padding: 11px 24px; border-radius: 999px;
-	background: linear-gradient(180deg, #8FDDF6 0%, var(--accent) 48%, #2E9ECB 100%);
-	border: 1px solid rgba(255,255,255,.75);
-	box-shadow: 0 6px 18px rgba(14,110,140,.45), inset 0 1px 0 rgba(255,255,255,.9);
-	text-shadow: 0 1px 2px rgba(10,80,110,.5); overflow: hidden;
-	transition: transform .2s var(--ease-spring);
-}
-.ps-import-btn:hover { transform: translateY(-2px); }
-.ps-import-btn::before {
-	content: ''; position: absolute; left: 8%; right: 8%; top: 6%; height: 44%;
-	border-radius: 999px;
-	background: linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.05));
-	pointer-events: none;
-}
-.ps-grid-wrap { margin-top: 26px; height: calc(100% - 96px); overflow-y: auto; padding: 8px 6px 120px; scrollbar-width: thin; }
-.ps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; align-items: start; }
-.ps-tile { cursor: pointer; transition: transform .25s var(--ease-spring); }
-.ps-tile:nth-child(3n) { transform: rotate(1.3deg); }
-.ps-tile:nth-child(4n+1) { transform: rotate(-1.1deg); }
-.ps-tile:hover { transform: rotate(0) translateY(-6px) scale(1.05); z-index: 2; }
-.ps-tile.featured { grid-column: span 2; grid-row: span 2; }
-.ps-cover {
-	position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden;
-	border: 1.5px solid rgba(255,255,255,.8);
-	box-shadow: 0 3px 6px rgba(8,60,70,.28), 0 14px 30px rgba(8,60,70,.3);
-	display: flex; flex-direction: column; justify-content: flex-end; padding: 10px;
-}
-.ps-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.ps-cover .cap {
-	font-size: 8px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
-	color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.55); position: relative; z-index: 2;
-}
-.ps-tile .cap-under {
-	margin-top: 9px; font-size: 8px; font-weight: 700; letter-spacing: .22em;
-	text-transform: uppercase; color: rgba(255,255,255,.92);
-	text-shadow: 0 1px 4px rgba(8,60,70,.6);
-}
 .ps-songrow {
 	display: flex; align-items: center; gap: 16px;
 	padding: 12px 18px; margin-bottom: 10px; border-radius: 16px;
@@ -689,48 +684,12 @@
 .ps-songrow .sa { font-size: 9.5px; opacity: .72; letter-spacing: .08em; text-transform: uppercase; }
 .ps-songrow .sd { font-size: 9px; opacity: .65; text-align: right; margin-left: auto; }
 .ps-songrow:hover { background: var(--glass-strong, rgba(255,255,255,.5)); }
-.ps-artist-row { display: flex; gap: 26px; flex-wrap: wrap; padding: 10px 4px; }
-.ps-artist { display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; }
-.ps-artist .av {
-	width: 92px; height: 92px; border-radius: 50%;
-	display: flex; align-items: center; justify-content: center;
-	font-family: var(--display); font-weight: 800; font-size: 22px; color: #fff;
-	border: 2px solid rgba(255,255,255,.8); box-shadow: var(--shadow-teal);
-	transition: transform .25s var(--ease-spring);
-}
-.ps-artist:hover .av { transform: translateY(-5px) scale(1.05); }
-.ps-artist span { font-size: 8px; letter-spacing: .24em; text-transform: uppercase; }
-.ps-folder-grid { display: flex; gap: 22px; flex-wrap: wrap; padding: 10px 4px; }
-.ps-folder {
-	width: 200px; padding: 20px; border-radius: 20px; cursor: pointer;
-	background: var(--glass, rgba(255,255,255,.32));
-	backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-	border: 1px solid rgba(255,255,255,.5); box-shadow: var(--shadow-soft);
-	font-size: 9px; letter-spacing: .22em; text-transform: uppercase;
-	transition: transform .25s var(--ease-spring);
-}
-.ps-folder:hover { transform: translateY(-4px); }
-.ps-folder b { display: block; font-size: 11px; margin-bottom: 8px; }
-.ps-page { display: none; }
-.ps-page.on { display: block; }
 
 /* ============ 6. ALBUM DETAIL ============ */
 .ps-albumview {
 	display: flex; align-items: center; justify-content: center;
 	perspective: 1200px;
 }
-.ps-back-btn {
-	all: unset; cursor: pointer;
-	position: absolute; left: 26px; top: 26px;
-	width: 46px; height: 46px; border-radius: 50%;
-	display: flex; align-items: center; justify-content: center;
-	background: var(--glass-strong, rgba(255,255,255,.5));
-	backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-	border: 1px solid rgba(255,255,255,.6); box-shadow: var(--shadow-soft);
-	color: #0E5A6A;
-	transition: transform .25s var(--ease-spring);
-}
-.ps-back-btn:hover { transform: scale(1.1); }
 .ps-fan { position: relative; width: min(72vw, 900px); height: min(52vh, 420px); transform-style: preserve-3d; }
 .ps-fcard {
 	position: absolute; left: 50%; top: 50%;
@@ -749,15 +708,7 @@
 	color: #fff; box-shadow: 0 4px 12px rgba(8,60,70,.4);
 	opacity: 0; transition: opacity .3s;
 }
-.ps-fcard:hover .play-chip { opacity: 1; }
-.ps-tooltip {
-	position: absolute; padding: 8px 14px; border-radius: 12px; pointer-events: none;
-	background: rgba(10,20,24,.78);
-	backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-	font-size: 8px; letter-spacing: .2em; text-transform: uppercase; color: #fff;
-	opacity: 0; transition: opacity .25s; z-index: 10; white-space: nowrap;
-}
-.ps-tooltip b { display: block; margin-bottom: 3px; color: #BFE9F2; }
+.ps-fcard:hover .play-chip, .ps-fcard.active .play-chip { opacity: 1; }
 
 /* ============ 7. MINI PLAYER ============ */
 .ps-mini {
@@ -767,12 +718,6 @@
 	background: var(--glass, rgba(255,255,255,.32));
 	backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
 	border: 1px solid rgba(255,255,255,.55); box-shadow: var(--shadow-soft);
-}
-.ps-mini .mvinyl { width: 52px; height: 52px; cursor: pointer; flex: none; }
-.ps-mini .mmeta { display: flex; flex-direction: column; gap: 7px; min-width: 150px; }
-.ps-mini .mtitle {
-	font-size: 8.5px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase;
-	text-shadow: 0 1px 3px rgba(8,60,70,.5);
 }
 .ps-mini .bar { position: relative; height: 2px; border-radius: 2px; background: rgba(255,255,255,.4); cursor: pointer; }
 .ps-mini .bar .fill {
@@ -786,22 +731,7 @@
 	box-shadow: 0 1px 5px rgba(8,60,70,.5);
 	transition: left .3s linear, transform .15s;
 }
-.ps-mini .bar:hover .thumb { transform: translate(-50%,-50%) scale(1.35); }
-.ps-mini .playbtn {
-	all: unset; cursor: pointer;
-	width: 44px; height: 44px; border-radius: 50%; position: relative; flex: none;
-	background: linear-gradient(180deg, #8FDDF6, var(--accent) 55%, #2E9ECB);
-	border: 1px solid rgba(255,255,255,.8);
-	box-shadow: 0 5px 14px rgba(14,110,140,.5), inset 0 1px 0 rgba(255,255,255,.9);
-	display: flex; align-items: center; justify-content: center; color: #fff;
-	transition: transform .2s var(--ease-spring);
-}
-.ps-mini .playbtn:hover { transform: scale(1.08); }
-.ps-mini .playbtn::before {
-	content: ''; position: absolute; left: 14%; right: 14%; top: 8%; height: 40%;
-	border-radius: 999px;
-	background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.05));
-}
+.ps-mini .bar:hover .dot { transform: translate(-50%,-50%) scale(1.4); }
 
 /* ============ 8. EDGE BUTTONS ============ */
 .ps-edge { position: fixed; right: 22px; z-index: 20; display: flex; flex-direction: column; gap: 12px; }
@@ -890,33 +820,9 @@
 	transition: opacity .4s var(--ease-spring);
 }
 .ps-overlay.open { opacity: 1; pointer-events: auto; }
-.ps-overlay .card {
-	position: relative;
-	background: var(--glass-strong, rgba(255,255,255,.5));
-	backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
-	border: 1px solid rgba(255,255,255,.65); border-radius: 26px;
-	box-shadow: var(--shadow-teal);
-	padding: 34px 40px; text-align: center; max-width: 520px;
-	transform: scale(1.06); transition: transform .4s var(--ease-spring);
-}
-.ps-overlay.open .card { transform: scale(1); }
-.ps-overlay h2 {
-	font-family: var(--serif); font-weight: 400; font-size: 30px; color: #fff;
-	text-shadow: 0 2px 12px rgba(8,60,70,.55); margin-bottom: 8px;
-}
-.ps-overlay p {
-	font-size: 9px; letter-spacing: .24em; text-transform: uppercase;
-	opacity: .9; margin-bottom: 24px;
-}
-.ps-overlay .x { position: absolute; right: 18px; top: 14px; cursor: pointer; font-size: 16px; opacity: .8; }
-.ps-overlay .apply {
-	all: unset; cursor: pointer;
-	font-size: 9px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase;
-	color: #fff; padding: 12px 30px; border-radius: 999px;
-	background: linear-gradient(180deg, #8FDDF6, var(--accent) 55%, #2E9ECB);
-	border: 1px solid rgba(255,255,255,.75);
-	box-shadow: 0 5px 16px rgba(14,110,140,.45), inset 0 1px 0 rgba(255,255,255,.9);
-}
+/* Note: the actual card markup uses class="ps-card" (see PoolsideShell.svelte custom-cover
+   dialog); the .ps-overlay .card style below was dead weight — a near-duplicate of .ps-card
+   that the markup never targeted. If you ever switch the card class, restore it here. */
 
 /* lyrics overlay */
 .ps-lyrics-frame {
@@ -1184,9 +1090,17 @@
 	font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #fff;
 }
 .ps-search-input-wrap input::placeholder { color: rgba(255,255,255,.65); }
+/* suggestions — the search bar is the only ancestor that can position this, so it goes in
+   flow below the bar with a small gap. Avoids the fragile `position: absolute; top: 80px`
+   which broke on different header heights. */
 .ps-suggestions {
-	position: absolute; top: 80px; left: 28px; right: 28px; z-index: 15;
+	position: relative;
+	margin: -8px 0 16px;
 	border-radius: 20px; padding: 8px; max-height: 360px; overflow-y: auto;
+	background: var(--glass, rgba(255,255,255,.18));
+	backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+	border: 1px solid rgba(255,255,255,.4);
+	box-shadow: var(--shadow-soft);
 }
 .ps-suggestion-row {
 	all: unset; cursor: pointer; display: flex; align-items: center; gap: 12px;

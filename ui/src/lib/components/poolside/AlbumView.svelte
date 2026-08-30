@@ -109,6 +109,23 @@
 			onSelect(albums[i]);
 		}
 	}
+	function onKeyDown(e: KeyboardEvent) {
+		// Left/Right arrow keys navigate the coverflow. Space/Enter plays the active album.
+		if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			const i = clamp(activeIdx - 1);
+			scroll.target = i;
+			onSelect(albums[i]);
+		} else if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			const i = clamp(activeIdx + 1);
+			scroll.target = i;
+			onSelect(albums[i]);
+		} else if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			onPlayAlbum(albums[activeIdx]);
+		}
+	}
 </script>
 
 <div class="ps-albumview">
@@ -117,6 +134,8 @@
 	</button>
 
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<div
 		class="ps-fan"
 		class:dragging
@@ -125,6 +144,10 @@
 		onpointerup={onPointerUp}
 		onpointercancel={onPointerUp}
 		onwheel={onWheel}
+		onkeydown={onKeyDown}
+		role="region"
+		aria-label="Album coverflow — use left and right arrow keys to navigate"
+		tabindex="0"
 	>
 		{#each cards as c (c.a.id)}
 			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->

@@ -54,7 +54,9 @@
 		}
 		return [...by.entries()].sort((x, y) => x[0].localeCompare(y[0]));
 	});
-	const tilt = (i: number) => (i % 3 === 2 ? 'tr' : i % 4 === 1 ? 'tl' : '');
+	// Tile tilt is driven by CSS :nth-child(3n) and :nth-child(4n+1) selectors — no per-tile
+	// class is needed (and adding one would just be dead weight in the markup).
+	const isFeatured = (i: number) => i === 0;
 
 	function openOrPlay(item: BrowseItem) {
 		if (item.id.startsWith('LOCALALBUM:')) onPlayLocalAlbum(item);
@@ -130,7 +132,7 @@
 					{#each filteredAlbums as a, i (a.id)}
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 						<div
-							class="ps-tile {tilt(i)} {i === 0 ? 'feat' : ''}"
+							class="ps-tile {isFeatured(i) ? 'feat' : ''}"
 							onclick={() => openOrPlay(a)}
 							role="button"
 							tabindex="0"

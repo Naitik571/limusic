@@ -46,7 +46,7 @@
 	let lyricsOpen = $state(false);
 	let ccOpen = $state(false);
 	let ccAlbum = $state<BrowseItem | null>(null);
-	let ccFileInput: HTMLInputElement | undefined = $state();
+	let ccFileInput = $state<HTMLInputElement>();
 	let settingsOpen = $state(false);
 	let covers = $state<Record<string, string>>({});
 
@@ -372,10 +372,7 @@
 	{/if}
 </div>
 
-<!-- mount existing dialogs via the ui store (they self-toggle) -->
-{#await import('../CommandPalette.svelte') then { default: CommandPalette }}
-	<CommandPalette />
-{/await}
-{#await import('../SettingsDialog.svelte') then { default: SettingsDialog }}
-	<SettingsDialog />
-{/await}
+<!-- CommandPalette + SettingsDialog are mounted by the parent +layout.svelte — no need to
+     re-mount or dynamic-import them here. (Earlier this used {#await import(...)} which
+     re-bundled and re-mounted a second copy, and rendered nothing until the dynamic import
+     resolved.) -->
