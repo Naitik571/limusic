@@ -1,12 +1,12 @@
 // The UI's only door to Rust. context/11 UI contract — commands in, events out. The UI never
 // touches YouTube; everything here is a Tauri command or event payload.
 // Mock Tauri APIs for SvelteKit (browser-native fallback)
-export const invoke = async (cmd, args = {}) => {
+export const invoke = async <T = any>(cmd: string, args: any = {}): Promise<T> => {
   console.warn(`[MOCK] Tauri command: ${cmd}`, args);
-  return Promise.resolve({}); // Replace with fetch/WebSocket if needed
+  return {} as T; // Cast to T to satisfy the generic return type
 };
 
-export const listen = (event, handler) => {
+export const listen = <T = any>(event: string, handler: (payload: T) => void) => {
   console.warn(`[MOCK] Tauri event listener: ${event}`);
   return { unlisten: () => {} };
 };
