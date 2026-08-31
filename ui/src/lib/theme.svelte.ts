@@ -127,7 +127,6 @@ export const custom = $state<Custom>({
 export type AmbientIntensity = 'subtle' | 'balanced' | 'vivid';
 export type LyricFontId =
 	| 'system'
-	| 'satoshi'
 	| 'plus-jakarta'
 	| 'outfit'
 	| 'dm-sans'
@@ -136,7 +135,6 @@ export type LyricFontId =
 
 export const LYRIC_FONTS: { label: string; id: LyricFontId; className: string }[] = [
 	{ label: 'System', id: 'system', className: '' },
-	{ label: 'Satoshi', id: 'satoshi', className: 'lyrics-font-satoshi' },
 	{ label: 'Plus Jakarta Sans', id: 'plus-jakarta', className: 'lyrics-font-plus-jakarta' },
 	{ label: 'Outfit', id: 'outfit', className: 'lyrics-font-outfit' },
 	{ label: 'DM Sans', id: 'dm-sans', className: 'lyrics-font-dm-sans' },

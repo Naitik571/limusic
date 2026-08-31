@@ -11,7 +11,6 @@
 @import '@fontsource-variable/orbitron';
 @import '@fontsource-variable/jetbrains-mono';
 @import '@fontsource-variable/space-grotesk';
-@import '@fontsource-variable/satoshi';
 @import '@fontsource-variable/plus-jakarta-sans';
 @import '@fontsource/press-start-2p';
 @import '@fontsource/bungee';
@@ -1535,10 +1534,6 @@ body.gamepad-nav :focus {
 /* Lyrics font picker */
 :root {
 	--lyrics-font-family: inherit;
-}
-.lyrics-font-satoshi .lyrics-scroller,
-.lyrics-font-satoshi .lyrics-scroller * {
-	font-family: 'Satoshi Variable', ui-sans-serif, system-ui, sans-serif;
 }
 .lyrics-font-plus-jakarta .lyrics-scroller,
 .lyrics-font-plus-jakarta .lyrics-scroller * {
