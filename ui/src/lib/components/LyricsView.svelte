@@ -1,74 +1,13 @@
 <script module lang="ts">
 	import * as api from '$lib/api';
 	import { browser } from '$app/environment';
-
-	// --- Dual-language lyrics (shared by every mounted LyricsView) -------------------------------
-	// One copy of the toggle, target language and cache for the side panel, the now-playing tab,
-	// the mini-player and the sing overlay alike — any Translate pill flips them all. Persisted
-	// as before ('lyrics-translate' / 'lyrics-translate-lang').
-	const trans = $state({ enabled: false, lang: 'en' });
-	const transCache = $state(new Map<string, string>());
-	// Concurrent requests for the same line (two views on one track) share a single fetch.
-	const transPending = new Map<string, Promise<string | null>>();
-	// A failing line is reported exactly once per session — 0.6.0 swallowed every failure
-	// silently, which is why "it's hard to tell if it's even on".
-	const transFailed = new Set<string>();
-
-	// googleapis wants a bare code (`en`, not `en-US`) and fails on empty/auto; the stored value
-	// may be junk, so normalize hard and fall back to English rather than shipping a dead lang.
-	function normalizeLang(raw?: string | null): string {
-		const base = (raw ?? '').trim().toLowerCase().split(/[-_]/)[0];
-		return base && base !== 'auto' ? base : 'en';
-	}
-
-	if (browser) {
-		trans.enabled = localStorage.getItem('lyrics-translate') === '1';
-		trans.lang = normalizeLang(localStorage.getItem('lyrics-translate-lang'));
-	}
-
-	/** Flip the shared toggle (any pill: panel footer or sing overlay) and persist it. */
-	export function toggleTranslate() {
-		trans.enabled = !trans.enabled;
-		if (browser) {
-			localStorage.setItem('lyrics-translate', trans.enabled ? '1' : '0');
-			localStorage.setItem('lyrics-translate-lang', trans.lang);
-		}
-	}
-
-	/** One polite request per `${lang}:${text}`; results land in the shared cache. */
-	function fetchTranslation(text: string, lang: string): Promise<string | null> {
-		const key = `${lang}:${text}`;
-		const hit = transCache.get(key);
-		if (hit !== undefined) return Promise.resolve(hit);
-		let pending = transPending.get(key);
-		if (!pending) {
-			pending = api.translateLyrics(text, lang)
-				.then((t) => {
-					if (t) transCache.set(key, t);
-					return t ?? null;
-				})
-				.catch((err) => {
-					if (!transFailed.has(key)) {
-						transFailed.add(key);
-						console.warn(
-							`[lyrics] translate → ${lang} failed for "${text.slice(0, 48)}":`,
-							err
-						);
-					}
-					return null;
-				})
-				.finally(() => transPending.delete(key));
-			transPending.set(key, pending);
-		}
-		return pending;
-	}
 </script>
 
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Tick02Icon, TranslateIcon } from '@hugeicons/core-free-icons';
 	import { playback } from '$lib/player.svelte';
+	import { appearance, applyLyricsFont } from '$lib/theme.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
 	// panel, or the now-playing view) decides how much there is. Toggling it must not remount this
@@ -81,18 +20,6 @@
 		compact = false,
 		sing = false
 	}: { expanded?: boolean; compact?: boolean; sing?: boolean } = $props();
-
-	// --- Dual-language lyrics -------------------------------------------------------------------
-	// The state itself lives in the module script above so every view shares one toggle. Lines
-	// resolve lazily through fetchTranslation into the shared cache keyed by `${lang}:${text}`,
-	// so flipping the toggle off/on and moving between tracks never refetches a landed line.
-	// Netease-provided translations short-circuit the fetch.
-
-	/** The translation to show under a line, or undefined when hidden/not yet fetched. */
-	function translationFor(line: api.LyricLine): string | undefined {
-		if (!trans.enabled || !line.text?.trim()) return undefined;
-		return line.translation ?? transCache.get(`${trans.lang}:${line.text.trim()}`);
-	}
 
 	/** "3:21" / "1:02:03" → seconds. */
 	function durationSecs(d?: string): number | undefined {
@@ -164,27 +91,6 @@
 				if (requested !== id) return;
 				loading = false;
 			});
-	});
-
-	// Sequential translation worker — one request at a time keeps us polite to the free endpoint.
-	// A re-run (track change, toggle on, offset shift replacing the object) only fills the gaps:
-	// cache hits and already-warned failures are checked untracked so completed lines don't
-	// re-trigger this very effect. Works for unsynced (plain) lyrics too — it never looks at cues.
-	let transRun = 0;
-	$effect(() => {
-		if (!trans.enabled || !lyrics) return;
-		const run = ++transRun;
-		const lang = trans.lang;
-		void (async () => {
-			for (const line of lyrics.lines) {
-				if (run !== transRun || !trans.enabled) return; // superseded or switched off mid-flight
-				const text = line.text?.trim();
-				if (!text || line.translation) continue;
-				const key = `${lang}:${text}`;
-				if (untrack(() => transCache.has(key) || transFailed.has(key))) continue;
-				await fetchTranslation(text, lang);
-			}
-		})();
 	});
 
 	// Last synced line whose cue has passed (lines arrive sorted by time).
@@ -342,37 +248,13 @@
 
 </script>
 
-<!-- The Translate pill: loud enough to show the mode is real — solid primary with a checkmark
-     and the target-lang badge when on, quiet outline when off. Rendered in the panel footer and,
-     in sing mode, pinned top-left under the window controls. Both share the module-level state. -->
-{#snippet translatePill()}
-	<button
-		type="button"
-		onclick={toggleTranslate}
-		aria-pressed={trans.enabled}
-		title="Show line-by-line translations ({trans.lang})"
-		class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide transition-colors {trans.enabled
-			? 'border-primary bg-primary text-primary-foreground shadow-sm'
-			: 'border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground/60 hover:text-foreground'}"
-	>
-		<HugeiconsIcon icon={TranslateIcon} class="h-3.5 w-3.5" />
-		Translate
-		{#if trans.enabled}
-			<HugeiconsIcon icon={Tick02Icon} class="h-3.5 w-3.5" />
-			<span class="rounded-full bg-primary-foreground/15 px-1.5 py-px text-[9px] font-bold uppercase leading-[1.4]">
-				{trans.lang}
-			</span>
-		{/if}
-	</button>
-{/snippet}
-
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
 <div
 	bind:this={scroller}
 	onwheel={onUserScroll}
 	ontouchmove={onUserScroll}
 	onpointerdown={onUserScroll}
-	class="min-h-0 flex-1 overflow-y-auto {compact
+	class="lyrics-scroller min-h-0 flex-1 overflow-y-auto {compact
 		? 'px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 		: expanded
 			? 'px-10 py-6'
@@ -458,20 +340,7 @@
 					{:else}
 						<span>{line.text || '♪'}</span>
 					{/if}
-
-					<!-- Translation line rendering (Translate toggle; also Netease-provided ones) -->
-					{#if translationFor(line)}
-						<p
-							class="font-normal italic tracking-wide opacity-80 {sing
-								? isActive
-									? 'mt-3 text-xl font-medium md:text-2xl'
-									: 'mt-2 text-base'
-								: 'mt-1 text-sm'}"
-						>
-							{translationFor(line)}
-						</p>
-					{/if}
-				</button>
+					</button>
 			{/each}
 		</div>
 	{:else if lyrics}
@@ -486,11 +355,6 @@
 				{#if line.text}
 					<div class={sing ? 'text-2xl md:text-3xl' : ''}>
 						<p>{line.text}</p>
-						{#if translationFor(line)}
-							<p class="{sing ? 'mt-1 text-base' : 'text-xs'} italic text-muted-foreground">
-								{translationFor(line)}
-							</p>
-						{/if}
 					</div>
 				{:else}
 					<div class="h-4"></div>
@@ -506,18 +370,11 @@
 		<span class="truncate">
 			{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
 		</span>
-		<span class="ml-auto shrink-0">
-			{@render translatePill()}
-		</span>
 	</p>
 {/if}
 
 {#if sing}
-	<!-- Sing overlay pin: the overlay itself starts below the top bar, so top-left here is under
-	     the window controls — mirrored with the exit ✕ at top-right. Same shared toggle as above. -->
-	<div class="absolute top-4 left-6 z-20 sm:left-14">
-		{@render translatePill()}
-	</div>
+	<div class="absolute top-4 left-6 z-20 sm:left-14"></div>
 {/if}
 
 <style>

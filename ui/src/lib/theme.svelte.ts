@@ -125,24 +125,34 @@ export const custom = $state<Custom>({
  * read it during its first render instead of flashing the default while a command round-trips.
  */
 export type AmbientIntensity = 'subtle' | 'balanced' | 'vivid';
+export type LyricFontId =
+	| 'system'
+	| 'satoshi'
+	| 'plus-jakarta'
+	| 'outfit'
+	| 'dm-sans'
+	| 'space-grotesk'
+	| 'inter';
+
+export const LYRIC_FONTS: { label: string; id: LyricFontId; className: string }[] = [
+	{ label: 'System', id: 'system', className: '' },
+	{ label: 'Satoshi', id: 'satoshi', className: 'lyrics-font-satoshi' },
+	{ label: 'Plus Jakarta Sans', id: 'plus-jakarta', className: 'lyrics-font-plus-jakarta' },
+	{ label: 'Outfit', id: 'outfit', className: 'lyrics-font-outfit' },
+	{ label: 'DM Sans', id: 'dm-sans', className: 'lyrics-font-dm-sans' },
+	{ label: 'Space Grotesk', id: 'space-grotesk', className: 'lyrics-font-space-grotesk' },
+	{ label: 'Inter', id: 'inter', className: 'lyrics-font-inter' }
+];
+const LYRIC_FONT_CLASSES = LYRIC_FONTS.map((f) => `lyrics-font-${f.id}`);
 
 export const appearance = $state({
-	/** Blur the playing track's artwork behind the now-playing view. */
 	artworkBackground: true,
-	/**
-	 * The now-playing view carries queue and lyrics itself, as tabs, and the player bar's two
-	 * buttons switch between them while it's open. Off, those buttons only ever open the floating
-	 * side panels, which then sit over the now-playing view like they sit over a page.
-	 */
 	tabbedPlayer: true,
-	/** Take the accent colour from the playing track's cover, crossfading on each change (#69). */
 	artworkAccent: false,
-	/** Ambient mode: immersive artwork backdrop (#7). */
 	ambientMode: false,
-	/** Intensity of the ambient backdrop. */
 	ambientIntensity: 'balanced' as AmbientIntensity,
-	/** 0–1 opacity for the immersive background (maps to CSS var --ambient-opacity). */
-	immersiveBackgroundIntensity: 0.12
+	immersiveBackgroundIntensity: 0.12,
+	lyricsFont: 'system' as LyricFontId
 });
 
 // --- Glass intensity -------------------------------------------------------------------------
@@ -174,13 +184,14 @@ function initGlass(): void {
 	setGlassIntensity(Number.isFinite(v) ? v : 100);
 }
 
-export function setAppearance(patch: Partial<typeof appearance>): void {	Object.assign(appearance, patch);
-	// Keep immersiveBackgroundIntensity in sync with ambientIntensity when that changes
+export function setAppearance(patch: Partial<typeof appearance>): void {
+	Object.assign(appearance, patch);
 	if (patch.ambientIntensity) {
 		const map: Record<AmbientIntensity, number> = { subtle: 0.06, balanced: 0.12, vivid: 0.22 };
 		appearance.immersiveBackgroundIntensity = map[patch.ambientIntensity] ?? 0.12;
 	}
 	applyAmbient();
+	applyLyricsFont();
 	localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance));
 }
 
@@ -194,8 +205,6 @@ const AMBIENT_LAYER_OPACITY: Record<AmbientIntensity, number> = {
 function applyAmbient(): void {
 	const root = document.documentElement;
 	const enabled = appearance.ambientMode;
-	// --ambient-opacity is the artwork layer's opacity; --ambient-veil is the black dim on top,
-	// solved (veil.ts) against the current artwork colour so text keeps WCAG 4.5:1.
 	const layerOpacity = AMBIENT_LAYER_OPACITY[appearance.ambientIntensity] ?? 0.7;
 	root.style.setProperty('--ambient-opacity', enabled ? String(layerOpacity) : '0');
 	let veil = '0';
@@ -211,6 +220,13 @@ function applyAmbient(): void {
 	root.style.setProperty('--ambient-veil', veil);
 	root.classList.toggle('ambient-on', enabled);
 	root.setAttribute('data-ambient-intensity', appearance.ambientIntensity);
+}
+
+export function applyLyricsFont(): void {
+	const root = document.documentElement;
+	root.classList.remove(...LYRIC_FONT_CLASSES);
+	const match = LYRIC_FONTS.find((f) => f.id === appearance.lyricsFont);
+	if (match?.className) root.classList.add(match.className);
 }
 
 /**
@@ -264,10 +280,8 @@ function setAccentVars(color: string): void {
 function apply(): void {
 	const t = THEMES.find((x) => x.id === theme.id) ?? THEMES[0];
 	const root = document.documentElement;
-	// Reset every mechanism first, so switching between an accent and a palette (or clearing a
-	// custom override) never leaves the previous choice's inline vars or class behind.
-	[...ACCENT_VARS, ...CUSTOM_VARS, '--art-h'].forEach((v) => root.style.removeProperty(v));
-	root.classList.remove(...PALETTE_CLASSES, TINT_CLASS);
+	[...ACCENT_VARS, ...CUSTOM_VARS, '--art-h', '--lyrics-font-family'].forEach((v) => root.style.removeProperty(v));
+	root.classList.remove(...PALETTE_CLASSES, TINT_CLASS, ...LYRIC_FONT_CLASSES);
 
 	if (t.kind === 'accent') {
 		root.style.setProperty('--primary', t.color);
@@ -279,16 +293,15 @@ function apply(): void {
 	}
 
 	if (custom.accent) setAccentVars(custom.accent);
-	// Last, so the artwork wins while it's on and the user's own theme is back the moment it isn't.
 	if (art) setArtVars(art);
 	if (custom.hue !== null) root.style.setProperty('--hue', String(custom.hue));
 	if (custom.radius !== null) root.style.setProperty('--radius', `${custom.radius}rem`);
 	if (custom.fontSans) root.style.setProperty('--font-sans', custom.fontSans);
 	if (custom.fontHeading) root.style.setProperty('--font-heading', custom.fontHeading);
 
-	// readBack first, so the veil solver sees the accent as it now resolves (not last apply's).
 	readBack();
 	applyAmbient();
+	applyLyricsFont();
 }
 
 export function applyTheme(id: ThemeId): void {
@@ -543,6 +556,9 @@ export function initTheme(): void {
 		} else if (typeof saved?.ambientIntensity === 'string') {
 			const map: Record<string, number> = { subtle: 0.06, balanced: 0.12, vivid: 0.22 };
 			(appearance as any).immersiveBackgroundIntensity = map[saved.ambientIntensity] ?? 0.12;
+		}
+		if (typeof saved?.lyricsFont === 'string' && LYRIC_FONTS.some((f) => f.id === saved.lyricsFont)) {
+			(appearance as any).lyricsFont = saved.lyricsFont;
 		}
 	} catch {
 		// unparseable — keep the defaults

@@ -11,6 +11,8 @@
 @import '@fontsource-variable/orbitron';
 @import '@fontsource-variable/jetbrains-mono';
 @import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/satoshi';
+@import '@fontsource-variable/plus-jakarta-sans';
 @import '@fontsource/press-start-2p';
 @import '@fontsource/bungee';
 
@@ -1528,4 +1530,33 @@ body.gamepad-nav :focus {
 	outline: 2px solid var(--primary);
 	outline-offset: 2px;
 	border-radius: 6px;
+}
+
+/* Lyrics font picker */
+:root {
+	--lyrics-font-family: inherit;
+}
+.lyrics-font-satoshi .lyrics-scroller,
+.lyrics-font-satoshi .lyrics-scroller * {
+	font-family: 'Satoshi Variable', ui-sans-serif, system-ui, sans-serif;
+}
+.lyrics-font-plus-jakarta .lyrics-scroller,
+.lyrics-font-plus-jakarta .lyrics-scroller * {
+	font-family: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
+}
+.lyrics-font-outfit .lyrics-scroller,
+.lyrics-font-outfit .lyrics-scroller * {
+	font-family: 'Outfit Variable', ui-sans-serif, system-ui, sans-serif;
+}
+.lyrics-font-dm-sans .lyrics-scroller,
+.lyrics-font-dm-sans .lyrics-scroller * {
+	font-family: 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif;
+}
+.lyrics-font-space-grotesk .lyrics-scroller,
+.lyrics-font-space-grotesk .lyrics-scroller * {
+	font-family: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+}
+.lyrics-font-inter .lyrics-scroller,
+.lyrics-font-inter .lyrics-scroller * {
+	font-family: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 }

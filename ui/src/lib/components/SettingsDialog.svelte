@@ -44,6 +44,7 @@
 		addFontFile,
 		removeFontFile,
 		registerFontFiles,
+		LYRIC_FONTS,
 		type Custom,
 		type ThemeId,
 		type LayoutId
@@ -154,6 +155,7 @@
 		{ tab: 'themes', group: 'thm-typography', text: 'Interface font Everything except headings.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Heading font Page and section titles.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Font files Load a .ttf, .otf or .woff from anywhere on this computer.' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Lyrics font Choose the font used only in the lyrics view.' },
 		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics in the player view Tabs and switching buttons in the player view.' },
 		{ tab: 'themes', group: 'thm-player', text: "Artwork background Tint the player view with the playing track's cover, blurred." },
 		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders." },
@@ -793,8 +795,13 @@
 									control: addFontButton,
 									below: custom.fontFiles.length ? fontFileList : undefined
 								})}
-							</div>
-						</section>
+								{@render row({
+									title: 'Lyrics font',
+									desc: 'Choose the font used only in the lyrics view.',
+									control: lyricsFontSelect
+								})}
+								</div>
+								</section>
 
 						<section class="{GROUP} {groupVisible('thm-player') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Player view</h3>
@@ -1350,6 +1357,27 @@
 			Not installed — install the font, then reopen settings.
 		</p>
 	{/if}
+{/snippet}
+
+{#snippet lyricsFontSelect()}
+	<Select.Root
+		type="single"
+		value={appearance.lyricsFont}
+		onValueChange={(v) => setAppearance({ lyricsFont: v as any })}
+	>
+		<Select.Trigger class="w-56 shrink-0" aria-label="Lyrics font">
+			<span class="min-w-0 flex-1 truncate text-left">
+				{LYRIC_FONTS.find((f) => f.id === appearance.lyricsFont)?.label ?? 'System'}
+			</span>
+		</Select.Trigger>
+		<Select.Content class="max-w-64">
+			{#each LYRIC_FONTS as f (f.id)}
+				<Select.Item value={f.id} label={f.label}>
+					<span class="block truncate">{f.label}</span>
+				</Select.Item>
+			{/each}
+		</Select.Content>
+	</Select.Root>
 {/snippet}
 
 {#snippet addFontButton()}
