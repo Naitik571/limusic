@@ -10,7 +10,8 @@
 	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { getCurrentWindow } from '@tauri-apps/api/window';
+	// Use browser-native window (no Tauri)
+	const window = globalThis.window;
 	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';

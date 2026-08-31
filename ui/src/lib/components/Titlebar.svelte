@@ -6,7 +6,13 @@
 	// Account (sign in/out) sits first in that cluster, in its own component.
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
-	import { getCurrentWindow } from '@tauri-apps/api/window';
+	// Mock Tauri's window API (browser-compatible)
+	const getCurrentWindow = () => ({
+	  isMaximized: false,
+	  minimize: () => {},
+	  maximize: () => {},
+	  unmaximize: () => {},
+	});
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		ArrowLeft01Icon,

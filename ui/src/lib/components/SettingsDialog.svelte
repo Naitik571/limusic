@@ -54,7 +54,8 @@
 		installUpdate,
 		openDownloadPage
 	} from '$lib/updater.svelte';
-	import { getVersion } from '@tauri-apps/api/app';
+	// Mock Tauri's app API (no-op for browser)
+const getVersion = () => Promise.resolve('0.0.0');
 
 	type TabId = 'general' | 'themes' | 'playback' | 'downloads' | 'data' | 'about';
 	const TABS: { id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[] = [

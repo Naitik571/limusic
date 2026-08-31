@@ -105,6 +105,7 @@ pub(crate) fn is_video_endpoint(endpoint: &Value) -> bool {
 }
 
 /// True when a watch endpoint points at one of the user's own uploads.
+#[allow(dead_code)]
 pub(crate) fn is_upload_endpoint(endpoint: &Value) -> bool {
     endpoint_video_type(endpoint) == Some(UPLOADED_TRACK_TYPE)
 }

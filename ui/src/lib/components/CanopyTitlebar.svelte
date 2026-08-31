@@ -4,7 +4,8 @@
 	// owns now-playing readout, the seek scrubber along the bar's bottom edge, transport, volume
 	// and the queue/lyrics toggles. The stylesheet it carries (layout-canopy.css) is inert unless
 	// the `data-layout-preset` attribute matches, exactly like the component-carried original.
-	import { getCurrentWindow } from '@tauri-apps/api/window';
+	// Mock Tauri's window API (no-op for browser)
+const getCurrentWindow = () => ({});
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		PlayIcon,

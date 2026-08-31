@@ -18,5 +18,10 @@ export default defineConfig({
 			// SPA fallback so the dynamic /playlist/[id] route resolves on direct load. context/18.
 			adapter: adapter({ fallback: 'index.html' })
 		})
-	]
+	],
+	build: {
+		rolldownOptions: {
+			external: ['@tauri-apps/api/*'] // Exclude Tauri dependencies
+		}
+	}
 });

@@ -226,20 +226,19 @@
 		margin: 22px 0 12px;
 	}
 	.ps-cc-addphoto {
-		all: unset;
-		cursor: pointer;
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 4px 12px;
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.15);
-		border: 1px solid rgba(255, 255, 255, 0.25);
-		font-size: 9px;
-		letter-spacing: 0.18em;
+	all: unset;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 12px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.15);
+	border: 1px solid rgba(255, 255, 255, 0.25);
+	font-size: 9px;
+	letter-spacing: 0.18em;
 	}
 	.ps-cc-addphoto:hover { background: rgba(255, 255, 255, 0.25); }
-	.ps-cc-addphoto svg { width: 12px; height: 12px; }
 	.ps-cc-opts {
 		display: flex;
 		justify-content: center;
@@ -276,19 +275,18 @@
 		letter-spacing: 0.2em;
 	}
 	.ps-cc-tick {
-		position: absolute;
-		top: -6px;
-		right: -6px;
-		width: 22px;
-		height: 22px;
-		border-radius: 50%;
-		background: #4ade80;
-		color: #062c1a;
-		display: grid;
-		place-items: center;
-		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: #4ade80;
+	color: #062c1a;
+	display: grid;
+	place-items: center;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 	}
-	.ps-cc-tick svg { width: 14px; height: 14px; }
 	.ps-cc-photos {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));

@@ -314,20 +314,18 @@
 		transition: transform 0.15s;
 	}
 	.ps-rnp-play:hover { transform: scale(1.06); }
-	.ps-rnp-play svg { width: 18px; height: 18px; }
 	.ps-rnp-fav {
-		all: unset;
-		cursor: pointer;
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		display: grid;
-		place-items: center;
-		color: rgba(255, 255, 255, 0.7);
-		transition: color 0.2s;
+	  all: unset;
+	  cursor: pointer;
+	  width: 36px;
+	  height: 36px;
+	  border-radius: 50%;
+	  display: grid;
+	  place-items: center;
+	  color: rgba(255, 255, 255, 0.7);
+	  transition: color 0.2s;
 	}
 	.ps-rnp-fav.is-fav { color: #ffd54a; }
-	.ps-rnp-fav svg { width: 16px; height: 16px; }
 	.ps-rnp-section {
 		font-size: 10px;
 		font-weight: 700;

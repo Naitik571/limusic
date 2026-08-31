@@ -379,17 +379,10 @@ fn event_loop(mut ev: EventContext, tx: tokio::sync::mpsc::UnboundedSender<Playe
                     }
                 }
             }
-            Some(Err(e)) => {
-                // libmpv2 routes MPV_EVENT_END_FILE with an error (dead URL, 403, bad format)
-                // through here instead of Event::EndFile — in our usage (no async get/set/command
-                // replies) an Err from wait_event *is* a failed track.
-                if tx
-                    .send(PlayerEvent::TrackFailed(friendly_error(&e)))
-                    .is_err()
-                {
-                    break;
-                }
+            Some(Err(e)) if tx.send(PlayerEvent::TrackFailed(friendly_error(&e))).is_err() => {
+                break;
             }
+            Some(Err(_)) => {},  // Explicitly ignore errors that send successfully
             None => {}
         }
     }

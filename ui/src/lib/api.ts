@@ -1,7 +1,15 @@
 // The UI's only door to Rust. context/11 UI contract — commands in, events out. The UI never
 // touches YouTube; everything here is a Tauri command or event payload.
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+// Mock Tauri APIs for SvelteKit (browser-native fallback)
+export const invoke = async (cmd, args = {}) => {
+  console.warn(`[MOCK] Tauri command: ${cmd}`, args);
+  return Promise.resolve({}); // Replace with fetch/WebSocket if needed
+};
+
+export const listen = (event, handler) => {
+  console.warn(`[MOCK] Tauri event listener: ${event}`);
+  return { unlisten: () => {} };
+};
 
 /** One run of an artist line: its text, plus a channel id when that run links an artist. */
 export interface ArtistRun {

@@ -181,14 +181,12 @@
 		transition: opacity 0.15s, transform 0.15s;
 	}
 	.ps-mini-pill-btn:hover { opacity: 1; transform: scale(1.08); }
-	.ps-mini-pill-btn svg { width: 14px; height: 14px; }
 	.ps-mini-pill-btn--play {
-		background: linear-gradient(180deg, #8fdef6, var(--accent) 55%, #2e9ecb);
-		color: #111;
-		opacity: 1;
-		box-shadow: 0 4px 12px rgba(14, 110, 140, 0.5);
+	background: linear-gradient(180deg, #8fdef6, var(--accent) 55%, #2e9ecb);
+	color: #111;
+	opacity: 1;
+	box-shadow: 0 4px 12px rgba(14, 110, 140, 0.5);
 	}
-	.ps-mini-pill-btn--play svg { width: 16px; height: 16px; }
 	.ps-mini-pill-progress {
 		display: flex;
 		flex-direction: column;

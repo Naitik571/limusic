@@ -1,4 +1,5 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
+// Mock Tauri's convertFileSrc (no-op for browser)
+const convertFileSrc = (path: string) => path;
 
 // Rewrite a Google image URL to (about) the pixel size a slot actually renders, so the webview
 // doesn't decode a 544px (or 1080p) image for a 40px row. Only lh3/yt3 googleusercontent-style

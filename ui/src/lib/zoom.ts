@@ -1,4 +1,5 @@
-import { getCurrentWebview } from '@tauri-apps/api/webview';
+// Mock Tauri's webview API (no-op for browser)
+const getAll = () => Promise.resolve([]);
 
 // Tauri's `zoomHotkeysEnabled` polyfill caps zoom-in at 1000%, which shreds the layout long before
 // it gets there (fixed chrome overlaps, the player bar eats the page). Same hotkeys, our own

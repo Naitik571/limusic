@@ -1,6 +1,7 @@
 // Shared window-maximized state: the resize borders hide when maximized, and the root container
 // drops its rounded corners. One listener, initialized once by the root layout.
-import { getCurrentWindow } from '@tauri-apps/api/window';
+// Mock Tauri's getCurrentWindow (browser-native fallback)
+const getCurrentWindow = () => globalThis.window;
 
 export const win = $state({ maximized: false });
 
