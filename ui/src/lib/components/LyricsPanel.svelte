@@ -5,6 +5,8 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Maximize01Icon, Minimize01Icon } from '@hugeicons/core-free-icons';
 	import LyricsView from './LyricsView.svelte';
+	import { playback } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 
 	let { onClose, queueOpen = false }: { onClose: () => void; queueOpen?: boolean } = $props();
 
@@ -32,23 +34,37 @@
 		? // ponytail: left offsets mirror Sidebar's w-16/lg:w-60, right offset mirrors QueuePanel's
 			// w-80 — keep in sync if those change.
 			`side-panel absolute inset-y-0 left-16 right-0 z-30 flex h-full flex-col border-l bg-card shadow-2xl lg:left-60 ${queueOpen ? 'lg:right-80' : ''}`
-		: `side-panel absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] flex-col border-l bg-card shadow-2xl ${queueOpen ? 'lg:right-80' : ''}`}
+		: `side-panel absolute inset-y-0 right-0 z-30 flex h-full w-80 max-w-[80vw] flex-col border-l bg-card/80 backdrop-blur-xl shadow-2xl ${queueOpen ? 'lg:right-80' : ''}`}
 >
-	<div class="flex items-center justify-between border-b px-4 py-3">
-		<h2 class="font-heading text-sm font-semibold">Lyrics</h2>
-		<button
-			onclick={() => (expanded = !expanded)}
-			class="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
-			aria-label={expanded ? 'Shrink lyrics' : 'Expand lyrics'}
-		>
-			<!-- icon swap via altIcon/showAlt: `icon` is frozen at mount -->
-			<HugeiconsIcon
-				icon={Maximize01Icon}
-				altIcon={Minimize01Icon}
-				showAlt={expanded}
-				class="h-4 w-4"
+	<!-- BetterLyrics-style blurred artwork backdrop for the side lyrics panel -->
+	<div class="lyrics-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+		{#if playback.now?.thumbnail}
+			<img
+				src={thumb(playback.now.thumbnail, 320)}
+				alt=""
+				class="h-full w-full object-cover opacity-30 blur-3xl saturate-125"
 			/>
-		</button>
+		{/if}
+		<div class="absolute inset-0 bg-background/70"></div>
 	</div>
-	<LyricsView {expanded} />
+
+	<div class="relative flex min-h-0 flex-col">
+		<div class="flex items-center justify-between border-b px-4 py-3">
+			<h2 class="font-heading text-sm font-semibold">Lyrics</h2>
+			<button
+				onclick={() => (expanded = !expanded)}
+				class="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+				aria-label={expanded ? 'Shrink lyrics' : 'Expand lyrics'}
+			>
+				<!-- icon swap via altIcon/showAlt: `icon` is frozen at mount -->
+				<HugeiconsIcon
+					icon={Maximize01Icon}
+					altIcon={Minimize01Icon}
+					showAlt={expanded}
+					class="h-4 w-4"
+				/>
+			</button>
+		</div>
+		<LyricsView {expanded} />
+	</div>
 </aside>

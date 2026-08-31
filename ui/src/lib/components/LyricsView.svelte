@@ -69,6 +69,7 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Tick02Icon, TranslateIcon } from '@hugeicons/core-free-icons';
 	import { playback } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
 	// panel, or the now-playing view) decides how much there is. Toggling it must not remount this
@@ -372,12 +373,25 @@
 	onwheel={onUserScroll}
 	ontouchmove={onUserScroll}
 	onpointerdown={onUserScroll}
-	class="min-h-0 flex-1 overflow-y-auto {compact
+	class="lyrics-scroller relative min-h-0 flex-1 overflow-y-auto {compact
 		? 'px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 		: expanded
 			? 'px-10 py-6'
 			: 'px-5 py-6'}"
 >
+	{#if !compact}
+		<!-- BetterLyrics-style blurred artwork backdrop for the lyrics screen -->
+		<div class="lyrics-backdrop pointer-events-none absolute inset-0" aria-hidden="true">
+			{#if playback.now?.thumbnail}
+				<img
+					src={thumb(playback.now.thumbnail, 320)}
+					alt=""
+					class="h-full w-full object-cover opacity-40 blur-3xl saturate-125"
+				/>
+			{/if}
+			<div class="absolute inset-0 bg-background/75"></div>
+		</div>
+	{/if}
 	{#if loading}
 		<div class="space-y-3">
 			{#each { length: 8 } as _, i (i)}
@@ -528,5 +542,18 @@
 @keyframes karaoke-float {
 	from { transform: translateY(-2.5px); }
 	to { transform: translateY(2.5px); }
+}
+
+/* BetterLyrics-inspired typography and animation */
+.lyrics-scroller {
+	font-family: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+.lyrics-scroller button {
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+.lyrics-backdrop img {
+	transform: scale(1.15);
+	transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 </style>
