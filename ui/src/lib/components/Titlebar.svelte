@@ -7,11 +7,15 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	// Mock Tauri's window API (browser-compatible)
-	const getCurrentWindow = () => ({
+	export const getCurrentWindow = () => ({
+	  label: 'main',
 	  isMaximized: false,
 	  minimize: () => {},
 	  maximize: () => {},
 	  unmaximize: () => {},
+	  toggleMaximize: () => {},
+	  close: () => {},
+	  startResizeDragging: async (dir: string) => {},
 	});
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
