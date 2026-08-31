@@ -200,24 +200,25 @@
 	}
 	.ps-radio-top { display: flex; justify-content: center; margin-bottom: 18px; }
 	.ps-radio-search {
-	  display: flex;
-	  align-items: center;
-	  gap: 10px;
-	  min-width: 360px;
-	  max-width: 520px;
-	  flex: 1;
-	  background: rgba(255, 255, 255, 0.12);
-	  backdrop-filter: blur(14px);
-	  border: 1px solid rgba(255, 255, 255, 0.25);
-	  border-radius: 999px;
-	  padding: 10px 18px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 360px;
+		max-width: 520px;
+		flex: 1;
+		background: rgba(255, 255, 255, 0.12);
+		backdrop-filter: blur(14px);
+		border: 1px solid rgba(255, 255, 255, 0.25);
+		border-radius: 999px;
+		padding: 10px 18px;
 	}
+	.ps-radio-search svg { width: 18px; height: 18px; opacity: 0.7; flex: none; }
 	.ps-radio-search input {
-	  all: unset;
-	  flex: 1;
-	  font-size: 11px;
-	  letter-spacing: 0.18em;
-	  text-transform: uppercase;
+		all: unset;
+		flex: 1;
+		font-size: 11px;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
 	}
 	.ps-radio-search input::placeholder { color: rgba(255, 255, 255, 0.55); }
 	.ps-radio-tabs { display: flex; justify-content: center; gap: 0; margin-bottom: 24px; }
@@ -305,26 +306,27 @@
 		50% { opacity: 0.4; transform: scale(0.7); }
 	}
 	.ps-radio-star {
-	  all: unset;
-	  cursor: pointer;
-	  position: absolute;
-	  top: 8px;
-	  right: 8px;
-	  width: 30px;
-	  height: 30px;
-	  border-radius: 50%;
-	  display: grid;
-	  place-items: center;
-	  background: rgba(0, 0, 0, 0.4);
-	  color: #fff;
-	  opacity: 0.7;
-	  transition: opacity 0.2s, color 0.2s, transform 0.2s;
+		all: unset;
+		cursor: pointer;
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		width: 30px;
+		height: 30px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		background: rgba(0, 0, 0, 0.4);
+		color: #fff;
+		opacity: 0.7;
+		transition: opacity 0.2s, color 0.2s, transform 0.2s;
 	}
 	.ps-radio-star:hover { opacity: 1; transform: scale(1.1); }
 	.ps-radio-star.is-fav {
-	  color: #ffd54a;
-	  opacity: 1;
+		color: #ffd54a;
+		opacity: 1;
 	}
+	.ps-radio-star svg { width: 14px; height: 14px; }
 	.ps-radio-info {
 		display: flex;
 		flex-direction: column;

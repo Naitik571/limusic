@@ -10,8 +10,7 @@
 // and survives switching presets. Anything the user hasn't touched stays null and the preset shows
 // through — the customization is a set of overrides, not a rival theme to maintain.
 
-// Mock Tauri's convertFileSrc (no-op for browser)
-const convertFileSrc = (path: string) => path;
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { hexToHsv, hsvToHex, isLight, lerpHue, type Hsv } from './color';
 import { artworkAccent } from './artcolor';
 import { solveVeil } from './veil';

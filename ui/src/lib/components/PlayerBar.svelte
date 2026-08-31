@@ -22,6 +22,7 @@
 		Moon01Icon
 	} from '@hugeicons/core-free-icons';
 	import { fade } from 'svelte/transition';
+	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import * as api from '$lib/api';
 	import {
@@ -127,12 +128,18 @@
 		return !!cur?.autoplay && cur.video_id === playback.now?.videoId;
 	});
 
-	// The â‹® menu needs the full SongItem â€” NowPlaying carries no album_id. Take it from the queue
+	// The ⋮ menu needs the full SongItem — NowPlaying carries no album_id. Take it from the queue
 	// row, matched on videoId so a mid-advance mismatch can't point the menu at the wrong song.
 	const currentSong = $derived.by(() => {
 		const cur = playback.queue.items[playback.queue.currentIndex];
 		return cur?.video_id === playback.now?.videoId ? cur : null;
 	});
+
+	// The title links to the song's album (there is no per-song page). Local files carry no
+	// album_id, so their title stays plain text.
+	const albumId = $derived(
+		currentSong && !api.isLocalId(currentSong.video_id) ? currentSong.album_id : undefined
+	);
 
 	// Seek: while dragging, hold a local value so incoming mpv position ticks can't yank the thumb
 	// back under the pointer; only invoke the (expensive) seek on release.
@@ -240,7 +247,17 @@
 		</button>
 		<div class="min-w-0">
 			<div class="flex items-center gap-1.5">
-				<div class="truncate text-sm font-medium">{playback.now?.title ?? 'Nothing playing'}</div>
+				{#if albumId}
+					<button
+						class="min-w-0 cursor-pointer truncate text-left text-sm font-medium hover:underline"
+						onclick={() => goto(`/album/${encodeURIComponent(albumId)}`)}
+						title="Go to album"
+					>
+						{playback.now?.title ?? 'Nothing playing'}
+					</button>
+				{:else}
+					<div class="truncate text-sm font-medium">{playback.now?.title ?? 'Nothing playing'}</div>
+				{/if}
 				{#if autoplayTrack}
 					<span
 						class="shrink-0 text-muted-foreground"

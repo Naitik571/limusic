@@ -16,6 +16,7 @@
 		ArrowDownWideNarrowIcon,
 		Radio02Icon,
 		FavouriteIcon,
+		ThumbsDownIcon,
 		UserListIcon,
 		Vynil02Icon,
 		DashboardSquare02Icon,
@@ -26,7 +27,7 @@
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
 	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
-	import { addPick, enqueue, isLiked, startRadio, toggleLike, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
+	import { addPick, enqueue, isLiked, startRadio, toggleLike, rate, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -152,6 +153,13 @@
 			>
 				<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4 {liked ? 'fill-current text-primary' : ''}" />
 				{liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+			</button>
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => run(e, () => rate(song, 'dislike'))}
+			>
+				<HugeiconsIcon icon={ThumbsDownIcon} class="h-4 w-4" />
+				Dislike — skip and unqueue
 			</button>
 		{/if}
 		{#if song.artist_id}

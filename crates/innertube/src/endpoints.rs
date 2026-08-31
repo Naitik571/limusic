@@ -10,7 +10,7 @@ use crate::models::browse::{
 use crate::models::context::Context;
 use crate::models::lyrics::{self, PlainLyrics, TimedLyricLine};
 use crate::models::metadata::{
-    self, AccountIdentity, AccountInfo, NextResult, SearchResult, SongItem,
+    self, AccountIdentity, AccountInfo, NextResult, Rating, SearchResult, SongItem,
 };
 use crate::models::player::{
     ContentPlaybackContext, PlaybackContext, PlayerBody, PlayerResponse, ServiceIntegrityDimensions,
@@ -498,6 +498,40 @@ impl InnerTube {
     }
 
     // --- write actions (context/01 ✎, context/15 D7). All auth-gated (SAPISIDHASH). ---------
+
+    /// Rate a video, or clear its rating. context/01. The three states are mutually exclusive on
+    /// YouTube's side: disliking a liked track removes it from Liked Music in the same call.
+    pub async fn rate(
+        &self,
+        client: &YouTubeClient,
+        video_id: &str,
+        rating: Rating,
+    ) -> Result<(), Error> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LikeBody {
+            context: Context,
+            target: Target,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Target {
+            video_id: String,
+        }
+        let path = match rating {
+            Rating::Like => "like/like",
+            Rating::Dislike => "like/dislike",
+            Rating::Indifferent => "like/removelike",
+        };
+        let body = LikeBody {
+            context: self.context_for(client),
+            target: Target {
+                video_id: video_id.to_owned(),
+            },
+        };
+        self.post(path, client, &body, true).await?;
+        Ok(())
+    }
 
     /// Like or un-like a video. context/01.
     pub async fn like(

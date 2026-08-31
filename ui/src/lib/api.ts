@@ -1,17 +1,11 @@
 // The UI's only door to Rust. context/11 UI contract — commands in, events out. The UI never
 // touches YouTube; everything here is a Tauri command or event payload.
-// Mock Tauri APIs for SvelteKit (browser-native fallback)
-export type UnlistenFn = { unlisten: () => void };
+import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-export const invoke = async <T = any>(cmd: string, args: any = {}): Promise<T> => {
-  console.warn(`[MOCK] Tauri command: ${cmd}`, args);
-  return {} as T;
-};
-
-export const listen = <T = any>(event: string, handler: (payload: T) => void): UnlistenFn => {
-  console.warn(`[MOCK] Tauri event listener: ${event}`);
-  return { unlisten: () => {} };
-};
+/** How the signed-in user rated a track (innertube `Rating`). The three states are mutually
+ *  exclusive: liking a disliked track clears the dislike, and vice versa. */
+export type Rating = 'like' | 'dislike' | 'indifferent';
 
 /** One run of an artist line: its text, plus a channel id when that run links an artist. */
 export interface ArtistRun {
@@ -156,6 +150,13 @@ export const LIKED_MUSIC_ID = 'VLLM';
  * page's Songs tab pages through it with `getPlaylistMore`.
  */
 export const LIBRARY_SONGS_ID = 'FEmusic_liked_videos';
+
+/**
+ * The tracks the signed-in user uploaded to YouTube Music themselves. Browses like the songs grid
+ * above, so the same tab component reads it; the rows come back with `is_upload` set, which is what
+ * sends them down the login-only fallback chain when they play (issue #71).
+ */
+export const LIBRARY_UPLOADS_ID = 'FEmusic_library_privately_owned_tracks';
 
 /**
  * Local music (Rust `local.rs`). A file on disk is a song whose `video_id` is `LOCAL:<path>`, and
@@ -481,6 +482,9 @@ export const removeLocalFolder = (path: string) =>
 
 // --- write actions (context/01 ✎) ----------------------------------------------------------
 export const like = (videoId: string, liked: boolean) => invoke<void>('like', { videoId, liked });
+/** Like, dislike, or clear the rating. YouTube's three states are mutually exclusive, so a dislike
+ *  un-likes in the same call. */
+export const rate = (videoId: string, rating: Rating) => invoke<void>('rate', { videoId, rating });
 export const addToPlaylist = (playlistId: string, videoId: string) =>
 	invoke<boolean>('add_to_playlist', { playlistId, videoId });
 export const removeFromPlaylist = (playlistId: string, videoId: string, setVideoId: string) =>
@@ -506,71 +510,56 @@ export const setAlbumSaved = (playlistId: string, saved: boolean) =>
 	invoke<void>('set_album_saved', { playlistId, saved });
 
 // --- events (context/11). Each returns an unlisten fn; call it on component teardown. --------
-export const onNowPlaying = (cb: (n: NowPlaying) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<NowPlaying>('now-playing', (e) => cb(e.payload)));
-};
-export const onQueueChanged = (cb: (q: QueueState) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<QueueState>('queue-changed', (e) => cb(e.payload)));
-};
-export const onPosition = (cb: (p: number) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ position: number }>('position', (e) => cb(e.payload.position)));
-};
-export const onDuration = (cb: (d: number) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ duration: number }>('duration', (e) => cb(e.payload.duration)));
-};
+export const onNowPlaying = (cb: (n: NowPlaying) => void): Promise<UnlistenFn> =>
+	listen<NowPlaying>('now-playing', (e) => cb(e.payload));
+export const onQueueChanged = (cb: (q: QueueState) => void): Promise<UnlistenFn> =>
+	listen<QueueState>('queue-changed', (e) => cb(e.payload));
+export const onPosition = (cb: (p: number) => void): Promise<UnlistenFn> =>
+	listen<{ position: number }>('position', (e) => cb(e.payload.position));
+export const onDuration = (cb: (d: number) => void): Promise<UnlistenFn> =>
+	listen<{ duration: number }>('duration', (e) => cb(e.payload.duration));
 /** Echo of every `set_volume`, so a second window's slider can't drift from what you hear. */
-export const onVolume = (cb: (v: number) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<number>('volume', (e) => cb(e.payload)));
-};
+export const onVolume = (cb: (v: number) => void): Promise<UnlistenFn> =>
+	listen<number>('volume', (e) => cb(e.payload));
 /** The Rust-side sleep timer hit zero (or the current song ended) — playback was paused. */
-export const onSleepTimerFired = (cb: () => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen('sleep-timer-fired', (e) => cb()));
-};
-export const onPlaybackState = (cb: (s: 'playing' | 'paused') => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<'playing' | 'paused'>('playback-state', (e) => cb(e.payload)));
-};
-export const onPlaybackError = (cb: (msg: string) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ message: string }>('playback-error', (e) => cb(e.payload.message)));
-};
-export const onPlaybackNotice = (cb: (msg: string) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ message: string }>('playback-notice', (e) => cb(e.payload.message)));
-};
+export const onSleepTimerFired = (cb: () => void): Promise<UnlistenFn> =>
+	listen('sleep-timer-fired', (e) => cb());
+export const onPlaybackState = (cb: (s: 'playing' | 'paused') => void): Promise<UnlistenFn> =>
+	listen<'playing' | 'paused'>('playback-state', (e) => cb(e.payload));
+export const onPlaybackError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+	listen<{ message: string }>('playback-error', (e) => cb(e.payload.message));
+export const onPlaybackNotice = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+	listen<{ message: string }>('playback-notice', (e) => cb(e.payload.message));
 /** Custom playlist artwork applied here but refused by YouTube Music (it syncs in the background,
  *  so the failure lands long after the picker closed). */
-export const onCoverError = (cb: (msg: string) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ message: string }>('cover-error', (e) => cb(e.payload.message)));
-};
-export const onAuthChanged = (cb: (a: Account) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<Account>('auth-changed', (e) => cb(e.payload)));
-};
-export const onAccountSelectionRequired = (cb: () => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen('account-selection-required', () => cb()));
-};
+export const onCoverError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+	listen<{ message: string }>('cover-error', (e) => cb(e.payload.message));
+export const onAuthChanged = (cb: (a: Account) => void): Promise<UnlistenFn> =>
+	listen<Account>('auth-changed', (e) => cb(e.payload));
+export const onAccountSelectionRequired = (cb: () => void): Promise<UnlistenFn> =>
+	listen('account-selection-required', () => cb());
 /**
  * Local music disappeared from disk. Fired when a play attempt finds nothing there, carrying the
  * song (and album, if that emptied it) so every view holding those ids can drop them at once.
  */
-export const onLocalChanged = (cb: (removed: string[]) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ removed: string[] }>('local-changed', (e) => cb(e.payload.removed)));
-};
+export const onLocalChanged = (cb: (removed: string[]) => void): Promise<UnlistenFn> =>
+	listen<{ removed: string[] }>('local-changed', (e) => cb(e.payload.removed));
 /**
  * The real like state for the current track, resolved in Rust when the `now-playing` row carried
  * none (search-sourced tracks). Fires once per unknown track — not on every position tick.
  */
-export const onLikeStatus = (cb: (videoId: string, liked: boolean) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<{ videoId: string; liked: boolean }>('like-status', (e) =>
-    cb(e.payload.videoId, e.payload.liked)
-  ));
-};
+export const onLikeStatus = (cb: (videoId: string, liked: boolean) => void): Promise<UnlistenFn> =>
+	listen<{ videoId: string; liked: boolean }>('like-status', (e) =>
+		cb(e.payload.videoId, e.payload.liked)
+	);
 
 /** videoId → play count over the trailing On Repeat window. Feeds the playlist page's "Most
  *  played" sort; absent keys simply mean the track hasn't been played this month. */
 export const getPlayCounts = (): Promise<Record<string, number>> =>
 	invoke<Record<string, number>>('play_counts');
 
-export const onLoginError = (cb: (msg: string) => void): Promise<UnlistenFn> => {
-  return Promise.resolve(listen<string>('login-error', (e) => cb(e.payload)));
-};
+export const onLoginError = (cb: (msg: string) => void): Promise<UnlistenFn> =>
+	listen<string>('login-error', (e) => cb(e.payload));
 export const onLoginDone = (cb: () => void): Promise<UnlistenFn> =>
 	listen('login-done', () => cb());
 

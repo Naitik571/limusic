@@ -10,8 +10,7 @@
 	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	// Use browser-native window (no Tauri)
-	const window = globalThis.window;
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -152,8 +151,12 @@
 		<AmbientGlow />
 		<ResizeBorders />
 		<!-- Orchard mechanism: the layout swaps top-bar COMPONENTS, not CSS. Canopy mounts the
-		     transport bar up here and unmounts the bottom PlayerBar further down. -->
-		{#if layout.id === 'canopy'}
+		     transport bar up here and unmounts the bottom PlayerBar further down. Sing mode
+		     (fullscreen lyrics) unmounts the bar entirely: np.sing mirrors NowPlaying's takeover
+		     so the lyrics own the whole window. Esc or the ✕ exits and the bar returns. -->
+		{#if np.sing}
+			<!-- bar hidden: sing mode owns the window -->
+		{:else if layout.id === 'canopy'}
 			<CanopyTitlebar />
 		{:else}
 			<Titlebar />

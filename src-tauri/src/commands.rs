@@ -806,6 +806,22 @@ pub async fn like(state: St<'_>, video_id: String, liked: bool) -> Result<(), St
         .map_err(|e| e.to_string())
 }
 
+/// Like, dislike, or clear a track's rating. One command for all three: YouTube's states are
+/// mutually exclusive, so a dislike un-likes in the same call and the UI never has to send two.
+#[tauri::command]
+pub async fn rate(
+    state: St<'_>,
+    video_id: String,
+    rating: innertube::Rating,
+) -> Result<(), String> {
+    let client = require_login(&state)?;
+    state
+        .it
+        .rate(client, &video_id, rating)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Save an album to the library, or remove it. `playlist_id` is the album's `OLAK5uy_…`
 /// (`AlbumPage.playlistId`).
 #[tauri::command]

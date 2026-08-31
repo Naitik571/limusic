@@ -10,6 +10,7 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		Add01Icon,
+		CloudUploadIcon,
 		DriveIcon,
 		MusicNote01Icon,
 		MusicNoteSquare02Icon,
@@ -147,6 +148,9 @@
 			<Tabs.Trigger value="songs">
 				<HugeiconsIcon icon={MusicNote01Icon} class="h-4 w-4" /> Songs
 			</Tabs.Trigger>
+			<Tabs.Trigger value="uploads">
+				<HugeiconsIcon icon={CloudUploadIcon} class="h-4 w-4" /> Uploads
+			</Tabs.Trigger>
 			<Tabs.Trigger value="local">
 				<HugeiconsIcon icon={DriveIcon} class="h-4 w-4" /> Local
 			</Tabs.Trigger>
@@ -166,6 +170,15 @@
 					</p>
 				{:else}
 					<LibrarySongs />
+				{/if}
+			{/if}
+		</Tabs.Content>
+		<Tabs.Content value="uploads">
+			{#if tab === 'uploads'}
+				{#if signedOut}
+					<p class="text-sm text-muted-foreground">Sign in to see your uploaded songs.</p>
+				{:else}
+					<LibrarySongs uploads />
 				{/if}
 			{/if}
 		</Tabs.Content>

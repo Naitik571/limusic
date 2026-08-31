@@ -347,20 +347,21 @@
 		transition: opacity 0.2s, transform 0.2s;
 		box-shadow: 0 4px 14px rgba(14, 110, 140, 0.5);
 	}
-	.ps-cf-card-play:hover { transform: scale(1.06); }
+	.ps-cf-card:hover .ps-cf-card-play,
 	.ps-cf-card.is-focused .ps-cf-card-play {
-	  opacity: 1;
-	  transform: scale(1);
+		opacity: 1;
+		transform: scale(1);
 	}
+	.ps-cf-card-play svg { width: 16px; height: 16px; }
 	.ps-cf-caption {
-	  position: absolute;
-	  left: 50%;
-	  bottom: 90px;
-	  transform: translateX(-50%);
-	  text-align: center;
-	  z-index: 2;
-	  pointer-events: none;
-	  max-width: 60vw;
+		position: absolute;
+		left: 50%;
+		bottom: 90px;
+		transform: translateX(-50%);
+		text-align: center;
+		z-index: 2;
+		pointer-events: none;
+		max-width: 60vw;
 	}
 	.ps-cf-caption-kind {
 		display: block;

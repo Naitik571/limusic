@@ -1,13 +1,19 @@
 <script lang="ts">
-	// The Library page's Songs tab: every song saved to the account's library as one list, with a
+	// The Library page's Songs tab (and, with `uploads`, its Uploads tab): one flat list with a
 	// Shuffle all over the whole thing (issue #73).
 	//
-	// `FEmusic_liked_videos` is YouTube's own Library ▸ Songs despite the name, and it browses like
-	// any other playlist, so this reads it through `get_playlist` and the Rust side gains nothing.
+	// `FEmusic_liked_videos` is YouTube's own Library ▸ Songs despite the name, and
+	// `FEmusic_library_privately_owned_tracks` is Uploads ▸ Songs. Both browse like any other
+	// playlist, so this reads them through `get_playlist` and the Rust side gains nothing.
 	// What pins that: `library_songs_browse_returns_tracks` in crates/innertube/tests/live_smoke.rs.
 	import { onMount } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { MusicNote01Icon, PlayIcon, ShuffleIcon } from '@hugeicons/core-free-icons';
+	import {
+		CloudUploadIcon,
+		MusicNote01Icon,
+		PlayIcon,
+		ShuffleIcon
+	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import TrackFilter, { filterTracks } from './TrackFilter.svelte';
 	import TrackRow from './TrackRow.svelte';
@@ -19,9 +25,15 @@
 	import { thumb } from '$lib/thumb';
 	import { openAddToPlaylist, openPlayer, playback } from '$lib/player.svelte';
 
+	// The same tab, pointed at a different browse id: Library ▸ Songs by default, or the tracks the
+	// user uploaded to YouTube Music themselves. Both browse like a headerless playlist and page the
+	// same way, so the only differences are the id and the words around it.
+	let { uploads = false }: { uploads?: boolean } = $props();
+	const BROWSE_ID = $derived(uploads ? api.LIBRARY_UPLOADS_ID : api.LIBRARY_SONGS_ID);
+
 	// Cached like every other browse page, so switching tabs (or leaving the Library and coming
 	// back) paints the list instead of refetching it and losing every page you scrolled in.
-	const KEY = 'library:songs';
+	const KEY = $derived(uploads ? 'library:uploads' : 'library:songs');
 	type Cached = { items: SongItem[]; continuation?: string };
 
 	// `$state.raw`, same reason as the playlist page: a deep proxy puts every read of every row
@@ -99,7 +111,7 @@
 		error = null;
 		moreError = false;
 		try {
-			const page = await api.getPlaylist(api.LIBRARY_SONGS_ID);
+			const page = await api.getPlaylist(BROWSE_ID);
 			songs = page.items;
 			token = page.continuation;
 			cache();

@@ -151,7 +151,11 @@ impl Orchestrator {
         // (decipher, then a PoToken googlevideo accepts). With BotGuard now running outside the
         // webview the path has a real chance; when it fails it still falls through to the direct
         // clients / rustypipe exactly as before.
-        if logged_in && main_resp.as_ref().is_some_and(|r| r.playability_status.is_age_gated()) {
+        if logged_in
+            && main_resp
+                .as_ref()
+                .is_some_and(|r| r.playability_status.is_age_gated())
+        {
             if let Some(cc) = self.clients.get("WEB_CREATOR") {
                 let cc_pot = if cc.use_web_po_tokens {
                     session_pot

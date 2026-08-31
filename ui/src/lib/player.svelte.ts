@@ -134,7 +134,13 @@ export async function cancelAllDownloads() {
  * "play this" path already goes through this module. The open has to happen at the click: a
  * gapless advance looks exactly like a user play from the `now-playing` event alone.
  */
-export const np = $state({ open: false, tab: 'queue' as 'queue' | 'lyrics' });
+// `sing` mirrors NowPlaying's fullscreen-lyrics takeover so the root layout (which owns the
+// titlebars) can hide them for it. Local to the component otherwise — see NowPlaying.svelte.
+export const np = $state({
+	open: false,
+	tab: 'queue' as 'queue' | 'lyrics',
+	sing: false
+});
 
 export const openPlayer = () => (np.open = true);
 
@@ -794,6 +800,44 @@ export function cycleRepeat(): Promise<void> {
 			if (isNow) playback.liked = !next;
 			toast.error(String(e));
 		}
+	}
+
+	/**
+	 * Rate a track: like, dislike, or clear. A dislike also takes effect on playback —
+	 * the playing track is skipped and every upcoming copy of it is dropped from the
+	 * queue (upstream #112). Already-played entries stay: the history is what happened,
+	 * not what you'd pick again. Nothing changes if YouTube rejects the rating.
+	 */
+	export async function rate(song: SongItem, next: api.Rating) {
+		try {
+			await api.rate(song.video_id, next);
+			toast.success(
+				next === 'like'
+					? 'Added to liked songs'
+					: next === 'dislike'
+						? 'Disliked'
+						: 'Rating removed'
+			);
+			if (next === 'dislike') {
+				const isNow = playback.now?.videoId === song.video_id;
+				await dropDisliked(song.video_id, isNow);
+			}
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+
+	/** A disliked track shouldn't keep playing, or sit waiting to. Skip it if it's playing, and drop
+	 *  every upcoming copy of it from the queue (back to front, so the indices stay valid).
+	 *  Already-played entries stay: the history is what happened, not what you'd pick again. */
+	async function dropDisliked(videoId: string, isNow: boolean) {
+		const { items, currentIndex } = playback.queue;
+		// Removals first, and only above the playing row, so `currentIndex` never shifts under us and
+		// the skip lands on a track that survived. Sequential: each one renumbers the backend's queue.
+		for (let i = items.length - 1; i > currentIndex; i--) {
+			if (items[i]?.video_id === videoId) await api.removeFromQueue(i).catch(() => {});
+		}
+		if (isNow) api.nextTrack().catch((e) => toast.error(String(e)));
 	}
 
 /**

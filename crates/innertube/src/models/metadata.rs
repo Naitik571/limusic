@@ -9,6 +9,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// How the signed-in user rated a track. The three
+/// values are mutually exclusive on YouTube's side, so rating a liked track "dislike" un-likes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Rating {
+    Like,
+    Dislike,
+    /// No rating: what `like/removelike` leaves behind, and what an unrated row reports.
+    Indifferent,
+}
+
 /// A song item — the minimum the playback path (context/06) needs. context/08.
 /// Round-trips through the UI (serialized into search results, deserialized back into `play`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

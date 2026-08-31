@@ -472,6 +472,7 @@ pub fn run() {
             commands::start_radio,
             commands::get_similar_songs,
             commands::like,
+            commands::rate,
             commands::set_album_saved,
             commands::add_to_playlist,
             commands::remove_from_playlist,

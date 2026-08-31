@@ -59,7 +59,16 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.1`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.5`.
+
+**v0.6.5 — upstream ports + fullscreen lyrics everywhere:**
+- **Immersive sing mode, every layout** — fullscreen lyrics now owns the whole window: the titlebar (or Canopy's transport bar) hides while you sing, Poolside's lyrics drawer gained a ⤢ fullscreen button. Esc or ✕ brings the bar back
+- **Uploads tab** (port) — Library ▸ Uploads lists the tracks you uploaded to YouTube Music, paged and searchable like Songs
+- **Dislike skips & unqueues** (port) — the ⋯ menu's new *Dislike* rates the track on YouTube, skips it if it's playing, and drops every upcoming copy from the queue
+- **Player-bar title links to the album** (port) — click the now-playing title to open its album
+- **WEB_REMIX actually plays now** (port) — BotGuard runs outside the webview (rustypipe-botguard), so PoTokens land in the class googlevideo accepts; session token re-mints instead of degrading for the whole session
+- **i18n infrastructure** (port) — English + Turkish catalogs bundled, language picker in Settings ▸ General ▸ Language
+- **Home order honoured on fresh load** (port) — a section you dragged up no longer vanishes until you scroll to it
 
 **v0.6.1 — Poolside Vinyl (BETA layout):**
 - A full-app reskin: **Y2K / Frutiger Aero poolwater** — the whole app floats over an animated swimming-pool surface with drifting light caustics, glow blobs and swimming koi

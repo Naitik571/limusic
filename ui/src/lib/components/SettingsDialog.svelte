@@ -54,8 +54,8 @@
 		installUpdate,
 		openDownloadPage
 	} from '$lib/updater.svelte';
-	// Mock Tauri's app API (no-op for browser)
-const getVersion = () => Promise.resolve('0.0.0');
+	import { getVersion } from '@tauri-apps/api/app';
+	import { setLocale, currentLocale, LOCALES, type LocaleId } from '$lib/i18n.svelte';
 
 	type TabId = 'general' | 'themes' | 'playback' | 'downloads' | 'data' | 'about';
 	const TABS: { id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[] = [
@@ -141,6 +141,7 @@ const getVersion = () => Promise.resolve('0.0.0');
 		{ tab: 'general', group: 'gen-activity', text: "Discord rich presence Show what you're listening to on your Discord profile. Needs the Discord desktop app running." },
 		{ tab: 'general', group: 'gen-system', text: 'Close to tray Closing the window keeps music playing in the background. Restore or quit from the tray icon.' },
 		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
+		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish).' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token.' },
 		// Appearance
@@ -687,13 +688,23 @@ const getVersion = () => Promise.resolve('0.0.0');
 									control: traySwitch
 								})}
 								{@render row({
-									title: 'Start on login',
-									desc: 'Launch Limusic automatically when you log in.',
-									control: autostartSwitch
+								title: 'Start on login',
+								desc: 'Launch Limusic automatically when you log in.',
+								control: autostartSwitch
 								})}
-							</div>
-						</section>
-						<section class="{GROUP} {groupVisible('gen-lyrics') ? '' : 'hidden'}">
+								</div>
+								</section>
+								<section class="{GROUP} {groupVisible('gen-system') ? '' : 'hidden'}">
+								<h3 class={LABEL}>Language</h3>
+								<div class={CARD}>
+								{@render row({
+									title: 'Interface language',
+									desc: 'The app language. English and Turkish are bundled; more can be added as locale files.',
+									control: languageSelect
+								})}
+								</div>
+								</section>
+								<section class="{GROUP} {groupVisible('gen-lyrics') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Lyrics</h3>
 							<div class={CARD}>
 								{@render row({
@@ -1029,6 +1040,24 @@ const getVersion = () => Promise.resolve('0.0.0');
 {#snippet discordSwitch()}<Switch checked={discordOn} onCheckedChange={setDiscord} />{/snippet}
 {#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
 {#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
+{#snippet languageSelect()}
+	<Select.Root
+		type="single"
+		value={currentLocale.id}
+		onValueChange={(v: string) => v && setLocale(v as LocaleId)}
+	>
+		<Select.Trigger class="w-44 shrink-0" aria-label="Language">
+			{LOCALES.find((l) => l.id === currentLocale.id)?.label ?? 'English'}
+		</Select.Trigger>
+		<Select.Content>
+			{#each LOCALES as l (l.id)}
+				<Select.Item value={l.id} label={l.label}>
+					{l.label}
+				</Select.Item>
+			{/each}
+		</Select.Content>
+	</Select.Root>
+{/snippet}
 {#snippet autoplaySwitch()}<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />{/snippet}
 {#snippet dupSwitch()}<Switch
 		checked={preventDuplicatesOn}

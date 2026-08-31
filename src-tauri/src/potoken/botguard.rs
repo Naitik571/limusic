@@ -55,7 +55,10 @@ fn classify(e: BgError) -> Error {
 }
 
 enum Cmd {
-    Mint { ident: String, reply: tokio::sync::oneshot::Sender<Result<String, Error>> },
+    Mint {
+        ident: String,
+        reply: tokio::sync::oneshot::Sender<Result<String, Error>>,
+    },
 }
 
 /// A live BotGuard runtime. Clone-free on purpose: one owner, and dropping it kills the thread.
@@ -81,7 +84,10 @@ impl Minter {
         thread::Builder::new()
             .name("botguard".into())
             .spawn(move || {
-                let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
                     Ok(rt) => rt,
                     Err(e) => {
                         let _ = ready_tx.send(Err(Error::Fatal(e.to_string())));
@@ -110,16 +116,24 @@ impl Minter {
         let (session_token, lifetime_secs) = ready_rx
             .await
             .map_err(|_| Error::Fatal("botguard thread stopped during bootstrap".into()))??;
-        Ok(Bootstrap { minter: Minter { tx }, session_token, lifetime_secs })
+        Ok(Bootstrap {
+            minter: Minter { tx },
+            session_token,
+            lifetime_secs,
+        })
     }
 
     /// Mint one PoToken for `ident` (a videoId, for the `&pot=` URL parameter).
     pub async fn mint(&self, ident: &str) -> Result<String, Error> {
         let (reply, rx) = tokio::sync::oneshot::channel();
         self.tx
-            .send(Cmd::Mint { ident: ident.to_owned(), reply })
+            .send(Cmd::Mint {
+                ident: ident.to_owned(),
+                reply,
+            })
             .map_err(|_| Error::Transient("botguard thread gone".into()))?;
-        rx.await.map_err(|_| Error::Transient("botguard thread gone".into()))?
+        rx.await
+            .map_err(|_| Error::Transient("botguard thread gone".into()))?
     }
 }
 
@@ -140,12 +154,18 @@ async fn bootstrap(
         // dropped in reverse creation order (v8-130 isolate.rs:1666) and panics the whole thread
         // if two overlap, which kills the minter for the rest of the process.
         drop(last.take());
-        let mut bg = Botguard::builder().user_agent(user_agent).init().await.map_err(classify)?;
+        let mut bg = Botguard::builder()
+            .user_agent(user_agent)
+            .init()
+            .await
+            .map_err(classify)?;
         // Session token first, on a fresh minter, before any other identifier — Metrolist enforces
         // that ordering under a mutex and there is no reason to find out the hard way why.
         let token = bg.mint_token(session_ident).await.map_err(classify)?;
-        let it =
-            integrity_token_len(&bg.mint_token(CLASS_PROBE).await.map_err(classify)?, CLASS_PROBE);
+        let it = integrity_token_len(
+            &bg.mint_token(CLASS_PROBE).await.map_err(classify)?,
+            CLASS_PROBE,
+        );
         let lifetime = u64::from(bg.lifetime());
         if it.is_some_and(|n| n <= ACCEPTED_MAX_IT) {
             tracing::info!(
@@ -184,8 +204,9 @@ async fn bootstrap(
 /// decoded one (visitorData routinely arrives with `%3D` padding).
 fn integrity_token_len(pot: &str, ident: &str) -> Option<usize> {
     // `mint_token` returns padded base64url; the harness scripts print it unpadded. Take either.
-    let bytes =
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(pot.trim_end_matches('=')).ok()?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(pot.trim_end_matches('='))
+        .ok()?;
     let ident_len = urlencoding::decode(ident).map_or(ident.len(), |d| d.len());
     bytes.len().checked_sub(ident_len + POT_OVERHEAD)
 }
@@ -214,14 +235,24 @@ mod tests {
     /// sending PoTokens until it is restarted.
     #[test]
     fn js_errors_are_transient() {
-        assert!(matches!(classify(BgError::Js("boom".into())), Error::Transient(_)));
-        assert!(matches!(classify(BgError::InvalidPoToken("nope".into())), Error::Transient(_)));
+        assert!(matches!(
+            classify(BgError::Js("boom".into())),
+            Error::Transient(_)
+        ));
+        assert!(matches!(
+            classify(BgError::InvalidPoToken("nope".into())),
+            Error::Transient(_)
+        ));
     }
 
     #[test]
     fn integrity_token_len_rejects_garbage() {
         assert_eq!(integrity_token_len("not base64!!", "PtHEr7siapo"), None);
-        assert_eq!(integrity_token_len("MlU=", "PtHEr7siapo"), None, "shorter than the overhead");
+        assert_eq!(
+            integrity_token_len("MlU=", "PtHEr7siapo"),
+            None,
+            "shorter than the overhead"
+        );
     }
 
     #[test]
@@ -254,7 +285,7 @@ mod live {
         let video_id = std::env::var("LIMUSIC_VIDEO_ID").unwrap_or_else(|_| "PtHEr7siapo".into());
 
         let t0 = Instant::now();
-        let b = Minter::spawn(crate::http::WEB_UA.to_owned(), visitor.clone())
+        let b = Minter::spawn(super::super::WEB_UA.to_owned(), visitor.clone())
             .await
             .expect("bootstrap");
         let boot = t0.elapsed();
@@ -266,17 +297,27 @@ mod live {
             b.lifetime_secs,
             t1.elapsed()
         );
-        assert!(it.is_some_and(|n| n <= ACCEPTED_MAX_IT), "mint fell out of the accepted class");
+        assert!(
+            it.is_some_and(|n| n <= ACCEPTED_MAX_IT),
+            "mint fell out of the accepted class"
+        );
 
         // The idle teardown drops the minter, which ends its thread and its V8 isolate; the next
         // track start builds a fresh one. Prove a second isolate can be created in the same process
         // after the first is gone, because that is what `teardown_if_idle` does all day.
         drop(b);
-        let again = Minter::spawn(crate::http::WEB_UA.to_owned(), visitor)
+        let again = Minter::spawn(super::super::WEB_UA.to_owned(), visitor)
             .await
             .expect("second bootstrap after teardown");
-        let pot2 = again.minter.mint(&video_id).await.expect("mint after teardown");
-        println!("after teardown: it {:?}", integrity_token_len(&pot2, &video_id));
+        let pot2 = again
+            .minter
+            .mint(&video_id)
+            .await
+            .expect("mint after teardown");
+        println!(
+            "after teardown: it {:?}",
+            integrity_token_len(&pot2, &video_id)
+        );
         assert!(integrity_token_len(&pot2, &video_id).is_some_and(|n| n <= ACCEPTED_MAX_IT));
     }
 
@@ -294,7 +335,10 @@ mod live {
             std::sync::Arc::new(crate::db::Db::open(std::path::Path::new(":memory:")).unwrap());
         let g = crate::potoken::PoTokenGenerator::new(db);
 
-        assert!(g.get_session_po_token(&visitor).await.is_some(), "first mint");
+        assert!(
+            g.get_session_po_token(&visitor).await.is_some(),
+            "first mint"
+        );
         g.invalidate_session_token().await;
         let t1 = Instant::now();
         assert!(

@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
 	import { fade, fly, scale } from 'svelte/transition';
+	import { onDestroy } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { beforeNavigate } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -90,10 +91,19 @@
 	});
 
 	// Sing mode: a fixed full-view karaoke takeover above everything in the view. Esc or the ✕
-	// leaves; leaving the lyrics tab tears it down like `big`.
+	// leaves; leaving the lyrics tab tears it down like `big`. Mirrored into `np.sing` so the root
+	// layout hides the titlebar for it — every layout's bar (Titlebar, CanopyTitlebar) bows out.
 	let sing = $state(false);
 	$effect(() => {
 		if (np.tab !== 'lyrics') sing = false;
+	});
+	$effect(() => {
+		np.sing = sing;
+	});
+	// Unmount safety: the view closes while sing is on (beforeNavigate, the bar's artwork) —
+	// np.sing must not outlive this instance or the titlebar stays hidden forever.
+	onDestroy(() => {
+		np.sing = false;
 	});
 
 	// --- Artwork swipe pager --------------------------------------------------------------------
@@ -518,17 +528,16 @@
 
 	{#if sing}
 	<!-- Sing mode takeover: fixed and z-[90] so it clears everything inside the view, with the
-	     blurred artwork wash as the backdrop. It starts BELOW the titlebar (h-9 = 2.25rem) —
-	     inset-0 used to slide the ✕ under the window minimize/maximize/close cluster — and in
-	     canopy (transport lives in the top bar) it clears that taller 68px row instead. The exit
-	     ✕ and LyricsView's Translate pill sit inside this box, safely under both bars.
+	     blurred artwork wash as the backdrop. The titlebar is HIDDEN while sing is on (np.sing —
+	     the root layout unmounts it), so this now covers the full window from top: 0; the exit ✕
+	     and LyricsView's Translate pill sit inside this box, safely in the top corners.
 	     LyricsView runs in its sing variant: giant active line, centred column, no footer (its
 	     Translate pill pins top-left instead). A separate mount — it fetches its own
 	     (Rust-cached) lyrics rather than fighting the panel instance for scroll position. -->
 	<div
 		transition:fade={{ duration: 180 }}
 		class="fixed inset-x-0 bottom-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-background"
-		style="top: {layout.id === 'canopy' ? '68px' : '2.25rem'}"
+		style="top: 0"
 	>
 			{#if appearance.artworkBackground && srcs[2] && !bgFailed}
 				<img

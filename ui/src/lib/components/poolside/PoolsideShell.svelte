@@ -26,7 +26,7 @@
 	import '@fontsource/audiowide/400.css';
 	import './poolside.css';
 
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { fade, scale, fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -45,7 +45,7 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
-	import { auth, local, playback, playFrom, ui, toast } from '$lib/player.svelte';
+	import { auth, local, np, playback, playFrom, ui, toast } from '$lib/player.svelte';
 	import { applyLayout } from '$lib/theme.svelte';
 	import Water from './Water.svelte';
 	import Vinyl from './Vinyl.svelte';
@@ -81,6 +81,16 @@
 	let album = $state<BrowseItem | null>(null);
 	let dusk = $state(localStorage.getItem('ps-dusk') === 'true');
 	let lyricsOpen = $state(false);
+	// Fullscreen lyrics takeover — poolside's own sing mode. Esc or the ✕ exits.
+	let sing = $state(false);
+	$effect(() => {
+		np.sing = sing;
+	});
+	// Unmount safety: switching layouts away from poolside while sing is on must not leave
+	// the shared flag set — the root layout would keep the titlebar hidden forever.
+	onDestroy(() => {
+		np.sing = false;
+	});
 	let ccOpen = $state(false);
 	let ccAlbum = $state<BrowseItem | null>(null);
 	let ccFileInput = $state<HTMLInputElement>();
@@ -321,7 +331,15 @@
 			if (playback.now) lyricsOpen = true;
 		};
 		window.addEventListener('ps:open-lyrics', onOpenLyrics);
-		return () => window.removeEventListener('ps:open-lyrics', onOpenLyrics);
+		// Esc leaves the fullscreen lyrics takeover (the ✕ works too).
+		const onEsc = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') sing = false;
+		};
+		window.addEventListener('keydown', onEsc);
+		return () => {
+			window.removeEventListener('ps:open-lyrics', onOpenLyrics);
+			window.removeEventListener('keydown', onEsc);
+		};
 	});
 
 	const navItems: { id: View; icon: typeof Home02Icon; label: string }[] = [
@@ -497,15 +515,37 @@
 		</main>
 
 		<!-- ============================================================
-		     LYRICS DRAWER — right side, displaces main content. Closes via
-		     the X button or by toggling the sidebar's "Playing" button.
-		     ============================================================ -->
-		{#if lyricsOpen && playback.now}
-			<aside class="ps-lyrics-drawer" aria-label="Lyrics">
-				<button class="ps-drawer-close" onclick={() => (lyricsOpen = false)} aria-label="Close lyrics">✕</button>
-				<LyricsView expanded />
-			</aside>
-		{/if}
+			     LYRICS DRAWER — right side, displaces main content. Closes via
+			     the X button or by toggling the sidebar's "Playing" button.
+			     The ⤢ button expands into a fullscreen sing takeover (ps-sing),
+			     which hides the sidebar too — pure lyrics, whole window.
+			     ============================================================ -->
+				{#if lyricsOpen && playback.now && !sing}
+					<aside class="ps-lyrics-drawer" aria-label="Lyrics">
+						<button class="ps-drawer-close" onclick={() => (lyricsOpen = false)} aria-label="Close lyrics">✕</button>
+						<button
+							class="ps-drawer-close"
+							style="right: 52px"
+							onclick={() => (sing = true)}
+							aria-label="Fullscreen lyrics"
+							title="Fullscreen lyrics"
+						>⤢</button>
+						<LyricsView expanded />
+					</aside>
+				{/if}
+
+				<!-- Fullscreen sing takeover: over everything poolside paints, Esc or ✕ exits. -->
+				{#if sing && playback.now}
+					<div
+						class="ps-sing ps-glass"
+						role="dialog"
+						aria-label="Fullscreen lyrics"
+						onkeydown={(e) => e.key === 'Escape' && (sing = false)}
+					>
+						<button class="ps-drawer-close" onclick={() => (sing = false)} aria-label="Exit fullscreen lyrics">✕</button>
+						<LyricsView expanded sing />
+					</div>
+				{/if}
 
 		<!-- ============================================================
 		     SETTINGS PANEL — right side, separate slot from lyrics. Both

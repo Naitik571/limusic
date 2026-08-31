@@ -3,8 +3,7 @@
 	// resize borders, so the app recreates them: invisible strips along every edge/corner that
 	// hand the mousedown to the compositor's interactive resize. Hidden while maximized — a
 	// maximized window has no edges to grab.
-	// Mock Tauri's window API (no-op for browser)
-const getCurrentWindow = () => ({});
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { win } from '$lib/win.svelte';
 
 	type Dir =
