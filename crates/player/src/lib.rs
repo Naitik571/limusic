@@ -382,7 +382,7 @@ fn event_loop(mut ev: EventContext, tx: tokio::sync::mpsc::UnboundedSender<Playe
             Some(Err(e)) if tx.send(PlayerEvent::TrackFailed(friendly_error(&e))).is_err() => {
                 break;
             }
-            Some(Err(_)) => {},  // Explicitly ignore errors that send successfully
+            Some(Err(_)) => {} // Explicitly ignore errors that send successfully
             None => {}
         }
     }

@@ -8,9 +8,9 @@ export const invoke = async <T = any>(cmd: string, args: any = {}): Promise<T> =
   return {} as T;
 };
 
-export const listen = <T = any>(event: string, handler: (payload: T) => void): UnlistenFn => {
+export const listen = <T = any>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> => {
   console.warn(`[MOCK] Tauri event listener: ${event}`);
-  return { unlisten: () => {} };
+  return Promise.resolve({ unlisten: () => {} });
 };
 
 /** One run of an artist line: its text, plus a channel id when that run links an artist. */
