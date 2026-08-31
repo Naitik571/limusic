@@ -334,9 +334,8 @@
 			src={srcs[2]}
 			alt=""
 			onerror={() => (bgFailed = true)}
-			class="lyrics-backdrop pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-35 blur-3xl saturate-125 dark:opacity-45"
+			class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl dark:opacity-40"
 		/>
-		<div class="absolute inset-0 bg-background/80"></div>
 	{/if}
 
 	<!-- Capped and centred, so a wide window doesn't park the artwork in the middle of an empty half
@@ -544,9 +543,8 @@
 				<img
 					src={srcs[2]}
 					alt=""
-					class="lyrics-backdrop pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-3xl saturate-125 dark:opacity-50"
+					class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl dark:opacity-40"
 				/>
-				<div class="absolute inset-0 bg-background/80"></div>
 			{/if}
 			<div class="flex min-h-0 flex-1 flex-col px-6 py-10 sm:px-14">
 				<LyricsView expanded sing />
