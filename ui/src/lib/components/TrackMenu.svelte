@@ -110,14 +110,14 @@
 
 {#if menuOpen}
 	<button
-		class="fixed inset-0 z-40 cursor-default"
+		class="fixed inset-0 z-[55] cursor-default"
 		onclick={close}
 		oncontextmenu={close}
 		aria-label="Close menu"
 		{@attach toBody}
 	></button>
 	<div
-		class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		class="fixed z-[60] min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style={anchor.style}
 		{@attach toBody}
 		{@attach fitMenu(anchor)}
