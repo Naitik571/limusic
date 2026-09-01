@@ -70,13 +70,11 @@
 		| 'home'
 		| 'search'
 		| 'library'
-		| 'library-carousel'
+		| 'library-coverflow'
 		| 'history'
 		| 'now'
 		| 'queue'
-		| 'album'
-		| 'radio'
-		| 'radio-now';
+		| 'album';
 	let view = $state<View>('home');
 	let album = $state<BrowseItem | null>(null);
 	let dusk = $state(localStorage.getItem('ps-dusk') === 'true');
@@ -112,9 +110,6 @@
 		// update the seen set ourselves below.
 		const v = view;
 		const map: Record<string, string> = {
-			radio: 'You can now use the radio!!!',
-			'library-carousel': 'Browse your library as a coverflow!',
-			'radio-now': 'Live radio stations, all in one place.',
 			lyrics: 'Lyrics auto-scroll and highlight the current line.',
 			album: 'Tap any track to play it instantly.'
 		};
@@ -346,8 +341,6 @@
 		{ id: 'home', icon: Home02Icon, label: 'Home' },
 		{ id: 'search', icon: Search01Icon, label: 'Search' },
 		{ id: 'library', icon: LibraryIcon, label: 'Library' },
-		{ id: 'library-carousel', icon: LibraryIcon, label: 'Cover Flow' },
-		{ id: 'radio', icon: Radio01Icon, label: 'Radio' },
 		{ id: 'history', icon: HistoryIcon, label: 'History' },
 		{ id: 'queue', icon: Queue01Icon, label: 'Queue' }
 	];

@@ -46,6 +46,7 @@
 	let loadedFor = $state<string | null>(null);
 
 	async function loadTracks(albumId: string) {
+		loadedFor = albumId;
 		tracksLoading = true;
 		tracksError = null;
 		tracks = [];
@@ -55,9 +56,8 @@
 				const m = await import('$lib/player.svelte');
 				const list = m.local.songs.filter((s) => (s.album || '').trim() === albumName);
 				// Guard: only commit if the user is still on this album when the await resolves.
-				if (loadedFor === albumId || loadedFor === null) {
+				if (loadedFor === albumId) {
 					tracks = list;
-					loadedFor = albumId;
 				}
 			} else {
 				// Liked Music, playlists, and remote albums all funnel through getPlaylist,
@@ -65,9 +65,8 @@
 				// MPRE… albums but is a separate codepath; for the library's "click an
 				// item" use-case getPlaylist is the universal loader.
 				const a = await api.getPlaylist(albumId);
-				if (loadedFor === albumId || loadedFor === null) {
+				if (loadedFor === albumId) {
 					tracks = a.items ?? [];
-					loadedFor = albumId;
 				}
 			}
 		} catch (e) {

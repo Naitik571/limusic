@@ -627,7 +627,7 @@
 .ps-deck-unit.ejected .ps-vinyl {
 	left: -100%;
 	opacity: 0;
-	transform: translateY(-50%) rotate(-45deg);
+	transform: translateY(-50%) rotate(-45deg) translateX(-100%);
 }
 .ps-deck-unit .ps-sticker { right: -4%; top: -7%; }
 .ps-track-caption {
@@ -935,11 +935,6 @@
 .ps-logo { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start; border-radius: 999px; padding: 9px 18px 9px 14px; background: linear-gradient(135deg, rgba(255,255,255,.75), rgba(255,255,255,.35)); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.6); box-shadow: var(--shadow-soft); }
 .ps-logo .word { font-family: var(--display); font-style: italic; font-size: 19px; letter-spacing: .02em; background: linear-gradient(180deg, #fff 8%, #D8EEF4 42%, #7FA6B2 55%, #F2FBFD 78%, #B9D8E0 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 1px rgba(255,255,255,.9)); }
 .ps-logo .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; background: var(--red); color: #fff; border-radius: 4px; padding: 2.5px 5px; transform: translateY(1px); }
-.ps-hero-sleeve { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.ps-hero-sleeve .ps-sleeve { width: min(30vh, 270px); aspect-ratio: 1; transition: transform .5s var(--ease-spring); }
-.ps-hero-sleeve:hover .ps-sleeve { transform: translateY(-6px) rotate(-1deg); }
-.ps-hero-sleeve > div[style] { transition: transform .7s var(--ease-spring); }
-.ps-hero-sleeve:hover > div[style] { transform: translateX(9%) rotate(8deg); }
 .ps-hero-cap { align-self: center; font-size: 10px; letter-spacing: .12em; color: rgba(255,255,255,.92); text-align: center; line-height: 1.9; text-shadow: 0 1px 5px rgba(8,60,70,.55); }
 .ps-lib-top { display: flex; align-items: center; gap: 14px; }
 .ps-import { all: unset; cursor: pointer; position: relative; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #fff; padding: 11px 20px; border-radius: 999px; background: linear-gradient(180deg, #8FDDF6 0%, var(--accent) 48%, #2E9ECB 100%); border: 1px solid rgba(255,255,255,.75); box-shadow: 0 6px 18px rgba(14,110,140,.45), inset 0 1px 0 rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(10,80,110,.5); white-space: nowrap; overflow: hidden; transition: transform .2s var(--ease-spring); }
@@ -1679,8 +1674,16 @@
 	all: unset; cursor: pointer; flex: none;
 	width: 140px; display: flex; flex-direction: column; gap: 8px;
 	transition: transform .3s var(--ease-spring);
+	position: relative;
 }
 .ps-rail-card:hover { transform: translateY(-4px) scale(1.03); }
+.ps-rail-card::after {
+	content: ''; position: absolute; inset: 0; border-radius: 14px;
+	opacity: 0; transition: opacity .3s;
+	box-shadow: 0 0 20px rgba(79,195,232,.3);
+	pointer-events: none;
+}
+.ps-rail-card:hover::after { opacity: 1; }
 .ps-rail-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; border: 1.5px solid rgba(255,255,255,.7); box-shadow: 0 4px 14px rgba(8,60,70,.3); }
 .ps-rail-placeholder { width: 100%; aspect-ratio: 1; border-radius: 14px; background: rgba(255,255,255,.15); border: 1.5px solid rgba(255,255,255,.3); }
 .ps-rail-label { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.92); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1817,12 +1820,6 @@
 .ps-songrow:active { transform: translateX(4px) scale(0.99); }
 
 /* card hover glow */
-.ps-rail-card::after {
-	content: ''; position: absolute; inset: 0; border-radius: 14px;
-	opacity: 0; transition: opacity .3s;
-	box-shadow: 0 0 20px rgba(79,195,232,.3);
-	pointer-events: none;
-}
 .ps-rail-card { position: relative; }
 .ps-rail-card:hover::after { opacity: 1; }
 
@@ -1927,24 +1924,24 @@
 .ps-koi.c { animation: ps-koi-c 28s linear infinite; }
 .ps-koi.d { animation: ps-koi-d 44s linear infinite reverse; }
 @keyframes ps-koi-a {
-	0%   { transform: translate(-15vw, 70vh) scaleX(1)   rotate(0deg); }
-	48%  { transform: translate(45vw,  62vh) scaleX(1)   rotate(-2deg); }
-	52%  { transform: translate(47vw,  62vh) scaleX(-1)  rotate(178deg); }
-	100% { transform: translate(115vw, 70vh) scaleX(-1)  rotate(176deg); }
+	0%   { transform: translate(-15vw, 70vh); }
+	48%  { transform: translate(45vw,  62vh); }
+	52%  { transform: translate(47vw,  62vh); }
+	100% { transform: translate(115vw, 70vh); }
 }
 @keyframes ps-koi-b {
-	0%   { transform: translate(115vw, 30vh) scaleX(-1)  rotate(176deg); }
-	48%  { transform: translate(60vw,  22vh) scaleX(-1)  rotate(178deg); }
-	52%  { transform: translate(58vw,  22vh) scaleX(1)   rotate(-4deg); }
-	100% { transform: translate(-15vw, 30vh) scaleX(1)   rotate(-2deg); }
+	0%   { transform: translate(115vw, 30vh); }
+	48%  { transform: translate(60vw,  22vh); }
+	52%  { transform: translate(58vw,  22vh); }
+	100% { transform: translate(-15vw, 30vh); }
 }
 @keyframes ps-koi-c {
-	0%   { transform: translate(-10vw, 50vh) scaleX(1); }
-	100% { transform: translate(110vw, 50vh) scaleX(1); }
+	0%   { transform: translate(-10vw, 50vh); }
+	100% { transform: translate(110vw, 50vh); }
 }
 @keyframes ps-koi-d {
-	0%   { transform: translate(110vw, 85vh) scaleX(-1); }
-	100% { transform: translate(-10vw, 85vh) scaleX(-1); }
+	0%   { transform: translate(110vw, 85vh); }
+	100% { transform: translate(-10vw, 85vh); }
 }
 /* All koi also bob with a vertical sine — applied via inner element so it stacks cleanly. */
 .ps-koi .body {
@@ -2060,7 +2057,6 @@
 
 /* Tile hover splash — the aqua glow that pulses on hover (already a box-shadow in the
    rail-card; adding a subtle scale lift here) */
-.ps-rail-card:hover { transform: translateY(-6px) scale(1.05); }
 .ps-tile:hover { transform: rotate(0) translateY(-8px) scale(1.06); }
 
 /* Logo chrome wordmark slow rotation — the conic-gradient mark gets a slow 12s rotation

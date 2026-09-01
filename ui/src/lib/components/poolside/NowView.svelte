@@ -41,7 +41,7 @@
 	// "ejecting" class and the eject action, so there's no dead zone where it looks like it's
 	// ejecting but does nothing.
 	const EJECT_PX = 60;
-	const SNAP_PX = 14; // within this distance of the spindle, drop snaps to center
+	const SNAP_PX = 90; // generous drop-back radius for resume; tighter snap anim is separate
 	let dragX = $state(0);
 	let dragY = $state(0);
 	let isDragging = $state(false);
