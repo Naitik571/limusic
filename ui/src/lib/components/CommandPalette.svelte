@@ -207,7 +207,9 @@
 						onSelect={() => choose(item)}
 						data-ctx
 						oncontextmenu={(e) => {
-							// Prevent cmdk's selection on right-click and let ctxHost open the row's menu
+							// Close the palette before opening the row menu so the dialog
+							// doesn't sit on top of the floating menu and block interaction.
+							ui.paletteOpen = false;
 							e.preventDefault();
 						}}
 						class="gap-3 px-2 py-1.5"
