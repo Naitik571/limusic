@@ -7,12 +7,17 @@
 	import { onMount } from 'svelte';
 	import type { BrowseItem } from '$lib/api';
 
-	let { albums, artFor, onOpenAlbum, onPlayAlbum }: {
+	let { albums, artFor, onOpenAlbum, onPlayAlbum, onBack }: {
 		albums: BrowseItem[];
 		artFor: (item: BrowseItem) => string;
 		onOpenAlbum: (item: BrowseItem) => void;
 		onPlayAlbum: (item: BrowseItem) => void;
+		onBack?: () => void;
 	} = $props();
+
+	function back() {
+		onBack?.();
+	}
 
 	let hovered = $state<{ title: string; subtitle?: string; x: number; y: number } | null>(null);
 
@@ -28,7 +33,7 @@
 </script>
 
 <div class="ps-fan-stage">
-	<button class="ps-fan-back" onclick={() => history.length > 1 ? history.back() : null} aria-label="Back">
+	<button class="ps-fan-back" onclick={back} aria-label="Back">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="22">
 			<path d="M15 5l-7 7 7 7" />
 		</svg>

@@ -18,7 +18,8 @@
 		onOpenAlbum,
 		onPlayLocalAlbum,
 		onPlaySong,
-		onImport
+		onImport,
+		onOpenFlow
 	}: {
 		albums: BrowseItem[];
 		songs: SongItem[];
@@ -28,6 +29,7 @@
 		onPlayLocalAlbum: (item: BrowseItem) => void;
 		onPlaySong: (s: SongItem, i: number, list: SongItem[]) => void;
 		onImport: () => void;
+		onOpenFlow?: (view: 'library-coverflow' | 'library-fan') => void;
 	} = $props();
 
 	type Tab = 'albums' | 'songs' | 'artists' | 'folders' | 'singles';
@@ -181,7 +183,7 @@
 			{#if tab === 'albums'}
 				<div class="ps-grid">
 					{#each filteredAlbums as a, i (a.id)}
-						<!-- svelte-ignore a11y_no_nonactive_element_interactions, a11y_no_noninteractive_tabindex -->
+						<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 						<div
 							class="ps-tile {isFeatured(i) ? 'feat' : ''}"
 							onclick={() => openOrPlay(a)}
@@ -205,16 +207,16 @@
 				</div>
 				{#if filteredAlbums.length}
 					<div class="ps-expand-row">
-						<button class="ps-expand-btn" onclick={() => onOpenAlbum(filteredAlbums[0])} aria-label="Open album flow">
+						<button class="ps-expand-btn" onclick={() => onOpenFlow?.('library-coverflow')} aria-label="Open coverflow">
 							<HugeiconsIcon icon={PlusSignIcon} class="w-4 h-4" />
-							<span>Open Album Flow</span>
+							<span>CoverFlow</span>
 						</button>
 					</div>
 				{/if}
 			{:else if tab === 'songs'}
 				<div class="ps-songlist">
 					{#each filteredSongs as s, i (s.video_id + i)}
-						<!-- svelte-ignore a11y_no_nonactive_element_interactions, a11y_no_noninteractive_tabindex -->
+						<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 						<div
 							class="ps-songrow"
 							onclick={() => playSongRow(s, i, filteredSongs)}
@@ -233,9 +235,9 @@
 				</div>
 				{#if filteredSongs.length}
 					<div class="ps-expand-row">
-						<button class="ps-expand-btn" onclick={() => onOpenAlbum({ kind: 'playlist', id: '__songs__', title: 'All Songs', subtitle: `${filteredSongs.length} tracks`, thumbnail: filteredSongs[0]?.thumbnail ?? '' })} aria-label="Open songs flow">
+						<button class="ps-expand-btn" onclick={() => onOpenFlow?.('library-fan')} aria-label="Open stacked queue">
 							<HugeiconsIcon icon={PlusSignIcon} class="w-4 h-4" />
-							<span>Open Songs Flow</span>
+							<span>Stacked Queue</span>
 						</button>
 					</div>
 				{/if}

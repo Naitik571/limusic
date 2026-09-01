@@ -30,13 +30,19 @@
 		albums,
 		artFor,
 		onOpenAlbum,
-		onPlayAlbum
+		onPlayAlbum,
+		onBack
 	}: {
 		albums: BrowseItem[];
 		artFor: (item: BrowseItem) => string;
 		onOpenAlbum: (item: BrowseItem) => void;
 		onPlayAlbum: (item: BrowseItem) => void;
+		onBack?: () => void;
 	} = $props();
+
+	function back() {
+		onBack?.();
+	}
 
 	// Arc geometry. CARD_W and CARD_H are the actual rendered size of each cover;
 	// the visual gap is half of CARD_W so covers overlap slightly and the rotation
@@ -127,7 +133,7 @@
 
 <div class="ps-cf-stage">
 	<!-- back button in the top-left -->
-	<button class="ps-cf-back" onclick={() => history.length > 1 ? history.back() : null} aria-label="Back">
+	<button class="ps-cf-back" onclick={back} aria-label="Back">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="22">
 			<path d="M15 5l-7 7 7 7" />
 		</svg>

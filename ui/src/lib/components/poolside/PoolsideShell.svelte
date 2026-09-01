@@ -40,8 +40,7 @@
 		LibraryIcon,
 		HistoryIcon,
 		Playlist02Icon,
-		Queue01Icon,
-		Radio01Icon
+		Queue01Icon
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
@@ -58,13 +57,12 @@
 	import QueueView from './QueueView.svelte';
 	import LyricsView from '../LyricsView.svelte';
 	import CoverFlowCarousel from './CoverFlowCarousel.svelte';
-	import RadioBrowse from './RadioBrowse.svelte';
-	import RadioNowPlaying from './RadioNowPlaying.svelte';
 	import EdgeVinyl from './EdgeVinyl.svelte';
 	import CustomCoverPicker from './CustomCoverPicker.svelte';
 	import FeatureCallout from './FeatureCallout.svelte';
 	import MiniPlayer from './MiniPlayer.svelte';
 	import MiniPlayerPill from './MiniPlayerPill.svelte';
+	import StackedFanView from './StackedFanView.svelte';
 
 	type View =
 		| 'home'
@@ -132,13 +130,6 @@
 			if (raw) seenSet = new Set(JSON.parse(raw));
 		} catch { /* quota */ }
 	});
-
-	// radio: the currently-selected station (for the radio-now view)
-	const currentStation = $derived(
-		playback.now
-			? { id: 'live', name: playback.now.title || 'Live Mix', genre: 'Live', location: 'Now Playing', isLive: true, listeners: 0, isFavorite: false }
-			: { id: 'lush-fm', name: 'Lush FM', genre: 'Lo-Fi', location: 'Tokyo', isLive: true, listeners: 1284, isFavorite: true }
-	);
 
 	// poolside visual prefs
 	let caustics = $state(localStorage.getItem('ps-caustics') !== 'false');
@@ -452,32 +443,27 @@
 							onPlayLocalAlbum={playAlbum}
 							onPlaySong={playSongInList}
 							onImport={importFolder}
+							onOpenFlow={(v) => go(v)}
 						/>
 					</div>
 				</div>
-				<div class="ps-view" class:on={view === 'library-coverflow'}">
+				<div class="ps-view" class:on={view === 'library-coverflow'}>
 					<CoverFlowCarousel
 						albums={mergedAlbums}
 						{artFor}
 						onOpenAlbum={openAlbum}
 						onPlayAlbum={playAlbum}
+						onBack={() => go('library')}
 					/>
 				</div>
-				<div class="ps-view" class:on={view === 'library-fan'}">
+				<div class="ps-view" class:on={view === 'library-fan'}>
 					<StackedFanView
 						albums={mergedAlbums}
 						{artFor}
 						onOpenAlbum={openAlbum}
 						onPlayAlbum={playAlbum}
+						onBack={() => go('library')}
 					/>
-				</div>
-				<div class="ps-view" class:on={view === 'radio'}>
-					<div class="ps-scroll-area">
-						<RadioBrowse />
-					</div>
-				</div>
-				<div class="ps-view" class:on={view === 'radio-now'}>
-					<RadioNowPlaying station={currentStation} />
 				</div>
 				<div class="ps-view" class:on={view === 'history'}>
 					<div class="ps-scroll-area">
@@ -646,8 +632,8 @@
 				Always visible (even on the Now view) so the user has transport controls
 				anywhere in the app, but doesn't sit on top of the Now deck's own transport.
 				Hides on the coverflow view so the user can see the covers unobstructed. -->
-				{#if playback.now && view !== 'library-carousel'}
-				<MiniPlayerPill onOpenNow={() => go('now')} />
+				{#if playback.now && view !== 'library-coverflow' && view !== 'library-fan'}
+					<MiniPlayerPill onOpenNow={() => go('now')} />
 				{/if}
 
 				<!-- ============================================================
