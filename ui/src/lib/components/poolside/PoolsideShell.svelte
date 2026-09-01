@@ -71,6 +71,7 @@
 		| 'search'
 		| 'library'
 		| 'library-coverflow'
+		| 'library-fan'
 		| 'history'
 		| 'now'
 		| 'queue'
@@ -454,8 +455,16 @@
 						/>
 					</div>
 				</div>
-				<div class="ps-view" class:on={view === 'library-carousel'}>
+				<div class="ps-view" class:on={view === 'library-coverflow'}">
 					<CoverFlowCarousel
+						albums={mergedAlbums}
+						{artFor}
+						onOpenAlbum={openAlbum}
+						onPlayAlbum={playAlbum}
+					/>
+				</div>
+				<div class="ps-view" class:on={view === 'library-fan'}">
+					<StackedFanView
 						albums={mergedAlbums}
 						{artFor}
 						onOpenAlbum={openAlbum}
