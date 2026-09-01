@@ -97,54 +97,144 @@
 	66% { transform: translate3d(-15px,10px,0) scale(0.98); }
 }
 
-/* caustic ripple layers — large soft spots that drift slowly, with turbulence displacement
-   applied via the .ps-turb-svg filter on the .ps-water > .ps-rip selector below. */
+/* ============ 1. WATER — realistic swimming pool ============ */
+/* When the shell is playing a track, --ps-album-accent is set on .ps-root (e.g.
+   "hsl(214 60% 50%)") and the base gradient stops shift toward that hue. When no track
+   is playing the variables fall back to the static pool-blue. */
+.ps-water {
+	position: absolute; inset: 0; z-index: 0;
+	background:
+		linear-gradient(180deg,
+			color-mix(in oklab, var(--ps-album-accent, #4DD0E1) 16%, #26C6DA) 0%,
+			color-mix(in oklab, var(--ps-album-accent, #00ACC1) 20%, #00ACC1) 18%,
+			color-mix(in oklab, var(--ps-album-accent, #0097A7) 24%, #0097A7) 34%,
+			color-mix(in oklab, var(--ps-album-accent, #00838F) 28%, #00838F) 52%,
+			color-mix(in oklab, var(--ps-album-accent, #006064) 32%, #006064) 70%,
+			color-mix(in oklab, var(--ps-album-accent, #004D40) 26%, #004D40) 100%
+		);
+	transition: filter .6s var(--ease-spring), background 1.2s;
+	overflow: hidden;
+}
+/* pool tile floor — stronger grout, perspective-tilted so the back rows recede. The grid sells
+   "this is a tiled pool floor" more than any caustic can. */
+.ps-water::before {
+	content: '';
+	position: absolute; inset: 0;
+	background-image:
+		linear-gradient(rgba(255,255,255,.12) 1.5px, transparent 1.5px),
+		linear-gradient(90deg, rgba(255,255,255,.12) 1.5px, transparent 1.5px);
+	background-size: 56px 56px;
+	transform: perspective(1000px) rotateX(24deg) translateY(36px) scale(1.45);
+	transform-origin: center top;
+	opacity: .72;
+	pointer-events: none;
+	mix-blend-mode: overlay;
+}
+/* sunlight shimmer — broader, fewer hot spots, the gentle moving wash on the pool floor */
+.ps-water::after {
+	content: '';
+	position: absolute; inset: -50%;
+	width: 200%; height: 200%;
+	background-image:
+		radial-gradient(ellipse 340px 220px at 16% 26%, rgba(255,255,255,.36) 0%, transparent 70%),
+		radial-gradient(ellipse 400px 260px at 74% 16%, rgba(255,255,255,.30) 0%, transparent 66%),
+		radial-gradient(ellipse 300px 200px at 36% 66%, rgba(255,255,255,.34) 0%, transparent 72%),
+		radial-gradient(ellipse 380px 240px at 86% 56%, rgba(255,255,255,.28) 0%, transparent 74%),
+		radial-gradient(ellipse 260px 180px at 50% 86%, rgba(255,255,255,.32) 0%, transparent 68%);
+	background-size: 820px 820px;
+	mix-blend-mode: soft-light;
+	animation: ps-shimmer 16s ease-in-out infinite;
+	pointer-events: none;
+}
+@keyframes ps-shimmer {
+	0%, 100% { transform: translate3d(0,0,0) scale(1); }
+	33% { transform: translate3d(24px,-18px,0) scale(1.025); }
+	66% { transform: translate3d(-18px,12px,0) scale(.98); }
+}
+
+/* caustic/refraction layers — organic, not circular bobs. We use many small radial
+   hot-spots drifting slowly, plus a subtle animated mesh overlay, so the light looks
+   like refracted sun through water rather than radial-gradient bobs. */
 .ps-rip {
-	position: absolute; inset: -700px;
+	position: absolute;
+	inset: -50%;
 	will-change: transform;
 	pointer-events: none;
 	transition: opacity .6s;
 }
 .ps-rip.a {
-	background-image:
-		radial-gradient(ellipse 140px 90px at 12% 22%, transparent 52px, rgba(255,255,255,.85) 58px, transparent 66px),
-		radial-gradient(ellipse 200px 120px at 68% 12%, transparent 78px, rgba(255,255,255,.65) 85px, transparent 96px),
-		radial-gradient(ellipse 110px 160px at 38% 64%, transparent 42px, rgba(255,255,255,.75) 48px, transparent 58px),
-		radial-gradient(ellipse 220px 130px at 86% 58%, transparent 86px, rgba(255,255,255,.6) 94px, transparent 108px),
-		radial-gradient(ellipse 150px 100px at 22% 88%, transparent 58px, rgba(255,255,255,.7) 64px, transparent 74px);
-	background-size: 900px 900px;
-	mix-blend-mode: soft-light;
-	animation: ps-driftA 42s linear infinite;
+	background:
+		radial-gradient(circle 180px at 20% 30%, rgba(255,255,255,.7) 0%, transparent 70%),
+		radial-gradient(circle 140px at 70% 60%, rgba(255,255,255,.55) 0%, transparent 65%),
+		radial-gradient(circle 220px at 40% 80%, rgba(255,255,255,.6) 0%, transparent 72%),
+		radial-gradient(circle 160px at 80% 20%, rgba(255,255,255,.5) 0%, transparent 68%),
+		radial-gradient(circle 200px at 10% 70%, rgba(255,255,255,.6) 0%, transparent 70%);
+	background-size: 55vmax 55vmax;
+	background-position: 0% 0%, 40% 20%, 20% 60%, 70% 10%, 60% 80%;
+	background-repeat: repeat;
+	mix-blend-mode: screen;
+	opacity: .38;
+	animation: ps-causticA 42s linear infinite;
+	filter: blur(6px);
 }
 .ps-rip.b {
-	background-image:
-		radial-gradient(ellipse 90px 60px at 52% 34%, transparent 32px, rgba(255,255,255,.9) 38px, transparent 46px),
-		radial-gradient(ellipse 140px 80px at 8% 52%, transparent 52px, rgba(255,255,255,.65) 60px, transparent 70px),
-		radial-gradient(ellipse 120px 140px at 78% 84%, transparent 42px, rgba(255,255,255,.8) 50px, transparent 60px),
-		radial-gradient(ellipse 170px 90px at 42% 8%, transparent 64px, rgba(255,255,255,.6) 72px, transparent 84px);
-	background-size: 640px 640px;
+	background:
+		radial-gradient(circle 120px at 60% 40%, rgba(255,255,255,.6) 0%, transparent 68%),
+		radial-gradient(circle 180px at 30% 70%, rgba(255,255,255,.5) 0%, transparent 72%),
+		radial-gradient(circle 140px at 80% 80%, rgba(255,255,255,.55) 0%, transparent 65%),
+		radial-gradient(circle 160px at 20% 20%, rgba(255,255,255,.45) 0%, transparent 70%);
+	background-size: 45vmax 45vmax;
+	background-position: 30% 10%, 10% 50%, 50% 30%, 80% 70%;
+	background-repeat: repeat;
 	mix-blend-mode: screen;
-	opacity: .5;
-	animation: ps-driftB 56s linear infinite;
+	opacity: .32;
+	animation: ps-causticB 54s linear infinite;
+	filter: blur(8px);
 }
-@keyframes ps-driftA { from { transform: translate3d(0,0,0); } to { transform: translate3d(900px,900px,0); } }
-@keyframes ps-driftB { from { transform: translate3d(0,0,0); } to { transform: translate3d(-640px,-640px,0); } }
+.ps-rip.c {
+	background:
+		linear-gradient(135deg, rgba(255,255,255,.18) 0%, transparent 40%),
+		linear-gradient(225deg, rgba(255,255,255,.14) 0%, transparent 45%);
+	background-size: 70% 70%;
+	mix-blend-mode: soft-light;
+	opacity: .45;
+	animation: ps-causticC 60s linear infinite;
+	filter: url(#ps-turbulence);
+}
+@keyframes ps-causticA {
+	from { transform: translate3d(0,0,0) rotate(0deg); }
+	to   { transform: translate3d(14vw,12vh,0) rotate(1.4deg); }
+}
+@keyframes ps-causticB {
+	from { transform: translate3d(0,0,0) rotate(0deg); }
+	to   { transform: translate3d(-12vw,-10vh,0) rotate(-1.1deg); }
+}
+@keyframes ps-causticC {
+	from { transform: translate3d(0,0,0) rotate(0deg); }
+	to   { transform: translate3d(8vw,-6vh,0) rotate(.8deg); }
+}
 
 /* glow blobs — luminous underwater light pools */
 .ps-blob { position: absolute; z-index: 1; pointer-events: none; will-change: transform; }
 .ps-blob.coral {
-	width: 64vmin; height: 64vmin; left: 18%; top: 16%;
+	width: min(70vmin, 520px); height: min(70vmin, 520px); left: 12%; top: 10%;
 	background: radial-gradient(circle at 50% 50%,
-		rgba(242,160,147,.55) 0%, rgba(242,160,147,.3) 38%, rgba(242,160,147,0) 68%);
-	animation: ps-bob 13s ease-in-out infinite;
+		rgba(242,160,147,.7) 0%, rgba(242,160,147,.25) 35%, transparent 65%);
+	animation: ps-bob 14s ease-in-out infinite;
+	filter: blur(18px);
 }
 .ps-blob.blue {
-	width: 54vmin; height: 54vmin; right: 12%; top: 30%;
+	width: min(60vmin, 460px); height: min(60vmin, 460px); right: 8%; top: 24%;
 	background: radial-gradient(circle at 50% 50%,
-		rgba(127,212,242,.5) 0%, rgba(127,212,242,.25) 40%, rgba(127,212,242,0) 70%);
-	animation: ps-bob 17s ease-in-out infinite reverse;
+		rgba(127,212,242,.65) 0%, rgba(127,212,242,.2) 38%, transparent 68%);
+	animation: ps-bob 18s ease-in-out infinite reverse;
+	filter: blur(18px);
 }
-@keyframes ps-bob { 0%,100% { transform: translate3d(0,0,0); } 50% { transform: translate3d(3vmin,-4vmin,0); } }
+@keyframes ps-bob {
+	0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+	33% { transform: translate3d(2.5vmin, -3vmin, 0) scale(1.04); }
+	66% { transform: translate3d(-2vmin, 1.5vmin, 0) scale(.97); }
+}
 
 /* sunlight rays from above */
 .ps-blob.sun-ray {
@@ -244,65 +334,63 @@
 .ps-root.no-caustics .ps-mote { animation: none; opacity: 0; }
 .ps-root.no-caustics .ps-water > .ps-rip { filter: none; }
 
-/* ============ EVENING MODE — golden hour with warm amber/copper/wine ============ */
+/* ============ EVENING MODE — sunset pool ============ */
 .ps-root.dusk .ps-water {
-	background: linear-gradient(175deg,
-		#D4915E 0%,
-		#C47E4F 10%,
-		#B86E44 20%,
-		#A86040 30%,
-		#955440 40%,
-		#804A3E 50%,
-		#6C4040 60%,
-		#5A3842 70%,
-		#4A3040 80%,
-		#3C2838 90%,
-		#30202E 100%
-	);
+	background:
+		linear-gradient(180deg,
+			#FF9A76 0%,
+			#FF7E47 14%,
+			#E76F51 30%,
+			#C85A3A 48%,
+			#8D4B6E 64%,
+			#4B3D6B 78%,
+			#1E2A4A 90%,
+			#0F172A 100%
+		);
 }
 .ps-root.dusk .ps-water::before {
-	opacity: 0.35;
+	opacity: .4;
 	background-image:
-		linear-gradient(rgba(255,180,120,.06) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(255,180,120,.06) 1px, transparent 1px);
+		linear-gradient(rgba(255,220,180,.1) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255,220,180,.1) 1px, transparent 1px);
 }
 .ps-root.dusk .ps-water::after {
-	opacity: 0.45;
+	opacity: .75;
 	background-image:
-		radial-gradient(ellipse 180px 120px at 15% 25%, rgba(255,170,90,.35) 0%, transparent 70%),
-		radial-gradient(ellipse 220px 140px at 65% 15%, rgba(255,150,70,.28) 0%, transparent 65%),
-		radial-gradient(ellipse 160px 100px at 35% 65%, rgba(255,160,80,.32) 0%, transparent 68%),
-		radial-gradient(ellipse 200px 130px at 85% 55%, rgba(255,140,65,.25) 0%, transparent 72%),
-		radial-gradient(ellipse 140px 90px at 50% 85%, rgba(255,155,75,.3) 0%, transparent 66%);
+		radial-gradient(ellipse 90% 34% at 50% 0%, rgba(255,180,120,.8) 0%, transparent 70%),
+		radial-gradient(ellipse 60% 22% at 28% 6%, rgba(255,140,80,.55) 0%, transparent 65%),
+		radial-gradient(ellipse 55% 20% at 72% 4%, rgba(255,150,90,.5) 0%, transparent 60%);
 }
+.ps-root.dusk .ps-rip.a { opacity: .32; }
+.ps-root.dusk .ps-rip.b { opacity: .28; }
+.ps-root.dusk .ps-rip.c { opacity: .35; }
 .ps-root.dusk .ps-blob.coral {
 	background: radial-gradient(circle at 50% 50%,
-		rgba(255,160,80,.55) 0%, rgba(255,130,50,.28) 38%, transparent 68%);
+		rgba(255,160,90,.85) 0%, rgba(255,130,60,.4) 32%, transparent 62%);
 }
 .ps-root.dusk .ps-blob.blue {
 	background: radial-gradient(circle at 50% 50%,
-		rgba(200,120,70,.45) 0%, rgba(180,100,55,.22) 40%, transparent 70%);
+		rgba(180,100,120,.6) 0%, rgba(120,70,90,.3) 38%, transparent 68%);
 }
 .ps-root.dusk .ps-blob.sun-ray {
 	background:
-		conic-gradient(from 190deg at 60% -10%,
-			transparent 0deg, rgba(255,160,80,.09) 8deg, transparent 16deg,
-			transparent 30deg, rgba(255,140,60,.07) 38deg, transparent 46deg
+		conic-gradient(from 190deg at 55% -8%,
+			transparent 0deg, rgba(255,160,90,.18) 10deg, transparent 22deg,
+			transparent 35deg, rgba(255,140,70,.14) 44deg, transparent 56deg
 		);
 }
 .ps-root.dusk .ps-shaft {
-	background: linear-gradient(to bottom, rgba(255,180,100,.28) 0%, transparent 70%);
+	background: linear-gradient(to bottom, rgba(255,180,100,.5) 0%, rgba(255,120,80,.2) 40%, transparent 72%);
 }
 .ps-root.dusk .ps-glare {
 	background:
-		radial-gradient(ellipse 60% 100% at 30% 0%, rgba(255,180,100,.45) 0%, transparent 60%),
-		radial-gradient(ellipse 50% 100% at 70% 0%, rgba(255,160,80,.3) 0%, transparent 60%);
+		radial-gradient(ellipse 90% 110% at 35% 0%, rgba(255,200,140,.75) 0%, transparent 55%),
+		radial-gradient(ellipse 70% 90% at 65% 0%, rgba(255,160,110,.55) 0%, transparent 55%);
 }
 .ps-root.dusk .ps-mote {
-	background: rgba(255,200,140,.65);
-	box-shadow: 0 0 6px 2px rgba(255,180,100,.35);
+	background: rgba(255,220,180,.85);
+	box-shadow: 0 0 10px 4px rgba(255,180,120,.5);
 }
-.ps-root[data-view='album'] .ps-water { filter: blur(12px) saturate(1.15) brightness(0.92); }
 
 /* ============ 2. VIEW SYSTEM — camera dolly ============ */
 .ps-view {
@@ -1636,11 +1724,10 @@
 
 /* ============ 13. HOME VIEW ============ */
 .ps-home { padding: 26px 28px 60px; }
-.ps-hero { position: relative; border-radius: 28px; overflow: hidden; margin-bottom: 28px; min-height: 160px; display: flex; align-items: flex-end; }
+.ps-hero { position: relative; border-radius: 28px; overflow: hidden; margin-bottom: 28px; min-height: 160px; display: flex; align-items: flex-end; background-size: cover; background-position: center; transition: background-image .8s var(--ease-spring); }
 .ps-hero-bg {
 	position: absolute; inset: 0;
-	background: linear-gradient(135deg, rgba(79,195,232,.45) 0%, rgba(93,224,236,.25) 40%, rgba(242,160,147,.3) 100%);
-	backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+	background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%);
 }
 .ps-hero-content { position: relative; z-index: 2; padding: 28px 32px; }
 .ps-hero-label { font-size: 10px; letter-spacing: .3em; opacity: .7; display: block; margin-bottom: 8px; }
@@ -1673,15 +1760,31 @@
 .ps-rail-card {
 	all: unset; cursor: pointer; flex: none;
 	width: 140px; display: flex; flex-direction: column; gap: 8px;
-	transition: transform .3s var(--ease-spring);
+	transition: transform .35s cubic-bezier(.22,1,.36,1), filter .35s ease;
 	position: relative;
+	transform-origin: center bottom;
 }
-.ps-rail-card:hover { transform: translateY(-4px) scale(1.03); }
+/* alternate resting tilt so the rail doesn't look perfectly uniform */
+.ps-rail-card:nth-child(odd) { transform: rotate(-1.4deg); }
+.ps-rail-card:nth-child(even) { transform: rotate(1.4deg); }
+
+/* glossy highlight across top third */
+.ps-rail-card::before {
+	content: '';
+	position: absolute; inset: 0; border-radius: 14px;
+	background: linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.06) 35%, transparent 55%);
+	opacity: .9;
+	pointer-events: none;
+	z-index: 2;
+}
+
+.ps-rail-card:hover { transform: translateY(-10px) scale(1.06) rotate(0deg); filter: brightness(1.08); }
 .ps-rail-card::after {
 	content: ''; position: absolute; inset: 0; border-radius: 14px;
-	opacity: 0; transition: opacity .3s;
-	box-shadow: 0 0 20px rgba(79,195,232,.3);
+	opacity: 0; transition: opacity .35s;
+	box-shadow: 0 0 24px rgba(79,195,232,.35), 0 18px 40px rgba(8,60,70,.35);
 	pointer-events: none;
+	z-index: 1;
 }
 .ps-rail-card:hover::after { opacity: 1; }
 .ps-rail-card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; border: 1.5px solid rgba(255,255,255,.7); box-shadow: 0 4px 14px rgba(8,60,70,.3); }

@@ -43,6 +43,7 @@
 
 	<div class="ps-rip a"></div>
 	<div class="ps-rip b"></div>
+	<div class="ps-rip c"></div>
 
 	<div class="ps-blob coral"></div>
 	<div class="ps-blob blue"></div>
