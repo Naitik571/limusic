@@ -81,8 +81,9 @@
 
 <div class="ps-home">
 	<!-- hero -->
-	<div class="ps-hero" style="background-image: {playback.now?.thumbnail ? `url(${playback.now.thumbnail})` : 'none'}">
+	<div class="ps-hero" style="background-image: {playback.now?.thumbnail ? `url(${playback.now.thumbnail})` : 'none'}; --hero-accent: var(--ps-album-accent, #5BC8DC);">
 		<div class="ps-hero-bg"></div>
+		<div class="ps-hero-accent"></div>
 		<div class="ps-hero-content ps-anim-fade-up">
 			<span class="ps-hero-label">GOOD {new Date().getHours() < 12 ? 'MORNING' : new Date().getHours() < 18 ? 'AFTERNOON' : 'EVENING'}</span>
 			<h1 class="ps-hero-title">DIVE IN.</h1>

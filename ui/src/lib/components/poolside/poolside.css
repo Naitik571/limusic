@@ -1729,6 +1729,13 @@
 	position: absolute; inset: 0;
 	background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%);
 }
+.ps-hero-accent {
+	position: absolute; inset: 0;
+	background: linear-gradient(135deg, color-mix(in oklab, var(--hero-accent, #5BC8DC) 28%, transparent), transparent 55%);
+	mix-blend-mode: screen;
+	opacity: .75;
+	pointer-events: none;
+}
 .ps-hero-content { position: relative; z-index: 2; padding: 28px 32px; }
 .ps-hero-label { font-size: 10px; letter-spacing: .3em; opacity: .7; display: block; margin-bottom: 8px; }
 .ps-hero-title { font-family: var(--display); font-size: clamp(28px, 5vw, 48px); letter-spacing: .06em; margin: 0; }
