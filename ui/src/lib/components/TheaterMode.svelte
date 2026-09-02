@@ -33,6 +33,7 @@
 	import { hexToHsv } from '$lib/color';
 	import { appearance } from '$lib/theme.svelte';
 	import { thumb } from '$lib/thumb';
+	import LyricsView from './LyricsView.svelte';
 
 	const close = () => (ui.theaterOpen = false);
 
@@ -464,16 +465,16 @@
 		</div>
 
 		{#if showLyrics}
-				<div
-					in:fly={{ y: 24, duration: 400, easing: cubicOut }}
-					class="hidden h-full min-h-0 flex-col overflow-hidden lg:flex"
-					data-theater-lyrics
-				>
-					<div class="h-full overflow-y-auto">
-						<slot />
-					</div>
+			<div
+				in:fly={{ y: 24, duration: 400, easing: cubicOut }}
+				class="hidden h-full min-h-0 flex-col overflow-hidden lg:flex"
+				data-theater-lyrics
+			>
+				<div class="h-full overflow-y-auto">
+					<LyricsView expanded />
 				</div>
-			{/if}
+			</div>
+		{/if}
 	</div>
 </section>
 

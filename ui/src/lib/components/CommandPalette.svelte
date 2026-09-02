@@ -8,13 +8,14 @@
 	// vimBindings={false}: those bind ctrl+k to "move up", which is the key that opens this.
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Search01Icon, MusicNote01Icon, UserIcon } from '@hugeicons/core-free-icons';
+	import { Search01Icon, MusicNote01Icon, UserIcon, FavouriteIcon } from '@hugeicons/core-free-icons';
 	import * as Command from '$lib/components/ui/command/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { BrowseItem } from '$lib/api';
 	import { asSong, openItem, searchPreview } from '$lib/browse';
 	import { ui, toast, openMiniPlayer, setSleepTimer } from '$lib/player.svelte';
 	import { LAYOUTS, layout, applyLayout, appearance, setAppearance } from '$lib/theme.svelte';
+	import { isLiked } from '$lib/player.svelte';
 	import { checkForUpdatesInteractive } from '$lib/updater.svelte';
 	import { thumb } from '$lib/thumb';
 	import ItemMenu from './ItemMenu.svelte';
@@ -264,6 +265,9 @@
 								<span class="truncate">
 									{KIND[item.kind]}{item.subtitle ? ` • ${item.subtitle}` : ''}
 								</span>
+								{#if item.kind === 'song' && isLiked(asSong(item))}
+									<HugeiconsIcon icon={FavouriteIcon} class="h-3.5 w-3.5 fill-primary text-primary" />
+								{/if}
 							</div>
 						</div>
 					</Command.Item>
