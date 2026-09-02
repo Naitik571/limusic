@@ -57,3 +57,4 @@ tauri-plugin-global-shortcut = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # Real QR codes for the Remote LAN pairing screen (SVG renderer only; no image crate).
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+windows = { version = "0.61.3", features = ["Win32_UI_WindowsAndMessaging"] }

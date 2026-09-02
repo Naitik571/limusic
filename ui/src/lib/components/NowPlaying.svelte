@@ -28,6 +28,7 @@
 		commitVolume,
 		np,
 		playback,
+		ui,
 		wheelVolume,
 		toggleNowPlayingLike,
 		cycleRepeat
@@ -105,6 +106,14 @@
 	onDestroy(() => {
 		np.sing = false;
 	});
+
+	// Sing mode is now handled by TheaterMode; keep this button as the theater entry point.
+	function openSing() {
+		ui.theaterOpen = true;
+	}
+	function closeSing() {
+		ui.theaterOpen = false;
+	}
 
 	// --- Artwork swipe pager --------------------------------------------------------------------
 	// Horizontal drags on the artwork flip tracks (left = next, right = previous). While engaged
@@ -500,7 +509,7 @@
 							/>
 						</button>
 						<button
-							onclick={() => (sing = true)}
+							onclick={openSing}
 							class="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:text-foreground"
 							aria-label="Sing mode"
 							title="Sing mode"

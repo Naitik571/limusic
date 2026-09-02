@@ -43,6 +43,7 @@
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { auth, initApp, np, playback, ui } from '$lib/player.svelte';
+	import TheaterMode from '$lib/components/TheaterMode.svelte';
 	import { win, initWin } from '$lib/win.svelte';
 	import { initZoom } from '$lib/zoom';
 	import { initShortcuts } from '$lib/shortcuts';
@@ -153,9 +154,9 @@
 		<!-- Orchard mechanism: the layout swaps top-bar COMPONENTS, not CSS. Canopy mounts the
 		     transport bar up here and unmounts the bottom PlayerBar further down. Sing mode
 		     (fullscreen lyrics) unmounts the bar entirely: np.sing mirrors NowPlaying's takeover
-		     so the lyrics own the whole window. Esc or the ✕ exits and the bar returns. -->
-		{#if np.sing}
-			<!-- bar hidden: sing mode owns the window -->
+		     so the lyrics own the whole window. Theater mode does the same via ui.theaterOpen. -->
+		{#if np.sing || ui.theaterOpen}
+			<!-- bar hidden: sing/theater mode owns the window -->
 		{:else if layout.id === 'canopy'}
 			<CanopyTitlebar />
 		{:else}
@@ -205,6 +206,7 @@
 	<ListenTogether />
 	<ChannelPicker />
 	<LinkDialog />
+	{#if ui.theaterOpen && playback.now}<TheaterMode />{/if}
 
 	<!-- The two notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
 	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. -->

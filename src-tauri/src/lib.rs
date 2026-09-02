@@ -421,6 +421,8 @@ pub fn run() {
             commands::toggle_shuffle,
             commands::set_repeat,
             commands::toggle_pause,
+            commands::theater_fullscreen,
+            commands::toggle_mute,
             commands::seek,
             commands::set_volume,
             commands::set_sleep_timer,
