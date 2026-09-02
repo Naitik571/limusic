@@ -235,12 +235,7 @@
 		{/key}
 	{/if}
 	<div class="pointer-events-none absolute -inset-[15%]" style="background-image:{mesh}"></div>
-	<div
-		class="pointer-events-none absolute inset-0 bg-[radial-gradient(115%_90%_at_50%_42%,transparent_25%,var(--background)_100%)]"
-	></div>
-	<div
-		class="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent"
-	></div>
+	<div class="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent"></div>
 
 	<header
 		class="relative z-10 flex shrink-0 items-center justify-between px-8 py-5 transition-opacity duration-500 xl:px-14 {idle
@@ -467,12 +462,10 @@
 		{#if showLyrics}
 			<div
 				in:fly={{ y: 24, duration: 400, easing: cubicOut }}
-				class="hidden h-full min-h-0 flex-col overflow-hidden lg:flex"
+				class="hidden h-full min-h-0 flex-col lg:flex"
 				data-theater-lyrics
 			>
-				<div class="h-full overflow-y-auto">
-					<LyricsView expanded />
-				</div>
+				<LyricsView expanded />
 			</div>
 		{/if}
 	</div>

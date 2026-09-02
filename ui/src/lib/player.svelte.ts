@@ -1014,7 +1014,7 @@ export function initApp(mini = false): () => void {
 	const subs = [
 		api.onNowPlaying((n) => {
 			playback.now = n;
-			playback.liked = n.liked ?? false; // reflect the track's real like status when known
+			playback.liked = n.liked ?? likedSongs[n.videoId] ?? likedIds.has(n.videoId) ?? false; // reflect the track's real like status when known
 			// Feeds Shortcuts recency and the community shelf's artist seed. Every play lands here,
 			// gapless advances included, so it's the one hook that sees them all.
 			pl.touchPick(personal, n.videoId);

@@ -177,11 +177,6 @@
 		},
 		onFocusOutside: (e: FocusEvent) => {
 			if (inMenu(e)) e.preventDefault();
-		},
-		onContextMenu: (e: MouseEvent) => {
-			if ((e.target as Element | null)?.closest('[data-ctx]')) {
-				e.stopPropagation();
-			}
 		}
 	}}
 >

@@ -139,11 +139,13 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 		onclick={close}
 		oncontextmenu={close}
 		aria-label="Close menu"
+		data-menu
 		{@attach toBody}
 	></button>
 	<div
-		class="fixed z-[60] min-w-48 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		class="fixed z-[60] min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style={anchor.style}
+		data-menu
 		{@attach toBody}
 		{@attach fitMenu(anchor)}
 	>
