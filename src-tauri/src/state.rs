@@ -946,9 +946,9 @@ impl AppState {
             q.radio_seed = radio_seed_for(source_id);
             q.source_name = source_name;
             q.radio = false; // a chosen playlist/album; `start_radio` sets it back on for its own
-            // Explicitly requested by a page Shuffle button, or already on and set to stick
-            // across queues (issue #117: off by default, so an album opened while shuffle is on
-            // plays in order).
+                             // Explicitly requested by a page Shuffle button, or already on and set to stick
+                             // across queues (issue #117: off by default, so an album opened while shuffle is on
+                             // plays in order).
             let keep_shuffled = shuffle || (self.sticky_shuffle() && q.shuffle_orig.is_some());
             if keep_shuffled {
                 // Snapshot the real playlist order (for un-shuffle), then play the clicked track

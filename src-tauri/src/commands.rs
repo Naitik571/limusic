@@ -248,11 +248,18 @@ pub fn theater_fullscreen(window: tauri::WebviewWindow, on: bool) -> Result<(), 
 pub async fn toggle_mute(state: St<'_>) -> Result<(), String> {
     let state = state.inner().clone();
     let new_vol = if state.player.get_volume() == 0 {
-        state.db.get_setting("volume").and_then(|s| s.parse::<i64>().ok()).unwrap_or(100)
+        state
+            .db
+            .get_setting("volume")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(100)
     } else {
         0
     };
-    state.player.set_volume(new_vol).map_err(|e| e.to_string())?;
+    state
+        .player
+        .set_volume(new_vol)
+        .map_err(|e| e.to_string())?;
     let _ = state.app.emit("volume", new_vol);
     state.db.set_setting("volume", &new_vol.to_string());
     Ok(())
