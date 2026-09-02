@@ -177,6 +177,11 @@
 		},
 		onFocusOutside: (e: FocusEvent) => {
 			if (inMenu(e)) e.preventDefault();
+		},
+		onContextMenu: (e: MouseEvent) => {
+			if ((e.target as Element | null)?.closest('[data-ctx]')) {
+				e.stopPropagation();
+			}
 		}
 	}}
 >
@@ -227,12 +232,7 @@
 						value={item.id}
 						onSelect={() => choose(item)}
 						data-ctx
-						oncontextmenu={(e) => {
-							// Close the palette before opening the row menu so the dialog
-							// doesn't sit on top of the floating menu and block interaction.
-							ui.paletteOpen = false;
-							e.preventDefault();
-						}}
+						onmouseenter={() => (ctxItem = item)}
 						class="gap-3 px-2 py-1.5"
 					>
 						{#if item.thumbnail}
