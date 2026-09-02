@@ -17,8 +17,7 @@
 	import { LAYOUTS, layout, applyLayout, appearance, setAppearance } from '$lib/theme.svelte';
 	import { checkForUpdatesInteractive } from '$lib/updater.svelte';
 	import { thumb } from '$lib/thumb';
-	import TrackMenu from './TrackMenu.svelte';
-	import PlaylistMenu from './PlaylistMenu.svelte';
+	import ItemMenu from './ItemMenu.svelte';
 
 	const KIND = { song: 'Song', album: 'Album', artist: 'Artist', playlist: 'Playlist' };
 
@@ -26,6 +25,18 @@
 	let items = $state<BrowseItem[]>([]);
 	let loading = $state(false);
 	let loadedFor = ''; // query `items` belongs to, so a stale response can't land
+	// The row a right-click menu belongs to: whatever the pointer last entered. One menu for the
+	// whole dialog, because `data-ctx` sits on the dialog itself (see below) and only one row can be
+	// under the pointer.
+	let ctxItem = $state<BrowseItem | null>(null);
+
+	// The menu's popup lives on <body>, which the dialog counts as an interaction outside itself and
+	// would close on, unmounting the menu mid-click. `data-menu` marks the popup and its backdrop, so
+	// clicking one is treated as still being inside. Everything else outside still dismisses.
+	const inMenu = (e: Event) => {
+		const t = e.target;
+		return t instanceof Element && !!t.closest('[data-menu]');
+	};
 
 	// Opening is itself a keystroke, so nothing is fetched until the typing pauses. `loading` is set
 	// on the keystroke rather than when the timer fires: otherwise the empty list reads as "no
@@ -158,6 +169,15 @@
 	title="Search"
 	description="Search songs, albums, artists and playlists"
 	class="sm:max-w-xl"
+	contentProps={{
+		'data-ctx': '',
+		onInteractOutside: (e: PointerEvent) => {
+			if (inMenu(e)) e.preventDefault();
+		},
+		onFocusOutside: (e: FocusEvent) => {
+			if (inMenu(e)) e.preventDefault();
+		}
+	}}
 >
 	<Command.Input bind:value={query} placeholder="Search songs, albums, artists, playlists…" />
 	<Command.List class="max-h-[22rem]">
@@ -246,13 +266,6 @@
 								</span>
 							</div>
 						</div>
-						<!-- The right-click menu itself: trigger hidden (display:none keeps it out of the
-						     layout and the a11y tree), ctxHost still finds [data-ctx] on the row. -->
-						{#if item.kind === 'song'}
-							<TrackMenu song={asSong(item)} triggerClass="hidden" />
-						{:else}
-							<PlaylistMenu {item} triggerClass="hidden" />
-						{/if}
 					</Command.Item>
 				{/each}
 			</Command.Group>
@@ -267,4 +280,7 @@
 			</Command.Group>
 		{/if}
 	</Command.List>
+	{#if ctxItem}
+		<ItemMenu item={ctxItem} triggerClass="hidden" />
+	{/if}
 </Command.Dialog>
