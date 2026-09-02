@@ -168,6 +168,7 @@
 		{ tab: 'playback', group: 'pb-audio', text: 'Audio quality Preferred stream quality when resolving a track.' },
 		{ tab: 'playback', group: 'pb-audio', text: 'Autoplay Keep the music going with similar songs when your queue ends.' },
 		{ tab: 'playback', group: 'pb-audio', text: "Prevent duplicate tracks in queue Adding a track that's already in the queue moves it from its old position." },
+		{ tab: 'playback', group: 'pb-audio', text: 'Keep shuffle across queue When shuffle is on, opening an album/playlist/radio appends to the queue instead of resetting playback.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Smart Crossfade Gapless via mpv gapless-audio; crossfade is a volume ramp hint.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Crossfade mode Standard Smart.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Best Mix' },
@@ -314,6 +315,7 @@
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
+	const stickyShuffleOn = $derived(settings.sticky_shuffle === 'true');
 	// --- downloads tab ---
 	const DOWNLOAD_FORMATS = [
 		{ id: 'm4a', label: 'M4A (AAC)' },
@@ -453,6 +455,11 @@
 	async function setPreventDuplicates(on: boolean) {
 		settings.prevent_duplicates = on ? 'true' : 'false';
 		await api.setSetting('prevent_duplicates', settings.prevent_duplicates);
+	}
+
+	async function setStickyShuffle(on: boolean) {
+		settings.sticky_shuffle = on ? 'true' : 'false';
+		await api.setSetting('sticky_shuffle', settings.sticky_shuffle);
 	}
 
 	async function setDiscord(on: boolean) {
@@ -882,6 +889,11 @@
 									control: dupSwitch,
 									tall: true
 								})}
+								{@render row({
+									title: 'Keep shuffle across queue',
+									desc: 'When shuffle is on, opening an album/playlist/radio appends to the queue instead of resetting playback.',
+									control: stickyShuffleSwitch
+								})}
 							</div>
 						</section>
 
@@ -1067,9 +1079,13 @@
 {/snippet}
 {#snippet autoplaySwitch()}<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />{/snippet}
 {#snippet dupSwitch()}<Switch
-		checked={preventDuplicatesOn}
-		onCheckedChange={setPreventDuplicates}
-	/>{/snippet}
+	checked={preventDuplicatesOn}
+	onCheckedChange={setPreventDuplicates}
+/>{/snippet}
+{#snippet stickyShuffleSwitch()}<Switch
+	checked={stickyShuffleOn}
+	onCheckedChange={setStickyShuffle}
+/>{/snippet}
 {#snippet hideVideoSwitch()}<Switch checked={hideVideosOn} onCheckedChange={setHideVideos} />{/snippet}
 {#snippet ytdlpSwitch()}<Switch checked={ytdlpOn} onCheckedChange={setYtdlp} />{/snippet}
 {#snippet offlineSwitch()}<Switch checked={useOffline} onCheckedChange={setUseOffline} />{/snippet}

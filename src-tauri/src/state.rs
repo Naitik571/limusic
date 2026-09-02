@@ -836,8 +836,9 @@ impl AppState {
             q.lookahead_loaded = None;
             q.radio_seed = None; // single-song queue → autoplay re-seeds from the last track
             q.radio = false;
-            // Shuffle is sticky across queues: keep it ON (re-snapshotted after radio hydration).
-            q.shuffle_orig = q.shuffle_orig.is_some().then(|| q.items.clone());
+            // Shuffle carries into the new queue only when it's sticky (re-snapshotted after
+            // radio hydration); otherwise a new context starts unshuffled.
+            q.shuffle_orig = self.sticky_shuffle().then(|| q.items.clone());
         }
 
         if !self.start_current(gen).await {
@@ -945,6 +946,10 @@ impl AppState {
             q.radio_seed = radio_seed_for(source_id);
             q.source_name = source_name;
             q.radio = false; // a chosen playlist/album; `start_radio` sets it back on for its own
+            // Explicitly requested by a page Shuffle button, or already on and set to stick
+            // across queues (issue #117: off by default, so an album opened while shuffle is on
+            // plays in order).
+            let keep_shuffled = shuffle || (self.sticky_shuffle() && q.shuffle_orig.is_some());
             if keep_shuffled {
                 // Snapshot the real playlist order (for un-shuffle), then play the clicked track
                 // first with everything else shuffled behind it. Carried adds are spliced in
@@ -953,6 +958,8 @@ impl AppState {
                 q.shuffle_orig = Some(q.items.clone());
                 let start = q.current;
                 q.current = shuffle_new_queue(&mut q.items, start);
+            } else {
+                q.shuffle_orig = None; // non-sticky shuffle ends with the queue it was turned on for
             }
             let at = q.current + 1;
             for (k, item) in carried.into_iter().enumerate() {
@@ -2001,6 +2008,12 @@ impl AppState {
             .get_setting("enable_history")
             .map(|v| v != "false")
             .unwrap_or(true)
+    }
+
+    /// Shuffle sticky across queues? Default off: turning shuffle on applies to the queue that's
+    /// playing, and opening an album/playlist afterwards plays it in order (issue #117).
+    fn sticky_shuffle(&self) -> bool {
+        self.db.get_setting("sticky_shuffle").as_deref() == Some("true")
     }
 
     /// Autoplay enabled? Default on; only an explicit `"false"` disables it (mirrors
