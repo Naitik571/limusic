@@ -142,6 +142,20 @@
 	);
 	const searching = $derived(search.trim().length > 0);
 
+	// Render cap: large playlists (5k rows) OOM/jank when every TrackRow mounts at once
+	// (upstream windowing was removed in the fork). Show 250 first, then grow on demand.
+	// Searching bypasses the cap — filtered results are already small.
+	let visibleLimit = $state(250);
+	$effect(() => {
+		// Reset cap when navigating playlists or typing a new search.
+		id;
+		search;
+		visibleLimit = 250;
+	});
+	const visibleSearched = $derived(
+		searching ? searched : searched.slice(0, visibleLimit)
+	);
+
 	// A sort has to cover the whole playlist, not the pages scrolled so far, so pull the rest in
 	// before play/queue hand a short list to the queue. Stops on a failed page (`moreError`), on
 	// navigation, and on any walk that made no progress. Answers whether it got the lot.
@@ -982,12 +996,13 @@
 					{/if}
 				</div>
 			{/if}
-			{#each searched as { item, idx } (item.video_id + idx)}
+			{#each visibleSearched as { item, idx } (item.video_id + idx)}
 				<!-- The row is interactive by design (select/play/right-click); TrackRow inside
 				     provides the keyboard-accessible controls. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="rounded-lg {selected.has(selKey(item)) ? 'bg-accent/20 ring-1 ring-primary/40' : ''}"
+					style="content-visibility: auto; contain-intrinsic-size: auto 3.5rem;"
 					onclickcapture={(e) => onRowClickCapture(e, idx)}
 					oncontextmenu={(e) => onRowContextMenu(e, idx)}
 				>
@@ -1006,6 +1021,17 @@
 					{searching ? 'No songs match your search.' : 'This playlist is empty.'}
 				</p>
 			{/each}
+			{#if !searching && searched.length > visibleLimit}
+				<div class="p-3 text-center">
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => (visibleLimit += 250)}
+					>
+						Show more ({searched.length - visibleLimit} remaining)
+					</Button>
+				</div>
+			{/if}
 			{#if pl.continuation}
 				{#if moreError}
 					<div class="p-3 text-center">

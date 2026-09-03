@@ -26,6 +26,16 @@ function getInitialLocale(): LocaleId {
 	if (!browser) return 'en'; // prerender pass: no window, and nothing it renders is kept
 	const saved = localStorage.getItem(LOCALE_STORAGE_KEY);
 	if (saved && saved in translations) return saved as LocaleId;
+	// Fork only ships en+tr now. Upstream users may have fr/id/pt-BR saved —
+	// migrate them to en instead of leaving a stale value.
+	if (saved && ['fr', 'id', 'pt-BR', 'pt_BR', 'es', 'it', 'ru'].includes(saved)) {
+		try {
+			localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
+		} catch {
+			/* quota */
+		}
+		return 'en';
+	}
 	const lang = navigator.language?.toLowerCase().split('-')[0];
 	return lang && lang in translations ? (lang as LocaleId) : 'en';
 }

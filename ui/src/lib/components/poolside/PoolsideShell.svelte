@@ -58,7 +58,6 @@
 	import LyricsView from '../LyricsView.svelte';
 	import CoverFlowCarousel from './CoverFlowCarousel.svelte';
 	import EdgeVinyl from './EdgeVinyl.svelte';
-	import CustomCoverPicker from './CustomCoverPicker.svelte';
 	import FeatureCallout from './FeatureCallout.svelte';
 	import MiniPlayer from './MiniPlayer.svelte';
 	import MiniPlayerPill from './MiniPlayerPill.svelte';
@@ -109,7 +108,6 @@
 		// update the seen set ourselves below.
 		const v = view;
 		const map: Record<string, string> = {
-			lyrics: 'Lyrics auto-scroll and highlight the current line.',
 			album: 'Tap any track to play it instantly.'
 		};
 		const text = map[v];

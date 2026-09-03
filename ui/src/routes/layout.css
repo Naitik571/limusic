@@ -1306,10 +1306,25 @@ html.ambient-on aside.glass {
 	contain-intrinsic-size: auto 12.75rem;
 }
 
-/* A small "pop" for the like button when a track is favourited. */
+/* A track title too wide for the player scrolls itself instead of stopping at an ellipsis.
+   Restored from upstream — Marquee.svelte sets --marquee-dx + duration, this was deleted
+   in the fork so long titles went static. Three passes only (not infinite) to let the
+   compositor idle. */
+@keyframes marquee {
+	to { transform: translateX(calc(var(--marquee-dx) * -1)); }
+}
+.marquee { animation: marquee linear 3; }
+.marquee-box:hover .marquee { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+	.marquee { animation: none; }
+}
+
+/* A small "pop" for the like button when a track is favourited.
+   Single definition — .animate-heart-pop (0.3s) and .heart-pop (600ms burst)
+   share these keyframes so they don't override each other. */
 @keyframes heart-pop {
 	0% { transform: scale(1); }
-	40% { transform: scale(1.4); }
+	35% { transform: scale(1.45); }
 	100% { transform: scale(1); }
 }
 .animate-heart-pop { animation: heart-pop 0.3s ease-out; }
@@ -1489,12 +1504,8 @@ input[type='range'].range::-webkit-slider-thumb {
 
 /* --- Like burst (TrackRow's heart) ---
    The icon pops while six sparks (absolutely positioned dots carrying an --a angle from the
-   component) fly outward and dissolve. The classes are toggled for ~600ms by the component. */
-@keyframes heart-pop {
-	0% { transform: scale(1); }
-	35% { transform: scale(1.45); }
-	100% { transform: scale(1); }
-}
+   component) fly outward and dissolve. The classes are toggled for ~600ms by the component.
+   Keyframes defined once above — do not re-define heart-pop here. */
 @keyframes heart-spark-fly {
 	from {
 		transform: rotate(var(--a, 0deg)) translateX(4px) scale(1);

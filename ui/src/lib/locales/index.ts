@@ -1,6 +1,9 @@
 import { en, type Translations } from './en';
 import { tr } from './tr';
 
+/** A catalog that has not been fully translated yet: every key optional, all the way down. */
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
+
 export type LocaleId = 'en' | 'tr';
 
 export interface LocaleInfo {
@@ -15,7 +18,7 @@ export const LOCALES: LocaleInfo[] = [
 	{ id: 'tr', label: 'Turkish', nativeLabel: 'Türkçe' }
 ];
 
-export const translations: Record<LocaleId, Translations> = {
+export const translations: Record<LocaleId, DeepPartial<Translations>> = {
 	en,
 	tr
 };

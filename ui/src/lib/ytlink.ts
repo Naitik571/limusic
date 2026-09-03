@@ -33,7 +33,8 @@ export function parseYtLink(input: string): LinkTarget | null {
 	const v = u.searchParams.get('v');
 	if (v) return { kind: 'song', id: v };
 	const list = u.searchParams.get('list');
-	// Playlist browse ids carry a `VL` prefix that the URL doesn't (the mirror of ShareDialog).
+	// Playlist browse ids carry a `VL` prefix that the URL doesn't (ShareDialog was removed
+	// in the fork — links still open via LinkDialog).
 	// An album shared as its `OLAK5uy_…` audio playlist opens as a playlist of the same tracks;
 	// resolving it back to the `MPRE…` album page would cost a lookup for a near-identical page.
 	if (list) return { kind: 'playlist', id: `VL${list.replace(/^VL/, '')}` };
