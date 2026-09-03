@@ -2932,8 +2932,11 @@ impl AppState {
                 q.lookahead_loaded = Some(i.saturating_sub(drained));
             }
             // Off the snapshot too, or turning shuffle off rebuilds the queue with them.
-            if let Some(orig) = q.shuffle_orig.as_mut() {
-                let kept: HashSet<String> = q.items.iter().map(|i| i.video_id.clone()).collect();
+            // (`qm` reborrow: disjoint field borrows through a MutexGuard need the struct ref
+            // split explicitly — same trick as the enqueue path.)
+            let qm = &mut *q;
+            if let Some(orig) = qm.shuffle_orig.as_mut() {
+                let kept: HashSet<String> = qm.items.iter().map(|i| i.video_id.clone()).collect();
                 orig.retain(|i| kept.contains(&i.video_id));
             }
         }
