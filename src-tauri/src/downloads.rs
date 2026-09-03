@@ -55,6 +55,76 @@ fn requested() -> &'static Mutex<std::collections::HashSet<String>> {
 /// finishing every not-yet-started entry. Cleared at the start of each batch.
 static BATCH_STOP: AtomicBool = AtomicBool::new(false);
 
+// --- failure quarantine --------------------------------------------------------------------------
+// A track that keeps failing (deleted video, region block, unresolvable stream) would otherwise
+// be retried by EVERY automatic trigger — startup backfill, likes, playlist visits — forever.
+// Quarantine remembers recent failures in settings so auto paths skip known-dead tracks; an
+// explicit manual download always tries anyway and clears the entry on success.
+
+/// Settings key holding `{ video_id: [fails, last_fail_unix] }` as JSON. Tolerant parse: garbage
+/// means "nothing quarantined", never an error.
+const QUARANTINE_KEY: &str = "download_quarantine";
+/// Consecutive failures before auto-downloads stop trying.
+const QUARANTINE_FAILS: u32 = 3;
+/// How long a quarantine lasts; a success clears it earlier.
+const QUARANTINE_WINDOW_SECS: i64 = 7 * 24 * 3600;
+/// Entries older than this are pruned on the next write.
+const QUARANTINE_PRUNE_SECS: i64 = 30 * 24 * 3600;
+/// Sentinel error when an auto download is skipped as quarantined (never recorded as a failure).
+const QUARANTINED_SKIP: &str = "quarantined: failed recently, retry manually";
+
+fn read_quarantine(db: &Db) -> HashMap<String, (u32, i64)> {
+    let mut out = HashMap::new();
+    let raw = db.get_setting(QUARANTINE_KEY).unwrap_or_default();
+    if raw.is_empty() {
+        return out;
+    }
+    if let Ok(map) = serde_json::from_str::<HashMap<String, (u32, i64)>>(&raw) {
+        out = map;
+    }
+    out
+}
+
+fn write_quarantine(db: &Db, map: &HashMap<String, (u32, i64)>) {
+    let now = crate::db::now_secs();
+    let pruned: HashMap<String, (u32, i64)> = map
+        .iter()
+        .filter(|(_, (_, last))| now - *last < QUARANTINE_PRUNE_SECS)
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+    db.set_setting(
+        QUARANTINE_KEY,
+        &serde_json::to_string(&pruned).unwrap_or_default(),
+    );
+}
+
+/// True when auto-downloads should skip `video_id` right now.
+pub fn download_quarantined(db: &Db, video_id: &str) -> bool {
+    match read_quarantine(db).get(video_id) {
+        Some((fails, last)) => {
+            *fails >= QUARANTINE_FAILS && crate::db::now_secs() - *last < QUARANTINE_WINDOW_SECS
+        }
+        None => false,
+    }
+}
+
+/// Record one more failure for `video_id`.
+pub fn note_download_failed(db: &Db, video_id: &str) {
+    let mut map = read_quarantine(db);
+    let entry = map.entry(video_id.to_owned()).or_insert((0, 0));
+    entry.0 = entry.0.saturating_add(1);
+    entry.1 = crate::db::now_secs();
+    write_quarantine(db, &map);
+}
+
+/// Forget failures for `video_id` (a success, or an explicit manual attempt starting fresh).
+pub fn clear_download_quarantine(db: &Db, video_id: &str) {
+    let mut map = read_quarantine(db);
+    if map.remove(video_id).is_some() {
+        write_quarantine(db, &map);
+    }
+}
+
 /// Request cancellation of one download — in-flight or still queued. Always succeeds; the
 /// relevant side observes the request at its next checkpoint.
 pub fn cancel_download(video_id: &str) -> bool {
@@ -198,7 +268,49 @@ fn with_ratebypass(url: &str) -> String {
 ///
 /// Emits `download-progress` (real byte percentage), `download-complete`, or `download-error`.
 /// Idempotent: a second call for an already-downloaded `video_id` is a no-op.
+///
+/// `respect_quarantine` is for automatic callers (auto-offline, playlist top-ups): recently and
+/// repeatedly failed tracks are skipped with a sentinel error instead of retried. Explicit
+/// manual downloads pass `false` and always try. Every real failure is recorded, every success
+/// clears the record; cancels are neither.
 pub async fn download_track(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    orchestrator: &Arc<Orchestrator>,
+    video_id: &str,
+    title: &str,
+    artists: &str,
+    album: Option<&str>,
+    duration: i64,
+    thumb: Option<&str>,
+    respect_quarantine: bool,
+) -> Result<(), String> {
+    if respect_quarantine && download_quarantined(&state.db, video_id) {
+        return Err(QUARANTINED_SKIP.to_owned());
+    }
+    let r = download_track_inner(
+        app,
+        state,
+        orchestrator,
+        video_id,
+        title,
+        artists,
+        album,
+        duration,
+        thumb,
+    )
+    .await;
+    match &r {
+        Ok(()) => clear_download_quarantine(&state.db, video_id),
+        Err(m) if m == "cancelled" || m == QUARANTINED_SKIP => {}
+        Err(_) => note_download_failed(&state.db, video_id),
+    }
+    r
+}
+
+/// The actual writer; see [`download_track`]. Idempotent: a second call for an
+/// already-downloaded `video_id` is a no-op.
+async fn download_track_inner(
     app: &AppHandle,
     state: &Arc<AppState>,
     orchestrator: &Arc<Orchestrator>,
@@ -502,6 +614,7 @@ pub async fn download_many(
                 c.album.as_deref(),
                 c.duration,
                 c.thumb.as_deref(),
+                false, // the walk already filtered quarantined candidates
             )
             .await
         }));

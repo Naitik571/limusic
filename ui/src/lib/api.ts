@@ -344,6 +344,8 @@ export const downloadTrack = (item: {
 	album?: string | null;
 	duration: number;
 	thumb?: string | null;
+	/** Automatic callers set this: skip tracks that failed repeatedly recently. */
+	respectQuarantine?: boolean;
 }) =>
 	invoke<void>('download_track', item);
 export const listDownloads = () => invoke<DownloadList>('list_downloads');

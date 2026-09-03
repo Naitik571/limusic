@@ -781,7 +781,10 @@ export function cycleRepeat(): Promise<void> {
 				artists: song.artists ?? '',
 				album: song.album ?? null,
 				duration: durationToSecs(song.duration),
-				thumb: song.thumbnail ?? null
+				thumb: song.thumbnail ?? null,
+				// Automatic path: a track that keeps failing stays skipped instead of retried
+				// on every like. Explicit ⋯ → Download omits this and always tries.
+				respectQuarantine: true
 			})
 			// Roll back the optimistic badge: otherwise a silent failure leaves a "Downloaded"
 			// row with no file, and every later bulk walk re-downloads it.

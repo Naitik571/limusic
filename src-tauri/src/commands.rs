@@ -1584,6 +1584,8 @@ pub async fn lastfm_status(state: St<'_>) -> Result<serde_json::Value, String> {
 /// Save a track for offline playback. Resolves its stream and writes the audio to the download
 /// directory; the resolver then plays the local file on every later play. Emits progress/complete
 /// events. Re-running on an already-downloaded track is a no-op.
+/// `respect_quarantine` (automatic callers only): skip tracks that failed repeatedly recently
+/// instead of retrying them. Manual downloads omit it and always try.
 #[tauri::command]
 pub async fn download_track(
     app: tauri::AppHandle,
@@ -1596,6 +1598,7 @@ pub async fn download_track(
     // or `null` outright, and the field is only catalogue metadata, so a missing value is fine.
     duration: Option<i64>,
     thumb: Option<String>,
+    respect_quarantine: Option<bool>,
 ) -> Result<(), String> {
     crate::downloads::download_track(
         &app,
@@ -1607,6 +1610,7 @@ pub async fn download_track(
         album.as_deref(),
         duration.unwrap_or(0),
         thumb.as_deref(),
+        respect_quarantine.unwrap_or(false),
     )
     .await
 }
@@ -1659,6 +1663,20 @@ pub async fn download_playlist(
     download_playlist_walk(&app, state.inner(), &id).await
 }
 
+/// One walk per playlist at a time. A startup backfill, a playlist-page top-up and a manual
+/// "Download" click can otherwise overlap on the same list: both compute candidates from the
+/// same catalogue state, both download the same missing tracks into the same `.part` file, and
+/// the loser renames garbage over the winner. The second caller simply waits, then re-walks —
+/// by then everything is skipped and it returns almost instantly.
+static WALK_LOCKS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+> = std::sync::OnceLock::new();
+
+fn walk_locks(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>> {
+    WALK_LOCKS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
 /// The playlist-download walk, shared by the command and the auto-offline backfill (which calls
 /// it with the Liked Music browse id at startup / on enable). Walks every page, dedupes, skips
 /// what's already on disk or a local file, then fetches the remainder `DOWNLOAD_CONCURRENCY` at
@@ -1668,6 +1686,16 @@ async fn download_playlist_walk(
     state: &Arc<AppState>,
     id: &str,
 ) -> Result<serde_json::Value, String> {
+    // Serialize overlapping walks of the same list (see WALK_LOCKS).
+    let slot = {
+        walk_locks()
+            .lock()
+            .unwrap()
+            .entry(id.to_owned())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    };
+    let _slot = slot.lock().await;
     let client = metadata_client(state)?;
     let page = state
         .it
@@ -1694,8 +1722,10 @@ async fn download_playlist_walk(
         token = more.continuation;
     }
 
-    // Dedupe by video id (a playlist can carry the same song twice), drop local files and tracks
-    // that are already downloaded, then fetch only the remainder.
+    // Dedupe by video id (a playlist can carry the same song twice), drop local files,
+    // quarantined failures and tracks that are already downloaded, then fetch only the
+    // remainder. Quarantined tracks are skipped silently (not counted): they are neither
+    // downloaded nor "already saved", and the next manual attempt clears them.
     let mut seen = std::collections::HashSet::new();
     let mut candidates: Vec<crate::downloads::DownloadCandidate> = Vec::new();
     let mut skipped = 0u32;
@@ -1706,6 +1736,9 @@ async fn download_playlist_walk(
         }
         if !seen.insert(item.video_id.clone()) {
             continue; // duplicate row — don't count it against anything, it's one song
+        }
+        if crate::downloads::download_quarantined(&state.db, &item.video_id) {
+            continue;
         }
         if crate::downloads::is_downloaded(state, &item.video_id) {
             skipped += 1;
