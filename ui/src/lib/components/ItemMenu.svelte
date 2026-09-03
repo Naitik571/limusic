@@ -9,12 +9,21 @@
 
 	let {
 		item,
-		triggerClass
-	}: { item: BrowseItem; triggerClass: string } = $props();
+		triggerClass,
+		openAt = null,
+		onclose = undefined
+	}: {
+		item: BrowseItem;
+		triggerClass: string;
+		/** External open request at viewport coords, forwarded to the song/playlist menu. */
+		openAt?: { x: number; y: number } | null;
+		/** Fired when an externally-opened menu closes. */
+		onclose?: () => void;
+	} = $props();
 </script>
 
 {#if item.kind === 'song'}
-	<TrackMenu song={asSong(item)} onAdd={() => openAddToPlaylist(asSong(item))} {triggerClass} />
+	<TrackMenu song={asSong(item)} onAdd={() => openAddToPlaylist(asSong(item))} {triggerClass} {openAt} {onclose} />
 {:else}
-	<PlaylistMenu {item} showPin={item.kind === 'playlist'} {triggerClass} />
+	<PlaylistMenu {item} showPin={item.kind === 'playlist'} {triggerClass} {openAt} {onclose} />
 {/if}

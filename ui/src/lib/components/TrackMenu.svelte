@@ -35,23 +35,58 @@
 		onAdd,
 		onRemove,
 		removeLabel = 'Remove from playlist',
-		linksOnly = false
+		linksOnly = false,
+		openAt = null,
+		onclose = undefined
 	}: {
 		song: SongItem;
-		/** Classes for the â‹¯ trigger button (positioning differs per host: inline vs overlay). */
+		/** Classes for the ⋯ trigger button (positioning differs per host: inline vs overlay). */
 		triggerClass?: string;
 		/** Adds an "Add to playlist" menu item. */
 		onAdd?: () => void;
 		/** Adds a remove menu item (label via `removeLabel`). */
 		onRemove?: () => void;
 		removeLabel?: string;
-		/** Player-bar variant: â‹® trigger, and only artist/album/shortcuts (queue and like already
+		/** Player-bar variant: ⋮ trigger, and only artist/album/shortcuts (queue and like already
 		    have their own buttons there). */
 		linksOnly?: boolean;
+		/** External open request at viewport coords (palette right-click): opens without a trigger.
+		    The palette dialog traps pointer events, so its menu must live outside the dialog. */
+		openAt?: { x: number; y: number } | null;
+		/** Fired when an externally-opened menu closes (backdrop, action, or another menu claim). */
+		onclose?: () => void;
 	} = $props();
 
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
+
+	// External open (see `openAt`): anchor at the saved pointer, then open like a right-click.
+	// Runs on mount when the parent keys a fresh instance per open.
+	$effect(() => {
+		if (openAt) {
+			anchor = {
+				style: NO_ANCHOR.style,
+				box: { left: openAt.x, right: openAt.x, top: openAt.y, bottom: openAt.y },
+				gap: 0,
+				align: 'left'
+			};
+			if (!menuOpen) {
+				menuOpen = true;
+				claimMenu(menuId);
+			}
+		}
+	});
+
+	// Report external closes back to the parent so it can drop its pending state. Internal
+	// (trigger-driven) menus pass no `onclose` and are unaffected.
+	let wasOpen = $state(false);
+	$effect(() => {
+		if (menuOpen) wasOpen = true;
+		else if (wasOpen) {
+			wasOpen = false;
+			onclose?.();
+		}
+	});
 
 	// One menu at a time: opening here closes every other open menu (and another menu opening
 	// closes this one). The palette renders many of these — one per row — so this is what keeps
@@ -93,20 +128,25 @@
 	const downloaded = $derived(downloadedIds.has(song.video_id));
 </script>
 
-<button
-	class="{triggerClass} {menuOpen ? 'opacity-100' : ''}"
-	onclick={openMenu}
-	aria-label="Track options"
-	{@attach ctxHost(openMenu)}
->
-	<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount -->
-	<HugeiconsIcon
-		icon={MoreHorizontalIcon}
-		altIcon={MoreVerticalIcon}
-		showAlt={linksOnly}
-		class="h-4 w-4"
-	/>
-</button>
+<!-- Externally-opened menus (palette) need no trigger: rendering the hidden button would let
+     its ctxHost claim the nearest ancestor [data-ctx] — e.g. the page behind the palette — and
+     open this menu on top of that surface's own menu. -->
+{#if !openAt}
+	<button
+		class="{triggerClass} {menuOpen ? 'opacity-100' : ''}"
+		onclick={openMenu}
+		aria-label="Track options"
+		{@attach ctxHost(openMenu)}
+	>
+		<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount -->
+		<HugeiconsIcon
+			icon={MoreHorizontalIcon}
+			altIcon={MoreVerticalIcon}
+			showAlt={linksOnly}
+			class="h-4 w-4"
+		/>
+	</button>
+{/if}
 
 {#if menuOpen}
 	<button

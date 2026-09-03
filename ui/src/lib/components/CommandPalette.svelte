@@ -26,10 +26,18 @@
 	let items = $state<BrowseItem[]>([]);
 	let loading = $state(false);
 	let loadedFor = ''; // query `items` belongs to, so a stale response can't land
-	// The row a right-click menu belongs to: whatever the pointer last entered. One menu for the
-	// whole dialog, because `data-ctx` sits on the dialog itself (see below) and only one row can be
-	// under the pointer.
-	let ctxItem = $state<BrowseItem | null>(null);
+	// Right-click menu for a result row. The dialog traps pointer events (focus trap +
+	// interact-outside), so a menu rendered inside it opens but never receives clicks.
+	// Instead the row stashes the item + pointer, closes the palette, and the menu below
+	// (a sibling of the dialog, in <body> via toBody) opens at the saved point.
+	let pendingMenu = $state<{ item: BrowseItem; x: number; y: number } | null>(null);
+
+	function openRowMenu(e: MouseEvent, item: BrowseItem) {
+		e.preventDefault(); // no native menu, no cmdk selection
+		e.stopPropagation();
+		pendingMenu = { item, x: e.clientX, y: e.clientY };
+		ui.paletteOpen = false;
+	}
 
 	// The menu's popup lives on <body>, which the dialog counts as an interaction outside itself and
 	// would close on, unmounting the menu mid-click. `data-menu` marks the popup and its backdrop, so
@@ -58,9 +66,10 @@
 	});
 
 	// Closing clears the field, which the effect above turns into an empty list: reopening starts
-	// fresh instead of on the last search's rows.
+	// fresh instead of on the last search's rows. Opening drops any stale pending menu.
 	$effect(() => {
 		if (!ui.paletteOpen) query = '';
+		else pendingMenu = null;
 	});
 
 	async function load(q: string) {
@@ -221,13 +230,10 @@
 		{:else}
 			<Command.Group heading="Results">
 				{#each items as item (item.id)}
-					<!-- data-ctx: right-clicking the row opens the same ⋯ menu every other surface offers
-					     (ctxHost on the hidden menu trigger below finds this host). -->
 					<Command.Item
 						value={item.id}
 						onSelect={() => choose(item)}
-						data-ctx
-						onmouseenter={() => (ctxItem = item)}
+						oncontextmenu={(e) => openRowMenu(e, item)}
 						class="gap-3 px-2 py-1.5"
 					>
 						{#if item.thumbnail}
@@ -279,7 +285,17 @@
 			</Command.Group>
 		{/if}
 	</Command.List>
-	{#if ctxItem}
-		<ItemMenu item={ctxItem} triggerClass="hidden" />
-	{/if}
+	<!-- No visible trigger: a palette row is too small for a hover-only ⋯, and the menu only ever
+	     opens from a right-click (see `openRowMenu`). Rendered here, outside the dialog, so the
+	     dialog's focus trap can't swallow the menu's clicks. Keyed per open for a fresh instance. -->
 </Command.Dialog>
+{#if pendingMenu}
+	{#key `${pendingMenu.item.id}-${pendingMenu.x}-${pendingMenu.y}`}
+		<ItemMenu
+			item={pendingMenu.item}
+			triggerClass="hidden"
+			openAt={{ x: pendingMenu.x, y: pendingMenu.y }}
+			onclose={() => (pendingMenu = null)}
+		/>
+	{/key}
+{/if}

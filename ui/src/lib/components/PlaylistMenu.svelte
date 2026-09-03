@@ -27,14 +27,21 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 		vertical = false,
 		iconClass = 'h-4 w-4',
 		// Visibility lives here too: most triggers only appear on hover, but a row that has nothing
-		// else to reveal on hover shows its â‹¯ all the time.
-		triggerClass = 'absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100'
+		// else to reveal on hover shows its ⋯ all the time.
+		triggerClass = 'absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100',
+		openAt = null,
+		onclose = undefined
 	}: {
 		item: BrowseItem;
 		showPin?: boolean;
 		vertical?: boolean;
 		iconClass?: string;
 		triggerClass?: string;
+		/** External open request at viewport coords (palette right-click): opens without a trigger.
+		    The palette dialog traps pointer events, so its menu must live outside the dialog. */
+		openAt?: { x: number; y: number } | null;
+		/** Fired when an externally-opened menu closes (backdrop, action, or another menu claim). */
+		onclose?: () => void;
 	} = $props();
 
 	const pinned = $derived(personal.pins.includes(item.id));
@@ -90,6 +97,34 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
 
+	// External open (see `openAt`): anchor at the saved pointer, then open like a right-click.
+	// Runs on mount when the parent keys a fresh instance per open.
+	$effect(() => {
+		if (openAt) {
+			anchor = {
+				style: NO_ANCHOR.style,
+				box: { left: openAt.x, right: openAt.x, top: openAt.y, bottom: openAt.y },
+				gap: 0,
+				align: 'left'
+			};
+			if (!menuOpen) {
+				menuOpen = true;
+				claimMenu(menuId);
+			}
+		}
+	});
+
+	// Report external closes back to the parent so it can drop its pending state. Internal
+	// (trigger-driven) menus pass no `onclose` and are unaffected.
+	let wasOpen = $state(false);
+	$effect(() => {
+		if (menuOpen) wasOpen = true;
+		else if (wasOpen) {
+			wasOpen = false;
+			onclose?.();
+		}
+	});
+
 	// One menu at a time (see TrackMenu).
 	const menuId = nextMenuId();
 	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
@@ -118,20 +153,25 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 	}
 </script>
 
-<button
-	class="{triggerClass} {menuOpen ? 'opacity-100' : ''}"
-	onclick={openMenu}
-	aria-label="Playlist options"
-	{@attach ctxHost(openMenu)}
->
-	<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount -->
-	<HugeiconsIcon
-		icon={MoreHorizontalIcon}
-		altIcon={MoreVerticalIcon}
-		showAlt={vertical}
-		class={iconClass}
-	/>
-</button>
+<!-- Externally-opened menus (palette) need no trigger: rendering the hidden button would let
+     its ctxHost claim the nearest ancestor [data-ctx] — e.g. the page behind the palette — and
+     open this menu on top of that surface's own menu. -->
+{#if !openAt}
+	<button
+		class="{triggerClass} {menuOpen ? 'opacity-100' : ''}"
+		onclick={openMenu}
+		aria-label="Playlist options"
+		{@attach ctxHost(openMenu)}
+	>
+		<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount -->
+		<HugeiconsIcon
+			icon={MoreHorizontalIcon}
+			altIcon={MoreVerticalIcon}
+			showAlt={vertical}
+			class={iconClass}
+		/>
+	</button>
+{/if}
 
 {#if menuOpen}
 	<button
