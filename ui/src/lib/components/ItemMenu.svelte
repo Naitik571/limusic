@@ -17,8 +17,8 @@
 		triggerClass: string;
 		/** External open request at viewport coords, forwarded to the song/playlist menu. */
 		openAt?: { x: number; y: number } | null;
-		/** Fired when an externally-opened menu closes. */
-		onclose?: () => void;
+		/** Fired when an externally-opened menu closes, with how (action/dismiss/claimed). */
+		onclose?: (reason: import('$lib/menu').MenuCloseReason) => void;
 	} = $props();
 </script>
 

@@ -26,7 +26,7 @@
 	import * as api from '$lib/api';
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
-	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
+	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody, type MenuCloseReason } from '$lib/menu';
 	import { addPick, enqueue, isLiked, startRadio, toggleLike, rate, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
 
 	let {
@@ -53,8 +53,9 @@
 		/** External open request at viewport coords (palette right-click): opens without a trigger.
 		    The palette dialog traps pointer events, so its menu must live outside the dialog. */
 		openAt?: { x: number; y: number } | null;
-		/** Fired when an externally-opened menu closes (backdrop, action, or another menu claim). */
-		onclose?: () => void;
+		/** Fired when an externally-opened menu closes, with how: an item ran (`action`), the
+		    backdrop dismissed it (`dismiss`), or another menu claimed the stage (`claimed`). */
+		onclose?: (reason: MenuCloseReason) => void;
 	} = $props();
 
 	let menuOpen = $state(false);
@@ -82,11 +83,13 @@
 	// Report external closes back to the parent so it can drop its pending state. Internal
 	// (trigger-driven) menus pass no `onclose` and are unaffected.
 	let wasOpen = $state(false);
+	let closeReason: MenuCloseReason = 'dismiss';
 	$effect(() => {
 		if (menuOpen) wasOpen = true;
 		else if (wasOpen) {
 			wasOpen = false;
-			onclose?.();
+			onclose?.(closeReason);
+			closeReason = 'dismiss';
 		}
 	});
 
@@ -94,7 +97,12 @@
 	// closes this one). The palette renders many of these — one per row — so this is what keeps
 	// right-clicking down a list from stacking a menu per row.
 	const menuId = nextMenuId();
-	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+	$effect(() =>
+		onOtherMenuClaimed(menuId, () => {
+			closeReason = 'claimed';
+			menuOpen = false;
+		})
+	);
 
 	// Click on the ⋯ opens under the button; right-click on the host row opens at the pointer.
 	function openMenu(e: MouseEvent) {
@@ -110,6 +118,7 @@
 	// stay: they cost nothing and the trigger still needs them.
 	function run(e: MouseEvent, action?: () => void) {
 		e.stopPropagation();
+		closeReason = 'action';
 		menuOpen = false;
 		action?.();
 	}
@@ -118,6 +127,7 @@
 	function close(e: MouseEvent) {
 		e.preventDefault();
 		e.stopPropagation();
+		closeReason = 'dismiss';
 		menuOpen = false;
 	}
 

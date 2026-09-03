@@ -18,7 +18,7 @@
 import * as api from '$lib/api';
 import type { BrowseItem } from '$lib/api';
 import { enqueueItem, playItem } from '$lib/browse';
-import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
+import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody, type MenuCloseReason } from '$lib/menu';
 import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.svelte';
 
 	let {
@@ -40,8 +40,9 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 		/** External open request at viewport coords (palette right-click): opens without a trigger.
 		    The palette dialog traps pointer events, so its menu must live outside the dialog. */
 		openAt?: { x: number; y: number } | null;
-		/** Fired when an externally-opened menu closes (backdrop, action, or another menu claim). */
-		onclose?: () => void;
+		/** Fired when an externally-opened menu closes, with how: an item ran (`action`), the
+		    backdrop dismissed it (`dismiss`), or another menu claimed the stage (`claimed`). */
+		onclose?: (reason: MenuCloseReason) => void;
 	} = $props();
 
 	const pinned = $derived(personal.pins.includes(item.id));
@@ -59,6 +60,7 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 		queueing = true;
 		try {
 			await enqueueItem(item, next);
+			closeReason = 'action';
 			menuOpen = false;
 		} finally {
 			queueing = false;
@@ -86,6 +88,7 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 					// no-op for single song
 				}
 			}
+			closeReason = 'action';
 			menuOpen = false;
 		} catch {
 			// playFrom/playItem toasts on failure
@@ -119,17 +122,24 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 	// Report external closes back to the parent so it can drop its pending state. Internal
 	// (trigger-driven) menus pass no `onclose` and are unaffected.
 	let wasOpen = $state(false);
+	let closeReason: MenuCloseReason = 'dismiss';
 	$effect(() => {
 		if (menuOpen) wasOpen = true;
 		else if (wasOpen) {
 			wasOpen = false;
-			onclose?.();
+			onclose?.(closeReason);
+			closeReason = 'dismiss';
 		}
 	});
 
 	// One menu at a time (see TrackMenu).
 	const menuId = nextMenuId();
-	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
+	$effect(() =>
+		onOtherMenuClaimed(menuId, () => {
+			closeReason = 'claimed';
+			menuOpen = false;
+		})
+	);
 
 	// Click on the ⋯ opens under the button; right-click on the host card or row opens at the pointer.
 	function openMenu(e: MouseEvent) {
@@ -144,6 +154,7 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 	// lives at <body> and no longer bubbles into the host, but these stay: the trigger needs them.
 	function run(e: MouseEvent, action?: () => void) {
 		e.stopPropagation();
+		closeReason = 'action';
 		menuOpen = false;
 		action?.();
 	}
@@ -151,6 +162,7 @@ import { addPick, personal, playFrom, startRadio, togglePin } from '$lib/player.
 	function close(e: MouseEvent) {
 		e.preventDefault();
 		e.stopPropagation();
+		closeReason = 'dismiss';
 		menuOpen = false;
 	}
 </script>

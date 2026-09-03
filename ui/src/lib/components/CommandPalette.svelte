@@ -28,15 +28,34 @@
 	let loadedFor = ''; // query `items` belongs to, so a stale response can't land
 	// Right-click menu for a result row. The dialog traps pointer events (focus trap +
 	// interact-outside), so a menu rendered inside it opens but never receives clicks.
-	// Instead the row stashes the item + pointer, closes the palette, and the menu below
-	// (a sibling of the dialog, in <body> via toBody) opens at the saved point.
+	// Instead the row stashes the search + item + pointer, closes the palette, and the menu
+	// below (a sibling of the dialog, in <body> via toBody) opens at the saved point.
+	// Dismissing the menu (backdrop click) restores the palette with the search intact;
+	// picking an action or moving on to another menu leaves it closed.
 	let pendingMenu = $state<{ item: BrowseItem; x: number; y: number } | null>(null);
+	let stashed: { query: string; items: BrowseItem[]; loadedFor: string } | null = null;
 
 	function openRowMenu(e: MouseEvent, item: BrowseItem) {
 		e.preventDefault(); // no native menu, no cmdk selection
 		e.stopPropagation();
+		stashed = { query, items, loadedFor };
 		pendingMenu = { item, x: e.clientX, y: e.clientY };
 		ui.paletteOpen = false;
+	}
+
+	function closeRowMenu(reason: import('$lib/menu').MenuCloseReason) {
+		pendingMenu = null;
+		const s = stashed;
+		stashed = null;
+		// Backdrop-dismissed: bring the palette back exactly as it was (query, rows and the
+		// loaded marker, so no refetch). An action means the user is done; a claim means they
+		// moved on to another menu — both stay closed.
+		if (reason === 'dismiss' && s) {
+			query = s.query;
+			items = s.items;
+			loadedFor = s.loadedFor;
+			ui.paletteOpen = true;
+		}
 	}
 
 	// The menu's popup lives on <body>, which the dialog counts as an interaction outside itself and
@@ -295,7 +314,7 @@
 			item={pendingMenu.item}
 			triggerClass="hidden"
 			openAt={{ x: pendingMenu.x, y: pendingMenu.y }}
-			onclose={() => (pendingMenu = null)}
+			onclose={closeRowMenu}
 		/>
 	{/key}
 {/if}

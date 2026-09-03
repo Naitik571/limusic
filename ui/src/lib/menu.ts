@@ -18,6 +18,11 @@ export function toBody(el: HTMLElement) {
 // any menu opens it broadcasts its claim, and every other open menu closes itself. A plain window
 // event keeps menu.ts free of runes and works from every caller, including .svelte components.
 
+/** How an externally-opened menu closed: an item ran, the backdrop dismissed it, or another menu
+    claimed the stage. Hosts that hid UI to show the menu (the Ctrl+K palette) reopen only on
+    `dismiss` — an `action` means the user is done, `claimed` means they moved on. */
+export type MenuCloseReason = 'action' | 'dismiss' | 'claimed';
+
 let menuSeq = 0;
 
 /** Stable per-instance id for a menu, taken once when the component initialises. */
