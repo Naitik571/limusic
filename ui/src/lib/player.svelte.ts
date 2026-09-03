@@ -51,12 +51,13 @@ export type DownloadItem = {
 export const downloads = $state<{ items: DownloadItem[]; active: number; done: number; errored: number }>(
 	{ items: [], active: 0, done: 0, errored: 0 }
 );
-// Hide the green "all done" state once the user has seen it.
+// Hide the green "all done" state once the user has seen it: drop every row that is no
+// longer in flight and reset the counters to the surviving rows.
 export const dismissDownloads = () => {
+	downloads.items = downloads.items.filter((i) => i.state === 'downloading');
 	downloads.done = 0;
 	downloads.errored = 0;
-	for (const it of downloads.items) if (it.state !== 'downloading') it.state = 'downloading', (it.percent = 0);
-	downloads.items = downloads.items.filter((i) => i.state === 'downloading');
+	downloads.active = downloads.items.length;
 };
 
 // videoIds currently saved for offline playback — the "already downloaded" indicator on track
@@ -108,6 +109,9 @@ export function startDownloadMonitor() {
 		const it = downloads.items.find((x) => x.id === id);
 		if (it) { it.state = 'error'; it.message = p.error; }
 		else downloads.items.push({ id, title: (p.title as string) ?? id, percent: 0, state: 'error', message: p.error });
+		// A failed id is by definition not on disk — drop any optimistic badge (a later success
+		// re-adds via onDownloadComplete).
+		markNotDownloaded(id);
 		downloads.active = Math.max(0, downloads.active - 1);
 		downloads.errored += 1;
 	});
@@ -115,6 +119,8 @@ export function startDownloadMonitor() {
 		const id = p.video_id as string;
 		const it = downloads.items.find((x) => x.id === id);
 		if (it) { it.state = 'cancelled'; it.message = undefined; }
+		// Cancelled mid-write drops its partial file — not downloaded.
+		markNotDownloaded(id);
 		downloads.active = Math.max(0, downloads.active - 1);
 	});
 }
@@ -777,7 +783,9 @@ export function cycleRepeat(): Promise<void> {
 				duration: durationToSecs(song.duration),
 				thumb: song.thumbnail ?? null
 			})
-			.catch(() => {});
+			// Roll back the optimistic badge: otherwise a silent failure leaves a "Downloaded"
+			// row with no file, and every later bulk walk re-downloads it.
+			.catch(() => markNotDownloaded(song.video_id));
 	}
 
 	/** Optimistic like toggle, reverted if YouTube rejects it. */

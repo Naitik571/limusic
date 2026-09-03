@@ -346,7 +346,7 @@ let downloadsOpen = $state(false);
 								</li>
 						{/each}
 						</ul>
-						{#if downloads.errored > 0 || downloads.done > 0}
+						{#if downloads.errored > 0 || downloads.done > 0 || downloads.items.some((i) => i.state !== 'downloading')}
 							<button
 								class="w-full border-t border-border px-4 py-2 text-xs text-muted-foreground hover:text-foreground"
 								onclick={dismissDownloads}

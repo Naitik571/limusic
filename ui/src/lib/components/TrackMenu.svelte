@@ -61,19 +61,21 @@
 	let anchor = $state(NO_ANCHOR);
 
 	// External open (see `openAt`): anchor at the saved pointer, then open like a right-click.
-	// Runs on mount when the parent keys a fresh instance per open.
+	// Runs on mount when the parent keys a fresh instance per open. One-shot: without the guard,
+	// closing the menu (menuOpen → false) would re-trigger this effect and instantly reopen it,
+	// making the menu unclosable.
+	let externalOpened = false;
 	$effect(() => {
-		if (openAt) {
+		if (openAt && !externalOpened) {
+			externalOpened = true;
 			anchor = {
 				style: NO_ANCHOR.style,
 				box: { left: openAt.x, right: openAt.x, top: openAt.y, bottom: openAt.y },
 				gap: 0,
 				align: 'left'
 			};
-			if (!menuOpen) {
-				menuOpen = true;
-				claimMenu(menuId);
-			}
+			menuOpen = true;
+			claimMenu(menuId);
 		}
 	});
 

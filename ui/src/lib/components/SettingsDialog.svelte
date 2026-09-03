@@ -629,15 +629,18 @@
 			</nav>
 
 			<!-- Content pane. min-w-0: a flex child's min-width is auto, so without it one wide row
-			     (a long font name, a long path) widens the pane and pushes every tab off the modal. -->
-			<div class="flex min-w-0 flex-1 flex-col">
+			     (a long font name, a long path) widens the pane and pushes every tab off the modal.
+			     min-h-0: same on the vertical axis — without it the pane grows with long tabs
+			     (Downloads) instead of letting the scroller below scroll, and the overflow is
+			     clipped by the dialog edge. -->
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
 				<!-- h-14 also keeps the dialog's close button clear of the first row. -->
 				<header class="flex h-14 shrink-0 flex-col justify-center border-b px-6 pr-14">
 					<h2 class="text-sm font-semibold">{currentTab.label}</h2>
 					<p class="truncate text-xs text-muted-foreground">{currentTab.hint}</p>
 				</header>
 
-				<div class="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+				<div class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-6 py-5">
 					<!-- Settings search: sits in flow above the content (sticky was overlapping the tab
 					     header on short tabs), still the first thing in the pane. -->
 					<div class="mb-4 flex items-center gap-2">
@@ -645,7 +648,7 @@
 							bind:value={search}
 							placeholder="Search settings…"
 							aria-label="Search settings"
-							class="h-8 flex-1"
+							class="h-8 min-w-0 flex-1"
 						/>
 						{#if search}
 							<Button
@@ -1678,7 +1681,7 @@
 
 {#snippet downloadDirForm()}
 	<div class="flex items-center gap-2">
-		<Input class="flex-1" readonly value={downloadDir} placeholder="App data / downloads" />
+		<Input class="min-w-0 flex-1" readonly value={downloadDir} placeholder="App data / downloads" />
 		<Button size="sm" variant="outline" onclick={pickDownloadDir}>Browse…</Button>
 	</div>
 {/snippet}
@@ -1728,7 +1731,7 @@
 			saveProxy();
 		}}
 	>
-		<Input bind:value={proxyInput} placeholder="http://host:port (blank = none)" />
+		<Input bind:value={proxyInput} placeholder="http://host:port (blank = none)" class="min-w-0 flex-1" />
 		<Button type="submit" variant="outline">Save</Button>
 	</form>
 {/snippet}
