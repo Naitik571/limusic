@@ -52,7 +52,9 @@
 		noteLike,
 		openAddManyToPlaylist,
 		openMoveToPlaylist,
-		playSong
+		playSong,
+		downloadedIds,
+		loadDownloadedIds
 	} from '$lib/player.svelte';
 
 	let pl = $state<PlaylistPage | null>(null);
@@ -202,25 +204,172 @@
 	}
 
 	async function downloadPlaylistHere() {
-		if (!pl) return;
-		toast('Downloading playlistâ€¦');
+		if (!pl || offlineBusy) return;
+		offlineBusy = true;
+		toast('Downloading playlist…');
+		try {
+			const r = await api.downloadPlaylist(id);
+			await loadDownloadedIds();
+			if (r.downloaded === 0 && r.failed === 0)
+				toast.success(`All ${r.skipped} track${r.skipped === 1 ? '' : 's'} already downloaded`);
+			else if (r.failed > 0)
+				toast.error(
+					`Downloaded ${r.downloaded}, ${r.failed} failed${r.skipped ? `, ${r.skipped} already saved` : ''}`
+				);
+			else
+				toast.success(
+					`Downloaded ${r.downloaded} track${r.downloaded === 1 ? '' : 's'}${
+						r.skipped ? ` (${r.skipped} already saved)` : ''
+					}`
+				);
+		} catch (e) {
+			toast.error(`Download failed: ${e}`);
+		} finally {
+			offlineBusy = false;
+		}
+	}
+
+	// --- Offline pin + dedupe + drop-to-add -------------------------------------------
+	// Pinned playlists stay downloaded: the pin list lives in settings, toggling on downloads
+	// everything missing now, and every visit quietly tops up tracks added since.
+	let offlineIds = $state<string[]>([]);
+	let offlineBusy = $state(false);
+	let offlineSyncedFor = '';
+	async function loadOfflinePins() {
+		try {
+			const s = await api.getSettings();
+			const arr = s['offline_playlists'] ? JSON.parse(s['offline_playlists']) : [];
+			offlineIds = Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+		} catch {
+			offlineIds = [];
+		}
+	}
+	async function saveOfflinePins() {
+		try {
+			await api.setSetting('offline_playlists', JSON.stringify(offlineIds));
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+	const isOfflinePinned = $derived(offlineIds.includes(id));
+	const missingOffline = $derived(
+		(pl?.items ?? []).filter((t) => !downloadedIds.has(t.video_id)).length
+	);
+	async function toggleOfflinePin() {
+		if (isOfflinePinned) {
+			offlineIds = offlineIds.filter((x) => x !== id);
+			await saveOfflinePins();
+			toast.success('Offline pin removed — files stay on disk');
+		} else {
+			offlineIds = [...offlineIds, id];
+			await saveOfflinePins();
+			void downloadPlaylistHere();
+		}
+	}
+	// Quiet top-up for pinned playlists, once per visit. New tracks since the last visit get
+	// saved in the background; a toast only appears when something actually downloaded.
+	$effect(() => {
+		if (!pl || isOnRepeat || offlineBusy) return;
+		if (!offlineIds.includes(id) || offlineSyncedFor === id) return;
+		offlineSyncedFor = id;
 		api
 			.downloadPlaylist(id)
-			.then((r) => {
-				if (r.downloaded === 0 && r.failed === 0)
-					toast.success(`All ${r.skipped} track${r.skipped === 1 ? '' : 's'} already downloaded`);
-				else if (r.failed > 0)
-					toast.error(
-						`Downloaded ${r.downloaded}, ${r.failed} failed${r.skipped ? `, ${r.skipped} already saved` : ''}`
-					);
-				else
+			.then(async (r) => {
+				await loadDownloadedIds();
+				if (r.downloaded > 0)
 					toast.success(
-						`Downloaded ${r.downloaded} track${r.downloaded === 1 ? '' : 's'}${
-							r.skipped ? ` (${r.skipped} already saved)` : ''
-						}`
+						`Saved ${r.downloaded} new track${r.downloaded === 1 ? '' : 's'} for offline`
 					);
 			})
-			.catch((e) => toast.error(`Download failed: ${e}`));
+			.catch(() => {});
+	});
+
+	// Duplicates beyond the first occurrence that can actually be removed (owned rows carry a
+	// set_video_id; Liked Music unlikes by video_id).
+	const dupeCount = $derived.by(() => {
+		const seen = new Set<string>();
+		let n = 0;
+		for (const t of pl?.items ?? []) {
+			if (seen.has(t.video_id)) {
+				if (isLiked || t.set_video_id) n++;
+			} else seen.add(t.video_id);
+		}
+		return n;
+	});
+	let deduping = $state(false);
+	async function dedupePlaylist() {
+		if (!pl || deduping || dupeCount === 0) return;
+		const seen = new Set<string>();
+		const dupes = pl.items.filter((t) => {
+			if (seen.has(t.video_id)) return isLiked || !!t.set_video_id;
+			seen.add(t.video_id);
+			return false;
+		});
+		if (!dupes.length) {
+			toast.success('No duplicates found');
+			return;
+		}
+		deduping = true;
+		const prev = pl.items;
+		const keys = new Set(dupes.map(selKey));
+		pl = { ...pl, items: pl.items.filter((t) => !keys.has(selKey(t))) };
+		clearSelection();
+		try {
+			for (const t of dupes) {
+				if (isLiked) {
+					await api.like(t.video_id, false);
+					noteLike(t.video_id, false);
+				} else await api.removeFromPlaylist(id, t.video_id, t.set_video_id!);
+			}
+			if (!isLiked) bumpLibraryTrackCount(id, -dupes.length);
+			toast.success(`Removed ${dupes.length} duplicate${dupes.length === 1 ? '' : 's'}`);
+			cacheCurrent();
+		} catch (e) {
+			pl = { ...pl, items: prev };
+			cacheCurrent();
+			toast.error(String(e));
+		} finally {
+			deduping = false;
+		}
+	}
+
+	// Drop a dragged song row anywhere on the list to add it here (Liked: like it instead).
+	let pageDrop = $state(false);
+	function dropOverPage(e: DragEvent) {
+		if (!e.dataTransfer?.types.includes('application/x-limusic-song')) return;
+		if (!(editable || isLiked)) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'copy';
+		pageDrop = true;
+	}
+	async function dropOnPage(e: DragEvent) {
+		e.preventDefault();
+		pageDrop = false;
+		if (!pl || !(editable || isLiked)) return;
+		let song = null;
+		try {
+			song = JSON.parse(e.dataTransfer?.getData('application/x-limusic-song') ?? '');
+		} catch {
+			/* not ours */
+		}
+		if (!song?.video_id) return;
+		if (api.isLocalId(song.video_id)) {
+			toast.error('Local files can’t go in a YouTube playlist');
+			return;
+		}
+		try {
+			if (isLiked) {
+				await api.like(song.video_id, true);
+				noteLike(song.video_id, true);
+				toast.success('Added to Liked Music');
+			} else {
+				await api.addToPlaylist(id, song.video_id);
+				toast.success('Added to playlist');
+			}
+			load(id); // reload for canonical rows (server-side ids)
+		} catch (err) {
+			toast.error(String(err));
+		}
 	}
 
 	async function load(pid: string) {
@@ -256,6 +405,7 @@
 	// Reload whenever the route param changes (playlist â†’ playlist navigation).
 	$effect(() => {
 		if (id) load(id);
+		void loadOfflinePins();
 	});
 
 	// â€”â€”â€” "More like this" â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
@@ -880,9 +1030,26 @@
 							variant="outline"
 							class="gap-2"
 							onclick={downloadPlaylistHere}
+							disabled={offlineBusy}
 							title="Download playlist for offline"
 						>
-							<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" /> Download
+							<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
+							{offlineBusy ? 'Saving…' : 'Download'}
+						</Button>
+						<Button
+							variant={isOfflinePinned ? 'default' : 'outline'}
+							class="gap-2"
+							onclick={toggleOfflinePin}
+							title="Keep this playlist downloaded — new tracks save automatically"
+						>
+							<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
+							<span class="hidden text-sm md:inline">
+								{isOfflinePinned
+									? pl && missingOffline === 0 && pl.items.length
+										? 'Offline ✓'
+										: `Offline (${missingOffline} left)`
+									: 'Keep offline'}
+							</span>
 						</Button>
 					{/if}
 					<Button
@@ -909,6 +1076,20 @@
 							/>
 						</Button>
 					{/if}
+					{#if dupeCount > 0 && (editable || isLiked)}
+						<Button
+							variant="ghost"
+							class="gap-2"
+							onclick={dedupePlaylist}
+							disabled={deduping}
+							title={`${dupeCount} duplicate${dupeCount === 1 ? '' : 's'} — keep the first copy of each`}
+						>
+							<HugeiconsIcon icon={Delete02Icon} class="h-5 w-5 text-muted-foreground" />
+							<span class="hidden text-sm md:inline">
+								{deduping ? 'Removing…' : `Dedupe (${dupeCount})`}
+							</span>
+						</Button>
+					{/if}
 					{#if confirmingDelete}
 						<div class="flex items-center gap-2 rounded-lg border border-destructive/40 px-2 py-1">
 							<span class="text-xs text-muted-foreground">Delete this playlist?</span>
@@ -930,7 +1111,12 @@
 				</div>
 			</div>
 		</div>
-		<div class="content-in p-4">
+		<div
+			class="content-in p-4 {pageDrop ? 'rounded-xl ring-2 ring-primary/60' : ''}"
+			ondragover={dropOverPage}
+			ondragleave={() => (pageDrop = false)}
+			ondrop={dropOnPage}
+		>
 			{#if selected.size > 0}
 				<div
 					class="sticky top-0 z-20 -mx-4 mb-1 flex items-center gap-2 border-b bg-background/95 px-4 py-2 backdrop-blur"

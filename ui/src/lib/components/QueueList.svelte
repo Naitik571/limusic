@@ -14,6 +14,23 @@ import { lt } from '$lib/lt.svelte';
 const canRemove = $derived(lt.role !== 'guest');
 const canReorder = $derived(lt.role !== 'guest');
 
+// Queue filter + bulk actions. Filtering is display-only: every row keeps its absolute backend
+// index (`QueueRow.i`), so play/remove/drag map back correctly. Drag is disabled while a filter
+// is active — dropping onto a filtered row would land somewhere surprising.
+let filter = $state('');
+const filtering = $derived(filter.trim().length > 0);
+const filterQ = $derived(filter.trim().toLowerCase());
+function rowMatch(r: QueueRow): boolean {
+	if (!filtering) return true;
+	return (
+		r.item.title.toLowerCase().includes(filterQ) ||
+		(r.item.artists ?? '').toLowerCase().includes(filterQ)
+	);
+}
+const upcomingCount = $derived(
+	playback.queue.items.length - playback.queue.currentIndex - 1
+);
+
 // Pointer-based drag-to-reorder (absolute queue indices). Upcoming rows only: the playing
 	// row is neither draggable nor a drop target (the backend enforces the same rule).
 	//
@@ -170,6 +187,14 @@ const canReorder = $derived(lt.role !== 'guest');
 
 // Blocks in play order, cut wherever the upcoming tracks change origin (`queue.ts`).
 const view = $derived(queueBlocks(playback.queue));
+// Filtered copies for display; empty blocks/sections drop out while filtering.
+const shownPast = $derived(pastRows.filter(rowMatch));
+const shownNow = $derived(view.now && rowMatch(view.now) ? view.now : null);
+const shownBlocks = $derived(
+	view.blocks
+		.map((b) => ({ ...b, rows: b.rows.filter(rowMatch) }))
+		.filter((b) => b.rows.length > 0)
+);
 </script>
 
 {#snippet rows(list: QueueRow[], past = false)}
@@ -179,11 +204,11 @@ const view = $derived(queueBlocks(playback.queue));
 			role="listitem"
 			data-queue-row={i}
 			style="content-visibility: auto; contain-intrinsic-size: auto 3.5rem;"
-			onpointerdown={past ? undefined : (e) => onRowPointerDown(e, i)}
+			onpointerdown={past || filtering ? undefined : (e) => onRowPointerDown(e, i)}
 			onclickcapture={past ? undefined : swallowPostDragClick}
 			class={[
 				'select-none touch-pan-y',
-				!past && canReorder && i !== playback.queue.currentIndex ? 'cursor-grab' : '',
+				!past && canReorder && !filtering && i !== playback.queue.currentIndex ? 'cursor-grab' : '',
 				!past && dragging && dragFrom === i ? 'cursor-grabbing opacity-60' : '',
 				!past && dragOver === i && dragFrom !== i ? 'rounded-md bg-muted/40 ring-1 ring-primary/60' : ''
 			].join(' ')}
@@ -192,6 +217,7 @@ const view = $derived(queueBlocks(playback.queue));
 				song={item}
 				index={n - 1}
 				active={i === playback.queue.currentIndex}
+				draggable={false}
 				onplay={() => api.playIndex(i)}
 				onAdd={() => openAddToPlaylist(item)}
 				onRemove={!past && canRemove && i !== playback.queue.currentIndex
@@ -206,15 +232,46 @@ const view = $derived(queueBlocks(playback.queue));
 <!-- The list on its own, so the side panel and the now-playing view's Queue tab render the same
      one instead of drifting apart. -->
 <div bind:this={scroller} onwheel={onQueueWheel} class="min-h-0 flex-1 overflow-y-auto p-2">
-	{#if pastRows.length > 0}
-		<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Previously played</h3>
-		{@render rows(pastRows, true)}
-	{/if}
-	{#if view.now}
-		<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Now playing</h3>
-		{@render rows([view.now])}
+	<!-- Filter + bulk actions. Filtering is display-only (absolute indices kept), Shuffle rest
+	     randomizes the upcoming tracks in place, Clear played drops the played prefix. -->
+	<div class="flex items-center gap-1.5 px-2 pt-1 pb-2">
+		<input
+			bind:value={filter}
+			placeholder="Filter queue…"
+			class="h-7 min-w-0 flex-1 rounded-md border bg-transparent px-2 text-xs"
+			aria-label="Filter queue"
+		/>
+		{#if upcomingCount > 1 && canReorder}
+			<button
+				class="h-7 shrink-0 cursor-pointer rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+				title="Shuffle the upcoming tracks"
+				onclick={() => api.shuffleRest()}
+			>
+				Shuffle rest
+			</button>
+		{/if}
+		{#if playback.queue.currentIndex > 0 && canRemove}
+			<button
+				class="h-7 shrink-0 cursor-pointer rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+				title="Drop every played track"
+				onclick={() => api.clearPlayed()}
+			>
+				Clear played
+			</button>
+		{/if}
+	</div>
+	{#if filtering && shownPast.length === 0 && !shownNow && shownBlocks.length === 0}
+		<p class="p-4 text-sm text-muted-foreground">No songs match “{filter.trim()}”.</p>
+	{:else}
+		{#if shownPast.length > 0}
+			<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Previously played</h3>
+			{@render rows(shownPast, true)}
+		{/if}
+		{#if shownNow}
+			<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Now playing</h3>
+			{@render rows([shownNow])}
 
-		{#each view.blocks as block (block.key)}
+			{#each shownBlocks as block (block.key)}
 			{#if block.autoplay}
 				<div
 					class="mt-3 flex items-center gap-2 border-t px-2 pt-2.5 pb-1.5 text-muted-foreground"
@@ -239,7 +296,8 @@ const view = $derived(queueBlocks(playback.queue));
 			{/if}
 			{@render rows(block.rows)}
 		{/each}
-	{:else}
-		<p class="p-4 text-sm text-muted-foreground">The queue is empty.</p>
+		{:else if !filtering}
+			<p class="p-4 text-sm text-muted-foreground">The queue is empty.</p>
+		{/if}
 	{/if}
 </div>

@@ -19,7 +19,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { ON_REPEAT_ID, type BrowseItem } from '$lib/api';
+	import { ON_REPEAT_ID, type BrowseItem, type SongItem } from '$lib/api';
+	import * as api from '$lib/api';
 	import { thumb } from '$lib/thumb';
 	import PlaylistMenu from './PlaylistMenu.svelte';
 	import { auth, library, personal, ui, createLibraryPlaylist, toast } from '$lib/player.svelte';
@@ -55,6 +56,41 @@
 			: item.kind === 'artist'
 				? `/artist/${encodeURIComponent(item.id)}`
 				: `/playlist/${encodeURIComponent(item.id)}`;
+
+	// Drop a dragged song row onto a playlist to add it there. On Repeat is locally built and
+	// local files have no YouTube identity — both are rejected with a reason, not silence.
+	let dropTarget = $state<string | null>(null);
+	function dragSongOver(e: DragEvent, id: string) {
+		if (!e.dataTransfer?.types.includes('application/x-limusic-song')) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'copy';
+		dropTarget = id;
+	}
+	async function dropSongOn(e: DragEvent, pl: BrowseItem) {
+		e.preventDefault();
+		dropTarget = null;
+		if (pl.id === ON_REPEAT_ID) {
+			toast.error('On Repeat is built from your plays — songs land there on their own');
+			return;
+		}
+		let song: SongItem | null = null;
+		try {
+			song = JSON.parse(e.dataTransfer?.getData('application/x-limusic-song') ?? '');
+		} catch {
+			/* not ours */
+		}
+		if (!song?.video_id) return;
+		if (api.isLocalId(song.video_id)) {
+			toast.error('Local files can’t go in a YouTube playlist');
+			return;
+		}
+		try {
+			await api.addToPlaylist(pl.id, song.video_id);
+			toast.success(`Added to ${pl.title}`);
+		} catch (err) {
+			toast.error(String(err));
+		}
+	}
 
 	// New-playlist dialog (mirrors the Library page).
 	let dialogOpen = $state(false);
@@ -142,8 +178,15 @@
 			<div class="min-h-0 flex-1 overflow-y-auto">
 				{#each playlists as pl, i (pl.id)}
 					<!-- The ⋯ is a sibling of the link, not a child: a <button> inside an <a> is invalid
-					     HTML. pr-9 keeps the title clear of the button that overlays the row on hover. -->
-					<div class="group/row relative" data-ctx>
+					     HTML. pr-9 keeps the title clear of the button that overlays the row on hover.
+					     Rows accept dragged songs (drop adds to that playlist). -->
+					<div
+						class="group/row relative rounded-lg {dropTarget === pl.id ? 'bg-primary/15 ring-1 ring-primary/60' : ''}"
+						data-ctx
+						ondragover={(e) => dragSongOver(e, pl.id)}
+						ondragleave={() => (dropTarget = null)}
+						ondrop={(e) => dropSongOn(e, pl)}
+					>
 						<a
 							href={playlistHref(pl)}
 							title={pl.title}

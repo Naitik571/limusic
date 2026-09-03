@@ -19,7 +19,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, markNotDownloaded, downloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix } from '$lib/player.svelte';
+	import { ui, toast, markNotDownloaded, downloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import {
 		THEMES,
@@ -169,6 +169,7 @@
 		{ tab: 'playback', group: 'pb-audio', text: 'Autoplay Keep the music going with similar songs when your queue ends.' },
 		{ tab: 'playback', group: 'pb-audio', text: "Prevent duplicate tracks in queue Adding a track that's already in the queue moves it from its old position." },
 		{ tab: 'playback', group: 'pb-audio', text: 'Keep shuffle across queue When shuffle is on, opening an album/playlist/radio appends to the queue instead of resetting playback.' },
+		{ tab: 'playback', group: 'pb-audio', text: 'Sleep timer Stop playback after a while. Off End of song minutes.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Smart Crossfade Gapless via mpv gapless-audio; crossfade is a volume ramp hint.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Crossfade mode Standard Smart.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Best Mix' },
@@ -316,6 +317,14 @@
 	const autostartOn = $derived(settings.autostart === 'true');
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
 	const stickyShuffleOn = $derived(settings.sticky_shuffle === 'true');
+	// Sleep timer badge: live countdown while a minutes timer runs.
+	const sleepBadge = $derived(
+		sleepTimer.mode === 'off'
+			? undefined
+			: sleepTimer.mode === 'end_of_song'
+				? 'End of song'
+				: `${Math.floor(sleepTimer.remaining / 60)}:${String(sleepTimer.remaining % 60).padStart(2, '0')} left`
+	);
 	// --- downloads tab ---
 	const DOWNLOAD_FORMATS = [
 		{ id: 'm4a', label: 'M4A (AAC)' },
@@ -889,11 +898,17 @@
 									control: dupSwitch,
 									tall: true
 								})}
-								{@render row({
-									title: 'Keep shuffle across queue',
-									desc: 'When shuffle is on, opening an album/playlist/radio appends to the queue instead of resetting playback.',
-									control: stickyShuffleSwitch
-								})}
+							{@render row({
+								title: 'Keep shuffle across queue',
+								desc: 'When shuffle is on, opening an album/playlist/radio appends to the queue instead of resetting playback.',
+								control: stickyShuffleSwitch
+							})}
+							{@render row({
+								title: 'Sleep timer',
+								desc: 'Stop playback after a while. Enforced by the backend, so it keeps counting with the window closed.',
+								badge: sleepTimer.mode === 'off' ? undefined : sleepBadge,
+								below: sleepTimerPresets
+							})}
 							</div>
 						</section>
 
@@ -1609,6 +1624,34 @@
 		>
 			Smart
 		</Button>
+	</div>
+{/snippet}
+
+{#snippet sleepTimerPresets()}
+	<div class="flex flex-wrap gap-2">
+		<Button
+			size="sm"
+			variant={sleepTimer.mode === 'off' ? 'default' : 'outline'}
+			onclick={() => setSleepTimer('off')}
+		>
+			Off
+		</Button>
+		<Button
+			size="sm"
+			variant={sleepTimer.mode === 'end_of_song' ? 'default' : 'outline'}
+			onclick={() => setSleepTimer('end_of_song')}
+		>
+			End of song
+		</Button>
+		{#each [15, 30, 60] as m (m)}
+			<Button
+				size="sm"
+				variant={sleepTimer.mode === 'minutes' ? 'default' : 'outline'}
+				onclick={() => setSleepTimer('minutes', m)}
+			>
+				{m} min
+			</Button>
+		{/each}
 	</div>
 {/snippet}
 

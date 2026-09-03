@@ -25,7 +25,8 @@
 		onAdd,
 		onRemove,
 		removeLabel = 'Remove from playlist',
-		highlight = ''
+		highlight = '',
+		draggable = true
 	}: {
 		song: SongItem;
 		/** Position badge when set (playlist/queue); omitted for flat search results. */
@@ -47,6 +48,10 @@
 		removeLabel?: string;
 		/** Query to highlight inside title/artists (playlist type-anywhere filter). */
 		highlight?: string;
+		/** HTML5 drag source for "drop into a playlist" (sidebar rows, playlist pages). Carries
+		    the full song as JSON. Off in the queue: pointer-drag reorder owns the press there and
+		    a native drag would fight it. */
+		draggable?: boolean;
 	} = $props();
 
 	function highlightParts(text: string, query: string): { text: string; match: boolean }[] {
@@ -118,6 +123,15 @@
 			onplay();
 		}
 	}
+
+	// Drag source for "drop into a playlist". JSON so the drop target gets the full song without
+	// a lookup; text/plain carries the title for drops outside the app.
+	function onDragStart(e: DragEvent) {
+		if (!e.dataTransfer) return;
+		e.dataTransfer.setData('application/x-limusic-song', JSON.stringify(song));
+		e.dataTransfer.setData('text/plain', song.title);
+		e.dataTransfer.effectAllowed = 'copy';
+	}
 </script>
 
 <!-- content-visibility: a liked-songs playlist runs to thousands of rows and WebKit keeps every one
@@ -129,6 +143,8 @@
 	role="button"
 	tabindex="0"
 	data-ctx
+	draggable={draggable}
+	ondragstart={draggable ? onDragStart : undefined}
 	data-active={active ? 'true' : undefined}
 	onclick={onplay}
 	onkeydown={onKey}

@@ -124,6 +124,20 @@ pub async fn clear_queued(state: St<'_>) -> Result<(), String> {
     Ok(())
 }
 
+/// Shuffle the upcoming tracks in place (queue panel's "Shuffle rest"). Playing/played stay.
+#[tauri::command]
+pub async fn shuffle_rest(state: St<'_>) -> Result<(), String> {
+    state.inner().clone().shuffle_rest().await;
+    Ok(())
+}
+
+/// Drop every played track, keeping the one playing (queue panel's "Clear played").
+#[tauri::command]
+pub async fn clear_played(state: St<'_>) -> Result<(), String> {
+    state.inner().clone().clear_played().await;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn next_track(state: St<'_>) -> Result<(), String> {
     state.inner().clone().next_in_queue().await;
@@ -321,7 +335,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 21] = [
+const UI_SETTINGS: [&str; 22] = [
     "proxy",
     "quality",
     "enable_history",
@@ -338,6 +352,8 @@ const UI_SETTINGS: [&str; 21] = [
     "download_quality",
     "download_format",
     "use_offline",
+    // Playlists pinned for offline (playlist page toggle). Plain ids, not secrets.
+    "offline_playlists",
     // Apple Music bring-your-own-token lyrics (Settings → General). Not session-secret — the
     // user pasted them into this very UI — but they are credentials, so they live in the settings
     // DB and round-trip through this same allowlist. `lyrics_boidu` toggles the Boidu provider.
