@@ -193,7 +193,7 @@
 						>
 							<div class="cov">
 								{#if a.thumbnail}
-									<img src={a.thumbnail} alt={a.title} />
+									<img decoding="async" loading="lazy" src={a.thumbnail} alt={a.title} />
 								{:else}
 									<div class="aspect-square grid place-items-center" style="color:rgba(6,48,58,.5)"><HugeiconsIcon icon={Folder01Icon} class="w-8 h-8" /></div>
 								{/if}

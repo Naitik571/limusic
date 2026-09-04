@@ -73,7 +73,7 @@
 					{#if item.thumbnail && !failed[item.id]}
 						<!-- 400 for a 40px slot: it's the size every card on the page already asked for, so
 						     it comes straight out of the webview's cache. -->
-						<img
+						<img decoding="async"
 							src={thumb(item.thumbnail, 400)}
 							alt=""
 							class="h-full w-full object-cover"

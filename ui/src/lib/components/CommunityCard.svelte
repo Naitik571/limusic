@@ -92,11 +92,11 @@
 			{#if mosaic.length === 4}
 				<div class="grid h-full w-full grid-cols-2 grid-rows-2">
 					{#each mosaic as m (m)}
-						<img src={thumb(m, 200)} alt="" class="h-full w-full object-cover" loading="lazy" />
+						<img decoding="async" src={thumb(m, 200)} alt="" class="h-full w-full object-cover" loading="lazy" />
 					{/each}
 				</div>
 			{:else if cover}
-				<img
+				<img decoding="async"
 					src={thumb(cover, 400)}
 					alt=""
 					class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
@@ -126,7 +126,7 @@
 					title={t.artists ? `${t.title} — ${t.artists}` : t.title}
 				>
 					{#if t.thumbnail}
-						<img
+						<img decoding="async"
 							src={thumb(t.thumbnail, 100)}
 							alt=""
 							class="h-8 w-8 shrink-0 rounded-md bg-muted object-cover"

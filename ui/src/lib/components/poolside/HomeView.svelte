@@ -20,6 +20,8 @@
 	let feedToken = $state<string | null>(null);
 	let activeChip = $state<string | null>(null);
 	let sentinel = $state<HTMLDivElement | undefined>();
+	const hour = new Date().getHours();
+	const daypart = hour < 12 ? 'MORNING' : hour < 18 ? 'AFTERNOON' : 'EVENING';
 
 	onMount(async () => {
 		try {
@@ -81,11 +83,11 @@
 
 <div class="ps-home">
 	<!-- hero -->
-	<div class="ps-hero" style="background-image: {playback.now?.thumbnail ? `url(${playback.now.thumbnail})` : 'none'}; --hero-accent: var(--ps-album-accent, #5BC8DC);">
+	<div class="ps-hero" style="background-image: {playback.now?.thumbnail ? `url(&quot;${encodeURI(playback.now.thumbnail)}&quot;)` : 'none'}; --hero-accent: var(--ps-album-accent, #5BC8DC);">
 		<div class="ps-hero-bg"></div>
 		<div class="ps-hero-accent"></div>
 		<div class="ps-hero-content ps-anim-fade-up">
-			<span class="ps-hero-label">GOOD {new Date().getHours() < 12 ? 'MORNING' : new Date().getHours() < 18 ? 'AFTERNOON' : 'EVENING'}</span>
+			<span class="ps-hero-label">GOOD {daypart}</span>
 			<h1 class="ps-hero-title">DIVE IN.</h1>
 			<p class="ps-hero-sub">Your music, floating in the pool.</p>
 		</div>
@@ -109,7 +111,7 @@
 				{#each recent as item (item.id)}
 					<button class="ps-rail-card" onclick={() => onOpenAlbum(item)} title={item.title}>
 						{#if item.thumbnail}
-							<img src={item.thumbnail} alt={item.title} />
+							<img decoding="async" loading="lazy" src={item.thumbnail} alt={item.title} />
 						{:else}
 							<div class="ps-rail-placeholder"></div>
 						{/if}
@@ -120,15 +122,19 @@
 		</section>
 	{/if}
 
-	<!-- sections / feed -->
-	{#each sections as section, si (section.title)}
-		<section class="ps-section ps-anim-fade-up" style="animation-delay:{0.2 + si * 0.05}s">
+	<!-- sections / feed. No entrance animation here: infinite-append grows delays without
+	     bound (section 20 animates a full second after mount), so scrolling would keep kicking
+	     off transforms mid-frame. Hero/chips/recent keep theirs for first-paint delight.
+	     content-visibility skips off-screen sections; keyed by title+index so duplicate
+	     titles can't collide. -->
+	{#each sections as section, si (section.title + si)}
+		<section class="ps-section" style="content-visibility: auto; contain-intrinsic-size: auto 260px;">
 			<h3 class="ps-section-title">{section.title.toUpperCase()}</h3>
 			<div class="ps-rail">
 				{#each section.items as item (item.id)}
 					<button class="ps-rail-card" onclick={() => playShelfItem(item)} title={item.title}>
 						{#if item.thumbnail}
-							<img src={item.thumbnail} alt={item.title} />
+							<img decoding="async" loading="lazy" src={item.thumbnail} alt={item.title} />
 						{:else}
 							<div class="ps-rail-placeholder"></div>
 						{/if}

@@ -50,7 +50,7 @@
 	>
 		<button class="ps-mini-pill-art" onclick={openNow} title="Open now playing" aria-label="Open now playing">
 			{#if cur.thumbnail}
-				<img src={cur.thumbnail} alt="" />
+				<img decoding="async" src={cur.thumbnail} alt="" />
 			{:else}
 				<div class="ps-mini-pill-art-fallback"></div>
 			{/if}

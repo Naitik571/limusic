@@ -77,7 +77,7 @@
 					{#each items as e, i (e.song.video_id + e.playedAt)}
 						<div class="ps-songrow ps-anim-slide-in" style="animation-delay:{i * 0.02}s" onclick={() => playEntry(e, entries.indexOf(e))} role="button" tabindex="0" onkeydown={(ev) => ev.key === 'Enter' && playEntry(e, entries.indexOf(e))}>
 							{#if e.song.thumbnail}
-								<img src={e.song.thumbnail} alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex:none" />
+								<img decoding="async" loading="lazy" src={e.song.thumbnail} alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex:none" />
 							{/if}
 							<span class="st">{e.song.title.toUpperCase()}</span>
 							<span class="sa">{e.song.artists}</span>

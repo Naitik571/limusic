@@ -45,7 +45,7 @@
 		title={item.subtitle ? `${item.title} — ${item.subtitle}` : item.title}
 	>
 		{#if hasArt}
-			<img
+			<img decoding="async"
 				{src}
 				alt=""
 				class="h-full w-full object-cover object-[center_22%] transition-transform duration-500 ease-out group-hover:scale-[1.06]"

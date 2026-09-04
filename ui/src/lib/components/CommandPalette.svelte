@@ -259,7 +259,7 @@
 							<!-- 400, the same size the cards ask for: the CDN doesn't serve every rewritten
 							     size, that one is verified, and the row lands on an image the grid already
 							     fetched. -->
-							<img
+							<img decoding="async"
 								src={thumb(item.thumbnail, 400)}
 								alt=""
 								class="h-10 w-10 shrink-0 object-cover {item.kind === 'artist'

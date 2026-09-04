@@ -71,7 +71,7 @@
 			     its depth, and they cost a transform instead of a gaussian blur per card. -->
 			<div class="aurora-card relative h-full w-full overflow-hidden rounded-xl bg-muted">
 				{#if hasArt}
-					<img
+					<img decoding="async"
 						{src}
 						alt=""
 						class="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"

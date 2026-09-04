@@ -47,7 +47,7 @@
 		<div class="ps-queue-current ps-anim-fade-up" style="animation-delay:.05s">
 			<span class="ps-queue-badge">NOW</span>
 			{#if items[currentIdx].thumbnail}
-				<img src={items[currentIdx].thumbnail} alt="" class="ps-queue-thumb" />
+				<img decoding="async" src={items[currentIdx].thumbnail} alt="" class="ps-queue-thumb" />
 			{/if}
 			<div class="ps-queue-meta">
 				<span class="ps-queue-title">{items[currentIdx].title}</span>
@@ -64,7 +64,7 @@
 				{@const i = currentIdx + 1 + ri}
 				<div class="ps-songrow ps-queue-row ps-anim-slide-in" style="animation-delay:{ri * 0.03}s">
 					{#if item.thumbnail}
-						<img src={item.thumbnail} alt="" class="ps-queue-thumb-sm" />
+						<img decoding="async" loading="lazy" src={item.thumbnail} alt="" class="ps-queue-thumb-sm" />
 					{/if}
 					<button class="st" style="cursor:pointer;background:none;border:none;color:inherit;font:inherit;text-align:left" onclick={() => playAt(i)}>{item.title.toUpperCase()}</button>
 					<span class="sa">{item.artists}</span>

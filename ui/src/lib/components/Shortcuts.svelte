@@ -200,7 +200,7 @@
 									: 'h-16 w-16'}"
 							>
 								{#if item.thumbnail && !failed[item.id] && !onRepeat}
-									<img
+									<img decoding="async"
 										src={thumb(item.thumbnail, 400)}
 										alt=""
 										class="h-full w-full object-cover"

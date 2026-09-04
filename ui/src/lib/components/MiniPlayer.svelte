@@ -110,7 +110,7 @@
 	     snapped-off frame of what's playing. Keyed so a track change cross-fades. -->
 	{#key now?.videoId}
 		{#if now?.thumbnail}
-			<img
+			<img decoding="async"
 				src={thumb(now.thumbnail, 480)}
 				alt=""
 				in:fade={{ duration: 300 }}
@@ -259,7 +259,7 @@
 					title={item.title}
 				>
 					{#if item.thumbnail}
-						<img
+						<img decoding="async"
 							src={thumb(item.thumbnail, 64)}
 							alt=""
 							style="max-width:none"

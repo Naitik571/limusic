@@ -194,7 +194,7 @@
 				{#if lt.currentTrack}
 					<div class="flex min-w-0 items-center gap-3">
 						{#if lt.currentTrack.thumbnail}
-							<img
+							<img decoding="async"
 								src={lt.currentTrack.thumbnail}
 								alt=""
 								class="h-10 w-10 shrink-0 rounded object-cover"

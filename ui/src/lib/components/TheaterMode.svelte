@@ -277,7 +277,7 @@
 				{#key playback.now?.videoId}
 					<div in:scale={{ start: 0.94, duration: 420, easing: cubicOut }} class="relative">
 						{#if src && attempt < srcs.length}
-							<img
+							<img decoding="async"
 								{src}
 								alt=""
 								onerror={() => attempt++}

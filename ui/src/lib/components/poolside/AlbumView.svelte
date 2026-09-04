@@ -231,7 +231,7 @@
 	<!-- Hero: cover + meta + play button, all in a clean vertical flow -->
 	<div class="ps-alb-hero">
 		<div class="ps-alb-cover">
-			<img src={artFor(album)} alt={album.title} />
+			<img decoding="async" src={artFor(album)} alt={album.title} />
 			{#if album.id.startsWith('LOCALALBUM:')}
 				<div class="ps-alb-cover-badge">LOCAL</div>
 			{/if}
@@ -346,14 +346,14 @@
 						}}
 						onmouseleave={() => (tip = '')}
 					>
-						<div class="cov"><img src={artFor(c.a)} alt={c.a.title} draggable="false" /></div>
+						<div class="cov"><img decoding="async" loading="lazy" src={artFor(c.a)} alt={c.a.title} draggable="false" /></div>
 						{#if c.abs < 0.5}
 							<div class="play-chip" title="Play this album">
 								<HugeiconsIcon icon={PlayIcon} class="w-3.5 h-3.5" />
 							</div>
 						{/if}
 						<div class="reflection" aria-hidden="true">
-							<img src={artFor(c.a)} alt="" draggable="false" />
+							<img decoding="async" loading="lazy" src={artFor(c.a)} alt="" draggable="false" />
 						</div>
 					</div>
 				{/each}

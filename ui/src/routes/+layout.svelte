@@ -138,7 +138,7 @@
 		     solved for text contrast in veil.ts. Drifts only while audio plays. -->
 		{#if appearance.ambientMode && playback.now?.thumbnail}
 			<div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
-				<img
+				<img decoding="async"
 					src={thumb(playback.now.thumbnail, 1200)}
 					alt=""
 					class="ambient-drift h-full w-full object-cover"

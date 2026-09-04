@@ -171,7 +171,7 @@
 							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), pick(a.id, url))}
 							title="Use this photo"
 						>
-							<img src={url} alt="" />
+							<img decoding="async" src={url} alt="" />
 							{#if activeKey === url}
 								<span class="ps-cc-tick"><HugeiconsIcon icon={Tick01Icon} /></span>
 							{/if}

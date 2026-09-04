@@ -60,7 +60,7 @@
 						onclick={() => addPick(item)}
 					>
 						{#if item.thumbnail}
-							<img
+							<img decoding="async"
 								src={thumb(item.thumbnail, 96)}
 								alt=""
 								class="h-10 w-10 shrink-0 rounded-md object-cover"

@@ -170,7 +170,7 @@
 						class="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors {j === suggIdx ? 'bg-muted' : 'hover:bg-muted/50'}"
 					>
 						{#if (s.kind === 'song' ? s.song.thumbnail : s.kind === 'artist' ? undefined : s.thumb)}
-							<img
+							<img decoding="async"
 								src={thumb(s.kind === 'song' ? s.song.thumbnail : s.kind === 'artist' ? undefined : s.thumb, 64)}
 								alt=""
 								loading="lazy"

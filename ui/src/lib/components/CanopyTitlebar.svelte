@@ -61,7 +61,7 @@
 >
 	<!-- Brand -->
 	<div class="flex items-center gap-2.5" data-tauri-drag-region>
-		<img src={logo} alt="" class="pointer-events-none h-5 w-5" />
+		<img decoding="async" src={logo} alt="" class="pointer-events-none h-5 w-5" />
 		<span class="hidden font-heading text-sm font-bold tracking-tight sm:inline">Limusic</span>
 	</div>
 
@@ -80,7 +80,7 @@
 		title="Open player"
 	>
 		{#if playback.now?.thumbnail}
-			<img
+			<img decoding="async"
 				src={playback.now.thumbnail}
 				alt=""
 				class="h-10 w-10 shrink-0 rounded-md object-cover"

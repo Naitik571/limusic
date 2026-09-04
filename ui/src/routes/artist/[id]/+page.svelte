@@ -205,7 +205,7 @@
 	<!-- Hero -->
 	<div class="content-in relative flex min-h-[45vh] flex-col justify-end overflow-hidden">
 		{#if artist.thumbnail}
-			<img src={artist.thumbnail} alt="" class="absolute inset-0 h-full w-full object-cover" />
+			<img decoding="async" src={artist.thumbnail} alt="" class="absolute inset-0 h-full w-full object-cover" />
 		{/if}
 		<div
 			class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/10"

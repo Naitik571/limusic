@@ -207,7 +207,7 @@
     <!-- Header with the artist image as a hero backdrop -->
     <div class="content-in relative overflow-hidden">
         {#if artistHero}
-            <img
+            <img decoding="async"
                 src={artistHero}
                 alt=""
                 class="absolute inset-0 h-full w-full object-cover object-top"
@@ -215,7 +215,7 @@
         {:else if album.thumbnail}
             <!-- Blurred backdrop: blur-2xl destroys any detail a bigger source would carry, so
                  ask for the smallest thing that still reads as the cover's colours. -->
-            <img
+            <img decoding="async"
                 src={thumb(album.thumbnail, 96)}
                 alt=""
                 class="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
@@ -230,7 +230,7 @@
                 <!-- Inline width/height so the size holds even against a stale dev-server CSS that -->
                 <!-- hasn't regenerated a newly-used spacing utility (would fall back to intrinsic size). -->
                 {#if album.thumbnail}
-                    <img
+                    <img decoding="async"
                         src={thumb(album.thumbnail, 400)}
                         alt=""
                         style="width:7rem;height:7rem"
@@ -261,7 +261,7 @@
                                 class="flex items-center gap-1.5 font-medium text-foreground"
                             >
                                 {#if album.artistThumbnail}
-                                    <img
+                                    <img decoding="async"
                                         src={album.artistThumbnail}
                                         alt=""
                                         class="h-5 w-5 rounded-full object-cover"

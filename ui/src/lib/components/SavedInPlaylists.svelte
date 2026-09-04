@@ -79,7 +79,7 @@
 				onclick={() => (open = false)}
 			>
 				{#if pl.thumbnail}
-					<img src={pl.thumbnail} alt="" class="h-7 w-7 shrink-0 rounded object-cover" />
+					<img decoding="async" src={pl.thumbnail} alt="" class="h-7 w-7 shrink-0 rounded object-cover" />
 				{:else}
 					<div class="h-7 w-7 shrink-0 rounded bg-muted"></div>
 				{/if}

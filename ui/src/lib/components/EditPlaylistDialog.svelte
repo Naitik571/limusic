@@ -139,7 +139,7 @@
 						aria-label="Change cover art"
 					>
 						{#if preview}
-							<img src={preview} alt="" class="h-full w-full object-cover" />
+							<img decoding="async" src={preview} alt="" class="h-full w-full object-cover" />
 						{/if}
 						<!-- One conditional base opacity, not `opacity-0` plus a second `opacity-100`:
 						     two utilities of the same specificity are settled by stylesheet order, so

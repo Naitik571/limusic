@@ -971,7 +971,7 @@
 		     opens the playlist â‹¯ menu at the pointer. -->
 		<div class="content-in relative flex min-h-[38vh] items-end gap-6 overflow-hidden border-b p-6" data-ctx>
 			{#if bgImage}
-				<img
+				<img decoding="async"
 					src={bgImage}
 					alt=""
 					class="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
@@ -990,7 +990,7 @@
 					<HugeiconsIcon icon={ListRestartIcon} class="h-20 w-20" />
 				</div>
 			{:else if art}
-				<img
+				<img decoding="async"
 					src={art}
 					alt=""
 					class="relative h-40 w-40 rounded-xl object-cover shadow-lg"
@@ -1244,7 +1244,7 @@
 					{#each recs as rec}
 						<div class="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50">
 							{#if rec.thumbnail}
-								<img src={rec.thumbnail} alt="" class="h-10 w-10 rounded-md object-cover" />
+								<img decoding="async" src={rec.thumbnail} alt="" class="h-10 w-10 rounded-md object-cover" />
 							{:else}
 								<div class="h-10 w-10 rounded-md bg-muted"></div>
 							{/if}

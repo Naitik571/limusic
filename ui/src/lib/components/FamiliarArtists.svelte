@@ -152,7 +152,7 @@
 						>
 							<div class="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
 								{#if a.thumbnail && !failed[a.channelId]}
-									<img
+									<img decoding="async"
 										src={thumb(a.thumbnail, 400)}
 										alt=""
 										class="h-full w-full object-cover"
@@ -225,7 +225,7 @@
 								onclick={() => open(a)}
 							>
 								{#if a.thumbnail && !failed[a.channelId]}
-									<img
+									<img decoding="async"
 										src={thumb(a.thumbnail, 400)}
 										alt=""
 										class="h-full w-full object-cover"

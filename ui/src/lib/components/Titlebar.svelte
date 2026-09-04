@@ -154,7 +154,7 @@ let downloadsOpen = $state(false);
 
 	<!-- pointer-events-none: the logo is decoration; clicks on it should drag the window. -->
 	<div class="flex h-full items-center">
-		<img src={logo} alt="" class="pointer-events-none ml-3 mr-1 h-4 w-4" />
+		<img decoding="async" src={logo} alt="" class="pointer-events-none ml-3 mr-1 h-4 w-4" />
 		<!-- Bigger and heavier than the icons on the right: these are navigation, and at their
 		     weight the arrow read as decoration and got missed. -->
 		<button
@@ -307,7 +307,7 @@ let downloadsOpen = $state(false);
 							{#each downloads.items as it (it.id)}
 								<li class="flex items-center gap-3 px-4 py-2">
 									{#if it.thumb}
-										<img src={it.thumb} alt="" class="h-9 w-9 flex-shrink-0 rounded object-cover" />
+										<img decoding="async" src={it.thumb} alt="" class="h-9 w-9 flex-shrink-0 rounded object-cover" />
 									{:else}
 										<div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
 											<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />

@@ -198,7 +198,7 @@
 									: 'rounded-md'}"
 							>
 								{#if pl.thumbnail && pl.id !== ON_REPEAT_ID}
-									<img
+									<img decoding="async"
 										src={thumb(pl.thumbnail, 96)}
 										alt=""
 										class="h-full w-full object-cover"

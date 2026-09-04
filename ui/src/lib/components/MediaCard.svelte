@@ -94,7 +94,7 @@
 					: 'rounded-lg'}"
 			>
 				{#if item.thumbnail && attempt < 2 && !onRepeat}
-					<img
+					<img decoding="async"
 						{src}
 						alt=""
 						class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"

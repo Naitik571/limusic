@@ -52,7 +52,7 @@
 		<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
 		     clamps width to the content-box while height stays fixed → a vertical oval. Inline so it's
 		     immune to Preflight and to stale dev CSS. -->
-		<img
+		<img decoding="async"
 			src={thumb(auth.account.thumbnail, 64)}
 			alt=""
 			style="width:1.25rem;height:1.25rem;max-width:none"

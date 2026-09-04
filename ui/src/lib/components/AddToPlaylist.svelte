@@ -129,7 +129,7 @@
 							onclick={() => pick(pl)}
 						>
 							{#if pl.thumbnail}
-								<img src={pl.thumbnail} alt="" class="h-10 w-10 rounded-md object-cover" />
+								<img decoding="async" src={pl.thumbnail} alt="" class="h-10 w-10 rounded-md object-cover" />
 							{:else}
 								<div class="h-10 w-10 rounded-md bg-muted"></div>
 							{/if}

@@ -110,7 +110,7 @@
 						class="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted disabled:cursor-wait disabled:opacity-60"
 					>
 						{#if identity.thumbnail}
-							<img
+							<img decoding="async"
 								src={thumb(identity.thumbnail, 96)}
 								alt=""
 								class="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-border"

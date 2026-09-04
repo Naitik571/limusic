@@ -220,7 +220,7 @@
 		>
 			{#key playback.now?.videoId}
 				{#if playback.now?.thumbnail}
-					<img
+					<img decoding="async"
 						src={thumb(playback.now.thumbnail, 120)}
 						alt=""
 						style="max-width:none"

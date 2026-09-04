@@ -84,7 +84,7 @@
 			{#each suggestions.slice(0, 8) as s (s.id)}
 				<button class="ps-suggestion-row" onclick={() => pickSuggestion(s)}>
 					{#if s.thumbnail}
-						<img src={s.thumbnail} alt="" class="ps-sug-thumb" />
+						<img decoding="async" loading="lazy" src={s.thumbnail} alt="" class="ps-sug-thumb" />
 					{/if}
 					<span class="ps-sug-title">{s.title}</span>
 					<span class="ps-sug-sub">{s.subtitle ?? ''}</span>
@@ -122,7 +122,7 @@
 				<div class="ps-rail">
 					{#each results.albums as a (a.id)}
 						<button class="ps-rail-card" onclick={() => onOpenAlbum(a)}>
-							{#if a.thumbnail}<img src={a.thumbnail} alt={a.title} />{:else}<div class="ps-rail-placeholder"></div>{/if}
+							{#if a.thumbnail}<img decoding="async" loading="lazy" src={a.thumbnail} alt={a.title} />{:else}<div class="ps-rail-placeholder"></div>{/if}
 							<span class="ps-rail-label">{a.title}</span>
 							<span class="ps-rail-sub">{a.subtitle ?? ''}</span>
 						</button>
@@ -138,7 +138,7 @@
 				<div class="ps-rail ps-rail-artists">
 					{#each results.artists as a (a.id)}
 						<button class="ps-rail-card ps-rail-artist" onclick={() => onOpenAlbum(a)}>
-							{#if a.thumbnail}<img src={a.thumbnail} alt={a.title} class="ps-artist-circle" />{:else}<div class="ps-rail-placeholder ps-artist-circle"></div>{/if}
+							{#if a.thumbnail}<img decoding="async" loading="lazy" src={a.thumbnail} alt={a.title} class="ps-artist-circle" />{:else}<div class="ps-rail-placeholder ps-artist-circle"></div>{/if}
 							<span class="ps-rail-label">{a.title}</span>
 						</button>
 					{/each}
@@ -153,7 +153,7 @@
 				<div class="ps-rail">
 					{#each results.playlists as p (p.id)}
 						<button class="ps-rail-card" onclick={() => onOpenAlbum(p)}>
-							{#if p.thumbnail}<img src={p.thumbnail} alt={p.title} />{:else}<div class="ps-rail-placeholder"></div>{/if}
+							{#if p.thumbnail}<img decoding="async" loading="lazy" src={p.thumbnail} alt={p.title} />{:else}<div class="ps-rail-placeholder"></div>{/if}
 							<span class="ps-rail-label">{p.title}</span>
 							<span class="ps-rail-sub">{p.subtitle ?? ''}</span>
 						</button>

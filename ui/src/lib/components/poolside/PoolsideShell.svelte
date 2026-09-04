@@ -396,7 +396,7 @@
 				>
 					<div class="ps-sidebar-disc" class:spin={!playback.paused && !!playback.now}>
 						{#if playback.now?.thumbnail}
-							<img src={playback.now.thumbnail} alt="" />
+							<img decoding="async" src={playback.now.thumbnail} alt="" />
 						{:else}
 							<div class="ps-sidebar-disc-fallback"></div>
 						{/if}

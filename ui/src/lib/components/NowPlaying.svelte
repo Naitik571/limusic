@@ -339,7 +339,7 @@
 	     enough for dark text, over near-black it can carry more colour before muted-foreground
 	     stops reading. Turn them up together if it's too subtle. -->
 	{#if appearance.artworkBackground && srcs[2] && !bgFailed}
-		<img
+		<img decoding="async"
 			src={srcs[2]}
 			alt=""
 			onerror={() => (bgFailed = true)}
@@ -390,7 +390,7 @@
 							class="absolute inset-0 h-full w-full object-cover"
 						></video>
 						{#if heroSrc}
-							<img src={heroSrc} alt="" class="absolute inset-0 h-full w-full object-cover opacity-30 mix-blend-overlay" aria-hidden="true" />
+							<img decoding="async" src={heroSrc} alt="" class="absolute inset-0 h-full w-full object-cover opacity-30 mix-blend-overlay" aria-hidden="true" />
 						{/if}
 						<div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/10"></div>
 						<button
@@ -442,7 +442,7 @@
 						</div>
 					{/if}
 					{#if heroSrc && attempt < srcs.length}
-						<img
+						<img decoding="async"
 							src={heroSrc}
 							alt=""
 							onerror={handleHeroError}
@@ -549,7 +549,7 @@
 		style="top: 0"
 	>
 			{#if appearance.artworkBackground && srcs[2] && !bgFailed}
-				<img
+				<img decoding="async"
 					src={srcs[2]}
 					alt=""
 					class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl dark:opacity-40"
