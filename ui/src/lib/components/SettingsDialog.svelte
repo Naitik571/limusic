@@ -159,8 +159,7 @@
 		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics in the player view Tabs and switching buttons in the player view.' },
 		{ tab: 'themes', group: 'thm-player', text: "Artwork background Tint the player view with the playing track's cover, blurred." },
 		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders." },
-		{ tab: 'themes', group: 'thm-backdrops', text: 'Ambient Mode Immersive blurred artwork backdrop behind the app.' },
-		{ tab: 'themes', group: 'thm-backdrops', text: 'Ambient intensity How strong the blurred backdrop is.' },
+		{ tab: 'themes', group: 'thm-backdrops', text: 'Backdrop Off Subtle Auto artwork atmosphere behind the app.' },
 		{ tab: 'themes', group: 'thm-backdrops', text: 'Spotify Canvas Show looping Canvas video in Now Playing when available.' },
 		{ tab: 'themes', group: 'thm-packs', text: 'Get packs Per-artist ZIPs indexed every 15min. Injects style.css on the artist page.' },
 		{ tab: 'themes', group: 'thm-packs', text: 'Installed packs Packs currently installed.' },
@@ -308,6 +307,22 @@
 	}
 
 	const quality = $derived(settings.quality ?? 'HIGH');
+	// One Backdrop control replaces three rows (artwork background, ambient mode, ambient
+	// intensity): off = plain surfaces, subtle = player tint only, auto = full blurred wash.
+	type BackdropMode = 'off' | 'subtle' | 'auto';
+	const BACKDROP_MODES = [
+		{ id: 'off', label: 'Off' },
+		{ id: 'subtle', label: 'Subtle' },
+		{ id: 'auto', label: 'Auto' }
+	];
+	const backdrop = $derived<BackdropMode>(
+		appearance.ambientMode ? 'auto' : appearance.artworkBackground ? 'subtle' : 'off'
+	);
+	function setBackdrop(mode: BackdropMode) {
+		if (mode === 'off') setAppearance({ artworkBackground: false, ambientMode: false });
+		else if (mode === 'subtle') setAppearance({ artworkBackground: true, ambientMode: false });
+		else setAppearance({ artworkBackground: true, ambientMode: true, ambientIntensity: 'balanced' });
+	}
 	const historyOn = $derived(settings.enable_history !== 'false');
 	const autoplayOn = $derived(settings.autoplay !== 'false');
 	const hideVideosOn = $derived(settings.hide_videos === 'true');
@@ -832,11 +847,6 @@
 									tall: true
 								})}
 								{@render row({
-									title: 'Artwork background',
-									desc: "Tint the player view with the playing track's cover, blurred. Off leaves it plain.",
-									control: artworkBgSwitch
-								})}
-								{@render row({
 									title: 'Adapt colors to artwork',
 									badge: 'Experimental',
 									desc: "Recolor the app from the playing track's cover: accent, surfaces and borders, fading between tracks. Off keeps the selected theme's own colors.",
@@ -850,17 +860,10 @@
 							<h3 class={LABEL}>Backdrops</h3>
 							<div class={CARD}>
 								{@render row({
-									title: 'Ambient Mode',
-									desc: 'Immersive blurred artwork backdrop behind the app (#7). Uses filter: blur(40px) scale(1.2), driven by --ambient-opacity. Glass theme stays frosted over it.',
-									control: ambientSwitch
+									title: 'Backdrop',
+									desc: 'Artwork atmosphere behind the app. Off is plain surfaces, Subtle tints the player view, Auto adds the full blurred wash.',
+									control: backdropPicker
 								})}
-								{#if appearance.ambientMode}
-									{@render row({
-										title: 'Ambient intensity',
-										desc: 'How strong the blurred backdrop is — maps to --ambient-opacity.',
-										below: ambientOptions
-									})}
-								{/if}
 								{@render row({
 									title: 'Spotify Canvas',
 									badge: 'Auto',
@@ -1111,17 +1114,9 @@
 		checked={appearance.tabbedPlayer}
 		onCheckedChange={(on) => setAppearance({ tabbedPlayer: on })}
 	/>{/snippet}
-{#snippet artworkBgSwitch()}<Switch
-		checked={appearance.artworkBackground}
-		onCheckedChange={(on) => setAppearance({ artworkBackground: on })}
-	/>{/snippet}
 {#snippet artworkAccentSwitch()}<Switch
 		checked={appearance.artworkAccent}
 		onCheckedChange={(on) => setAppearance({ artworkAccent: on })}
-	/>{/snippet}
-{#snippet ambientSwitch()}<Switch
-		checked={appearance.ambientMode}
-		onCheckedChange={(on) => setAppearance({ ambientMode: on })}
 	/>{/snippet}
 {#snippet bestMixSwitch()}<Switch
 		checked={crossfade.best_mix}
@@ -1459,32 +1454,8 @@
 	</Button>
 {/snippet}
 
-{#snippet ambientOptions()}
-	<div class="flex gap-2">
-		{#each [{ id: 'subtle', label: 'Subtle' }, { id: 'balanced', label: 'Balanced' }, { id: 'vivid', label: 'Vivid' }] as opt (opt.id)}
-			<Button
-				size="sm"
-				variant={appearance.ambientIntensity === opt.id ? 'default' : 'outline'}
-				onclick={() => setAppearance({ ambientIntensity: opt.id as any })}
-			>
-				{opt.label}
-			</Button>
-		{/each}
-	</div>
-	<div class="mt-2 flex items-center gap-3">
-		<span class="text-xs text-muted-foreground">Opacity</span>
-		<Slider
-			type="single"
-			min={0}
-			max={0.4}
-			step={0.02}
-			value={appearance.immersiveBackgroundIntensity}
-			onValueChange={(v) => setAppearance({ immersiveBackgroundIntensity: v })}
-			class="flex-1"
-			aria-label="Ambient opacity"
-		/>
-		<span class="w-12 text-right font-mono text-xs">{appearance.immersiveBackgroundIntensity.toFixed(2)}</span>
-	</div>
+{#snippet backdropPicker()}
+	{@render segmented(BACKDROP_MODES, backdrop, (id) => setBackdrop(id as BackdropMode))}
 {/snippet}
 
 {#snippet packRefreshButton()}
