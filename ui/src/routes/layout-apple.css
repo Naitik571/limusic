@@ -116,3 +116,18 @@ html[data-layout-preset='apple'] [data-menu] {
 html[data-layout-preset='apple'] .marquee {
 	animation: none;
 }
+
+/* Lyrics as display type: Apple karaoke reads as headlines, not list rows. Scoped off the
+   compact (mini-player) scroller via :not(.px-2); word spans inherit the size. */
+html[data-layout-preset='apple'] .lyrics-scroller:not(.px-2) button {
+	font-size: 1.65rem;
+	line-height: 1.45;
+	padding-top: 0.7rem;
+	padding-bottom: 0.7rem;
+	letter-spacing: -0.015em;
+}
+
+/* Player bar breathes: a touch more vertical room, quieter transport hover. */
+html[data-layout-preset='apple'] footer {
+	padding-block: 4px;
+}

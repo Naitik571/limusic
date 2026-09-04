@@ -21,6 +21,8 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { ON_REPEAT_ID, type BrowseItem, type SongItem } from '$lib/api';
 	import * as api from '$lib/api';
+	import { layout } from '$lib/theme.svelte';
+	import { goto } from '$app/navigation';
 	import { thumb } from '$lib/thumb';
 	import PlaylistMenu from './PlaylistMenu.svelte';
 	import { auth, library, personal, ui, createLibraryPlaylist, toast } from '$lib/player.svelte';
@@ -34,6 +36,15 @@
 	];
 	const isActive = (href: string) =>
 		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
+
+	const isApple = $derived(layout.id === 'apple');
+	let sidebarSearch = $state('');
+	function submitSidebarSearch() {
+		const q = sidebarSearch.trim();
+		if (!q) return;
+		sidebarSearch = '';
+		goto(`/search?q=${encodeURIComponent(q)}`);
+	}
 
 	// Pinned first (in pin order), then everything else by last played. Derived here rather than in
 	// the shared `library` store so the Library page keeps YouTube's own ordering.
@@ -126,6 +137,30 @@
 		</Button>
 	</div>
 
+	{#if isApple}
+		<!-- Apple layout: search lives at the top of the sidebar, group labels included. -->
+		<form
+			class="mt-1 hidden px-3 lg:block"
+			onsubmit={(e) => {
+				e.preventDefault();
+				submitSidebarSearch();
+			}}
+		>
+			<div class="flex items-center gap-2 rounded-lg bg-foreground/[0.06] px-2.5 py-1.5">
+				<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+				<input
+					bind:value={sidebarSearch}
+					placeholder="Search"
+					aria-label="Search music"
+					class="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/70"
+				/>
+			</div>
+		</form>
+		<p class="mt-3 hidden px-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 lg:block">
+			Browse
+		</p>
+	{/if}
+
 	<nav class="mt-2 flex flex-col gap-1">
 		{#each nav as n (n.href)}
 			<a
@@ -167,6 +202,11 @@
 	     flex-1 lets the list fill the space and scroll. -->
 	{#if auth.account?.signedIn}
 		<div class="mt-3 hidden min-h-0 flex-1 flex-col border-t pt-3 lg:flex">
+			{#if isApple}
+				<p class="px-5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+					Playlists
+				</p>
+			{/if}
 			<Button
 				variant="outline"
 				size="sm"
