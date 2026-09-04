@@ -7,8 +7,8 @@
 -->
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { PlayIcon, PauseIcon, PreviousIcon, NextIcon } from '@hugeicons/core-free-icons';
-	import { playback, dragVolume, commitVolume } from '$lib/player.svelte';
+	import { PlayIcon, PauseIcon, PreviousIcon, NextIcon, FavouriteIcon, ShuffleIcon, RepeatIcon, ArrowUp01Icon } from '@hugeicons/core-free-icons';
+	import { playback, dragVolume, commitVolume, toggleNowPlayingLike, cycleRepeat, sleepTimer, setSleepTimer } from '$lib/player.svelte';
 	import * as api from '$lib/api';
 
 	let { onOpenNow }: { onOpenNow?: () => void } = $props();
@@ -18,6 +18,22 @@
 	const pos = $derived(playback.position);
 	const dur = $derived(playback.duration || 0);
 	const pct = $derived(dur > 0 ? Math.min(100, (pos / dur) * 100) : 0);
+	const liked = $derived(playback.liked ?? false);
+	const shuffleOn = $derived(playback.queue.shuffle ?? false);
+	const repeat = $derived(playback.queue.repeat ?? 'off');
+	const upcoming = $derived(
+		playback.queue.items
+			.map((item, i) => ({ item, i }))
+			.slice(playback.queue.currentIndex + 1, playback.queue.currentIndex + 7)
+	);
+	const sleepText = $derived(
+		sleepTimer.mode === 'off'
+			? null
+			: sleepTimer.mode === 'end_of_song'
+				? 'End of song'
+				: `${Math.floor(sleepTimer.remaining / 60)}:${String(sleepTimer.remaining % 60).padStart(2, '0')}`
+	);
+	let expanded = $state(false);
 
 	let pill = $state<HTMLDivElement>();
 
@@ -106,6 +122,14 @@
 		<button class="ps-mini-pill-btn" onclick={() => api.nextTrack().catch(() => {})} aria-label="Next">
 			<HugeiconsIcon icon={NextIcon} />
 		</button>
+		<button
+			class="ps-mini-pill-btn {liked ? 'is-liked' : ''}"
+			onclick={() => toggleNowPlayingLike().catch(() => {})}
+			aria-label={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+			title={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+		>
+			<HugeiconsIcon icon={FavouriteIcon} />
+		</button>
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 		<div
@@ -159,7 +183,67 @@
 				aria-label="Volume"
 			/>
 		</div>
+		{#if sleepText}
+			<button
+				class="ps-mini-pill-sleep"
+				onclick={() => setSleepTimer('off')}
+				title="Sleep timer on — click to turn off"
+				aria-label="Sleep timer on, activate to turn off"
+			>
+				{sleepText}
+			</button>
+		{/if}
+		<button
+			class="ps-mini-pill-btn ps-mini-pill-expand {expanded ? 'open' : ''}"
+			onclick={() => (expanded = !expanded)}
+			aria-label={expanded ? 'Collapse up next' : 'Expand up next'}
+			aria-expanded={expanded}
+			title="Up next"
+		>
+			<HugeiconsIcon icon={ArrowUp01Icon} />
+		</button>
 	</div>
+	{#if expanded}
+		<button
+			class="ps-mini-pill-scrim"
+			onclick={() => (expanded = false)}
+			aria-label="Collapse up next"
+			tabindex="-1"
+		></button>
+		<div class="ps-mini-pill-sheet" role="dialog" aria-label="Up next">
+			<div class="ps-mini-pill-sheet-head">
+				<span>Up next</span>
+				<div class="ps-mini-pill-sheet-modes">
+					<button
+						class="ps-mini-pill-btn sm {shuffleOn ? 'is-on' : ''}"
+						onclick={() => api.toggleShuffle().catch(() => {})}
+						aria-label="Toggle shuffle"
+						title="Shuffle"
+					>
+						<HugeiconsIcon icon={ShuffleIcon} />
+					</button>
+					<button
+						class="ps-mini-pill-btn sm {repeat !== 'off' ? 'is-on' : ''}"
+						onclick={() => cycleRepeat().catch(() => {})}
+						aria-label="Cycle repeat mode"
+						title={repeat === 'one' ? 'Repeat one' : repeat === 'all' ? 'Repeat all' : 'Repeat off'}
+					>
+						<HugeiconsIcon icon={RepeatIcon} />
+					</button>
+				</div>
+			</div>
+			{#if upcoming.length}
+				{#each upcoming as { item, i } (item.video_id + i)}
+					<button class="ps-mini-pill-next" onclick={() => { expanded = false; api.playIndex(i).catch(() => {}); }}>
+						<span class="ps-mini-pill-next-title">{item.title}</span>
+						<span class="ps-mini-pill-next-artist">{item.artists}</span>
+					</button>
+				{/each}
+			{:else}
+				<p class="ps-mini-pill-next-empty">Nothing queued — the night ends here.</p>
+			{/if}
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -246,6 +330,100 @@
 		box-shadow: 0 4px 12px rgba(14, 110, 140, 0.5);
 	}
 	.ps-mini-pill-btn--play svg { width: 16px; height: 16px; }
+	.ps-mini-pill-btn.is-liked { color: #ff5d7a; opacity: 1; }
+	.ps-mini-pill-btn.is-liked svg { fill: currentColor; }
+	.ps-mini-pill-btn.sm { width: 26px; height: 26px; }
+	.ps-mini-pill-btn.sm svg { width: 13px; height: 13px; }
+	.ps-mini-pill-btn.is-on { color: #8ce1f0; opacity: 1; }
+	.ps-mini-pill-expand svg { transition: transform 0.2s; }
+	.ps-mini-pill-expand.open svg { transform: rotate(180deg); }
+	.ps-mini-pill-sleep {
+		all: unset;
+		cursor: pointer;
+		flex: none;
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		font-variant-numeric: tabular-nums;
+		color: #ffd88a;
+		background: rgba(255, 216, 138, 0.12);
+		border: 1px solid rgba(255, 216, 138, 0.3);
+		border-radius: 999px;
+		padding: 3px 8px;
+		white-space: nowrap;
+	}
+	.ps-mini-pill-sleep:hover { background: rgba(255, 216, 138, 0.22); }
+	/* Up-next sheet: same island glass, floating above the pill. */
+	.ps-mini-pill-scrim {
+		all: unset;
+		position: fixed;
+		inset: 0;
+		z-index: 49;
+		cursor: default;
+	}
+	.ps-mini-pill-sheet {
+		position: fixed;
+		left: 50%;
+		transform: translateX(-50%);
+		bottom: 76px;
+		z-index: 50;
+		width: 340px;
+		max-width: calc(100vw - 36px);
+		max-height: 320px;
+		overflow-y: auto;
+		border-radius: 20px;
+		padding: 10px;
+		background: linear-gradient(180deg, rgba(12, 12, 14, 0.92) 0%, rgba(12, 12, 14, 0.8) 100%);
+		backdrop-filter: blur(24px) saturate(1.8);
+		-webkit-backdrop-filter: blur(24px) saturate(1.8);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+		color: #fff;
+	}
+	.ps-mini-pill-sheet-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 2px 6px 8px;
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		opacity: 0.75;
+	}
+	.ps-mini-pill-sheet-modes { display: flex; gap: 2px; }
+	.ps-mini-pill-next {
+		all: unset;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 7px 10px;
+		border-radius: 12px;
+		cursor: pointer;
+		text-align: left;
+	}
+	.ps-mini-pill-next:hover { background: rgba(255, 255, 255, 0.08); }
+	.ps-mini-pill-next-title {
+		font-size: 12px;
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ps-mini-pill-next-artist {
+		font-size: 10px;
+		opacity: 0.6;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ps-mini-pill-next-empty {
+		padding: 10px;
+		font-size: 12px;
+		opacity: 0.6;
+		text-align: center;
+	}
 	.ps-mini-pill-progress {
 		display: flex;
 		flex-direction: column;
