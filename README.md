@@ -28,7 +28,7 @@ YouTube Music client, and grew from there.
 - **Ad-free playback** — streams come straight from YouTube's API, ads never do
 - **Search & browse** — songs, albums, artists, playlists, and the YTM home feed; **paste any YouTube/YT Music link** (playlist, album, song, artist) from the titlebar and open it directly
 - **Sign in** with your YouTube Music account: in-app Google login or cookie-paste — **channel switcher** for accounts with multiple YouTube channels
-- **Your library** — playlists, liked songs, write actions (like, add to playlist, create/rename/delete playlists, subscribe) and a **playlist search** to filter tracks by title/artist/album
+- **Your library** — playlists, liked songs, write actions (like, add to playlist, create/rename/delete playlists, subscribe), a **playlist search** to filter tracks by title/artist/album, **drag-and-drop into playlists**, one-click **dedupe**, and multi-select bulk actions
 - **Gapless playback**, powered by libmpv
 - **Smart crossfade** — 1–12s overlap between tracks, plus **Best Mix** harmonic queue sorting
 - **Karaoke lyrics from 8 sources** — LRCLIB, Boidu, Unison, QRC, NetEase, Musixmatch, Kugou, SimpMusic — with a per-song sync offset
@@ -39,10 +39,11 @@ YouTube Music client, and grew from there.
 - **LAN remote** — scan a QR and control playback from your phone
 - **Artist packs** — per-artist themes from the community index or a local ZIP
 - **Type-to-search** — start typing on any playlist page to filter it instantly
-- **Queue** with radio/automix continuation, drag-to-reorder, restored across restarts
+- **Queue** with radio/automix continuation, drag-to-reorder, clear-played, restored across restarts
+- **Ctrl+K command palette** — searches everything and drives the app (layouts, settings tabs, sleep timer, updates); right-click any result for the full track menu
 - **Synced lyrics** — line-by-line side panel with auto-scroll and click-to-jump, plus an Apple Music-style word-by-word karaoke sweep on the active line. Immersive: blurred album-art backdrop, gradient edge fades and a soft glow on the active line
-- **Mini Player** — minimize the player and keep enjoying your music
-- **Sleep timer** — pause after 15/30/60 minutes or at the end of the song; keeps counting even with the window closed
+- **Island mini player** — floating Dynamic-Island pill with a live **waveform seekbar** (click/drag to scrub), like button, sleep countdown and expandable up-next; the classic Mini Player is still there too
+- **Sleep timer** — Off / end-of-song / 15-30-60 min presets in Settings with a live countdown; Rust-enforced even with the window closed
 - **Local Music** — play your own local files with all metadata intact
 - **Last.fm scrobbling** — connect once from the title bar, every play is scrobbled
 - **Discord Rich Presence** — artwork, live progress bar, one click to toggle
@@ -50,7 +51,7 @@ YouTube Music client, and grew from there.
 - **System tray** — close the window, keep the music; play/pause and skip from the tray, optional start-on-login
 - **Listen Together** — synced listening rooms over a small self-hosted relay
 - **Gamepad** — full controller support (Xbox/PS/JoyCon): play/pause, next/prev, volume, seek, fast-scrub, mini-player toggle — works even when the app is tray-minimized (see Gamepad table below)
-- **Offline downloads** — save any track from its ⋮ menu; a **download manager** in the title bar shows live per-track progress. Playlists download in parallel (4 at a time, skips what's already on disk) and fall back to yt-dlp when a stream can't be resolved. **Downloaded tracks show a persistent indicator in their rows** and play straight from disk, offline.
+- **Offline downloads** — save any track from its ⋮ menu; a **download manager** in the title bar shows live per-track progress. Playlists download in parallel (4 at a time, skips what's already on disk), repeat failures quarantine instead of retrying forever, and overlapping walks serialize. **Keep entire playlists offline** with per-playlist pins that top up new tracks automatically. yt-dlp fallback when a stream can't be resolved. **Downloaded tracks show a persistent indicator in their rows** and play straight from disk, offline.
 - **Themes with real personality** — five palette themes beyond the accent colours: **Pixel** (8-bit CRT scanlines, Press Start 2P), **Arcade** (Bungee + dual glow), **Synthwave** (Orbitron + neon grid + sunset wash), **Gruvbox** (JetBrains Mono + warm paper), **Nord** (icy calm, IBM Plex) — each with its own fonts, background treatment, focus ring and selection colour. All six new font families are also available as overrides for any theme.
 - **Self-updating builds** (setup.exe on Windows) + **Ctrl/Cmd +/− zoom**
 - **Customization** — accent colour, hue, radius, font overrides and locally-loaded font files under Settings → Themes
@@ -59,7 +60,34 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.5`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.10`.
+
+**v0.6.10 — island mini player (mooziac-style):**
+- **Waveform seekbar** — every track's audio is decoded once in Rust (symphonia, pure-Rust, no system deps) into normalized peaks cached in SQLite; the pill glows white-cyan behind the playhead. Click **or drag-scrub** to seek, full keyboard support kept, thin-fill fallback until peaks land
+- **Dynamic Island look** — near-black glass shell, white-on-dark chrome, hairline highlight; reads as hardware on any backdrop
+- **Like button + sleep countdown chip** on the pill (chip appears only while a timer runs, click to cancel)
+- **Tap-to-expand up-next** — chevron opens a floating sheet with the next tracks (tap to jump), shuffle + repeat toggles
+
+**v0.6.9 — queue tools, offline pins, downloads that behave:**
+- **Queue**: type-to-filter removed per feedback — kept **Clear played** (drops the played prefix, gapless lookahead survives)
+- **Sleep timer presets in Settings** — Off / End of song / 15-30-60 min with a live countdown badge; backend-enforced with the window closed
+- **Drag songs into playlists** — any song row drags onto sidebar playlists or onto a playlist page; locals and On Repeat are rejected with a reason
+- **Playlist dedupe + Keep-offline pins** — one-click duplicate removal; per-playlist offline toggle with auto top-up of new tracks on every visit
+- **Ctrl+K right-click fixed properly** — the row menu renders outside the dialog (which trapped all clicks), and dismissing it restores the palette with the search intact
+- **Downloads overhaul** — Clear-finished actually clears; failed/cancelled tracks no longer wear ghost "Downloaded" badges; repeat failures quarantine for 7 days instead of retrying on every trigger; overlapping playlist walks serialize instead of writing the same file twice
+- **Smoother scrolling** — async image decoding everywhere, lazy feed images, poolside home sections culled + no scroll-time entrance animations
+- **Dead radio screens deleted** (~780 lines that never opened)
+- **Lyrics start flush at the top** — the fixed 35vh opening gap is gone
+
+**v0.6.8 — palette + stability pass:**
+- **Ctrl+K row menus work at all** — first fix pass for the dialog-trapped clicks
+- **Locale fallback hardened** — old fr/id/pt-BR saves migrate cleanly; partial catalogs fall back per key
+- **Marquee restored** — long titles scroll again instead of sitting static
+- **Playlist render caps** — 250-row pages with Show-more instead of mounting 5,000 rows at once
+- **WEB_REMIX 403s expire** — one transient failure no longer bans a track forever (30-min TTL)
+
+**v0.6.7 — theater mode, sticky shuffle, upstream-port fixes:**
+- Theater mode replaces sing mode, sticky shuffle across queues, liked-state sync, palette right-click behavior, coverflow + stacked-fan library views, reactive hero accents, lyrics font picker
 
 **v0.6.5 — upstream ports + fullscreen lyrics everywhere:**
 - **Immersive sing mode, every layout** — fullscreen lyrics now owns the whole window: the titlebar (or Canopy's transport bar) hides while you sing, Poolside's lyrics drawer gained a ⤢ fullscreen button. Esc or ✕ brings the bar back
@@ -82,8 +110,6 @@ All available in the latest release. Fork tracks upstream versioning — this re
 - Beta: find it in Settings ▸ Appearance ▸ Layout ▸ **Poolside (Beta)**
 
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.1`.
-
 **v0.6.0 — feel & finish (9 UI upgrades):**
 - **Shared-element artwork transition** — the cover on the card you clicked flies into the player and lands as the big artwork; the player stops sliding up from nowhere and starts arriving from *where you clicked*
 - **Artwork swipe pager** — swipe the big cover left/right to skip tracks, with drag-follow visual feedback
@@ -96,8 +122,6 @@ All available in the latest release. Fork tracks upstream versioning — this re
 - **Searchable settings** — a filter box in Settings matches rows live, with "found in" chips jumping between tabs
 - **Glass intensity slider** — dial the blur/translucency of every glass surface (Appearance)
 
-
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.5.12`.
 
 **v0.5.12 — auto-offline & history:**
 - **Auto-offline** — Settings ▸ Downloads: new liked songs (and playlist adds, in the wider mode) download themselves in the background. Turning it on syncs your existing Liked Music immediately and again at each launch — the walk skips what's already on disk, so it only ever fetches what's missing
