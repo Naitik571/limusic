@@ -1608,6 +1608,19 @@ pub async fn download_track(
     .await
 }
 
+/// Waveform peaks (0–255) for the island seekbar: decoded once per track, then cached in
+/// SQLite. `bars` clamps to 24–240 (default 120). Slow/missing decode only means the seekbar
+/// keeps its plain fill — never an error the UI must surface.
+#[tauri::command]
+pub async fn waveform_peaks(
+    app: tauri::AppHandle,
+    state: St<'_>,
+    video_id: String,
+    bars: Option<u32>,
+) -> Result<Vec<u8>, String> {
+    crate::waveform::waveform_peaks(&app, &state, &state.orchestrator, &video_id, bars).await
+}
+
 /// Parse a `"m:ss"` / `"h:mm:ss"` duration string into seconds (0 if absent/unparseable).
 fn duration_secs(s: Option<&str>) -> i64 {
     let Some(s) = s else { return 0 };

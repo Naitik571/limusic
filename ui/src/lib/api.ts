@@ -355,6 +355,9 @@ export const cancelDownload = (video_id: string) =>
 	invoke<boolean>('cancel_download', { video_id });
 /** Stop every in-flight track and stop a running batch before its next track starts. */
 export const cancelAllDownloads = () => invoke<number>('cancel_all_downloads');
+/** Waveform peaks (0–255) for the island seekbar; decoded once per track, then cached. */
+export const waveformPeaks = (videoId: string, bars?: number) =>
+	invoke<number[]>('waveform_peaks', { videoId, bars: bars ?? null });
 
 // Download progress events (Rust → UI). Used by the Titlebar indicator.
 export const onDownloadProgress = (cb: (p: any) => void) =>

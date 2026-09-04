@@ -21,6 +21,7 @@ mod remote;
 mod session;
 mod state;
 mod tray;
+mod waveform;
 mod webview;
 mod ytdlp;
 
@@ -447,6 +448,7 @@ pub fn run() {
             commands::delete_download,
             commands::clear_downloads,
             commands::auto_offline_sync,
+            commands::waveform_peaks,
             commands::get_history,
             commands::clear_history,
             commands::get_account,

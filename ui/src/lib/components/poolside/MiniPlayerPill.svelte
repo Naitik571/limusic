@@ -1,13 +1,9 @@
 <!--
-  MiniPlayerPill — floating, pill-shaped mini player that sits at the bottom-center
-  of the screen, on top of every other UI. Designed to feel like a "transport chip"
-  that never moves while the content behind it scrolls / carousels.
-
-  Differs from MiniPlayer.svelte in two ways:
-    1. It is positioned with `position: fixed; bottom: 18px; left: 50%; translateX(-50%)`
-       so it overlays every view (not just the Library one).
-    2. It auto-shows whenever a track is loaded, even on the Now view (the existing
-       MiniPlayer is hidden on the Now view because the bigger deck IS the player).
+   MiniPlayerPill — floating island mini player (mooziac-style Dynamic Island) that sits at
+   the bottom-center of the screen, on top of every other UI. Near-black glass shell with a
+   live waveform seekbar: peaks are decoded once per track by Rust (waveform.rs, cached in
+   SQLite) and glow white behind the playhead. Click or drag-scrub the wave to seek; the
+   thin fill shows until peaks land.
 -->
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -25,16 +21,58 @@
 
 	let pill = $state<HTMLDivElement>();
 
+	// Waveform peaks for the island seekbar (mooziac-style): decoded once per track by Rust,
+	// then cached in SQLite. Module-level map so remounts don't refetch; the plain thin fill
+	// shows until peaks land (decode needs the audio bytes first).
+	const WAVE_BARS = 96;
+	const peakCache = new Map<string, number[]>();
+	let peaks = $state<number[] | null>(null);
+	$effect(() => {
+		const id = cur?.videoId;
+		if (!id) {
+			peaks = null;
+			return;
+		}
+		const hit = peakCache.get(id);
+		if (hit) {
+			peaks = hit;
+			return;
+		}
+		peaks = null;
+		let live = true;
+		api
+			.waveformPeaks(id, WAVE_BARS)
+			.then((bars) => {
+				if (!live || !bars.length) return;
+				peakCache.set(id, bars);
+				peaks = bars;
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	});
+
 	function fmt(s: number): string {
 		if (!s || Number.isNaN(s)) return '0:00';
 		const t = Math.max(0, Math.floor(s));
 		return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 	}
-	function seek(e: MouseEvent) {
-		if (!dur) return;
+	function seekRatio(e: MouseEvent): number | null {
+		if (!dur) return null;
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-		const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-		api.seek(ratio * dur).catch(() => {});
+		if (!r.width) return null;
+		return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+	}
+	function seek(e: MouseEvent) {
+		const ratio = seekRatio(e);
+		if (ratio !== null) api.seek(ratio * dur).catch(() => {});
+	}
+	// Drag-scrub across the waveform: press seeks, moving with the button held keeps seeking.
+	function scrub(e: PointerEvent) {
+		if (e.buttons !== 1) return;
+		const ratio = seekRatio(e);
+		if (ratio !== null) api.seek(ratio * dur).catch(() => {});
 	}
 	function openNow() {
 		onOpenNow?.();
@@ -73,6 +111,8 @@
 		<div
 			class="ps-mini-pill-progress"
 			onclick={seek}
+			onpointerdown={scrub}
+			onpointermove={scrub}
 			onkeydown={(e) => {
 				if (e.key === 'ArrowLeft') { e.preventDefault(); api.seek(Math.max(0, pos - 5)).catch(() => {}); }
 				if (e.key === 'ArrowRight') { e.preventDefault(); api.seek(Math.min(dur, pos + 5)).catch(() => {}); }
@@ -86,9 +126,23 @@
 			aria-valuenow={Math.round(pos)}
 			tabindex="0"
 		>
-			<div class="ps-mini-pill-progress-track">
-				<div class="ps-mini-pill-progress-fill" style="width: {pct}%"></div>
-			</div>
+			{#if peaks}
+				<!-- Waveform seekbar: played bars glow, the rest sit dim. Bar count is fixed so
+				     layout never shifts when peaks land; heights come straight from the decoder. -->
+				<div class="ps-mini-pill-wave" aria-hidden="true">
+					{#each peaks as p, i (i)}
+						{@const played = (i / peaks.length) * 100 <= pct}
+						<span
+							class="ps-mini-pill-bar {played ? 'on' : ''}"
+							style="height: {Math.max(12, Math.round((p / 255) * 100))}%"
+						></span>
+					{/each}
+				</div>
+			{:else}
+				<div class="ps-mini-pill-progress-track">
+					<div class="ps-mini-pill-progress-fill" style="width: {pct}%"></div>
+				</div>
+			{/if}
 			<div class="ps-mini-pill-progress-times">
 				<span>{fmt(pos)}</span>
 				<span>{fmt(dur)}</span>
@@ -118,13 +172,16 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 8px 12px;
+		padding: 8px 14px;
 		border-radius: 999px;
-		background: linear-gradient(180deg, rgba(8, 50, 60, 0.78) 0%, rgba(8, 50, 60, 0.62) 100%);
-		backdrop-filter: blur(22px) saturate(1.4);
-		-webkit-backdrop-filter: blur(22px) saturate(1.4);
-		border: 1px solid rgba(255, 255, 255, 0.22);
-		box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.2);
+		/* Dynamic-island look: near-black glass, white-on-dark chrome. The pool tint comes
+		   from the glow accents, not the shell, so it reads as hardware on any backdrop. */
+		background: linear-gradient(180deg, rgba(12, 12, 14, 0.84) 0%, rgba(12, 12, 14, 0.68) 100%);
+		backdrop-filter: blur(24px) saturate(1.8);
+		-webkit-backdrop-filter: blur(24px) saturate(1.8);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+		color: #fff;
 		min-width: 520px;
 		max-width: calc(100vw - 36px);
 	}
@@ -207,6 +264,26 @@
 		height: 100%;
 		background: linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(140, 225, 240, 0.95));
 		transition: width 0.3s linear;
+	}
+	/* Waveform seekbar: fixed bar count, decoder-driven heights. Played bars glow white,
+	   the rest sit dim; the whole strip is the slider hit area (click + drag-scrub). */
+	.ps-mini-pill-wave {
+		display: flex;
+		align-items: center;
+		gap: 1px;
+		height: 28px;
+		cursor: pointer;
+	}
+	.ps-mini-pill-bar {
+		flex: 1 1 0;
+		min-width: 1px;
+		border-radius: 1px;
+		background: rgba(255, 255, 255, 0.22);
+		transition: background 0.2s;
+	}
+	.ps-mini-pill-bar.on {
+		background: linear-gradient(180deg, #fff, rgba(140, 225, 240, 0.9));
+		box-shadow: 0 0 6px rgba(140, 225, 240, 0.45);
 	}
 	.ps-mini-pill-progress-times {
 		display: flex;

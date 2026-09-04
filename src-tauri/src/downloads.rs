@@ -149,10 +149,10 @@ pub fn cancel_all_downloads() -> usize {
 }
 
 /// A resolved stream ready to download.
-struct Stream {
-    url: String,
-    headers: Vec<(String, String)>,
-    client: &'static str,
+pub(crate) struct Stream {
+    pub(crate) url: String,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) client: &'static str,
 }
 
 /// Where downloads live. A user-set `download_dir` wins; otherwise `<app_data>/downloads`.
@@ -206,7 +206,7 @@ fn sanitize_filename(name: &str) -> String {
 // on a single large stream; connection reuse across the batch keeps the resolver warm.
 static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .tcp_nodelay(true)
@@ -219,7 +219,7 @@ fn client() -> &'static reqwest::Client {
 
 /// Resolve a stream URL the same way playback would: orchestrator first, yt-dlp as the net.
 /// Returns `None` (and the caller reports the error) if both fail.
-async fn resolve_stream(
+pub(crate) async fn resolve_stream(
     state: &Arc<AppState>,
     orchestrator: &Arc<Orchestrator>,
     video_id: &str,
@@ -249,7 +249,7 @@ async fn resolve_stream(
 /// Safely append `ratebypass=yes` ONLY to bare googlevideo URLs — never to already-parameterised
 /// signed ones (a `signature=` param means YouTube computed it against the exact query; changing
 /// it 403s) and never when the parameter is already there.
-fn with_ratebypass(url: &str) -> String {
+pub(crate) fn with_ratebypass(url: &str) -> String {
     if url.contains("googlevideo.com")
         && !url.contains("ratebypass=")
         && !url.contains("signature=")

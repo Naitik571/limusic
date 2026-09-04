@@ -101,6 +101,12 @@ impl Db {
                 size_bytes INTEGER NOT NULL,
                 added_at   INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS waveforms (
+                video_id    TEXT PRIMARY KEY,
+                bars        BLOB NOT NULL,
+                bar_count   INTEGER NOT NULL,
+                computed_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS lyric_offsets (
                 video_id  TEXT PRIMARY KEY,
                 offset_ms INTEGER NOT NULL
@@ -680,6 +686,30 @@ impl Db {
             |r| r.get(0),
         )
         .unwrap_or(0)
+    }
+
+    /// Cached waveform peaks for `video_id`: `(bars 0–255, bar count)`, if computed before.
+    pub fn get_waveform(&self, video_id: &str) -> Option<(Vec<u8>, i64)> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT bars, bar_count FROM waveforms WHERE video_id = ?1",
+            [video_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok()
+    }
+
+    /// Store computed waveform peaks (replaces any prior entry for the same video id).
+    pub fn put_waveform(&self, video_id: &str, bars: &[u8], count: i64) {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO waveforms(video_id, bars, bar_count, computed_at)
+             VALUES(?1,?2,?3,?4)
+             ON CONFLICT(video_id) DO UPDATE SET bars=excluded.bars, bar_count=excluded.bar_count,
+                computed_at=excluded.computed_at",
+            rusqlite::params![video_id, bars, count, now_secs()],
+        )
+        .unwrap_or_else(warn_write("put_waveform", "waveforms"));
     }
 }
 

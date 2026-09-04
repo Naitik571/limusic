@@ -52,6 +52,8 @@ discord-rich-presence = "1.1.0"
 # Last.fm API signature (api_sig is md5 of the sorted params + secret).
 md-5 = "0.10"
 lofty = "0.22.2"
+# Waveform peaks for the island seekbar: pure-Rust decode (m4a/webm/mp3/opus), no system libs.
+symphonia = "0.5"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-global-shortcut = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
