@@ -211,6 +211,87 @@
 	--sidebar-ring: oklch(0.7871 0.1187 304.7693);
 }
 
+/* --- Apple: Cupertino neutrals, one system blue. Light is paper-white with a #F5F5F7 sidebar;
+   dark is true-black with #1C1C1E cards. No personality overlays — the restraint IS the theme. */
+.theme-apple {
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.32 0.008 285);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.32 0.008 285);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.32 0.008 285);
+	--primary: oklch(0.6 0.19 255);
+	--primary-foreground: oklch(1 0 0);
+	--secondary: oklch(0.96 0.004 285);
+	--secondary-foreground: oklch(0.32 0.008 285);
+	--muted: oklch(0.96 0.004 285);
+	--muted-foreground: oklch(0.55 0.01 285);
+	--accent: oklch(0.6 0.19 255);
+	--accent-foreground: oklch(1 0 0);
+	--destructive: oklch(0.63 0.22 29);
+	--border: oklch(0.84 0.005 285);
+	--input: oklch(0.84 0.005 285);
+	--ring: oklch(0.6 0.19 255);
+	--chart-1: oklch(0.6 0.19 255);
+	--chart-2: oklch(0.72 0.2 145);
+	--chart-3: oklch(0.75 0.19 70);
+	--chart-4: oklch(0.62 0.22 315);
+	--chart-5: oklch(0.63 0.22 29);
+	--sidebar: oklch(0.96 0.004 285);
+	--sidebar-foreground: oklch(0.32 0.008 285);
+	--sidebar-primary: oklch(0.6 0.19 255);
+	--sidebar-primary-foreground: oklch(1 0 0);
+	--sidebar-accent: oklch(0.92 0.005 285);
+	--sidebar-accent-foreground: oklch(0.32 0.008 285);
+	--sidebar-border: oklch(0.84 0.005 285);
+	--sidebar-ring: oklch(0.6 0.19 255);
+	--radius: 0.625rem;
+	--font-sans: 'Inter Variable', sans-serif;
+	--font-heading: 'Inter Variable', sans-serif;
+	--font-serif: Georgia, serif;
+	--font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--shadow-2xs: 0px 1px 2px 0px rgb(0 0 0 / 0.04);
+	--shadow-xs: 0px 1px 2px 0px rgb(0 0 0 / 0.04);
+	--shadow-sm: 0px 1px 2px 0px rgb(0 0 0 / 0.06), 0px 1px 2px -1px rgb(0 0 0 / 0.06);
+	--shadow-md: 0px 4px 8px -2px rgb(0 0 0 / 0.08), 0px 2px 4px -2px rgb(0 0 0 / 0.06);
+	--shadow-lg: 0px 8px 16px -4px rgb(0 0 0 / 0.1), 0px 4px 6px -2px rgb(0 0 0 / 0.05);
+	--shadow-xl: 0px 16px 32px -8px rgb(0 0 0 / 0.12), 0px 8px 12px -4px rgb(0 0 0 / 0.06);
+	--shadow-2xl: 0px 24px 48px -12px rgb(0 0 0 / 0.18);
+}
+.dark.theme-apple {
+	--background: oklch(0 0 0);
+	--foreground: oklch(0.96 0.004 285);
+	--card: oklch(0.24 0.006 286);
+	--card-foreground: oklch(0.96 0.004 285);
+	--popover: oklch(0.24 0.006 286);
+	--popover-foreground: oklch(0.96 0.004 285);
+	--primary: oklch(0.65 0.17 255);
+	--primary-foreground: oklch(1 0 0);
+	--secondary: oklch(0.32 0.006 285);
+	--secondary-foreground: oklch(0.96 0.004 285);
+	--muted: oklch(0.32 0.006 285);
+	--muted-foreground: oklch(0.68 0.008 285);
+	--accent: oklch(0.65 0.17 255);
+	--accent-foreground: oklch(1 0 0);
+	--destructive: oklch(0.66 0.22 25);
+	--border: oklch(0.36 0.006 285);
+	--input: oklch(0.36 0.006 285);
+	--ring: oklch(0.65 0.17 255);
+	--chart-1: oklch(0.65 0.17 255);
+	--chart-2: oklch(0.75 0.18 145);
+	--chart-3: oklch(0.78 0.17 70);
+	--chart-4: oklch(0.68 0.2 315);
+	--chart-5: oklch(0.66 0.22 25);
+	--sidebar: oklch(0.19 0.004 285);
+	--sidebar-foreground: oklch(0.96 0.004 285);
+	--sidebar-primary: oklch(0.65 0.17 255);
+	--sidebar-primary-foreground: oklch(1 0 0);
+	--sidebar-accent: oklch(0.3 0.006 285);
+	--sidebar-accent-foreground: oklch(0.96 0.004 285);
+	--sidebar-border: oklch(0.36 0.006 285);
+	--sidebar-ring: oklch(0.65 0.17 255);
+}
+
 /* --- Artwork tint ---
    "Adapt colors to artwork" (Themes tab). `theme.svelte.ts` puts the playing cover's hue in
    --art-h and toggles .art-tint on <html>; every surface below is derived from that one number, so

@@ -16,7 +16,7 @@ import { artworkAccent } from './artcolor';
 import { solveVeil } from './veil';
 import { allowFontFile } from './api';
 
-export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin';
+export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'apple' | 'catppuccin';
 
 export type LayoutId = 'default' | 'grove' | 'canopy' | 'poolside' | 'apple';
 
@@ -40,6 +40,7 @@ export const THEMES: Theme[] = [
 	{ id: 'lime', label: 'Lime', kind: 'accent', color: 'oklch(0.77 0.2 131)', fg: 'oklch(0.205 0 0)' },
 	{ id: 'purple', label: 'Purple', kind: 'accent', color: 'oklch(0.56 0.25 302)', fg: 'oklch(0.985 0 0)' },
 	{ id: 'teal', label: 'Teal', kind: 'accent', color: 'oklch(0.85 0.13 181)', fg: 'oklch(0.205 0 0)' },
+	{ id: 'apple', label: 'Apple', kind: 'palette', color: 'oklch(0.60 0.19 255)' },
 	{ id: 'catppuccin', label: 'Catppuccin', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' }
 ];
 
