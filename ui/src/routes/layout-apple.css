@@ -1,0 +1,118 @@
+/*
+ * Apple layout (Beta) — restraint system. Same components as Default (no shell swap like
+ * poolside/canopy); every rule below only quiets the shared chrome. Imported by +layout.svelte,
+ * inert unless the preset attribute matches.
+ *
+ * The Apple feel is subtraction, not decoration:
+ *   - one radius scale (10px cards, 8px controls) via --radius, which the components consume
+ *   - hairlines instead of borders, selection as a fill instead of a ring
+ *   - Inter everywhere (already the default stack), tabular numerals on times
+ *   - translucency reserved for overlays (sidebar, sheets, dialogs) — never full-bleed
+ *   - motion left alone except the marquee: Apple truncates titles instead of scrolling them
+ *
+ * Deliberately NOT here: sentence case (component text, needs a sweep), sidebar search and
+ * back/forward chevrons (need Titlebar/Sidebar branches — follow-ups), lyrics display type
+ * (follow-up on LyricsView).
+ */
+
+html[data-layout-preset='apple'] {
+	--radius: 0.625rem;
+	--apple-hairline: color-mix(in oklch, var(--foreground) 9%, transparent);
+	--apple-select: color-mix(in oklch, var(--primary) 13%, transparent);
+	--apple-hover: color-mix(in oklch, var(--foreground) 5%, transparent);
+	--font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI Variable', 'Segoe UI', sans-serif;
+	--font-heading: 'Inter Variable', system-ui, -apple-system, 'Segoe UI Variable', 'Segoe UI', sans-serif;
+}
+
+/* The shell reads as one calm surface; artwork color arrives through content, not chrome. */
+html[data-layout-preset='apple'] .app-root {
+	letter-spacing: -0.006em;
+}
+html[data-layout-preset='apple'] ::selection {
+	background: color-mix(in oklch, var(--primary) 25%, transparent);
+}
+html[data-layout-preset='apple'] :focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+/* Sidebar: translucent panel, hairline edge, 40px rows, selection as a fill. */
+html[data-layout-preset='apple'] aside.glass {
+	background: color-mix(in oklch, var(--sidebar, var(--card)) 72%, transparent);
+	border-right: 1px solid var(--apple-hairline);
+}
+html[data-layout-preset='apple'] aside.glass nav a,
+html[data-layout-preset='apple'] aside.glass button {
+	min-height: 40px;
+	border-radius: 8px;
+	font-size: 13px;
+	font-weight: 500;
+}
+html[data-layout-preset='apple'] aside.glass nav a.bg-glass-strong {
+	background: var(--apple-select);
+	color: var(--foreground);
+}
+
+/* Content: section titles read as headlines, not labels. Dialogs portal to <body>, so
+   main-scoped heading rules can't leak into them. */
+html[data-layout-preset='apple'] main h2 {
+	font-size: 20px;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+html[data-layout-preset='apple'] main {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
+}
+html[data-layout-preset='apple'] main::-webkit-scrollbar {
+	width: 8px;
+}
+html[data-layout-preset='apple'] main::-webkit-scrollbar-thumb {
+	background: color-mix(in oklch, var(--foreground) 22%, transparent);
+	border-radius: 8px;
+}
+
+/* Cards: 10px radius, no hover lift or zoom — Apple highlights, it doesn't pounce.
+   The escaped class targets Tailwind's group-hover scale exactly (higher specificity
+   via the html prefix wins over the utility). */
+html[data-layout-preset='apple'] .aurora-card {
+	border-radius: 10px;
+}
+html[data-layout-preset='apple'] .group-hover\:scale-105:is(:hover, :focus-visible) {
+	transform: none;
+}
+
+/* Player bar: hairline top edge, translucent wash, tabular times (already tabular in markup;
+   this keeps them that way if markup drifts), calmer transport hover. */
+html[data-layout-preset='apple'] footer {
+	border-top: 1px solid var(--apple-hairline);
+	background: color-mix(in oklch, var(--background) 82%, transparent);
+	backdrop-filter: blur(20px) saturate(1.4);
+	-webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+html[data-layout-preset='apple'] footer button {
+	border-radius: 8px;
+}
+
+/* Side sheets (queue/lyrics): square to the edge, hairline separator, no heavy shadow. */
+html[data-layout-preset='apple'] .side-panel {
+	border-left: 1px solid var(--apple-hairline);
+	box-shadow: -12px 0 32px rgb(0 0 0 / 0.12);
+}
+
+/* Dialogs: 14px radius, soft shadow, no neon. */
+html[data-layout-preset='apple'] [data-slot='dialog-content'] {
+	border-radius: 14px;
+	box-shadow: 0 24px 64px rgb(0 0 0 / 0.25);
+}
+
+/* Menus: hairline border, 10px radius, quiet hover. */
+html[data-layout-preset='apple'] [data-menu] {
+	border: 1px solid var(--apple-hairline);
+	border-radius: 10px;
+}
+
+/* Titles truncate instead of scrolling — the marquee is the least Apple thing in the bar. */
+html[data-layout-preset='apple'] .marquee {
+	animation: none;
+}
