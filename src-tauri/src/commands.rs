@@ -124,13 +124,6 @@ pub async fn clear_queued(state: St<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/// Shuffle the upcoming tracks in place (queue panel's "Shuffle rest"). Playing/played stay.
-#[tauri::command]
-pub async fn shuffle_rest(state: St<'_>) -> Result<(), String> {
-    state.inner().clone().shuffle_rest().await;
-    Ok(())
-}
-
 /// Drop every played track, keeping the one playing (queue panel's "Clear played").
 #[tauri::command]
 pub async fn clear_played(state: St<'_>) -> Result<(), String> {

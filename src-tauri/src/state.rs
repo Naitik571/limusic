@@ -2876,41 +2876,6 @@ impl AppState {
         self.lt_broadcast_queue().await;
     }
 
-    /// Shuffle the upcoming tracks in place (queue panel's "Shuffle rest"). The playing track
-    /// and everything already played stay put; the shuffle mode flag is untouched. When a
-    /// shuffle snapshot exists it is refreshed to the new order, so toggling shuffle off
-    /// afterwards keeps what the user arranged rather than restoring a stale order.
-    /// Guests: host-only hint.
-    pub async fn shuffle_rest(self: &std::sync::Arc<Self>) {
-        if self.lt.is_guest().await {
-            self.emit_guest_hint();
-            return;
-        }
-        {
-            let mut q = self.queue.lock().await;
-            if q.items.len() <= q.current.saturating_add(1) {
-                return; // zero or one upcoming track — nothing to shuffle
-            }
-            let current = q.current;
-            shuffle_upcoming(&mut q.items, current);
-            // Refresh the unshuffle snapshot (only when one exists — its presence *is* the
-            // shuffle flag), same rule as the enqueue path.
-            if q.shuffle_orig.is_some() {
-                q.shuffle_orig = Some(q.items.clone());
-            }
-            // Indices shuffled — drop a primed lookahead unconditionally (cheap; re-primed
-            // below), same as toggle_shuffle.
-            if q.lookahead_loaded.take().is_some() {
-                let _ = self.player.clear_playlist();
-            }
-        }
-        self.emit_queue().await;
-        self.persist_queue().await;
-        self.prime_lookahead(self.generation.load(Ordering::SeqCst))
-            .await;
-        self.lt_broadcast_queue().await;
-    }
-
     /// Drop every played track, keeping the currently playing one (queue panel's "Clear
     /// played"). A primed gapless lookahead survives: it points at the same song, only shifted
     /// down by the drained prefix. The shuffle snapshot is trimmed to the surviving tracks so

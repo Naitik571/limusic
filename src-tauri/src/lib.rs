@@ -414,7 +414,6 @@ pub fn run() {
             commands::remove_from_queue,
             commands::move_queue_item,
             commands::clear_queued,
-            commands::shuffle_rest,
             commands::clear_played,
             commands::add_to_queue,
             commands::play_next,

@@ -278,8 +278,6 @@ export const addToQueue = (items: SongItem[], from?: string, continuation?: stri
 	invoke<void>('add_to_queue', { items, from, continuation });
 /** Clear every upcoming manually-queued track (the "Next in queue" section). */
 export const clearQueued = () => invoke<void>('clear_queued');
-/** Shuffle the upcoming tracks in place; playing/played stay put. */
-export const shuffleRest = () => invoke<void>('shuffle_rest');
 /** Drop every played track, keeping the one playing. */
 export const clearPlayed = () => invoke<void>('clear_played');
 export const nextTrack = () => invoke<void>('next_track');
