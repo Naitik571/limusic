@@ -87,25 +87,30 @@ fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
     // background — SMTC keeps delivering Play/Pause/Next/Prev even when the
     // app has no visible window or focus (souvlaki keeps the controller alive
     // on this owner thread for the app lifetime).
+    //
+    // The handle may not exist yet when this thread starts (heavy startups push
+    // window creation past us), so poll instead of trying once: souvlaki's
+    // `MediaControls::new` *panics* on a missing HWND, which used to kill this
+    // thread silently — no media keys for the whole session, nothing in the log
+    // beyond the warning below (and no console to print the panic to).
     #[cfg(target_os = "windows")]
     let hwnd = {
-        // At `setup` the webview may not have its HWND yet on slow startups;
-        // retry briefly so we don't boot without SMTC on a cold launch.
-        let mut h = app
-            .get_webview_window("main")
-            .and_then(|w| w.hwnd().ok())
-            .map(|h| h.0 as *mut std::ffi::c_void);
-        if h.is_none() {
-            std::thread::sleep(Duration::from_millis(500));
+        let mut h = None;
+        for _ in 0..12 {
             h = app
                 .get_webview_window("main")
                 .and_then(|w| w.hwnd().ok())
                 .map(|h| h.0 as *mut std::ffi::c_void);
-            if h.is_none() {
-                tracing::warn!(
-                    "media-controls: main window HWND unavailable — SMTC may not attach"
-                );
+            if h.is_some() {
+                break;
             }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        if h.is_none() {
+            tracing::warn!(
+                "media-controls: main window HWND never appeared — SMTC disabled, OS media keys and earbuds will not work this session"
+            );
+            return;
         }
         h
     };
@@ -191,6 +196,7 @@ fn apply_metadata(
 /// Route an OS control press into the same [`AppState`] methods the UI commands use. Runs the
 /// async work on the Tauri runtime (the callback fires on souvlaki's own thread).
 fn handle_event(app: &AppHandle, event: MediaControlEvent) {
+    tracing::debug!(event = ?event, "media-controls: OS press received");
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let Some(state) = app.try_state::<Arc<AppState>>() else {

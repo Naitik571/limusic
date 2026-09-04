@@ -71,6 +71,7 @@
 	// results" for the whole debounce, on every query.
 	$effect(() => {
 		const q = query.trim();
+		navTouched = false; // a new query means no explicit row choice yet (see paletteKeys)
 		if (q.length < 2) {
 			items = [];
 			loading = false;
@@ -83,6 +84,34 @@
 		const timer = setTimeout(() => load(q), 300);
 		return () => clearTimeout(timer);
 	});
+
+	// Enter behavior. cmdk auto-highlights the first row, so a bare Enter would play whatever
+	// happens to be on top instead of opening the full search page the user asked for. Arrowing
+	// to a row first means "that one" and is left alone. Hooked on an ancestor in capture phase:
+	// cmdk's own Enter listener sits on the input itself, where ordering vs ours is undefined.
+	// IME composition Enter must reach the input untouched.
+	let navTouched = false;
+	function paletteKeys(e: KeyboardEvent) {
+		if (!ui.paletteOpen) return;
+		const t = e.target;
+		if (!(t instanceof HTMLInputElement)) return;
+		if (e.isComposing) return;
+		if (
+			e.key === 'ArrowUp' ||
+			e.key === 'ArrowDown' ||
+			e.key === 'Home' ||
+			e.key === 'End' ||
+			e.key === 'PageUp' ||
+			e.key === 'PageDown'
+		) {
+			navTouched = true;
+			return;
+		}
+		if (e.key !== 'Enter' || navTouched || !query.trim()) return;
+		e.preventDefault();
+		e.stopPropagation();
+		allResults();
+	}
 
 	// Closing clears the field, which the effect above turns into an empty list: reopening starts
 	// fresh instead of on the last search's rows. Opening drops any stale pending menu.
@@ -190,7 +219,10 @@
 	);
 </script>
 
-<Command.Dialog
+<!-- display:contents: layout-invisible hook so paletteKeys (capture phase) runs before
+     cmdk's own input-level Enter listener, whose ordering vs ours is otherwise undefined. -->
+<div class="contents" onkeydowncapture={paletteKeys}>
+	<Command.Dialog
 	bind:open={ui.paletteOpen}
 	shouldFilter={false}
 	vimBindings={false}
@@ -318,3 +350,4 @@
 		/>
 	{/key}
 {/if}
+</div>
