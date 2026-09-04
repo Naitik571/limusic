@@ -292,6 +292,35 @@
 	--sidebar-ring: oklch(0.65 0.17 255);
 }
 
+/* --- Apple personality: grouped iOS look + Finder icon tints + green switches ---------------
+   The tokens above are just neutrals; THIS is what makes it read Apple instead of Default:
+   a gray canvas with white section cards (Settings-app grouping), Finder-style colorful
+   sidebar icons, and iOS-green toggles. All scoped to .theme-apple — nothing else moves. */
+.theme-apple {
+	--background: oklch(0.945 0.004 285);
+	--sidebar: oklch(0.945 0.004 285);
+}
+.theme-apple aside.glass nav a:nth-child(1) svg {
+	color: oklch(0.6 0.19 255);
+}
+.theme-apple aside.glass nav a:nth-child(2) svg {
+	color: oklch(0.63 0.22 15);
+}
+.theme-apple aside.glass nav a:nth-child(3) svg {
+	color: oklch(0.72 0.17 75);
+}
+.theme-apple aside.glass nav a:nth-child(4) svg {
+	color: oklch(0.6 0.2 315);
+}
+.theme-apple [data-slot='switch'][data-state='checked'] {
+	background: oklch(0.72 0.2 145);
+	border-color: transparent;
+}
+.dark.theme-apple [data-slot='switch'][data-state='checked'] {
+	background: oklch(0.75 0.18 145);
+	border-color: transparent;
+}
+
 /* --- Artwork tint ---
    "Adapt colors to artwork" (Themes tab). `theme.svelte.ts` puts the playing cover's hue in
    --art-h and toggles .art-tint on <html>; every surface below is derived from that one number, so
