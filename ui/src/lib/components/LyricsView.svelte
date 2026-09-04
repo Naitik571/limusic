@@ -33,6 +33,22 @@
 	let loading = $state(true);
 	let scroller: HTMLElement | undefined = $state();
 
+	// Padding that lets the first/last lines center-scroll: exactly half the scroller height
+	// (minus half a line), remeasured on resize. The old fixed `py-[35vh]` scaled with the
+	// *window*, so the opening gap looked random across layouts and window sizes.
+	let edgePad = $state(0);
+	function measureEdgePad() {
+		if (!scroller) return;
+		edgePad = Math.max(0, Math.round(scroller.clientHeight / 2 - 24));
+	}
+	$effect(() => {
+		measureEdgePad();
+		if (!scroller) return;
+		const ro = new ResizeObserver(measureEdgePad);
+		ro.observe(scroller);
+		return () => ro.disconnect();
+	});
+
 	/** Shift every cue by `delta` ms (the persisted per-song offset), clamped at 0. */
 	function shiftCues(l: api.Lyrics, delta: number) {
 		if (!delta) return;
@@ -269,8 +285,8 @@
 	{:else if lyrics?.instrumental}
 		<p class="py-8 text-center text-lg text-muted-foreground">Instrumental ♪</p>
 	{:else if lyrics && lyrics.synced}
-		<!-- Padding lets the first/last lines center-scroll. -->
-		<div class="py-[35vh] {expanded ? 'mx-auto max-w-3xl' : ''}">
+		<!-- edgePad (measured, half the scroller) lets the first/last lines center-scroll. -->
+		<div style="padding-top: {edgePad}px; padding-bottom: {edgePad}px;" class={expanded ? 'mx-auto max-w-3xl' : ''}>
 			{#each lyrics.lines as line, i (i)}
 				{@const isActive = i === activeIndex}
 				{@const isPast = i < activeIndex}
