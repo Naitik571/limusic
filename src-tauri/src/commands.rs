@@ -328,7 +328,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 22] = [
+const UI_SETTINGS: [&str; 23] = [
     "proxy",
     "quality",
     "enable_history",
@@ -354,6 +354,8 @@ const UI_SETTINGS: [&str; 22] = [
     "lyrics_apple_dev_token",
     "lyrics_apple_storefront",
     "lyrics_boidu",
+    // Prefer word-level karaoke over plain line sync (Settings → General → Lyrics).
+    "lyrics_word_first",
     // Keep shuffle on across queue changes (albums/playlists/radio).
     "sticky_shuffle",
     // Custom app icon: an absolute file path on this machine, not a secret.

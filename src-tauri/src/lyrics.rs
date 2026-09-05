@@ -238,10 +238,23 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     };
 
-    /// synced > instrumental > plain — the axis (besides priority) that ranks answers.
-    fn rank(l: &Lyrics) -> u8 {
+    /// synced-with-words > synced > instrumental > plain — the axis (besides priority)
+    /// that ranks answers. Word-level wins because a Musixmatch/NetEase/Kugou/QRC word hit
+    /// would otherwise always lose to an earlier line-level hit (LRCLIB usually has one for
+    /// exactly the popular tracks that carry word timings). Default on; Settings writes
+    /// `lyrics_word_first=false` to prefer plain line sync instead.
+    let prefer_words = state.db.get_setting("lyrics_word_first").as_deref() != Some("false");
+    fn rank(l: &Lyrics, prefer_words: bool) -> u8 {
         if l.synced {
-            2
+            if prefer_words
+                && l.lines
+                    .iter()
+                    .any(|x| x.words.as_ref().is_some_and(|w| !w.is_empty()))
+            {
+                3
+            } else {
+                2
+            }
         } else if l.instrumental {
             1
         } else {
@@ -260,7 +273,10 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
             Ok(Some(l)) => {
                 let takes = match &best {
                     None => true,
-                    Some((bp, bl)) => rank(&l) > rank(bl) || (rank(&l) == rank(bl) && prio < *bp),
+                    Some((bp, bl)) => {
+                        rank(&l, prefer_words) > rank(bl, prefer_words)
+                            || (rank(&l, prefer_words) == rank(bl, prefer_words) && prio < *bp)
+                    }
                 };
                 if takes {
                     best = Some((prio, l));
@@ -281,14 +297,17 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     let mut definitive = lrclib_answered == 2 && !timed_out;
 
     // Synced answer in hand — done. Plain/partial answers wait for the YTM upgrades below.
-    if best.as_ref().is_some_and(|(_, l)| rank(l) == 2) {
+    if best
+        .as_ref()
+        .is_some_and(|(_, l)| rank(l, prefer_words) >= 2)
+    {
         let (_, l) = best.take().unwrap();
         return (Some(l), req.duration.is_some());
     }
 
     // 2. YouTube Music timed lyrics — authenticated and heaviest, so strictly last and optional:
     //    only when nothing synced arrived, and only within whatever budget remains.
-    if best.as_ref().is_none_or(|(_, l)| rank(l) < 2) {
+    if best.as_ref().is_none_or(|(_, l)| rank(l, prefer_words) < 2) {
         if let (Some(bid), Some(client)) = (
             &browse_id,
             state.clients.get(innertube::LYRICS_TIMED_CLIENT),

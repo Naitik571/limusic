@@ -143,6 +143,7 @@
 		{ tab: 'general', group: 'gen-system', text: 'Close to tray Closing the window keeps music playing in the background. Restore or quit from the tray icon.' },
 		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
 		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish).' },
+		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones.' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token.' },
 		// Appearance
@@ -324,6 +325,7 @@
 		else setAppearance({ artworkBackground: true, ambientMode: true, ambientIntensity: 'balanced' });
 	}
 	const historyOn = $derived(settings.enable_history !== 'false');
+	const wordFirstOn = $derived(settings.lyrics_word_first !== 'false');
 	const autoplayOn = $derived(settings.autoplay !== 'false');
 	const hideVideosOn = $derived(settings.hide_videos === 'true');
 	const preventDuplicatesOn = $derived(settings.prevent_duplicates === 'true');
@@ -446,6 +448,11 @@
 	async function setHistory(on: boolean) {
 		settings.enable_history = on ? 'true' : 'false';
 		await api.setSetting('enable_history', settings.enable_history);
+	}
+
+	async function setWordFirst(on: boolean) {
+		settings.lyrics_word_first = on ? 'true' : 'false';
+		await api.setSetting('lyrics_word_first', settings.lyrics_word_first);
 	}
 
 	async function setAutoplay(on: boolean) {
@@ -743,6 +750,11 @@
 								<section class="{GROUP} {groupVisible('gen-lyrics') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Lyrics</h3>
 							<div class={CARD}>
+								{@render row({
+									title: 'Prefer word-by-word karaoke',
+									desc: 'Word-timed lyrics (Musixmatch, NetEase, Kugou and friends) win over plain line-synced ones. Off keeps the fastest line-synced match instead.',
+									control: wordFirstSwitch
+								})}
 								{@render row({
 									title: 'Apple Music lyrics',
 									badge: 'Optional',
@@ -1077,6 +1089,7 @@
 
 <!-- Controls. Split out so the rows above read as a list of settings rather than a wall of markup. -->
 {#snippet historySwitch()}<Switch checked={historyOn} onCheckedChange={setHistory} />{/snippet}
+{#snippet wordFirstSwitch()}<Switch checked={wordFirstOn} onCheckedChange={setWordFirst} />{/snippet}
 {#snippet discordSwitch()}<Switch checked={discordOn} onCheckedChange={setDiscord} />{/snippet}
 {#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
 {#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
