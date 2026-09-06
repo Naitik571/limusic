@@ -388,6 +388,8 @@
 	     (set by the $effect above via --ps-album-accent). When nothing's playing it
 	     stays on the static pool blue. -->
 	<Water accent={albumAccent} />
+	<!-- Procedural film grain, visible only in the goldfish motel treatment. -->
+	<div class="ps-grain" aria-hidden="true"></div>
 
 	<!-- ============================================================
 	     EDGE VINYLS — ambient depth decoration. Two large vinyl records anchored
