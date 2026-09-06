@@ -60,7 +60,17 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.10`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.11`.
+
+**v0.6.11 — lyrics you can trust + poolside waters:**
+- **Musixmatch word-salad rejected** — restricted tracks came back as fake syllable-matched gibberish that parsed as valid synced lyrics and won every tie; the provider now honours the `restricted` flag, a strict shape check drops salad from any provider, and poisoned cache rows self-heal on next play
+- **Ctrl+K Enter fixed properly** — bare Enter opens the full search page again (the hook now lives on window capture; the dialog portal meant a wrapper div never saw the keystrokes)
+- **Generated fallback covers** — missing/failed artwork lands on seeded art (palette + motif + initials) in cards, rows and palette results instead of blank tiles
+- **AUTO vinyl skin** — the pressed disc tints itself from the cover's dominant colour, with a new Library-skin picker to match the deck one
+- **Lyric line lookup is binary search**, page-cache hits refresh LRU recency, pill titles shrink-to-fit before ellipsizing
+- **One Esc cascade** (picker → settings → queue → takeover → drawer) and **pressed-not-pasted custom covers** (groove texture composited over uploads)
+- **Ambient video waters** — aqua/verdant/goldfish themes play real water footage behind the shell (vendored locally, poster stills under reduce-motion); clear + night keep the procedural pool
+- **Liquid glass**, CD-grid skin picker, coverflow cursor caption, theme-switch crossfade, accent-following pill, edge-bleed rails, spring row entrances, sing artwash, and a **docked queue panel on wide screens**
 
 **v0.6.10 — island mini player (mooziac-style):**
 - **Waveform seekbar** — every track's audio is decoded once in Rust (symphonia, pure-Rust, no system deps) into normalized peaks cached in SQLite; the pill glows white-cyan behind the playhead. Click **or drag-scrub** to seek, full keyboard support kept, thin-fill fallback until peaks land
