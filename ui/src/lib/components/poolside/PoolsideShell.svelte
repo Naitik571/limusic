@@ -44,6 +44,8 @@
 	import { auth, local, np, playback, playFrom, ui, toast } from '$lib/player.svelte';
 	import { applyLayout } from '$lib/theme.svelte';
 	import Water from './Water.svelte';
+	import AmbientBg from './AmbientBg.svelte';
+	import LiquidGlass from './LiquidGlass.svelte';
 	import Vinyl from './Vinyl.svelte';
 	import NowView from './NowView.svelte';
 	import LibraryView from './LibraryView.svelte';
@@ -83,6 +85,7 @@
 	// the shared flag set — the root layout would keep the titlebar hidden forever.
 	onDestroy(() => {
 		np.sing = false;
+		clearTimeout(themeSwitchTimer);
 	});
 	let ccOpen = $state(false);
 	let ccAlbum = $state<BrowseItem | null>(null);
@@ -176,12 +179,11 @@
 				}
 				const s = max === 0 ? 0 : Math.round((dlt / max) * 100);
 				const l = Math.round((max + min) / 2 / 255 * 100);
-				albumHue = h;
-				// push to CSS as the accent variable so existing .ps-aqua etc. follow
-				document.documentElement.style.setProperty(
-					'--ps-album-accent',
-					`hsl(${h} ${Math.min(80, s)}% ${Math.max(40, Math.min(60, l + 5))}%)`
-				);
+			albumHue = h;
+			// push to CSS as the accent variable so existing .ps-aqua etc. follow
+			const accent = `hsl(${h} ${Math.min(80, s)}% ${Math.max(40, Math.min(60, l + 5))}%)`;
+			albumAccent = accent;
+			document.documentElement.style.setProperty('--ps-album-accent', accent);
 			} catch { /* CORS-tainted canvas — leave default */ }
 		};
 	});
@@ -311,13 +313,20 @@
 		/* storage unavailable — default water */
 	}
 	function setWaterTheme(v: WaterTheme) {
+		if (v === waterTheme) return;
 		waterTheme = v;
+		// Crossfade hook: the ps-theme-switch class eases color/border/text for one beat.
+		themeSwitch = true;
+		clearTimeout(themeSwitchTimer);
+		themeSwitchTimer = setTimeout(() => (themeSwitch = false), 320);
 		try {
 			localStorage.setItem('ps-water-theme', v);
 		} catch {
 			/* quota */
 		}
 	}
+	let themeSwitch = $state(false);
+	let themeSwitchTimer: ReturnType<typeof setTimeout> | undefined;
 	// Disc skins per surface (BlazePod-style): the Now deck and the Library hero tiles each
 	// get their own treatment — printed, noir, crimson, or auto (pressed disc tinted from
 	// the cover's own dominant color, falling back to printed when unsampleable).
@@ -400,17 +409,23 @@
 </script>
 
 	<div
-	class="ps-root {dusk ? 'dusk' : ''} {waterTheme !== 'clear' ? `wt-${waterTheme}` : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
+	class="ps-root {dusk ? 'dusk' : ''} {waterTheme !== 'clear' ? `wt-${waterTheme}` : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {themeSwitch ? 'ps-theme-switch' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
 	style="--ps-spin:{spin}"
 	data-view={view}
 	data-album-hue={albumHue ?? ''}
 >
 	<!-- Contextual water: the gradient stops now derive from the current album's hue
 	     (set by the $effect above via --ps-album-accent). When nothing's playing it
-	     stays on the static pool blue. -->
-	<Water accent={albumAccent} />
+	     stays on the static pool blue. Aqua/verdant/goldfish play the vendored ambient
+	     videos instead of the procedural pool; clear + night keep Water. -->
+	{#if waterTheme === 'aqua' || waterTheme === 'verdant' || waterTheme === 'goldfish'}
+		<AmbientBg theme={waterTheme} still={reduce} />
+	{:else}
+		<Water accent={albumAccent} />
+	{/if}
 	<!-- Procedural film grain, visible only in the goldfish motel treatment. -->
 	<div class="ps-grain" aria-hidden="true"></div>
+	<LiquidGlass />
 
 	<!-- ============================================================
 	     EDGE VINYLS — ambient depth decoration. Two large vinyl records anchored
@@ -592,6 +607,11 @@
 						role="dialog"
 						aria-label="Fullscreen lyrics"
 					>
+						{#if playback.now.thumbnail}
+							<div class="ps-sing-artwash" aria-hidden="true">
+								<img src={playback.now.thumbnail} alt="" draggable="false" decoding="async" />
+							</div>
+						{/if}
 						<button class="ps-drawer-close" onclick={() => (sing = false)} aria-label="Exit fullscreen lyrics">✕</button>
 						<LyricsView expanded sing />
 					</div>
@@ -648,23 +668,39 @@
 						</button>
 					</div>
 				</div>
-				<div class="ps-setrow">
+				<div class="ps-setrow ps-setrow--skins">
 					<span>DECK SKIN</span>
-					<select value={vinylSkins.deck} onchange={(e) => setVinylSkin('deck', e.currentTarget.value as VinylSkin)} aria-label="Now deck disc skin">
-						<option value="photo">PRINTED ART</option>
-						<option value="auto">AUTO · FROM ART</option>
-						<option value="noir">NOIR · B&W</option>
-						<option value="crimson">CRIMSON · RED</option>
-					</select>
+					<div class="ps-skin-grid" role="group" aria-label="Now deck disc skin">
+						{#each [{ v: 'photo', label: 'PRINTED' }, { v: 'auto', label: 'AUTO' }, { v: 'noir', label: 'NOIR' }, { v: 'crimson', label: 'CRIMSON' }] as o}
+							<button
+								class="ps-skin-opt {vinylSkins.deck === o.v ? 'sel' : ''}"
+								onclick={() => setVinylSkin('deck', o.v as VinylSkin)}
+								title={o.label}
+								aria-label="Deck skin {o.label}"
+								aria-pressed={vinylSkins.deck === o.v}
+							>
+								<Vinyl src={playback.now?.thumbnail ?? ''} playing={false} size={52} skin={o.v as VinylSkin} />
+								<span>{o.label}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
-				<div class="ps-setrow">
+				<div class="ps-setrow ps-setrow--skins">
 					<span>LIBRARY SKIN</span>
-					<select value={vinylSkins.library} onchange={(e) => setVinylSkin('library', e.currentTarget.value as VinylSkin)} aria-label="Library tile disc skin">
-						<option value="photo">PRINTED ART</option>
-						<option value="auto">AUTO · FROM ART</option>
-						<option value="noir">NOIR · B&W</option>
-						<option value="crimson">CRIMSON · RED</option>
-					</select>
+					<div class="ps-skin-grid" role="group" aria-label="Library tile disc skin">
+						{#each [{ v: 'photo', label: 'PRINTED' }, { v: 'auto', label: 'AUTO' }, { v: 'noir', label: 'NOIR' }, { v: 'crimson', label: 'CRIMSON' }] as o}
+							<button
+								class="ps-skin-opt {vinylSkins.library === o.v ? 'sel' : ''}"
+								onclick={() => setVinylSkin('library', o.v as VinylSkin)}
+								title={o.label}
+								aria-label="Library skin {o.label}"
+								aria-pressed={vinylSkins.library === o.v}
+							>
+								<Vinyl src={playback.now?.thumbnail ?? ''} playing={false} size={52} skin={o.v as VinylSkin} />
+								<span>{o.label}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
 				<div class="ps-setrow">
 					<span>SPIN SPEED</span>
@@ -746,7 +782,7 @@
 				anywhere in the app, but doesn't sit on top of the Now deck's own transport.
 				Hides on the coverflow view so the user can see the covers unobstructed. -->
 				{#if playback.now && view !== 'library-coverflow' && view !== 'library-fan'}
-					<MiniPlayerPill onOpenNow={() => go('now')} />
+					<MiniPlayerPill onOpenNow={() => go('now')} accent={albumAccent} />
 				{/if}
 
 				<!-- ============================================================

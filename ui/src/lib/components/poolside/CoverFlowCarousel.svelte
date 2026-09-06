@@ -129,9 +129,23 @@
 	function openNow() {
 		// The pill's onclick bubbles here too; this is a no-op unless the pill is unmounted.
 	}
+
+	// Cursor caption (BlazePod-style): a title+artist chip that follows the pointer over
+	// the arc, so hovering any cover names it without stealing focus. Mouse only —
+	// touch never hovers — and hidden the moment the pointer leaves the stage.
+	let cursor = $state<{ x: number; y: number; title: string; artist: string } | null>(null);
+	function trackCursor(e: PointerEvent, a: BrowseItem) {
+		if (e.pointerType !== 'mouse') return;
+		cursor = { x: e.clientX, y: e.clientY, title: a.title, artist: a.subtitle ?? '' };
+	}
+	function dropCursor() {
+		cursor = null;
+	}
 </script>
 
-<div class="ps-cf-stage">
+<!-- svelte-ignore a11y_no_static_element_interactions: pointerleave only hides the
+     cursor caption (no interaction semantics); the cards themselves are role=button. -->
+<div class="ps-cf-stage {cursor ? 'has-cursor' : ''}" onpointerleave={dropCursor}>
 	<!-- back button in the top-left -->
 	<button class="ps-cf-back" onclick={back} aria-label="Back">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="22">
@@ -173,6 +187,7 @@
 					tabindex="0"
 					onclick={() => clickAt(i)}
 					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), clickAt(i))}
+					onpointermove={(e) => trackCursor(e, a)}
 					title={`${a.title} — ${a.subtitle ?? ''}`}
 				>
 					<div class="ps-cf-card-frame">
@@ -206,6 +221,17 @@
 
 	<!-- always-on-top mini player pill (sits over the carousel, never moves) -->
 	<MiniPlayerPill onOpenNow={openNow} />
+
+	{#if cursor}
+		<div
+			class="ps-cf-cursor"
+			style="transform: translate({cursor.x + 16}px, {cursor.y + 18}px);"
+			aria-hidden="true"
+		>
+			<span class="ps-cf-cursor-title">{cursor.title}</span>
+			{#if cursor.artist}<span class="ps-cf-cursor-artist">{cursor.artist}</span>{/if}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -393,5 +419,45 @@
 		text-transform: uppercase;
 		opacity: 0.75;
 		margin-top: 2px;
+	}
+	/* Cursor caption: the native pointer hides over the arc while the chip names the
+	   hovered cover. Fixed + transform-only so mousemove never triggers layout. */
+	.ps-cf-stage.has-cursor .ps-cf-card { cursor: none; }
+	.ps-cf-cursor {
+		position: fixed;
+		top: 0;
+		left: 0;
+		z-index: 60;
+		pointer-events: none;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		max-width: 240px;
+		padding: 9px 14px 8px;
+		border-radius: 999px;
+		background: rgba(10, 10, 12, 0.88);
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.6);
+	}
+	.ps-cf-cursor-title {
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: #fff;
+		white-space: nowrap;
+		max-width: 212px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ps-cf-cursor-artist {
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.6);
+		white-space: nowrap;
+		max-width: 212px;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>

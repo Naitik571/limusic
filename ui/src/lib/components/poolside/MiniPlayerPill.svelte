@@ -12,7 +12,7 @@
 	import { playback, dragVolume, commitVolume, toggleNowPlayingLike, cycleRepeat, sleepTimer, setSleepTimer } from '$lib/player.svelte';
 	import * as api from '$lib/api';
 
-	let { onOpenNow }: { onOpenNow?: () => void } = $props();
+	let { onOpenNow, accent = null }: { onOpenNow?: () => void; accent?: string | null } = $props();
 
 	const cur = $derived(playback.now);
 	const paused = $derived(playback.paused);
@@ -127,6 +127,7 @@
 		class="ps-mini-pill"
 		role="group"
 		aria-label="Mini player"
+		style={accent ? `--ps-pill-accent: ${accent};` : ''}
 	>
 		<button class="ps-mini-pill-art" onclick={openNow} title="Open now playing" aria-label="Open now playing">
 			{#if cur.thumbnail}
@@ -381,14 +382,15 @@
 		white-space: nowrap;
 	}
 	.ps-mini-pill-sleep:hover { background: rgba(255, 216, 138, 0.22); }
-	/* Live pulse dot: now-playing heartbeat next to the transport. */
+	/* Live pulse dot: now-playing heartbeat next to the transport. Follows the album
+	   accent when one is sampled (--ps-pill-accent), signature red otherwise. */
 	.ps-live-dot {
 		width: 7px;
 		height: 7px;
 		flex: none;
 		border-radius: 50%;
-		background: #ff5d5d;
-		box-shadow: 0 0 8px rgba(255, 93, 93, 0.9);
+		background: var(--ps-pill-accent, #ff5d5d);
+		box-shadow: 0 0 8px var(--ps-pill-accent, rgba(255, 93, 93, 0.9));
 		animation: ps-live-pulse 1.6s ease-in-out infinite;
 	}
 	@keyframes ps-live-pulse {
@@ -490,7 +492,7 @@
 	}
 	.ps-mini-pill-progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(140, 225, 240, 0.95));
+		background: linear-gradient(90deg, rgba(255, 255, 255, 0.95), var(--ps-pill-accent, rgba(140, 225, 240, 0.95)));
 		transition: width 0.3s linear;
 	}
 	/* Waveform seekbar: fixed bar count, decoder-driven heights. Played bars glow white,
@@ -510,8 +512,8 @@
 		transition: background 0.2s;
 	}
 	.ps-mini-pill-bar.on {
-		background: linear-gradient(180deg, #fff, rgba(140, 225, 240, 0.9));
-		box-shadow: 0 0 6px rgba(140, 225, 240, 0.45);
+		background: linear-gradient(180deg, #fff, var(--ps-pill-accent, rgba(140, 225, 240, 0.9)));
+		box-shadow: 0 0 6px var(--ps-pill-accent, rgba(140, 225, 240, 0.45));
 	}
 	.ps-mini-pill-progress-times {
 		display: flex;
