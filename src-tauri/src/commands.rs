@@ -1422,6 +1422,65 @@ pub fn set_lyric_offset(state: St<'_>, video_id: String, offset_ms: i64) -> Resu
         .set_lyric_offset(&video_id, offset_ms.clamp(-5000, 5000));
     Ok(())
 }
+
+/// User-attached .lrc for one track (imported from disk when no provider had lyrics).
+/// Outranks every provider on the next fetch. Cap 256 KB — an .lrc is bytes of text.
+#[tauri::command]
+pub fn get_custom_lyrics(state: St<'_>, video_id: String) -> Option<String> {
+    state.db.get_custom_lyrics(&video_id)
+}
+#[tauri::command]
+pub fn set_custom_lyrics(state: St<'_>, video_id: String, lrc: String) -> Result<(), String> {
+    if lrc.len() > 262_144 {
+        return Err("lyrics file too large (256 KB max)".into());
+    }
+    if crate::lyrics::parse_lrc(&lrc).is_empty() {
+        return Err("no timed or text lines found in that file".into());
+    }
+    state.db.set_custom_lyrics(&video_id, &lrc);
+    Ok(())
+}
+#[tauri::command]
+pub fn delete_custom_lyrics(state: St<'_>, video_id: String) -> Result<(), String> {
+    state.db.delete_custom_lyrics(&video_id);
+    Ok(())
+}
+
+/// Read a user-picked lyrics file off disk for attaching. Extension-gated server-side too
+/// (the picker filter is advisory), capped like the stored rows.
+#[tauri::command]
+pub fn read_lyrics_file(path: String) -> Result<String, String> {
+    let lower = path.to_lowercase();
+    if !(lower.ends_with(".lrc") || lower.ends_with(".txt")) {
+        return Err("only .lrc and .txt files can be attached".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("couldn't read that file: {e}"))?;
+    if bytes.len() > 262_144 {
+        return Err("lyrics file too large (256 KB max)".into());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// YouTube view count + author for the Song Info dialog. One cheap `/player` call with the
+/// metadata client; `None` view count when YouTube doesn't report one.
+#[tauri::command]
+pub async fn video_views(state: St<'_>, video_id: String) -> Result<serde_json::Value, String> {
+    let state = state.inner().clone();
+    let Some(client) = state.clients.get(innertube::METADATA_CLIENT) else {
+        return Err("no metadata client".into());
+    };
+    let resp = state
+        .it
+        .player(client, &video_id, None, None, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let details = resp.video_details.as_ref();
+    Ok(serde_json::json!({
+        "view_count": details.and_then(|d| d.view_count.clone()),
+        "author": details.and_then(|d| d.author.clone()),
+        "title": details.and_then(|d| d.title.clone()),
+    }))
+}
 /// Unison vote/report (POST /lyrics/vote semantics). `vote` = 1 or -1.
 #[tauri::command]
 pub async fn lyrics_vote(

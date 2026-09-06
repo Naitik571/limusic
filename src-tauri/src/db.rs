@@ -111,6 +111,11 @@ impl Db {
                 video_id  TEXT PRIMARY KEY,
                 offset_ms INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS custom_lyrics (
+                video_id   TEXT PRIMARY KEY,
+                lrc        TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS lyric_votes (
                 video_id TEXT NOT NULL,
                 source   TEXT NOT NULL,
@@ -380,6 +385,34 @@ impl Db {
             )
             .unwrap_or_else(warn_write("set_lyric_offset", "lyric_offsets"));
         }
+    }
+
+    /// User-attached .lrc for one track (imported from disk when no provider had lyrics).
+    /// Outranks every provider: the user said so explicitly.
+    pub fn get_custom_lyrics(&self, video_id: &str) -> Option<String> {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT lrc FROM custom_lyrics WHERE video_id = ?1",
+            [video_id],
+            |r| r.get(0),
+        )
+        .ok()
+    }
+
+    pub fn set_custom_lyrics(&self, video_id: &str, lrc: &str) {
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO custom_lyrics(video_id, lrc, updated_at) VALUES(?1, ?2, ?3)
+             ON CONFLICT(video_id) DO UPDATE SET lrc = excluded.lrc, updated_at = excluded.updated_at",
+            rusqlite::params![video_id, lrc, now_secs()],
+        )
+        .unwrap_or_else(warn_write("set_custom_lyrics", "custom_lyrics"));
+    }
+
+    pub fn delete_custom_lyrics(&self, video_id: &str) {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM custom_lyrics WHERE video_id = ?1", [video_id])
+            .unwrap_or_else(warn_write("delete_custom_lyrics", "custom_lyrics"));
     }
 
     pub fn get_lyric_vote(&self, video_id: &str, source: &str) -> Option<i32> {

@@ -29,7 +29,8 @@
 		onclick,
 		flightTarget = false,
 		size = 0,
-		flipped = false
+		flipped = false,
+		skin = 'photo'
 	}: {
 		src: string;
 		playing?: boolean;
@@ -41,6 +42,8 @@
 		size?: number;
 		/** When true, the disc does a one-time 720° flip animation on mount. */
 		flipped?: boolean;
+		/** Disc treatment — always the real album art: photo (printed), noir (B&W), crimson (red duotone). */
+		skin?: 'photo' | 'noir' | 'crimson';
 	} = $props();
 
 	let root = $state<HTMLDivElement>();
@@ -108,7 +111,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	bind:this={root}
-	class="ps-vinyl {playing ? 'playing' : ''}"
+	class="ps-vinyl skin-{skin} {playing ? 'playing' : ''}"
 	style="--art:url('{src}');{style}{size ? ` width:${size}px; height:${size}px;` : ''}"
 	{title}
 	{onclick}

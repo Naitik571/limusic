@@ -18,12 +18,9 @@
     - now: each surface has a defined slot in the grid, no overlap, no in-place modals
 -->
 <script lang="ts">
-	import '@fontsource/space-mono/400.css';
-	import '@fontsource/space-mono/700.css';
-	import '@fontsource/space-mono/400-italic.css';
-	import '@fontsource/silkscreen/400.css';
-	import '@fontsource/silkscreen/700.css';
-	import '@fontsource/audiowide/400.css';
+	// Two fonts, one accent (BlazePod discipline): Space Grotesk display + JetBrains Mono micro.
+	// Both are already bundled app-wide, so no new downloads — just stop loading the three
+	// novelty faces (Space Mono, Silkscreen, Audiowide).
 	import './poolside.css';
 
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -45,7 +42,7 @@
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
 	import { auth, local, np, playback, playFrom, ui, toast } from '$lib/player.svelte';
-	import { applyLayout } from '$lib/theme.svelte';
+	import { applyLayout, appearance, setAppearance, liteActive } from '$lib/theme.svelte';
 	import Water from './Water.svelte';
 	import Vinyl from './Vinyl.svelte';
 	import NowView from './NowView.svelte';
@@ -291,6 +288,53 @@
 
 	function toggleDusk() { dusk = !dusk; localStorage.setItem('ps-dusk', String(dusk)); }
 	function setSpin(v: string) { spin = v; localStorage.setItem('ps-spin', v); }
+	// Water themes (BlazePod-style): five waters keyed by exact-icon buttons — sun (clear day),
+	// moon (night), droplet (aqua), leaf (verdant), goldfish. `clear` is the default pool.
+	type WaterTheme = 'clear' | 'aqua' | 'verdant' | 'goldfish' | 'night';
+	let waterTheme = $state<WaterTheme>('clear');
+	try {
+		const raw = localStorage.getItem('ps-water-theme');
+		if (raw === 'aqua' || raw === 'verdant' || raw === 'goldfish' || raw === 'night') waterTheme = raw;
+	} catch {
+		/* storage unavailable — default water */
+	}
+	function setWaterTheme(v: WaterTheme) {
+		waterTheme = v;
+		try {
+			localStorage.setItem('ps-water-theme', v);
+		} catch {
+			/* quota */
+		}
+	}
+	// Disc skins per surface (BlazePod-style): the Now deck and the Library hero tiles each
+	// get their own treatment — always the real art, just printed, noir or crimson.
+	type VinylSkin = 'photo' | 'noir' | 'crimson';
+	const isSkin = (v: unknown): v is VinylSkin => v === 'photo' || v === 'noir' || v === 'crimson';
+	let vinylSkins = $state<{ deck: VinylSkin; library: VinylSkin }>({ deck: 'photo', library: 'photo' });
+	try {
+		const raw = localStorage.getItem('ps-vinyl-skins');
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			vinylSkins = {
+				deck: isSkin(parsed?.deck) ? parsed.deck : 'photo',
+				library: isSkin(parsed?.library) ? parsed.library : 'photo'
+			};
+		}
+	} catch {
+		/* storage unavailable — defaults */
+	}
+	function setVinylSkin(surface: 'deck' | 'library', v: VinylSkin) {
+		vinylSkins = { ...vinylSkins, [surface]: v };
+		try {
+			localStorage.setItem('ps-vinyl-skins', JSON.stringify(vinylSkins));
+		} catch {
+			/* quota */
+		}
+	}
+	// Lite mode lives in the shared appearance store (so Settings can show it too); the shell
+	// mirrors it onto .ps-root.lite, which freezes koi/caustics/shafts/wobble and drops blurs.
+	const lite = $derived(liteActive());
+	function setLite(v: 'auto' | 'on' | 'off') { setAppearance({ liteMode: v }); }
 	function setPref(key: 'caustics' | 'koi' | 'reduce', v: boolean) {
 		if (key === 'caustics') { caustics = v; localStorage.setItem('ps-caustics', String(v)); }
 		else if (key === 'koi') { koi = v; localStorage.setItem('ps-koi', String(v)); }
@@ -336,8 +380,8 @@
 	];
 </script>
 
-<div
-	class="ps-root {dusk ? 'dusk' : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
+	<div
+	class="ps-root {dusk ? 'dusk' : ''} {waterTheme !== 'clear' ? `wt-${waterTheme}` : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {lite ? 'lite' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
 	style="--ps-spin:{spin}"
 	data-view={view}
 	data-album-hue={albumHue ?? ''}
@@ -442,6 +486,7 @@
 							onPlaySong={playSongInList}
 							onImport={importFolder}
 							onOpenFlow={(v) => go(v)}
+							tileSkin={vinylSkins.library}
 						/>
 					</div>
 				</div>
@@ -468,13 +513,10 @@
 						<HistoryView />
 					</div>
 				</div>
-				<div class="ps-view" class:on={view === 'queue'}>
-					<div class="ps-scroll-area">
-						<QueueView />
-					</div>
-				</div>
+				<!-- Queue lives in a bottom sheet (below), not as a page: the nav item opens it
+				     over whatever is playing. -->
 				<div class="ps-view" class:on={view === 'now'}>
-					<NowView onOpenLibrary={() => go('library')} />
+					<NowView onOpenLibrary={() => go('library')} discSkin={vinylSkins.deck} />
 				</div>
 				<div class="ps-view" class:on={view === 'album'}>
 					{#if album}
@@ -534,6 +576,19 @@
 				{/if}
 
 		<!-- ============================================================
+		     QUEUE BOTTOM SHEET — the queue nav item opens this over whatever is playing
+		     (BlazePod-style): drag-handle chrome, backdrop dismisses home, X too.
+		     ============================================================ -->
+		{#if view === 'queue'}
+			<button class="ps-sheet-backdrop" onclick={() => go('home')} aria-label="Close queue"></button>
+			<div class="ps-queue-sheet" role="dialog" aria-modal="true" aria-label="Queue">
+				<div class="ps-sheet-handle" aria-hidden="true"></div>
+				<button class="ps-sheet-close" onclick={() => go('home')} aria-label="Close queue">✕</button>
+				<QueueView />
+			</div>
+		{/if}
+
+		<!-- ============================================================
 		     SETTINGS PANEL — right side, separate slot from lyrics. Both
 		     can theoretically be open but they're in different columns.
 		     ============================================================ -->
@@ -552,11 +607,56 @@
 					<button class="ps-sw {reduce ? 'on' : ''}" role="switch" aria-checked={reduce} onclick={() => setPref('reduce', !reduce)} aria-label="Toggle reduce motion"></button>
 				</div>
 				<div class="ps-setrow">
+					<span>WATER THEME</span>
+					<div class="ps-water-theme-row" role="group" aria-label="Water theme">
+						<button class="ps-water-theme-btn {waterTheme === 'clear' ? 'on' : ''}" onclick={() => setWaterTheme('clear')} title="Clear day" aria-label="Clear day water" aria-pressed={waterTheme === 'clear'}>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v2.6 M12 18.9v2.6 M4.6 4.6l1.8 1.8 M17.6 17.6l1.8 1.8 M2.5 12h2.6 M18.9 12h2.6 M4.6 19.4l1.8-1.8 M17.6 6.4l1.8-1.8" /></svg>
+						</button>
+						<button class="ps-water-theme-btn {waterTheme === 'night' ? 'on' : ''}" onclick={() => setWaterTheme('night')} title="Night" aria-label="Night water" aria-pressed={waterTheme === 'night'}>
+							<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.6A8.4 8.4 0 1 1 9.4 3.5a7 7 0 0 0 11.1 11.1z" /></svg>
+						</button>
+						<button class="ps-water-theme-btn {waterTheme === 'aqua' ? 'on' : ''}" onclick={() => setWaterTheme('aqua')} title="Aqua" aria-label="Aqua water" aria-pressed={waterTheme === 'aqua'}>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8c3.4 4.3 6.4 8.3 6.4 11.7a6.4 6.4 0 1 1-12.8 0c0-3.4 3-7.4 6.4-11.7z" /></svg>
+						</button>
+						<button class="ps-water-theme-btn {waterTheme === 'verdant' ? 'on' : ''}" onclick={() => setWaterTheme('verdant')} title="Verdant" aria-label="Verdant water" aria-pressed={waterTheme === 'verdant'}>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5c-6.5-2-9-6.6-9-11.5C3 6 6 3 12 2.5 18 3 21 6 21 10c0 4.9-2.5 9.5-9 11.5z" /><path d="M12 21.5V9" /><path d="M12 15c2.6 0 4.5-1.8 4.5-5" /></svg>
+						</button>
+						<button class="ps-water-theme-btn {waterTheme === 'goldfish' ? 'on' : ''}" onclick={() => setWaterTheme('goldfish')} title="Goldfish" aria-label="Goldfish water" aria-pressed={waterTheme === 'goldfish'}>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12c-3-4-8-6-12.5-4C4.8 9.1 3 10.4 3 12s1.8 2.9 5 4c4.5 2 9.5 0 12.5-4z" /><path d="M20.5 12 23 9.3M20.5 12 23 14.7" /><circle cx="9.2" cy="10.3" r="0.9" fill="currentColor" stroke="none" /></svg>
+						</button>
+					</div>
+				</div>
+				<div class="ps-setrow">
+					<span>LITE MODE</span>
+					<select value={appearance.liteMode} onchange={(e) => setLite(e.currentTarget.value as 'auto' | 'on' | 'off')} aria-label="Lite mode">
+						<option value="auto">AUTO · WEAK DEVICES</option>
+						<option value="on">ON · FROZEN WATER</option>
+						<option value="off">OFF · FULL POOL</option>
+					</select>
+				</div>
+				<div class="ps-setrow">
+					<span>DECK SKIN</span>
+					<select value={vinylSkins.deck} onchange={(e) => setVinylSkin('deck', e.currentTarget.value as VinylSkin)} aria-label="Now deck disc skin">
+						<option value="photo">PRINTED ART</option>
+						<option value="noir">NOIR · B&W</option>
+						<option value="crimson">CRIMSON · RED</option>
+					</select>
+				</div>
+				<div class="ps-setrow">
+					<span>LIBRARY SKIN</span>
+					<select value={vinylSkins.library} onchange={(e) => setVinylSkin('library', e.currentTarget.value as VinylSkin)} aria-label="Library disc skin">
+						<option value="photo">PRINTED ART</option>
+						<option value="noir">NOIR · B&W</option>
+						<option value="crimson">CRIMSON · RED</option>
+					</select>
+				</div>
+				<div class="ps-setrow">
 					<span>SPIN SPEED</span>
 					<select value={spin} onchange={(e) => setSpin(e.currentTarget.value)} aria-label="Record spin speed">
 						<option value="2s">FAST · 2S</option>
 						<option value="3s">NORMAL · 3S</option>
 						<option value="4s">SLOW · 4S</option>
+						<option value="9s">AQUA · 9S</option>
 					</select>
 				</div>
 				<div class="ps-setrow">

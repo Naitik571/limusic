@@ -113,7 +113,7 @@
 						{#if item.thumbnail}
 							<img decoding="async" loading="lazy" src={item.thumbnail} alt={item.title} />
 						{:else}
-							<div class="ps-rail-placeholder"></div>
+							<div class="ps-rail-placeholder ps-skeleton"></div>
 						{/if}
 						<span class="ps-rail-label">{item.title}</span>
 					</button>
@@ -136,7 +136,7 @@
 						{#if item.thumbnail}
 							<img decoding="async" loading="lazy" src={item.thumbnail} alt={item.title} />
 						{:else}
-							<div class="ps-rail-placeholder"></div>
+							<div class="ps-rail-placeholder ps-skeleton"></div>
 						{/if}
 						<span class="ps-rail-label">{item.title}</span>
 						{#if item.subtitle}

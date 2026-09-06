@@ -11,12 +11,14 @@
 	--kraft: #B08968;
 	--kraft-dark: #8F6B4E;
 	--ink: #111111;
-	--red: #E02020;
+	--red: #e0402a;
 	--shadow-teal: 0 18px 44px rgba(8,60,70,.35);
 	--shadow-soft: 0 8px 32px rgba(0,40,50,.25);
 	--ease-spring: cubic-bezier(.22,1,.36,1);
-	--mono: 'Space Mono', ui-monospace, monospace;
-	--display: 'Audiowide', sans-serif;
+	--ease: cubic-bezier(.22,1,.36,1);
+	--ease-grow: cubic-bezier(.16,1,.3,1);
+	--mono: 'JetBrains Mono', ui-monospace, monospace;
+	--display: 'Space Grotesk', sans-serif;
 	--serif: Georgia, serif;
 	--ps-spin: 3.4s;
 	/* font scale: bump everything ~25% from the previous poolside text. Several
@@ -392,6 +394,62 @@
 	box-shadow: 0 0 10px 4px rgba(255,180,120,.5);
 }
 
+/* ============ 1b. WATER THEMES — BlazePod-style theme switcher ============
+   Five waters, cycled by exact-icon buttons (sun/moon/droplet/leaf/goldfish) in pool
+   settings. `clear` is the default pool (no overrides). Each theme re-keys the pool
+   gradient + accent; album-accent tinting still layers on top. */
+.ps-root.wt-aqua {
+	--pool-deep: #0B6E80;
+	--pool-mid: #19B8D0;
+	--pool-bright: #7DF0FA;
+	--accent: #22D3EE;
+}
+.ps-root.wt-verdant {
+	--pool-deep: #0E5C3F;
+	--pool-mid: #1A9E6B;
+	--pool-bright: #6FEDB5;
+	--accent: #34D399;
+}
+.ps-root.wt-goldfish {
+	--pool-deep: #6B3A0A;
+	--pool-mid: #C07A1A;
+	--pool-bright: #F5C86E;
+	--accent: #F5A623;
+}
+.ps-root.wt-night {
+	--pool-deep: #04121F;
+	--pool-mid: #0A2E4A;
+	--pool-bright: #1E6E9E;
+	--accent: #5AC8FA;
+}
+.ps-water-theme-row {
+	display: flex;
+	gap: 6px;
+}
+.ps-water-theme-btn {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border-radius: 10px;
+	color: rgba(255, 255, 255, 0.6);
+	border: 1px solid transparent;
+	transition: color 0.16s, background 0.16s, border-color 0.16s;
+}
+.ps-water-theme-btn:hover {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.1);
+}
+.ps-water-theme-btn.on {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.16);
+	border-color: rgba(255, 255, 255, 0.35);
+}
+.ps-water-theme-btn svg {
+	width: 18px;
+	height: 18px;
+}
+
 /* ============ 2. VIEW SYSTEM — camera dolly ============ */
 .ps-view {
 	position: absolute; inset: 0; z-index: 5;
@@ -473,6 +531,14 @@
 		linear-gradient(rgba(0,0,0,.06), rgba(0,0,0,.12)),
 		var(--art);
 	background-size: cover; background-position: center;
+}
+/* Disc skins — treatments of the real art, never a replacement: noir goes B&W dark,
+   crimson duotones it red like a colored pressing. */
+.ps-vinyl.skin-noir .art {
+	filter: grayscale(1) brightness(0.6) contrast(1.15);
+}
+.ps-vinyl.skin-crimson .art {
+	filter: sepia(1) saturate(3.2) hue-rotate(-52deg) brightness(0.92);
 }
 .ps-vinyl .grooves {
 	position: absolute; inset: 0; border-radius: 50%;
@@ -1073,6 +1139,81 @@
 .ps-cc-body { display: flex; gap: 24px; align-items: center; margin-top: 20px; }
 .ps-card-actions { display: flex; justify-content: center; gap: 11px; margin-top: 22px; }
 
+/* ============ LITE MODE — frozen pool for weak devices ============
+   Hides the animated dressing (koi, motes, shafts, glare) and parks every rotation
+   (vinyl spin, sheens, platter, edge vinyls, sidebar disc). The rAF loops park too:
+   motion.ts treats .ps-root.lite like reduce-motion. Water gradient + blobs stay as a
+   static backdrop, so the pool still reads as a pool. */
+.ps-root.lite .ps-koi,
+.ps-root.lite .ps-mote,
+.ps-root.lite .ps-shaft,
+.ps-root.lite .ps-glare,
+.ps-root.lite .ps-waterline,
+.ps-root.lite .ps-edge-vinyl {
+	display: none;
+}
+.ps-root.lite .ps-rip,
+.ps-root.lite .ps-water::after,
+.ps-root.lite .ps-blob,
+.ps-root.lite .ps-vinyl.playing .spin,
+.ps-root.lite .ps-vinyl.playing .sheen-a,
+.ps-root.lite .ps-vinyl.playing .sheen-b,
+.ps-root.lite .ps-platter.spin,
+.ps-root.lite .ps-sidebar-disc.spin img,
+.ps-root.lite .ps-nav-disc::after {
+	animation: none !important;
+}
+.ps-root.lite .ps-water > .ps-rip {
+	filter: none;
+}
+
+/* ============ QUEUE BOTTOM SHEET — overlay queue over whatever plays ============
+   The queue nav item opens this sheet instead of a page: drag-handle chrome, backdrop
+   dismiss, slide-up entrance on the grow curve. */
+.ps-sheet-backdrop {
+	position: fixed; inset: 0; z-index: 40;
+	background: rgba(4, 20, 25, 0.45);
+	border: 0; padding: 0; cursor: default;
+	animation: ps-fade-in 0.25s ease-out;
+}
+@keyframes ps-fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+.ps-queue-sheet {
+	position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 41;
+	width: min(560px, calc(100vw - 24px));
+	max-height: 72vh;
+	overflow-y: auto;
+	border-radius: 24px 24px 0 0;
+	padding: 6px 14px 20px;
+	background: var(--glass-strong, rgba(255, 255, 255, 0.42));
+	backdrop-filter: blur(20px) saturate(1.3);
+	-webkit-backdrop-filter: blur(20px) saturate(1.3);
+	border: 1px solid rgba(255, 255, 255, 0.5);
+	border-bottom: none;
+	box-shadow: var(--shadow-teal);
+	animation: ps-sheet-up 0.35s var(--ease-grow) both;
+}
+@keyframes ps-sheet-up {
+	from { opacity: 0; transform: translate(-50%, 48px); }
+	to { opacity: 1; transform: translate(-50%, 0); }
+}
+.ps-sheet-handle {
+	width: 44px; height: 5px; border-radius: 999px;
+	background: rgba(255, 255, 255, 0.4);
+	margin: 6px auto 2px;
+}
+.ps-sheet-close {
+	position: sticky; float: right; top: 0;
+	width: 28px; height: 28px; border-radius: 50%;
+	display: grid; place-items: center;
+	background: rgba(255, 255, 255, 0.18); color: #fff;
+	border: 1px solid rgba(255, 255, 255, 0.25);
+	font-size: 13px; cursor: pointer;
+}
+.ps-sheet-close:hover { background: rgba(255, 255, 255, 0.32); }
+
 /* ============ REDUCE MOTION — actual reduction ============ */
 .ps-root.reduce .ps-rip,
 .ps-root.reduce .ps-water::after,
@@ -1327,7 +1468,11 @@
 }
 .ps-settings-head {
 	display: flex; align-items: center; justify-content: space-between;
-	margin-bottom: 14px;
+	margin: -26px -28px 14px;
+	padding: 12px 14px 12px 20px;
+	border-radius: 24px 24px 0 0;
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
+	border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 .ps-settings-head h3 {
 	font-family: var(--mono); font-size: 11px; font-weight: 700;
@@ -1758,8 +1903,9 @@
 /* sections + rails */
 .ps-section { margin-bottom: 28px; }
 .ps-section-title {
-	font-size: 10px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase;
-	margin-bottom: 14px; color: rgba(255,255,255,.85);
+	font-family: var(--mono);
+	font-size: 9.5px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase;
+	margin-bottom: 14px; color: rgba(255,255,255,.75);
 	text-shadow: 0 1px 4px rgba(8,60,70,.5);
 }
 .ps-rail { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: none; }
@@ -1767,7 +1913,7 @@
 .ps-rail-card {
 	all: unset; cursor: pointer; flex: none;
 	width: 140px; display: flex; flex-direction: column; gap: 8px;
-	transition: transform .35s cubic-bezier(.22,1,.36,1), filter .35s ease;
+	transition: transform .16s ease-out, filter .16s ease-out;
 	position: relative;
 	transform-origin: center bottom;
 }
@@ -1915,6 +2061,28 @@
 @keyframes ps-dot-pulse {
 	0%, 80%, 100% { opacity: .3; transform: scale(1); }
 	40% { opacity: 1; transform: scale(1.3); }
+}
+
+/* skeleton shimmer: a light sweep across placeholder blocks while content loads.
+   Capped, single-purpose — placeholders shimmer, everything else stays still. */
+.ps-skeleton {
+	position: relative;
+	overflow: hidden;
+	background: rgba(255, 255, 255, 0.12);
+}
+.ps-skeleton::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.22) 50%, transparent 80%);
+	animation: ps-skeleton-sweep 1.4s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
+}
+@keyframes ps-skeleton-sweep {
+	from { transform: translateX(-100%); }
+	to { transform: translateX(100%); }
+}
+.ps-rail-placeholder.ps-skeleton {
+	border: none;
 }
 
 /* view transition — stagger children */

@@ -34,6 +34,8 @@
 	import QueuePanel from '$lib/components/QueuePanel.svelte';
 	import LyricsPanel from '$lib/components/LyricsPanel.svelte';
 	import AddToPlaylist from '$lib/components/AddToPlaylist.svelte';
+	import SongInfoDialog from '$lib/components/SongInfoDialog.svelte';
+	import BootVeil from '$lib/components/BootVeil.svelte';
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import KeyboardShortcutsDialog from '$lib/components/KeyboardShortcutsDialog.svelte';
 	import ChannelPicker from '$lib/components/ChannelPicker.svelte';
@@ -43,7 +45,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { auth, initApp, np, playback, ui } from '$lib/player.svelte';
+	import { auth, initApp, np, playback, ui, bootStage, bootDone } from '$lib/player.svelte';
 	import TheaterMode from '$lib/components/TheaterMode.svelte';
 	import { win, initWin } from '$lib/win.svelte';
 	import { initZoom } from '$lib/zoom';
@@ -94,11 +96,13 @@
 	// on every app open (silent unless one exists).
 	onMount(() => {
 		if (isMini) return initApp(true);
+		bootStage('Library', 'Starting…');
 		checkForUpdatesQuiet();
 		const teardownApp = initApp();
 		const teardownWin = initWin();
 		const teardownZoom = initZoom();
 		const teardownShortcuts = initShortcuts();
+		bootDone();
 		return () => {
 			teardownApp();
 			teardownWin();
@@ -202,6 +206,8 @@
 {#if !isMini}
 	<CommandPalette />
 	<AddToPlaylist />
+	<SongInfoDialog />
+	<BootVeil />
 	<SettingsDialog />
 	<KeyboardShortcutsDialog />
 	<ListenTogether />

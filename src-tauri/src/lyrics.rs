@@ -173,6 +173,24 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     }
     let req = &req;
 
+    // 0. User-attached .lrc: imported from disk for a track no provider covered. Outranks
+    //    everything — the user said so explicitly. Instant (local DB), so no wave slot.
+    if let Some(lrc) = state.db.get_custom_lyrics(&req.video_id) {
+        let lines = parse_lrc(&lrc);
+        if !lines.is_empty() {
+            let synced = lines.iter().any(|l| l.time_ms.is_some());
+            return (
+                Some(Lyrics {
+                    source: "Custom file".into(),
+                    synced,
+                    instrumental: false,
+                    lines,
+                }),
+                req.duration.is_some(),
+            );
+        }
+    }
+
     // 1. The wave: every keyless provider fires AT ONCE (the old code ran them strictly serial;
     //    a few dead hosts at 15–20 s each stalled lyrics for minutes). Each slot carries its
     //    priority; when several answer, the best wins: synced > instrumental > plain, then the
@@ -1176,7 +1194,7 @@ fn overlap(a: &str, b: &str) -> f64 {
 /// Parse LRC text (`[mm:ss.xx] line`) into sorted lines. Handles multiple timestamps per line
 /// (`[t1][t2]text` — the line repeats at both cues) and skips metadata tags (`[ar:…]`).
 /// Timestamped empty lines are kept: they're instrumental gaps the UI can show as such.
-fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
+pub(crate) fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
     let mut out = Vec::new();
     for raw in lrc.lines() {
         let mut rest = raw.trim();

@@ -113,6 +113,9 @@
 			<span class="ps-mini-pill-title">{cur.title}</span>
 			<span class="ps-mini-pill-artist">{cur.artists}</span>
 		</div>
+		{#if !paused}
+			<span class="ps-live-dot" aria-hidden="true" title="Playing"></span>
+		{/if}
 		<button class="ps-mini-pill-btn" onclick={() => api.prevTrack().catch(() => {})} aria-label="Previous">
 			<HugeiconsIcon icon={PreviousIcon} />
 		</button>
@@ -352,6 +355,27 @@
 		white-space: nowrap;
 	}
 	.ps-mini-pill-sleep:hover { background: rgba(255, 216, 138, 0.22); }
+	/* Live pulse dot: now-playing heartbeat next to the transport. */
+	.ps-live-dot {
+		width: 7px;
+		height: 7px;
+		flex: none;
+		border-radius: 50%;
+		background: #ff5d5d;
+		box-shadow: 0 0 8px rgba(255, 93, 93, 0.9);
+		animation: ps-live-pulse 1.6s ease-in-out infinite;
+	}
+	@keyframes ps-live-pulse {
+		0%,
+		100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.45;
+			transform: scale(0.8);
+		}
+	}
 	/* Up-next sheet: same island glass, floating above the pill. */
 	.ps-mini-pill-scrim {
 		all: unset;

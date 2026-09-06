@@ -158,6 +158,7 @@
 		{ tab: 'themes', group: 'thm-typography', text: 'Font files Load a .ttf, .otf or .woff from anywhere on this computer.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Lyrics font Choose the font used only in the lyrics view.' },
 		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics in the player view Tabs and switching buttons in the player view.' },
+		{ tab: 'themes', group: 'thm-player', text: 'Lite mode Poolside Freeze koi caustics vinyl motion blurs Auto On Off.' },
 		{ tab: 'themes', group: 'thm-player', text: "Artwork background Tint the player view with the playing track's cover, blurred." },
 		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders." },
 		{ tab: 'themes', group: 'thm-backdrops', text: 'Backdrop Off Subtle Auto artwork atmosphere behind the app.' },
@@ -865,6 +866,11 @@
 									control: artworkAccentSwitch,
 									tall: true
 								})}
+								{@render row({
+									title: 'Lite mode (Poolside)',
+									desc: 'Freeze koi, caustics, shafts and vinyl motion and drop heavy blurs. Auto engages on weak devices; same switch lives in the pool settings.',
+									control: litePicker
+								})}
 							</div>
 						</section>
 
@@ -1469,6 +1475,18 @@
 
 {#snippet backdropPicker()}
 	{@render segmented(BACKDROP_MODES, backdrop, (id) => setBackdrop(id as BackdropMode))}
+{/snippet}
+
+{#snippet litePicker()}
+	{@render segmented(
+		[
+			{ id: 'auto', label: 'Auto' },
+			{ id: 'on', label: 'On' },
+			{ id: 'off', label: 'Off' }
+		],
+		appearance.liteMode,
+		(id) => setAppearance({ liteMode: id as 'auto' | 'on' | 'off' })
+	)}
 {/snippet}
 
 {#snippet packRefreshButton()}

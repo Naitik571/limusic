@@ -19,6 +19,7 @@
 		ThumbsDownIcon,
 		UserListIcon,
 		Vynil02Icon,
+		InformationCircleIcon,
 		DashboardSquare02Icon,
 		Download01Icon,
 		Delete01Icon
@@ -27,7 +28,7 @@
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
 	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody, type MenuCloseReason } from '$lib/menu';
-	import { addPick, enqueue, isLiked, startRadio, toggleLike, rate, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
+	import { addPick, enqueue, isLiked, startRadio, toggleLike, rate, downloadedIds, markDownloaded, markNotDownloaded, openSongInfo } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -234,6 +235,12 @@
 				<HugeiconsIcon icon={Vynil02Icon} class="h-4 w-4" /> Go to album
 			</button>
 		{/if}
+		<button
+			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+			onclick={(e) => run(e, () => openSongInfo(song))}
+		>
+			<HugeiconsIcon icon={InformationCircleIcon} class="h-4 w-4" /> Song info
+		</button>
 		<button
 			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
 			onclick={(e) =>

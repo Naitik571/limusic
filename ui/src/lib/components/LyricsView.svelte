@@ -6,7 +6,9 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { playback } from '$lib/player.svelte';
+	import { Attachment01Icon } from '@hugeicons/core-free-icons';
+	import { open as pickFile } from '@tauri-apps/plugin-dialog';
+	import { playback, toast } from '$lib/player.svelte';
 	import { appearance, applyLyricsFont } from '$lib/theme.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
@@ -49,8 +51,11 @@
 
 	// videoId of the fetch whose result is (or will be) shown — guards stale responses.
 	let requested = '';
+	// Bumped after attaching/removing custom lyrics so the effect below refetches.
+	let reloadKey = 0;
 
 	$effect(() => {
+		reloadKey;
 		const now = playback.now;
 		if (!now) {
 			requested = '';
@@ -193,6 +198,46 @@
 		playback.position = secs; // optimistic — the mpv tick confirms
 		userScrollUntil = 0; // jump the view along with the seek
 		api.seek(secs);
+	}
+
+	// Import a .lrc/.txt file for a track no provider covers. Only offered in the empty
+	// state (see below) — attached lyrics outrank every provider on the next fetch.
+	async function attachLyricsFile() {
+		const now = playback.now;
+		if (!now) return;
+		let picked: string | string[] | null = null;
+		try {
+			picked = await pickFile({
+				multiple: false,
+				title: `Lyrics for ${now.title}`,
+				filters: [{ name: 'Lyrics', extensions: ['lrc', 'txt'] }]
+			});
+		} catch (e) {
+			toast.error(String(e));
+			return;
+		}
+		const path = Array.isArray(picked) ? picked[0] : picked;
+		if (!path) return;
+		try {
+			const text = await api.readLyricsFile(path);
+			await api.setCustomLyrics(now.videoId, text);
+			toast.success('Lyrics attached to this song');
+			reloadKey++; // refetch through the normal path
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+
+	async function removeAttachedLyrics() {
+		const now = playback.now;
+		if (!now) return;
+		try {
+			await api.deleteCustomLyrics(now.videoId);
+			toast.success('Attached lyrics removed');
+			reloadKey++;
+		} catch (e) {
+			toast.error(String(e));
+		}
 	}
 
 	// mpv's position arrives ~4x a second. Run a local clock forward from each one so the karaoke
@@ -363,7 +408,18 @@
 			{/each}
 			</div>
 		{:else}
-			<p class="py-8 text-center text-sm text-muted-foreground">No lyrics found for this track.</p>
+			<div class="flex flex-col items-center gap-3 py-8 text-center">
+				<p class="text-sm text-muted-foreground">No lyrics found for this track.</p>
+				{#if playback.now && !api.isLocalId(playback.now.videoId)}
+					<button
+						class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted hover:text-foreground"
+						onclick={attachLyricsFile}
+						title="Import a .lrc file for this song"
+					>
+						<HugeiconsIcon icon={Attachment01Icon} class="h-3.5 w-3.5" /> Import .lrc
+					</button>
+				{/if}
+			</div>
 		{/if}
 </div>
 {#if lyrics && !loading && !compact && !sing}
@@ -371,6 +427,14 @@
 		<span class="truncate">
 			{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
 		</span>
+		{#if lyrics.source === 'Custom file'}
+			<button
+				class="ml-auto shrink-0 cursor-pointer underline-offset-2 hover:underline"
+				onclick={removeAttachedLyrics}
+			>
+				Remove
+			</button>
+		{/if}
 	</p>
 {/if}
 

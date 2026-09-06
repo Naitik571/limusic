@@ -610,6 +610,14 @@ export const getLyrics = (args: {
 /** Per-song offset (ms) persisted in Rust `lyric_offsets`. */
 export const getLyricOffset = (videoId: string) => invoke<number>('get_lyric_offset', { videoId });
 export const setLyricOffset = (videoId: string, offset_ms: number) => invoke<void>('set_lyric_offset', { videoId, offsetMs: offset_ms });
+/** User-attached .lrc per track (imported from disk when no provider had lyrics). */
+export const getCustomLyrics = (videoId: string) => invoke<string | null>('get_custom_lyrics', { videoId });
+export const setCustomLyrics = (videoId: string, lrc: string) => invoke<void>('set_custom_lyrics', { videoId, lrc });
+export const deleteCustomLyrics = (videoId: string) => invoke<void>('delete_custom_lyrics', { videoId });
+export const readLyricsFile = (path: string) => invoke<string>('read_lyrics_file', { path });
+/** YouTube view count + author for the Song Info dialog. */
+export const videoViews = (videoId: string) =>
+	invoke<{ view_count: string | null; author: string | null; title: string | null }>('video_views', { videoId });
 /** Unison vote/report (POST /lyrics/vote semantics). */
 export const lyricsVote = (videoId: string, source: string, vote: number) => invoke<void>('lyrics_vote', { videoId, source, vote });
 export const lyricsReport = (videoId: string, source: string, reason: string) => invoke<void>('lyrics_report', { videoId, source, reason });

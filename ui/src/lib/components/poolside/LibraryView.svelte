@@ -19,7 +19,8 @@
 		onPlayLocalAlbum,
 		onPlaySong,
 		onImport,
-		onOpenFlow
+		onOpenFlow,
+		tileSkin = 'photo'
 	}: {
 		albums: BrowseItem[];
 		songs: SongItem[];
@@ -30,6 +31,8 @@
 		onPlaySong: (s: SongItem, i: number, list: SongItem[]) => void;
 		onImport: () => void;
 		onOpenFlow?: (view: 'library-coverflow' | 'library-fan') => void;
+		/** Disc treatment for the hero tiles (pool settings → library skin). */
+		tileSkin?: 'photo' | 'noir' | 'crimson';
 	} = $props();
 
 	type Tab = 'albums' | 'songs' | 'artists' | 'folders' | 'singles';
@@ -107,7 +110,7 @@
 					</svg>
 				</div>
 				<div class="ps-hero-disc">
-					<Vinyl src={filteredAlbums[0].thumbnail ?? ''} playing={false} style="width:100%" />
+					<Vinyl src={filteredAlbums[0].thumbnail ?? ''} playing={false} style="width:100%" skin={tileSkin} />
 				</div>
 			</div>
 			<div class="ps-hero-cap">
@@ -116,7 +119,7 @@
 		{:else if tab === 'songs' && filteredSongs.length}
 			<!-- Songs tab: show a single disc for the first track + the total count -->
 			<div class="ps-hero-track">
-				<Vinyl src={filteredSongs[0].thumbnail ?? ''} playing={false} size={200} />
+				<Vinyl src={filteredSongs[0].thumbnail ?? ''} playing={false} size={200} skin={tileSkin} />
 				<div class="ps-hero-cap">
 					{filteredSongs[0].title.toUpperCase()}<br />{filteredSongs[0].artists}
 				</div>
@@ -124,7 +127,7 @@
 			</div>
 		{:else if tab === 'singles' && filteredSingles.length}
 			<div class="ps-hero-track">
-				<Vinyl src={filteredSingles[0].thumbnail ?? ''} playing={false} size={200} />
+				<Vinyl src={filteredSingles[0].thumbnail ?? ''} playing={false} size={200} skin={tileSkin} />
 				<div class="ps-hero-cap">
 					{filteredSingles[0].title.toUpperCase()}<br />{filteredSingles[0].artists}
 				</div>

@@ -31,6 +31,34 @@
 	let searching = $state(false);
 	let error = $state<string | null>(null);
 
+	// Recent searches (local only): last 8 successful runs, newest first. Shown when the page
+	// has nothing to show yet — the palette stays instant by design, this page remembers.
+	const RECENT_KEY = 'limusic_recent_searches';
+	let recents = $state<string[]>([]);
+	try {
+		const raw = localStorage.getItem(RECENT_KEY);
+		const arr = raw ? JSON.parse(raw) : [];
+		if (Array.isArray(arr)) recents = arr.filter((x) => typeof x === 'string').slice(0, 8);
+	} catch {
+		/* storage unavailable — no recents */
+	}
+	function noteRecent(q: string) {
+		recents = [q, ...recents.filter((x) => x !== q)].slice(0, 8);
+		try {
+			localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
+		} catch {
+			/* quota — recents stay in memory */
+		}
+	}
+	function clearRecents() {
+		recents = [];
+		try {
+			localStorage.removeItem(RECENT_KEY);
+		} catch {
+			/* ignore */
+		}
+	}
+
 	// The query of the most recent runSearch call, so an older in-flight one can't clobber it.
 	let latest = '';
 
@@ -39,6 +67,7 @@
 		const q = query;
 		latest = q;
 		lastQuery = q;
+		noteRecent(q);
 		const key = `search:${q}`;
 		const hit = getCached<SearchResults>(key);
 		if (hit) {
@@ -144,7 +173,32 @@
 				</section>
 			</div>
 		{:else if !res}
-			<p class="text-sm text-muted-foreground">Search for a song, album, artist, or playlist.</p>
+			{#if recents.length}
+				<div class="mb-2 flex items-center justify-between">
+					<h2 class="font-heading text-xl font-bold">Recent searches</h2>
+					<button
+						class="cursor-pointer text-xs font-semibold uppercase text-muted-foreground hover:text-foreground"
+						onclick={clearRecents}
+					>
+						Clear
+					</button>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					{#each recents as r (r)}
+						<button
+							class="cursor-pointer rounded-full border px-3 py-1.5 text-sm transition-colors hover:bg-accent/10"
+							onclick={() => {
+								query = r;
+								runSearch();
+							}}
+						>
+							{r}
+						</button>
+					{/each}
+				</div>
+			{:else}
+				<p class="text-sm text-muted-foreground">Search for a song, album, artist, or playlist.</p>
+			{/if}
 		{:else if !sections.length}
 			<p class="text-sm text-muted-foreground">No results for “{searched}”.</p>
 		{:else}

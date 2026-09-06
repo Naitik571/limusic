@@ -14,7 +14,14 @@
 	} from '$lib/player.svelte';
 	import Vinyl from './Vinyl.svelte';
 
-	let { onOpenLibrary }: { onOpenLibrary: () => void } = $props();
+	let {
+		onOpenLibrary,
+		discSkin = 'photo'
+	}: {
+		onOpenLibrary: () => void;
+		/** Disc treatment for the main deck (pool settings → deck skin). */
+		discSkin?: 'photo' | 'noir' | 'crimson';
+	} = $props();
 
 	const cur = $derived(playback.now);
 	const paused = $derived(playback.paused);
@@ -226,6 +233,7 @@
 							style="width:100%"
 							flightTarget
 							title="Drag to eject · Double-click to drop back"
+							skin={discSkin}
 						/>
 					{/key}
 				</div>

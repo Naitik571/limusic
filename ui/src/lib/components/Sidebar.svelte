@@ -223,14 +223,14 @@
 					<div
 						class="group/row relative rounded-lg {dropTarget === pl.id ? 'bg-primary/15 ring-1 ring-primary/60' : ''}"
 						data-ctx
-						ondragover={(e) => dragSongOver(e, pl.id)}
-						ondragleave={() => (dropTarget = null)}
-						ondrop={(e) => dropSongOn(e, pl)}
 					>
 						<a
 							href={playlistHref(pl)}
 							title={pl.title}
 							class="flex items-center gap-2.5 rounded-lg py-1.5 pl-2 pr-9 transition-colors hover:bg-sidebar-accent/50"
+							ondragover={(e) => dragSongOver(e, pl.id)}
+							ondragleave={() => (dropTarget = null)}
+							ondrop={(e) => dropSongOn(e, pl)}
 						>
 							<div
 								class="relative h-10 w-10 shrink-0 overflow-hidden bg-muted {pl.kind === 'artist'

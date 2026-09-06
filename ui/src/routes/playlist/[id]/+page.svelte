@@ -1113,6 +1113,8 @@
 		</div>
 		<div
 			class="content-in p-4 {pageDrop ? 'rounded-xl ring-2 ring-primary/60' : ''}"
+			role="region"
+			aria-label="Playlist tracks — drop songs here to add them"
 			ondragover={dropOverPage}
 			ondragleave={() => (pageDrop = false)}
 			ondrop={dropOnPage}

@@ -13,9 +13,11 @@ import { onMount } from 'svelte';
 export function reducedMotion(): boolean {
 	if (typeof window === 'undefined') return false;
 	if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return true;
-	// Cached lookup: the toggle rarely changes, avoid querySelector on every frame.
-	// Cache is cleared on toggle by PoolsideShell (see ps-reduce write).
-	return !!document.querySelector('.ps-root.reduce');
+	// The PoolsideShell adds .reduce to .ps-root when the user enables the toggle. Checking
+	// it here means the helpers work in the poolside layout without each component having
+	// to opt in. Lite mode counts too: frozen water means parked rAF loops.
+	if (!!document.querySelector('.ps-root.reduce')) return true;
+	return !!document.querySelector('.ps-root.lite');
 }
 
 /**
