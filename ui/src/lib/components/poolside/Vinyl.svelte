@@ -20,6 +20,7 @@
 	// through their existing transform.
 	import { onMount } from 'svelte';
 	import { reducedMotion, rafLoop } from './motion';
+	import { sampleDominant } from '$lib/dominant';
 
 	let {
 		src,
@@ -42,9 +43,31 @@
 		size?: number;
 		/** When true, the disc does a one-time 720° flip animation on mount. */
 		flipped?: boolean;
-		/** Disc treatment — always the real album art: photo (printed), noir (B&W), crimson (red duotone). */
-		skin?: 'photo' | 'noir' | 'crimson';
+		/** Disc treatment — photo (printed), noir (B&W), crimson (red duotone), or auto
+		    (pressed disc tinted from the cover's own dominant color; falls back to photo
+		    when the art can't be sampled). */
+		skin?: 'photo' | 'noir' | 'crimson' | 'auto';
 	} = $props();
+
+	// Auto skin: sample the cover once per URL (sampleDominant caches). Token-guarded —
+	// a track change mid-sample must not paint the old color on the new disc.
+	let autoBase = $state<string | null>(null);
+	$effect(() => {
+		const want = skin === 'auto' ? src : '';
+		if (!want) {
+			autoBase = null;
+			return;
+		}
+		let live = true;
+		autoBase = null;
+		sampleDominant(want).then((c) => {
+			if (live) autoBase = c;
+		});
+		return () => {
+			live = false;
+		};
+	});
+	const effectiveSkin = $derived(skin === 'auto' ? (autoBase ? 'auto' : 'photo') : skin);
 
 	let root = $state<HTMLDivElement>();
 	let spinEl = $state<HTMLDivElement>();
@@ -111,8 +134,8 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	bind:this={root}
-	class="ps-vinyl skin-{skin} {playing ? 'playing' : ''}"
-	style="--art:url('{src}');{style}{size ? ` width:${size}px; height:${size}px;` : ''}"
+	class="ps-vinyl skin-{effectiveSkin} {playing ? 'playing' : ''}"
+	style="--art:url('{src}');{autoBase ? `--auto:${autoBase};` : ''}{style}{size ? ` width:${size}px; height:${size}px;` : ''}"
 	{title}
 	{onclick}
 	role={onclick ? 'button' : undefined}

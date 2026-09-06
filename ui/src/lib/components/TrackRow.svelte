@@ -2,13 +2,13 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		FavouriteIcon,
-		MusicNote01Icon,
 		PlayIcon,
 		PlayListAddIcon,
 		DownloadSquare01Icon
 	} from '@hugeicons/core-free-icons';
 	import type { SongItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
+	import { fallbackArt } from '$lib/fallbackArt';
 	import { lt } from '$lib/lt.svelte';
 	import { isLiked, toggleLike, downloadedIds, likeBursts } from '$lib/player.svelte';
 	import { flyPlus } from '$lib/fx';
@@ -172,13 +172,9 @@
 				{#if song.thumbnail}
 					<img decoding="async" src={thumb(song.thumbnail, 96)} alt="" draggable={false} class="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />
 				{:else}
-					<!-- An untagged file has no artwork of its own. A music note keeps the row aligned
-					     with its neighbours and says so plainly. -->
-					<div
-						class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground/50"
-					>
-						<HugeiconsIcon icon={MusicNote01Icon} class="h-4 w-4" />
-					</div>
+					<!-- Untagged files get seeded generated art (same helper as the cards)
+					     instead of a blank note tile. -->
+					<img decoding="async" src={fallbackArt(song.video_id, song.title)} alt="" draggable={false} class="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />
 				{/if}
 			{/if}
 		</div>

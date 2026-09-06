@@ -276,10 +276,22 @@
 		const input = e.currentTarget as HTMLInputElement;
 		const f = input.files?.[0];
 		if (!f || !ccAlbum) return;
-		const rd = new FileReader();
-		rd.onload = () => { covers = { ...covers, [ccAlbum!.id]: String(rd.result) }; saveCovers(); toast.success('Cover printed onto the disc'); ccOpen = false; };
-		rd.readAsDataURL(f);
+		const id = ccAlbum.id;
 		input.value = '';
+		// Pressed, not pasted: the photo gets a groove texture composited over it
+		// (vinylPress) so it reads as a record. Failures fall back to the raw upload.
+		import('$lib/vinylPress').then(({ pressVinyl }) =>
+			pressVinyl(f).then((url) => {
+				if (!url) {
+					toast.error('Could not read that file');
+					return;
+				}
+				covers = { ...covers, [id]: url };
+				saveCovers();
+				toast.success('Cover printed onto the disc');
+				ccOpen = false;
+			})
+		);
 	}
 	function resetCover() {
 		if (!ccAlbum) return;
@@ -307,9 +319,11 @@
 		}
 	}
 	// Disc skins per surface (BlazePod-style): the Now deck and the Library hero tiles each
-	// get their own treatment — always the real art, just printed, noir or crimson.
-	type VinylSkin = 'photo' | 'noir' | 'crimson';
-	const isSkin = (v: unknown): v is VinylSkin => v === 'photo' || v === 'noir' || v === 'crimson';
+	// get their own treatment — printed, noir, crimson, or auto (pressed disc tinted from
+	// the cover's own dominant color, falling back to printed when unsampleable).
+	type VinylSkin = 'photo' | 'noir' | 'crimson' | 'auto';
+	const isSkin = (v: unknown): v is VinylSkin =>
+		v === 'photo' || v === 'noir' || v === 'crimson' || v === 'auto';
 	let vinylSkins = $state<{ deck: VinylSkin; library: VinylSkin }>({ deck: 'photo', library: 'photo' });
 	try {
 		const raw = localStorage.getItem('ps-vinyl-skins');
@@ -358,9 +372,16 @@
 			if (playback.now) lyricsOpen = true;
 		};
 		window.addEventListener('ps:open-lyrics', onOpenLyrics);
-		// Esc leaves the fullscreen lyrics takeover (the ✕ works too).
+		// Esc cascade, topmost-first: cover picker → settings sheet → queue view →
+		// fullscreen lyrics → lyrics drawer. One handler so two layers never fight over
+		// the same keypress (the old one closed only the takeover).
 		const onEsc = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') sing = false;
+			if (e.key !== 'Escape') return;
+			if (ccOpen) ccOpen = false;
+			else if (settingsOpen) settingsOpen = false;
+			else if (view === 'queue') go('home');
+			else if (sing) sing = false;
+			else if (lyricsOpen) lyricsOpen = false;
 		};
 		window.addEventListener('keydown', onEsc);
 		return () => {
@@ -562,13 +583,14 @@
 					</aside>
 				{/if}
 
-				<!-- Fullscreen sing takeover: over everything poolside paints, Esc or ✕ exits. -->
+				<!-- Fullscreen sing takeover: over everything poolside paints. Esc is owned by
+				     the window cascade above (local handler removed — it fired first and the
+				     cascade then fell through to the next layer, closing two things per press). -->
 				{#if sing && playback.now}
 					<div
 						class="ps-sing ps-glass"
 						role="dialog"
 						aria-label="Fullscreen lyrics"
-						onkeydown={(e) => e.key === 'Escape' && (sing = false)}
 					>
 						<button class="ps-drawer-close" onclick={() => (sing = false)} aria-label="Exit fullscreen lyrics">✕</button>
 						<LyricsView expanded sing />
@@ -630,6 +652,16 @@
 					<span>DECK SKIN</span>
 					<select value={vinylSkins.deck} onchange={(e) => setVinylSkin('deck', e.currentTarget.value as VinylSkin)} aria-label="Now deck disc skin">
 						<option value="photo">PRINTED ART</option>
+						<option value="auto">AUTO · FROM ART</option>
+						<option value="noir">NOIR · B&W</option>
+						<option value="crimson">CRIMSON · RED</option>
+					</select>
+				</div>
+				<div class="ps-setrow">
+					<span>LIBRARY SKIN</span>
+					<select value={vinylSkins.library} onchange={(e) => setVinylSkin('library', e.currentTarget.value as VinylSkin)} aria-label="Library tile disc skin">
+						<option value="photo">PRINTED ART</option>
+						<option value="auto">AUTO · FROM ART</option>
 						<option value="noir">NOIR · B&W</option>
 						<option value="crimson">CRIMSON · RED</option>
 					</select>
@@ -668,7 +700,6 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 		<div class="ps-overlay open" role="dialog" aria-modal="true" aria-label="Add custom CD covers" tabindex="-1"
 			onclick={(e) => { if (e.target === e.currentTarget) ccOpen = false; }}
-			onkeydown={(e) => e.key === 'Escape' && (ccOpen = false)}
 			transition:fade={{ duration: 200 }}
 		>
 			<div class="ps-card text-center" in:scale={{ start: 0.96, duration: 260 }}>

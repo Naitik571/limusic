@@ -32,7 +32,7 @@
 		onImport: () => void;
 		onOpenFlow?: (view: 'library-coverflow' | 'library-fan') => void;
 		/** Disc treatment for the hero tiles (pool settings → library skin). */
-		tileSkin?: 'photo' | 'noir' | 'crimson';
+		tileSkin?: 'photo' | 'noir' | 'crimson' | 'auto';
 	} = $props();
 
 	type Tab = 'albums' | 'songs' | 'artists' | 'folders' | 'singles';

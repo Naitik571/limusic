@@ -98,16 +98,32 @@
 			});
 	});
 
-	// Last synced line whose cue has passed (lines arrive sorted by time).
+	// Last synced line whose cue has passed. Binary search over the timed-line index
+	// (built once per song): the old linear scan re-walked from the top on every tick, O(n)
+	// per frame on 200-line lyrics; this is O(log n) for the same answer. Untimed lines
+	// stay out of the index, so they can never read as active — same as before.
+	const timedIdx = $derived(
+		!lyrics?.synced
+			? []
+			: lyrics.lines
+					.map((l, i) => (l.time_ms === undefined ? -1 : i))
+					.filter((i) => i >= 0)
+	);
 	const activeIndex = $derived.by(() => {
-		if (!lyrics?.synced) return -1;
+		if (!timedIdx.length || !lyrics) return -1;
 		const currentMs = posMs;
+		const lines = lyrics.lines;
+		let lo = 0;
+		let hi = timedIdx.length - 1;
 		let i = -1;
-		for (let j = 0; j < lyrics.lines.length; j++) {
-			const t = lyrics.lines[j].time_ms;
-			if (t === undefined) continue;
-			if (t > currentMs) break;
-			i = j;
+		while (lo <= hi) {
+			const mid = (lo + hi) >> 1;
+			if ((lines[timedIdx[mid]].time_ms as number) <= currentMs) {
+				i = timedIdx[mid];
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
 		}
 		return i;
 	});

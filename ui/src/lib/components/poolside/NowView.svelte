@@ -20,7 +20,7 @@
 	}: {
 		onOpenLibrary: () => void;
 		/** Disc treatment for the main deck (pool settings → deck skin). */
-		discSkin?: 'photo' | 'noir' | 'crimson';
+		discSkin?: 'photo' | 'noir' | 'crimson' | 'auto';
 	} = $props();
 
 	const cur = $derived(playback.now);

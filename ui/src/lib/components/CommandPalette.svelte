@@ -7,8 +7,9 @@
 	// the raw query locally would hide results whose title doesn't contain what you typed.
 	// vimBindings={false}: those bind ctrl+k to "move up", which is the key that opens this.
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { Search01Icon, MusicNote01Icon, UserIcon, FavouriteIcon } from '@hugeicons/core-free-icons';
+	import { Search01Icon, UserIcon, FavouriteIcon } from '@hugeicons/core-free-icons';
 	import * as Command from '$lib/components/ui/command/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { BrowseItem } from '$lib/api';
@@ -18,6 +19,7 @@
 	import { isLiked } from '$lib/player.svelte';
 	import { checkForUpdatesInteractive } from '$lib/updater.svelte';
 	import { thumb } from '$lib/thumb';
+	import { fallbackArt } from '$lib/fallbackArt';
 	import ItemMenu from './ItemMenu.svelte';
 
 	const KIND = { song: 'Song', album: 'Album', artist: 'Artist', playlist: 'Playlist' };
@@ -87,8 +89,9 @@
 
 	// Enter behavior. cmdk auto-highlights the first row, so a bare Enter would play whatever
 	// happens to be on top instead of opening the full search page the user asked for. Arrowing
-	// to a row first means "that one" and is left alone. Hooked on an ancestor in capture phase:
-	// cmdk's own Enter listener sits on the input itself, where ordering vs ours is undefined.
+	// to a row first means "that one" and is left alone. Hooked on window in capture phase:
+	// the dialog portals its content to <body>, so an ancestor wrapper never sees the events,
+	// and cmdk's own Enter listener on the input runs after any window-capture hook.
 	// IME composition Enter must reach the input untouched.
 	let navTouched = false;
 	function paletteKeys(e: KeyboardEvent) {
@@ -112,6 +115,10 @@
 		e.stopPropagation();
 		allResults();
 	}
+	onMount(() => {
+		window.addEventListener('keydown', paletteKeys, true);
+		return () => window.removeEventListener('keydown', paletteKeys, true);
+	});
 
 	// Closing clears the field, which the effect above turns into an empty list: reopening starts
 	// fresh instead of on the last search's rows. Opening drops any stale pending menu.
@@ -219,9 +226,6 @@
 	);
 </script>
 
-<!-- display:contents: layout-invisible hook so paletteKeys (capture phase) runs before
-     cmdk's own input-level Enter listener, whose ordering vs ours is otherwise undefined. -->
-<div class="contents" onkeydowncapture={paletteKeys}>
 	<Command.Dialog
 	bind:open={ui.paletteOpen}
 	shouldFilter={false}
@@ -299,17 +303,19 @@
 									: 'rounded-md'}"
 							/>
 						{:else}
-							<div
-								class="flex h-10 w-10 shrink-0 items-center justify-center bg-muted text-muted-foreground/50 {item.kind ===
-								'artist'
-									? 'rounded-full'
-									: 'rounded-md'}"
-							>
-								<HugeiconsIcon
-									icon={item.kind === 'artist' ? UserIcon : MusicNote01Icon}
-									class="h-5 w-5"
+							{#if item.kind === 'artist'}
+								<div
+									class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground/50"
+								>
+									<HugeiconsIcon icon={UserIcon} class="h-5 w-5" />
+								</div>
+							{:else}
+								<img decoding="async"
+									src={fallbackArt(item.id, item.title)}
+									alt=""
+									class="h-10 w-10 shrink-0 rounded-md object-cover"
 								/>
-							</div>
+							{/if}
 						{/if}
 						<div class="min-w-0 flex-1">
 							<div class="truncate text-sm">{item.title}</div>
@@ -338,7 +344,7 @@
 	</Command.List>
 	<!-- No visible trigger: a palette row is too small for a hover-only ⋯, and the menu only ever
 	     opens from a right-click (see `openRowMenu`). Rendered here, outside the dialog, so the
-	     dialog's focus trap can't swallow the menu's clicks. Keyed per open for a fresh instance. -->
+	     dialog's focus trap can't swallow the menu's clicks. 		Keyed per open for a fresh instance. -->
 </Command.Dialog>
 {#if pendingMenu}
 	{#key `${pendingMenu.item.id}-${pendingMenu.x}-${pendingMenu.y}`}
@@ -350,4 +356,3 @@
 		/>
 	{/key}
 {/if}
-</div>

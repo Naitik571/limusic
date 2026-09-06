@@ -533,12 +533,26 @@
 	background-size: cover; background-position: center;
 }
 /* Disc skins — treatments of the real art, never a replacement: noir goes B&W dark,
-   crimson duotones it red like a colored pressing. */
+   crimson duotones it red like a colored pressing. Auto hides the print and presses
+   the disc in the cover's own dominant color (--auto, sampled in Vinyl.svelte). */
 .ps-vinyl.skin-noir .art {
 	filter: grayscale(1) brightness(0.6) contrast(1.15);
 }
 .ps-vinyl.skin-crimson .art {
 	filter: sepia(1) saturate(3.2) hue-rotate(-52deg) brightness(0.92);
+}
+.ps-vinyl.skin-auto .art { display: none; }
+.ps-vinyl.skin-auto .spin {
+	background:
+		repeating-radial-gradient(circle at 50% 50%,
+			rgba(255,255,255,.05) 0 .8px, transparent .8px 3.5px
+		),
+		radial-gradient(circle at 50% 50%,
+			color-mix(in srgb, var(--auto) 82%, white) 0%,
+			var(--auto) 38%,
+			color-mix(in srgb, var(--auto) 45%, black) 72%,
+			#0a0a10 100%
+		);
 }
 .ps-vinyl .grooves {
 	position: absolute; inset: 0; border-radius: 50%;

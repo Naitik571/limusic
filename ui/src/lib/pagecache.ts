@@ -1,5 +1,7 @@
 // Keyed in-memory cache for browse pages: show instantly on revisit, revalidate in background.
-// Data is copied into each page's own $state, so no reactivity is needed here.
+// Data is copied into each page's own $state, so no reactivity is needed here. Bounded LRU
+// (80 entries + 5-min TTL, hits refresh recency); the UI mints no object URLs anywhere —
+// covers are data-URLs and local files go through convertFileSrc — so there is nothing to revoke.
 const TTL_MS = 5 * 60_000; // YouTube browse data is stable on this horizon
 // Community cards each cache the playlist they preview, so a scrolled shelf alone can fill 20 slots.
 const MAX_ENTRIES = 80;
@@ -13,6 +15,9 @@ export function getCached<T>(key: string): T | null {
 		store.delete(key);
 		return null;
 	}
+	// A hit is a use: move it to the back so hot pages aren't evicted ahead of cold ones.
+	store.delete(key);
+	store.set(key, e);
 	return e.data as T;
 }
 

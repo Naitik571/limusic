@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import { onMount } from 'svelte';
 	import { PlayIcon, PauseIcon, PreviousIcon, NextIcon, FavouriteIcon, ShuffleIcon, RepeatIcon, ArrowUp01Icon } from '@hugeicons/core-free-icons';
 	import { playback, dragVolume, commitVolume, toggleNowPlayingLike, cycleRepeat, sleepTimer, setSleepTimer } from '$lib/player.svelte';
 	import * as api from '$lib/api';
@@ -36,6 +37,31 @@
 	let expanded = $state(false);
 
 	let pill = $state<HTMLDivElement>();
+
+	// Auto-shrink title (BlazePod-style): step the font down until the full title fits,
+	// floor 9px, and only then let the ellipsis take the rest. Runs on track change and
+	// on pill resize (the meta column width follows the island width).
+	let titleEl = $state<HTMLSpanElement>();
+	function fitTitle() {
+		const el = titleEl;
+		if (!el) return;
+		el.style.fontSize = '';
+		let size = 12;
+		while (size > 9 && el.scrollWidth > el.clientWidth + 1) {
+			size -= 0.5;
+			el.style.fontSize = `${size}px`;
+		}
+	}
+	$effect(() => {
+		cur?.title;
+		fitTitle();
+	});
+	onMount(() => {
+		if (!pill) return;
+		const ro = new ResizeObserver(() => fitTitle());
+		ro.observe(pill);
+		return () => ro.disconnect();
+	});
 
 	// Waveform peaks for the island seekbar (mooziac-style): decoded once per track by Rust,
 	// then cached in SQLite. Module-level map so remounts don't refetch; the plain thin fill
@@ -110,7 +136,7 @@
 			{/if}
 		</button>
 		<div class="ps-mini-pill-meta" onclick={openNow} role="button" tabindex="0" onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && openNow()}>
-			<span class="ps-mini-pill-title">{cur.title}</span>
+			<span class="ps-mini-pill-title" bind:this={titleEl}>{cur.title}</span>
 			<span class="ps-mini-pill-artist">{cur.artists}</span>
 		</div>
 		{#if !paused}

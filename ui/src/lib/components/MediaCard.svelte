@@ -9,6 +9,7 @@
 	import { ON_REPEAT_ID } from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
 	import { thumb } from '$lib/thumb';
+	import { fallbackArt } from '$lib/fallbackArt';
 	import { setDragItem } from '$lib/dnd';
 	import { asSong, openItem, playItem } from '$lib/browse';
 	import { openAddToPlaylist } from '$lib/player.svelte';
@@ -103,25 +104,26 @@
 						onerror={imgFailed}
 					/>
 				{:else}
-					<div
-						class="flex h-full w-full items-center justify-center {onRepeat
-							? 'bg-primary/10 text-primary'
-							: 'text-muted-foreground/50'}"
-					>
-						<!-- altIcon/showAlt, not a third ternary: `icon` is read once at mount. -->
-						<HugeiconsIcon
-							icon={round ? UserIcon : MusicNote01Icon}
-							altIcon={ListRestartIcon}
-							showAlt={onRepeat}
-							class={onRepeat
-								? compact
-									? 'h-7 w-7'
-									: 'h-10 w-10'
-								: compact
-									? 'h-5 w-5'
-									: 'h-7 w-7'}
+					{#if onRepeat}
+						<div class="flex h-full w-full items-center justify-center bg-primary/10 text-primary">
+							<!-- altIcon/showAlt, not a third ternary: `icon` is read once at mount. -->
+							<HugeiconsIcon
+								icon={round ? UserIcon : MusicNote01Icon}
+								altIcon={ListRestartIcon}
+								showAlt={onRepeat}
+								class={compact ? 'h-7 w-7' : 'h-10 w-10'}
+							/>
+						</div>
+					{:else}
+						<!-- Generated cover: a missing/failed thumbnail lands on seeded artwork
+						     (palette + motif + initials) instead of a blank icon tile. -->
+						<img decoding="async"
+							src={fallbackArt(item.id, item.title)}
+							alt=""
+							class="h-full w-full object-cover"
+							draggable="false"
 						/>
-					</div>
+					{/if}
 				{/if}
 				{#if item.kind !== 'artist'}
 					<!-- transition-[opacity,transform], not transition-all: opacity and translate are the
