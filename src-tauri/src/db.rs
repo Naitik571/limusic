@@ -359,6 +359,13 @@ impl Db {
         .unwrap_or_else(warn_write("put_lyrics", "lyrics_cache"));
     }
 
+    /// Drop one cached row (scramble self-heal — the next read refetches providers).
+    pub fn evict_lyrics(&self, video_id: &str) {
+        let conn = self.0.lock().unwrap();
+        conn.execute("DELETE FROM lyrics_cache WHERE video_id = ?1", [video_id])
+            .unwrap_or_else(warn_write("evict_lyrics", "lyrics_cache"));
+    }
+
     // --- lyric per-song offset + votes (Kodama parity) --------------------------------------
 
     /// Per-song sync offset in milliseconds. Positive = delay lyrics, negative = advance.

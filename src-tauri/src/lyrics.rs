@@ -102,11 +102,18 @@ pub async fn get_lyrics(state: &AppState, req: LyricsRequest) -> Option<Lyrics> 
     if let Some(cached) = state.db.get_lyrics(&video_id, now, MISS_TTL_SECS) {
         if let Some(json) = cached {
             if let Ok(mut lyrics) = serde_json::from_str::<Lyrics>(&json) {
-                let off = get_offset(&state.db, &video_id);
-                if off != 0 {
-                    apply_offset(&mut lyrics, off);
+                // Self-heal rows poisoned before the scramble guards existed: evict and
+                // fall through to a fresh provider run instead of serving salad forever.
+                if looks_scrambled(&lyrics.lines) {
+                    tracing::debug!("lyrics: evicting cached scrambled text");
+                    state.db.evict_lyrics(&video_id);
+                } else {
+                    let off = get_offset(&state.db, &video_id);
+                    if off != 0 {
+                        apply_offset(&mut lyrics, off);
+                    }
+                    return Some(lyrics);
                 }
-                return Some(lyrics);
             }
         } else {
             return None;
@@ -289,6 +296,12 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
         match res {
             Ok(Some(l)) => {
+                // Scrambled "copyright protection" text parses as valid synced lyrics — drop
+                // it so a lower-priority provider with the real text can win instead.
+                if looks_scrambled(&l.lines) {
+                    tracing::debug!(provider = name, "lyrics: scrambled text rejected");
+                    continue;
+                }
                 let takes = match &best {
                     None => true,
                     Some((bp, bl)) => {
@@ -660,13 +673,14 @@ async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Erro
     // The matched track, for the sanity check: name/artist from the same macro response.
     let matched = resp
         .pointer("/message/body/macro_calls/track.search/message/body/track_list/0/track")
-        .and_then(|t| {
-            Some((
+        .map(|t| {
+            (
                 t.get("track_name").and_then(|v| v.as_str()).unwrap_or(""),
                 t.get("artist_name").and_then(|v| v.as_str()).unwrap_or(""),
-            ))
+                t.get("restricted").and_then(|v| v.as_i64()).unwrap_or(0),
+            )
         });
-    if let Some((m_title, m_artist)) = matched {
+    if let Some((m_title, m_artist, restricted)) = matched {
         let title_ok = overlap(&req.title, m_title) >= MXM_MIN_OVERLAP;
         // Artist may be a list ("A, B") — pass if ANY component matches.
         let artist_ok = req
@@ -681,6 +695,17 @@ async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Erro
                 req.artists,
                 m_title,
                 m_artist
+            );
+            return Ok(None);
+        }
+        // Restricted tracks get word-salad "copyright protection" bodies (same syllable
+        // shape as the real lyrics, fake words) instead of an error — for both richsync
+        // and subtitles. Never serve that; other providers may have the real text.
+        if restricted == 1 {
+            tracing::debug!(
+                "musixmatch restricted track, skipping: {} - {}",
+                req.title,
+                req.artists
             );
             return Ok(None);
         }
@@ -1210,6 +1235,59 @@ fn overlap(a: &str, b: &str) -> f64 {
     }
     let common = ta.iter().filter(|t| tb.contains(t)).count();
     2.0 * common as f64 / (ta.len() + tb.len()) as f64
+}
+
+/// Musixmatch's copyright scrambling: restricted tracks come back as word salad — same
+/// line/syllable shape as the real lyrics, every word replaced with a fake Latin token
+/// ("Wob gopini den / Tefe woxica fero …"). It parses as valid synced lyrics, so it must
+/// be caught by shape, not by parse failure. Deliberately strict (all four must hold —
+/// a false positive hides real lyrics, a false negative just shows salad):
+///   1. long enough to judge (10+ non-empty lines, 40+ tokens — short songs exempt);
+///   2. no repeated line (real songs repeat: choruses, hooks, "la la la");
+///   3. near-zero word reuse across the whole text (unique/total > 0.9);
+///   4. no short tokens at all (real lyrics in any language have 1–2 char words —
+///      "a", "I", "to", "de", "la", "na", "ke", "oh" — and contractions/digits split
+///      into short pieces, so their absence means every word is a fabricated 3+ char
+///      token of pure letters).
+fn looks_scrambled(lines: &[LyricLine]) -> bool {
+    let texts: Vec<&str> = lines
+        .iter()
+        .map(|l| l.text.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if texts.len() < 10 {
+        return false;
+    }
+    let toks: Vec<String> = texts
+        .iter()
+        .flat_map(|t| {
+            t.to_lowercase()
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    if toks.len() < 40 {
+        return false;
+    }
+    // 4. every token is 3+ chars of pure letters.
+    if toks
+        .iter()
+        .any(|t| t.chars().count() <= 2 || !t.chars().all(|c| c.is_alphabetic()))
+    {
+        return false;
+    }
+    // 2. no line repeats (case-insensitive).
+    {
+        let mut seen = std::collections::HashSet::new();
+        if texts.iter().any(|t| !seen.insert(t.to_lowercase())) {
+            return false;
+        }
+    }
+    // 3. near-zero word reuse.
+    let unique: std::collections::HashSet<&str> = toks.iter().map(String::as_str).collect();
+    unique.len() as f64 / toks.len() as f64 > 0.9
 }
 
 // --- LRC parsing ----------------------------------------------------------------------------
@@ -2887,5 +2965,79 @@ mod tests {
         let words = lines[0].words.as_ref().expect("words");
         assert_eq!(words[0].start_ms, 1000);
         assert_eq!(words[0].end_ms, 2000);
+    }
+
+    fn salad_lines(texts: &[&str]) -> Vec<LyricLine> {
+        texts
+            .iter()
+            .enumerate()
+            .map(|(i, t)| LyricLine::simple(Some(i as u64 * 3000), t.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn flags_musixmatch_word_salad() {
+        // Verbatim restricted-track salad: line shape intact, every word fabricated.
+        let lines = salad_lines(&[
+            "Wob gopini den",
+            "Tefe woxica fero",
+            "Gogoh vudob wiya",
+            "Keric sohu peduf",
+            "Kahe rorew vip",
+            "Vuquw qazaqo kimi",
+            "Qaxu xur cutox",
+            "Ger tiwuk gejun",
+            "Yanufo zisan sen",
+            "Poj hesu qanu",
+            "Kij viki manex",
+            "Yited foc weti",
+            "Dumufu bav hebijo",
+            "Xipihe wihe yigog",
+        ]);
+        assert!(looks_scrambled(&lines));
+    }
+
+    #[test]
+    fn keeps_real_lyrics_english() {
+        let lines = salad_lines(&[
+            "Listen to the wind blow",
+            "Watch the sun rise",
+            "Run in the shadows",
+            "Damn your love, damn your lies",
+            "Listen to the wind blow",
+            "Watch the sun rise",
+            "Run in the shadows",
+            "Damn your love, damn your lies",
+            "And if you don't love me now",
+            "You will never love me again",
+            "I can still hear you saying",
+            "You would never break the chain",
+        ]);
+        assert!(!looks_scrambled(&lines));
+    }
+
+    #[test]
+    fn keeps_real_lyrics_hindi_romanized() {
+        let lines = salad_lines(&[
+            "Tujhe dekha to ye jaana sanam",
+            "Pyaar hota hai deewana sanam",
+            "Ab yahaan se kahaan jaayein hum",
+            "Teri baahon mein mar jaayein hum",
+            "Tujhe dekha to ye jaana sanam",
+            "Pyaar hota hai deewana sanam",
+            "Aankhen meri sapne tere",
+            "Dil mera yaadein teri",
+            "Mera hai kya sab kuch tera",
+            "Jaan teri saansein teri",
+            "Meri aankhon mein aansu tere",
+            "Aa gaye muskuraane",
+        ]);
+        assert!(!looks_scrambled(&lines));
+    }
+
+    #[test]
+    fn short_songs_exempt() {
+        let lines = salad_lines(&["Wob gopini den", "Tefe woxica fero", "Gogoh vudob wiya"]);
+        assert!(!looks_scrambled(&lines));
     }
 }
