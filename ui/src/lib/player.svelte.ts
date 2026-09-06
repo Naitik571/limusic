@@ -935,7 +935,6 @@ export const ui = $state({
 	channelPickerOpen: false,
 	channelPickerRequired: false, // true while a multi-channel login is not finalized yet
 	channelIdentities: [] as AccountIdentity[],
-	songInfo: null as SongItem | null, // the Song Info dialog target (views, author, duration)
 	// Boot veil: bottom-pill startup toast (BlazePod-style). Null = hidden.
 	bootVeil: null as { eyebrow: string; label: string; done: boolean } | null
 });
@@ -969,11 +968,6 @@ export const toast = Object.assign((msg: string) => show(msg, 'info'), {
 
 export function openAddToPlaylist(song: SongItem) {
 	ui.addSongs = [song];
-}
-
-/** Open the Song Info dialog for one track (title, artists, album, duration, views). */
-export function openSongInfo(song: SongItem) {
-	ui.songInfo = song;
 }
 
 /** Boot veil stages (bottom-pill startup toast). */

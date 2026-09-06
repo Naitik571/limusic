@@ -34,7 +34,6 @@
 	import QueuePanel from '$lib/components/QueuePanel.svelte';
 	import LyricsPanel from '$lib/components/LyricsPanel.svelte';
 	import AddToPlaylist from '$lib/components/AddToPlaylist.svelte';
-	import SongInfoDialog from '$lib/components/SongInfoDialog.svelte';
 	import BootVeil from '$lib/components/BootVeil.svelte';
 	import SettingsDialog from '$lib/components/SettingsDialog.svelte';
 	import KeyboardShortcutsDialog from '$lib/components/KeyboardShortcutsDialog.svelte';
@@ -206,7 +205,6 @@
 {#if !isMini}
 	<CommandPalette />
 	<AddToPlaylist />
-	<SongInfoDialog />
 	<BootVeil />
 	<SettingsDialog />
 	<KeyboardShortcutsDialog />

@@ -1082,7 +1082,9 @@ async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
         .error_for_status()?
         .text()
         .await?;
-    // First result href: href="/lyrics/<slug>.html"
+    // First result href: href="/lyrics/<slug>.html". The slug usually names the track
+    // ("artist-title"), so gate on it like Genius does: taking the first href blind once
+    // surfaced an unrelated song's (sometimes placeholder-salad) LRC as synced lyrics.
     let href = {
         let re = regex::Regex::new(r#"href="(/lyrics/[^"]+\.html)""#).unwrap();
         match re.captures(&search) {
@@ -1093,6 +1095,27 @@ async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
     let Some(href) = href else {
         return Ok(None);
     };
+    let slug_words = href
+        .trim_start_matches("/lyrics/")
+        .trim_end_matches(".html")
+        .replace(['-', '_'], " ");
+    let title_score = overlap(&req.title, &slug_words);
+    let artist_score = req
+        .artists
+        .split(',')
+        .map(str::trim)
+        .map(|a| overlap(a, &slug_words))
+        .fold(0.0_f64, f64::max);
+    // Same bars as the Genius gate: wrong-artist lyrics are worse than none.
+    if title_score < 0.4 || artist_score < 0.3 {
+        tracing::debug!(
+            title_score,
+            artist_score,
+            href,
+            "megalobiz: top hit fails overlap, skipping"
+        );
+        return Ok(None);
+    }
     let page = web_http()
         .get(format!("https://www.megalobiz.com{href}"))
         .send()
@@ -2347,6 +2370,34 @@ async fn simp_music_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::
         .and_then(|v| v.as_array())
     {
         for hit in arr {
+            // Attributed hits clear the same bar as Genius: an unrelated song's lyrics are
+            // worse than none. Unattributed hits keep the old take-first behavior.
+            let h_title = hit
+                .get("title")
+                .or_else(|| hit.get("name"))
+                .or_else(|| hit.get("song"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let h_artist = hit
+                .get("artist")
+                .or_else(|| hit.get("artistName"))
+                .or_else(|| hit.get("singer"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !h_title.is_empty() || !h_artist.is_empty() {
+                let title_ok = h_title.is_empty() || overlap(&req.title, h_title) >= 0.4;
+                let artist_ok = h_artist.is_empty()
+                    || req
+                        .artists
+                        .split(',')
+                        .map(str::trim)
+                        .map(|a| overlap(a, h_artist))
+                        .fold(0.0_f64, f64::max)
+                        >= 0.3;
+                if !(title_ok && artist_ok) {
+                    continue;
+                }
+            }
             let txt = hit
                 .get("syncedLyrics")
                 .or_else(|| hit.get("lrc"))

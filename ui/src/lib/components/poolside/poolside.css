@@ -1139,33 +1139,6 @@
 .ps-cc-body { display: flex; gap: 24px; align-items: center; margin-top: 20px; }
 .ps-card-actions { display: flex; justify-content: center; gap: 11px; margin-top: 22px; }
 
-/* ============ LITE MODE — frozen pool for weak devices ============
-   Hides the animated dressing (koi, motes, shafts, glare) and parks every rotation
-   (vinyl spin, sheens, platter, edge vinyls, sidebar disc). The rAF loops park too:
-   motion.ts treats .ps-root.lite like reduce-motion. Water gradient + blobs stay as a
-   static backdrop, so the pool still reads as a pool. */
-.ps-root.lite .ps-koi,
-.ps-root.lite .ps-mote,
-.ps-root.lite .ps-shaft,
-.ps-root.lite .ps-glare,
-.ps-root.lite .ps-waterline,
-.ps-root.lite .ps-edge-vinyl {
-	display: none;
-}
-.ps-root.lite .ps-rip,
-.ps-root.lite .ps-water::after,
-.ps-root.lite .ps-blob,
-.ps-root.lite .ps-vinyl.playing .spin,
-.ps-root.lite .ps-vinyl.playing .sheen-a,
-.ps-root.lite .ps-vinyl.playing .sheen-b,
-.ps-root.lite .ps-platter.spin,
-.ps-root.lite .ps-sidebar-disc.spin img,
-.ps-root.lite .ps-nav-disc::after {
-	animation: none !important;
-}
-.ps-root.lite .ps-water > .ps-rip {
-	filter: none;
-}
 
 /* ============ QUEUE BOTTOM SHEET — overlay queue over whatever plays ============
    The queue nav item opens this sheet instead of a page: drag-handle chrome, backdrop

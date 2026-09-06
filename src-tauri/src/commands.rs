@@ -1461,26 +1461,6 @@ pub fn read_lyrics_file(path: String) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// YouTube view count + author for the Song Info dialog. One cheap `/player` call with the
-/// metadata client; `None` view count when YouTube doesn't report one.
-#[tauri::command]
-pub async fn video_views(state: St<'_>, video_id: String) -> Result<serde_json::Value, String> {
-    let state = state.inner().clone();
-    let Some(client) = state.clients.get(innertube::METADATA_CLIENT) else {
-        return Err("no metadata client".into());
-    };
-    let resp = state
-        .it
-        .player(client, &video_id, None, None, None)
-        .await
-        .map_err(|e| e.to_string())?;
-    let details = resp.video_details.as_ref();
-    Ok(serde_json::json!({
-        "view_count": details.and_then(|d| d.view_count.clone()),
-        "author": details.and_then(|d| d.author.clone()),
-        "title": details.and_then(|d| d.title.clone()),
-    }))
-}
 /// Unison vote/report (POST /lyrics/vote semantics). `vote` = 1 or -1.
 #[tauri::command]
 pub async fn lyrics_vote(

@@ -506,7 +506,6 @@ pub fn run() {
             commands::set_custom_lyrics,
             commands::delete_custom_lyrics,
             commands::read_lyrics_file,
-            commands::video_views,
             commands::lyrics_vote,
             commands::lyrics_report,
             commands::translate_lyrics,

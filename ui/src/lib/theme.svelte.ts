@@ -123,21 +123,8 @@ export const appearance = $state({
 	ambientMode: false,
 	ambientIntensity: 'balanced' as AmbientIntensity,
 	immersiveBackgroundIntensity: 0.12,
-	lyricsFont: 'system' as LyricFontId,
-	// Lite mode (Poolside): freeze koi/caustics/shafts/vinyl-wobble and drop heavy blurs.
-	// 'auto' engages on weak devices (few cores or little RAM); On/Off force it.
-	liteMode: 'auto' as 'auto' | 'on' | 'off'
+	lyricsFont: 'system' as LyricFontId
 });
-
-/** Effective Lite state: forced on/off, or auto-detected weak hardware. */
-export function liteActive(): boolean {
-	if (appearance.liteMode === 'on') return true;
-	if (appearance.liteMode === 'off') return false;
-	if (typeof navigator === 'undefined') return false;
-	const cores = navigator.hardwareConcurrency ?? 8;
-	const mem = (navigator as any).deviceMemory ?? 8;
-	return cores <= 4 || mem <= 4;
-}
 
 // --- Glass intensity -------------------------------------------------------------------------
 // Scales every frosted surface (`.glass`/`.glass-strong`/`.glass-edge`, layout.css) through two
@@ -553,9 +540,6 @@ export function initTheme(): void {
 		}
 		if (typeof saved?.lyricsFont === 'string' && LYRIC_FONTS.some((f) => f.id === saved.lyricsFont)) {
 			(appearance as any).lyricsFont = saved.lyricsFont;
-		}
-		if (typeof saved?.liteMode === 'string' && ['auto', 'on', 'off'].includes(saved.liteMode)) {
-			(appearance as any).liteMode = saved.liteMode;
 		}
 	} catch {
 		// unparseable — keep the defaults

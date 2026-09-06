@@ -272,9 +272,6 @@ pub struct VideoDetails {
     pub author: Option<String>,
     #[serde(default)]
     pub length_seconds: Option<String>,
-    /// Play count as YouTube reports it ("1234567"). String in the API.
-    #[serde(default)]
-    pub view_count: Option<String>,
     #[serde(default)]
     pub music_video_type: Option<String>,
     #[serde(default)]

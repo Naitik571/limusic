@@ -42,7 +42,7 @@
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
 	import { auth, local, np, playback, playFrom, ui, toast } from '$lib/player.svelte';
-	import { applyLayout, appearance, setAppearance, liteActive } from '$lib/theme.svelte';
+	import { applyLayout } from '$lib/theme.svelte';
 	import Water from './Water.svelte';
 	import Vinyl from './Vinyl.svelte';
 	import NowView from './NowView.svelte';
@@ -331,10 +331,8 @@
 			/* quota */
 		}
 	}
-	// Lite mode lives in the shared appearance store (so Settings can show it too); the shell
-	// mirrors it onto .ps-root.lite, which freezes koi/caustics/shafts/wobble and drops blurs.
-	const lite = $derived(liteActive());
-	function setLite(v: 'auto' | 'on' | 'off') { setAppearance({ liteMode: v }); }
+	// Disc skins per surface (BlazePod-style): the Now deck and the Library hero tiles each
+	// get their own treatment — always the real art, just printed, noir or crimson.
 	function setPref(key: 'caustics' | 'koi' | 'reduce', v: boolean) {
 		if (key === 'caustics') { caustics = v; localStorage.setItem('ps-caustics', String(v)); }
 		else if (key === 'koi') { koi = v; localStorage.setItem('ps-koi', String(v)); }
@@ -381,7 +379,7 @@
 </script>
 
 	<div
-	class="ps-root {dusk ? 'dusk' : ''} {waterTheme !== 'clear' ? `wt-${waterTheme}` : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {lite ? 'lite' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
+	class="ps-root {dusk ? 'dusk' : ''} {waterTheme !== 'clear' ? `wt-${waterTheme}` : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
 	style="--ps-spin:{spin}"
 	data-view={view}
 	data-album-hue={albumHue ?? ''}
@@ -627,24 +625,8 @@
 					</div>
 				</div>
 				<div class="ps-setrow">
-					<span>LITE MODE</span>
-					<select value={appearance.liteMode} onchange={(e) => setLite(e.currentTarget.value as 'auto' | 'on' | 'off')} aria-label="Lite mode">
-						<option value="auto">AUTO · WEAK DEVICES</option>
-						<option value="on">ON · FROZEN WATER</option>
-						<option value="off">OFF · FULL POOL</option>
-					</select>
-				</div>
-				<div class="ps-setrow">
 					<span>DECK SKIN</span>
 					<select value={vinylSkins.deck} onchange={(e) => setVinylSkin('deck', e.currentTarget.value as VinylSkin)} aria-label="Now deck disc skin">
-						<option value="photo">PRINTED ART</option>
-						<option value="noir">NOIR · B&W</option>
-						<option value="crimson">CRIMSON · RED</option>
-					</select>
-				</div>
-				<div class="ps-setrow">
-					<span>LIBRARY SKIN</span>
-					<select value={vinylSkins.library} onchange={(e) => setVinylSkin('library', e.currentTarget.value as VinylSkin)} aria-label="Library disc skin">
 						<option value="photo">PRINTED ART</option>
 						<option value="noir">NOIR · B&W</option>
 						<option value="crimson">CRIMSON · RED</option>
