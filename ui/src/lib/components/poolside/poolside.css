@@ -2,9 +2,9 @@
    POOLSIDE VINYL — realistic swimming pool + turntable.
    ============================================================ */
 .ps-root {
-	--pool-deep: #0A5C6A;
-	--pool-mid: #15A5B5;
-	--pool-bright: #5DE0EC;
+	--pool-deep: #004D40;
+	--pool-mid: #0097A7;
+	--pool-bright: #26C6DA;
 	--caustic-w: rgba(255,255,255,.85);
 	--accent: #4FC3E8;
 	--coral: #F2A093;
@@ -50,69 +50,12 @@
 	position: absolute; inset: 0; z-index: 0;
 	background:
 		linear-gradient(180deg,
-			color-mix(in oklab, var(--ps-album-accent, #5BC8DC) 18%, #2EA7C0) 0%,
-			color-mix(in oklab, var(--ps-album-accent, #1B92A8) 22%, #1B92A8) 14%,
-			color-mix(in oklab, var(--ps-album-accent, #127F92) 25%, #127F92) 26%,
-			color-mix(in oklab, var(--ps-album-accent, #0B6E80) 28%, #0B6E80) 40%,
-			color-mix(in oklab, var(--ps-album-accent, #075E6E) 32%, #075E6E) 54%,
-			color-mix(in oklab, var(--ps-album-accent, #044E5C) 36%, #044E5C) 70%,
-			color-mix(in oklab, var(--ps-album-accent, #023A48) 30%, #023A48) 86%,
-			color-mix(in oklab, var(--ps-album-accent, #023A48) 14%, #023A48) 100%
-		);
-	transition: filter .6s var(--ease-spring), background 1.2s;
-	overflow: hidden;
-}
-/* pool tile floor — stronger grout, perspective-tilted so the back rows recede. The grid sells
-   "this is a tiled pool floor" more than any caustic can. */
-.ps-water::before {
-	content: '';
-	position: absolute; inset: 0;
-	background-image:
-		linear-gradient(rgba(255,255,255,.09) 1.5px, transparent 1.5px),
-		linear-gradient(90deg, rgba(255,255,255,.09) 1.5px, transparent 1.5px);
-	background-size: 64px 64px;
-	transform: perspective(900px) rotateX(28deg) translateY(40px) scale(1.4);
-	transform-origin: center top;
-	opacity: 0.75;
-	pointer-events: none;
-	mix-blend-mode: overlay;
-}
-/* sunlight shimmer — broader, fewer hot spots, the gentle moving wash on the pool floor */
-.ps-water::after {
-	content: '';
-	position: absolute; inset: -50%;
-	width: 200%; height: 200%;
-	background-image:
-		radial-gradient(ellipse 320px 200px at 18% 28%, rgba(255,255,255,.32) 0%, transparent 72%),
-		radial-gradient(ellipse 380px 240px at 72% 18%, rgba(255,255,255,.26) 0%, transparent 68%),
-		radial-gradient(ellipse 280px 180px at 38% 68%, rgba(255,255,255,.30) 0%, transparent 70%),
-		radial-gradient(ellipse 360px 220px at 88% 58%, rgba(255,255,255,.24) 0%, transparent 74%),
-		radial-gradient(ellipse 240px 160px at 52% 88%, rgba(255,255,255,.28) 0%, transparent 68%);
-	background-size: 800px 800px;
-	mix-blend-mode: soft-light;
-	animation: ps-shimmer 14s ease-in-out infinite;
-	pointer-events: none;
-}
-@keyframes ps-shimmer {
-	0%, 100% { transform: translate3d(0,0,0) scale(1); }
-	33% { transform: translate3d(20px,-15px,0) scale(1.02); }
-	66% { transform: translate3d(-15px,10px,0) scale(0.98); }
-}
-
-/* ============ 1. WATER — realistic swimming pool ============ */
-/* When the shell is playing a track, --ps-album-accent is set on .ps-root (e.g.
-   "hsl(214 60% 50%)") and the base gradient stops shift toward that hue. When no track
-   is playing the variables fall back to the static pool-blue. */
-.ps-water {
-	position: absolute; inset: 0; z-index: 0;
-	background:
-		linear-gradient(180deg,
-			color-mix(in oklab, var(--ps-album-accent, #4DD0E1) 16%, #26C6DA) 0%,
-			color-mix(in oklab, var(--ps-album-accent, #00ACC1) 20%, #00ACC1) 18%,
-			color-mix(in oklab, var(--ps-album-accent, #0097A7) 24%, #0097A7) 34%,
-			color-mix(in oklab, var(--ps-album-accent, #00838F) 28%, #00838F) 52%,
-			color-mix(in oklab, var(--ps-album-accent, #006064) 32%, #006064) 70%,
-			color-mix(in oklab, var(--ps-album-accent, #004D40) 26%, #004D40) 100%
+			color-mix(in oklab, var(--ps-album-accent, var(--pool-bright)) 16%, var(--pool-bright)) 0%,
+			color-mix(in oklab, var(--ps-album-accent, var(--pool-bright)) 20%, var(--pool-mid)) 18%,
+			color-mix(in oklab, var(--ps-album-accent, var(--pool-mid)) 24%, var(--pool-mid)) 34%,
+			color-mix(in oklab, var(--ps-album-accent, var(--pool-mid)) 28%, var(--pool-deep)) 52%,
+			color-mix(in oklab, var(--ps-album-accent, var(--pool-deep)) 32%, var(--pool-deep)) 70%,
+			color-mix(in oklab, var(--ps-album-accent, var(--pool-deep)) 26%, var(--pool-deep)) 100%
 		);
 	transition: filter .6s var(--ease-spring), background 1.2s;
 	overflow: hidden;
