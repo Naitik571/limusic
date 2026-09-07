@@ -197,15 +197,16 @@ impl Player {
         Ok(())
     }
 
-    /// Set output volume (0–100). Perceptual percent → mpv volume via exponential curve
-    /// with EXPONENT=3 (pear parity). 0 stays hard mute.
+    /// Set output volume (0–100). Perceptual percent → mpv volume via the square-law
+    /// taper below. 0 stays hard mute.
     pub fn set_volume(&self, volume: i64) -> Result<(), Error> {
         self.mpv.set_property("volume", perceptual_to_mpv(volume))?;
         Ok(())
     }
 
     /// Current perceptual volume (inverse of `perceptual_to_mpv`). Reads mpv's `volume` and
-    /// converts back via the cubic root, so global-shortcut handlers can nudge without extra state.
+    /// converts back through the same exponent, so global-shortcut handlers can nudge
+    /// without extra state.
     pub fn get_volume(&self) -> i64 {
         let mpv = self.mpv.get_property::<f64>("volume").unwrap_or(0.0);
         if mpv <= 0.0 {
@@ -409,11 +410,13 @@ fn quoted(arg: &str) -> String {
 
 /// Slider percent (perceptual) → mpv `volume` value.
 ///
-/// Pear's exponential volume uses EXPONENT=3 (`gain = (v/100)^3`). mpv itself cubes its
-/// `volume` property, so the slider's perceptual curve must be exponential as well to keep
-/// the loudness change feeling uniform. We map 0–100 through a cubic curve, preserving
-/// 0 as hard mute and 100 as unity. This matches `pear::EXPONENT = 3`.
-const VOLUME_EXPONENT: f64 = 3.0;
+/// Square-law taper (`gain = (v/100)^2`): perceived loudness follows Stevens' power law
+/// (~pressure^0.6), so a uniform-feeling slider wants gain ≈ (v/100)^1.67 — 2.0 is the
+/// standard approximation. The old cubic curve (EXPONENT=3, total perceptual exponent
+/// ~1.8) bunched all audible change into the top 20% of the slider: everything below
+/// ~80 sat more than 12 dB down and barely moved on real speakers. 0 stays hard mute,
+/// 100 stays unity; `get_volume` inverts through the same constant.
+const VOLUME_EXPONENT: f64 = 2.0;
 
 fn perceptual_to_mpv(percent: i64) -> f64 {
     if percent <= 0 {
@@ -457,9 +460,10 @@ mod tests {
     fn volume_curve() {
         assert_eq!(perceptual_to_mpv(0), 0.0);
         assert_eq!(perceptual_to_mpv(100), 100.0);
-        // Exponential curve with EXPONENT=3 (pear): 50% -> 100*(0.5^3)=12.5
-        assert!((perceptual_to_mpv(50) - 12.5).abs() < 0.01);
-        assert!((perceptual_to_mpv(25) - 1.5625).abs() < 0.01);
+        // Square-law taper: 50% -> 100*(0.5^2)=25 (was 12.5 under the old cubic —
+        // the bottom half of the slider was inaudible on real speakers).
+        assert!((perceptual_to_mpv(50) - 25.0).abs() < 0.01);
+        assert!((perceptual_to_mpv(25) - 6.25).abs() < 0.01);
         // Monotonic increasing.
         assert!(perceptual_to_mpv(80) > perceptual_to_mpv(40));
         assert!(perceptual_to_mpv(40) > perceptual_to_mpv(20));

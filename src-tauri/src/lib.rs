@@ -305,7 +305,7 @@ pub fn run() {
                 if app_state.db.get_setting("video_sync").as_deref() == Some("true") {
                     let _ = app_state.player.set_video_sync(true);
                 }
-                // Volume: restore persisted level (exponential curve EXPONENT=3)
+                // Volume: restore persisted level (square-law taper in player crate)
                 if let Some(v) = app_state
                     .db
                     .get_setting("volume")

@@ -145,7 +145,7 @@ All available in the latest release. Fork tracks upstream versioning — this re
 - **Layouts** — Default, **Grove** (rounded feed card + floating player island), **Canopy** (transport lives in the top bar — no bottom bar at all), Compact and Wide; queue/lyrics dock as a real column, the player takes over the row in every layout
 - **LAN remote** — scan the QR in Settings, control playback from your phone: now-playing, play/pause/skip, volume and the queue, right in the browser
 - **Artist packs** — per-artist themes installed from the community index or a local ZIP
-- **Exponential volume + HUD** — cubic loudness curve, on-screen % readout, 1% steps with Shift, and global Ctrl+Shift+Up/Down that work from the tray
+- **Exponential volume + HUD** — square-law loudness taper (even steps across the whole slider, not just the top), on-screen % readout, 1% steps with Shift, and global Ctrl+Shift+Up/Down that work from the tray
 - **Type-to-search** — start typing on any playlist page and it filters instantly, with match highlighting
 - **Playlist menu gains Play / Shuffle play**; Ctrl+K no longer collides with K (play/pause); right-click works on palette results; Liked Music and Episodes for Later covers render again
 - **Personal uploads play again** — authenticated TVHTML5 → WEB_CREATOR chain, and uploads no longer count as music videos (they were vanishing under "hide music videos")
