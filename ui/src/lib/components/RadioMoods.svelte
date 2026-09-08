@@ -1,7 +1,7 @@
-// Up Next mood chips (`All`, `Chill`, `Discover`, …) — YouTube's radio moods, wired to
-// `set_radio_mood`. Shown only on radio queues (moods empty otherwise). While one applies,
-// the row locks so a second tap can't stack two mood swaps.
 <script lang="ts">
+	// Up Next mood chips (`All`, `Chill`, `Discover`, …) — YouTube's radio moods, wired to
+	// `set_radio_mood`. Shown only on radio queues (moods empty otherwise). While one applies,
+	// the row locks so a second tap can't stack two mood swaps.
 	import type { MoodChip } from '$lib/api';
 	import * as api from '$lib/api';
 	import { toast } from '$lib/player.svelte';
