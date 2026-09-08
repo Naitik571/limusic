@@ -68,7 +68,7 @@ const canReorder = $derived(lt.role !== 'guest');
 			const dx = e.clientX - pressX;
 			const dy = e.clientY - pressY;
 			// Swipe arbitration runs before reorder: a dominant horizontal press becomes a
-			// removal swipe and reorder never arms for it. Non-removable rows (guests fall
+			// removal swipe and reorder never arms for it. Non-removable rows (guests) fall
 			// through to the old reorder path untouched.
 			if (!dragging && !swiping && canRemove && isSwipe(dx, dy)) {
 				swiping = true;
@@ -78,6 +78,19 @@ const canReorder = $derived(lt.role !== 'guest');
 				return;
 			}
 			if (swiping) {
+				swipedX = dx;
+				e.preventDefault();
+				return;
+			}
+			// A reorder already in flight converts to a swipe the moment the gesture turns
+			// unambiguously horizontal: reorder arms at 6px, swipe needs 12, so without this
+			// every horizontal drag would read as a reorder first and swiping could never win.
+			if (dragging && canRemove && isSwipe(dx, dy)) {
+				dragging = false;
+				dragFrom = null;
+				dragOver = null;
+				swiping = true;
+				swipeIdx = pressIndex;
 				swipedX = dx;
 				e.preventDefault();
 				return;

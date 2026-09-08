@@ -158,7 +158,7 @@
 								: 'transition: transform .25s ease-out;'}
 					>
 					{#if item.thumbnail}
-						<img decoding="async" loading="lazy" src={item.thumbnail} alt="" class="ps-queue-thumb-sm" />
+						<img decoding="async" loading="lazy" src={item.thumbnail} alt="" draggable={false} class="ps-queue-thumb-sm" />
 					{/if}
 					<button class="st" style="cursor:pointer;background:none;border:none;color:inherit;font:inherit;text-align:left" onclick={() => playAt(i)}>{item.title.toUpperCase()}</button>
 					<span class="sa">{item.artists}</span>

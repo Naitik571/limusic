@@ -950,17 +950,15 @@ export function openChannelPicker(required = false) {
 export type Toast = {
 	msg: string;
 	kind: 'info' | 'success' | 'error';
-	/** Now-playing payload: renders art + transport + live progress instead of text. */
-	media?: { title: string; artists: string; thumbnail: string };
 };
 
 // A counter, not the toast itself: $state proxies the stored object, so `ui.toast === t` is never
 // true and the toast would never clear. It also means a repeated message can't cut its own retry short.
 let seq = 0;
 
-function show(msg: string, kind: Toast['kind'], media?: Toast['media'], ms = 2500) {
+function show(msg: string, kind: Toast['kind'], ms = 2500) {
 	const id = ++seq;
-	ui.toast = { msg, kind, media };
+	ui.toast = { msg, kind };
 	setTimeout(() => {
 		if (seq === id) ui.toast = null;
 	}, ms);
@@ -970,10 +968,7 @@ function show(msg: string, kind: Toast['kind'], media?: Toast['media'], ms = 250
 export const toast = Object.assign((msg: string) => show(msg, 'info'), {
 	info: (msg: string) => show(msg, 'info'),
 	success: (msg: string) => show(msg, 'success'),
-	error: (msg: string) => show(msg, 'error'),
-	/** Track-change announcement with working transport (BlazePod-style media toast). */
-	media: (title: string, artists: string, thumbnail: string) =>
-		show(title, 'info', { title, artists, thumbnail }, 6000)
+	error: (msg: string) => show(msg, 'error')
 });
 
 export function openAddToPlaylist(song: SongItem) {
@@ -1047,9 +1042,6 @@ export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 }
 
 let started = false;
-// Last track id announced by the media toast (null until the first now-playing event,
-// so a cold start never toasts the restored track).
-let lastToastedId: string | null = null;
 
 /**
  * Wire the Tauri event listeners once and seed initial state. Returns a teardown fn.
@@ -1070,12 +1062,6 @@ export function initApp(mini = false): () => void {
 			pl.touchPick(personal, n.videoId);
 			if (n.artists) pl.noteArtist(personal, n.artistId ?? n.artists, pl.firstArtist(n.artists));
 			savePersonal();
-			// Media toast on real track changes (not like/metadata updates, and not the
-			// cold-start baseline). 6 s with transport + progress, then it dismisses.
-			if (n.videoId && lastToastedId !== null && n.videoId !== lastToastedId) {
-				toast.media(n.title, n.artists, n.thumbnail ?? '');
-			}
-			if (n.videoId) lastToastedId = n.videoId;
 		}),
 		api.onQueueChanged((q) => (playback.queue = q)),
 		api.onPosition((p) => (playback.position = p)),
