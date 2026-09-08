@@ -1873,7 +1873,13 @@ impl AppState {
         }
     }
 
+    /// Previous: restart the current track when more than 3 s in (YouTube Music parity),
+    /// otherwise step back. A press from the top of a song goes to the previous one.
     pub async fn prev_in_queue(self: &std::sync::Arc<Self>) {
+        if self.current_position() > 3.0 {
+            let _ = self.player.seek(0.0);
+            return;
+        }
         let i = self.queue.lock().await.current.saturating_sub(1);
         self.play_index(i).await;
     }

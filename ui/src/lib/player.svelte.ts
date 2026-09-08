@@ -936,7 +936,9 @@ export const ui = $state({
 	channelPickerRequired: false, // true while a multi-channel login is not finalized yet
 	channelIdentities: [] as AccountIdentity[],
 	// Boot veil: bottom-pill startup toast (BlazePod-style). Null = hidden.
-	bootVeil: null as { eyebrow: string; label: string; done: boolean } | null
+	bootVeil: null as { eyebrow: string; label: string; done: boolean } | null,
+	// Native OS frame instead of the custom titlebar (Settings → General → System).
+	nativeFrame: false
 });
 
 export function openChannelPicker(required = false) {
@@ -978,9 +980,21 @@ export function openAddToPlaylist(song: SongItem) {
 	ui.addSongs = [song];
 }
 
+/** Native OS frame (Settings → General → System). Persists + applies live: the custom
+ * titlebars drop their window controls and drag regions, ResizeBorders unmounts. */
+export async function setNativeFrame(on: boolean): Promise<void> {
+	ui.nativeFrame = on;
+	try {
+		await api.setSetting('native_frame', on ? 'true' : 'false');
+		const { getCurrentWindow } = await import('@tauri-apps/api/window');
+		await getCurrentWindow().setDecorations(on);
+	} catch (e) {
+		toast.error(String(e));
+	}
+}
+
 /** Boot veil stages (bottom-pill startup toast). */
-export function bootStage(eyebrow: string, label: string) {
-	ui.bootVeil = { eyebrow, label, done: false };
+export function bootStage(eyebrow: string, label: string) {	ui.bootVeil = { eyebrow, label, done: false };
 }
 export function bootDone(label = 'Ready') {
 	if (!ui.bootVeil) return;
@@ -1216,6 +1230,21 @@ export function initApp(mini = false): () => void {
 				sleepTimer.endAt = Date.now() + Number(s) * 1000;
 				sleepTimer.remaining = Number(s);
 				startSleepTick();
+			}
+		})
+		.catch(() => {});
+	// Native frame survives restarts the same way: flip decorations before first paint
+	// settles so the custom chrome never flashes.
+	api.getSettings()
+		.then(async (s) => {
+			if (s.native_frame === 'true') {
+				ui.nativeFrame = true;
+				try {
+					const { getCurrentWindow } = await import('@tauri-apps/api/window');
+					await getCurrentWindow().setDecorations(true);
+				} catch {
+					/* window API unavailable — custom chrome stays */
+				}
 			}
 		})
 		.catch(() => {});

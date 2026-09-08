@@ -141,9 +141,10 @@ let downloadsOpen = $state(false);
 </script>
 
 <!-- `relative` makes this a stacking context, so the account/window dropdowns inside it are capped
-     at this z â€” it must outrank the panels below (LyricsPanel/QueuePanel, z-30). -->
+     at this z — it must outrank the panels below (LyricsPanel/QueuePanel, z-30).
+     Native frame: no drag region (the OS frame drags) and no window buttons. -->
 <header
-	data-tauri-drag-region
+	data-tauri-drag-region={ui.nativeFrame ? undefined : ''}
 	class="relative z-50 flex h-9 shrink-0 select-none items-center justify-between glass-edge bg-transparent"
 >
 	<span
@@ -371,6 +372,7 @@ let downloadsOpen = $state(false);
 
 		<div class="mx-1.5 h-4 w-px bg-border"></div>
 
+		{#if !ui.nativeFrame}
 		<button
 			class="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
 			onclick={() => win.minimize()}
@@ -392,6 +394,7 @@ let downloadsOpen = $state(false);
 		>
 			<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
 		</button>
+		{/if}
 	</div>
 </header>
 

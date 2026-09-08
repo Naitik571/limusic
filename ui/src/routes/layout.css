@@ -615,6 +615,28 @@ input[type='range'].range:active::-webkit-slider-thumb {
 	transform: scale(1.25);
 }
 
+/* Feel pass: press feedback + sidebar nudge. `.pressable` opts icon buttons into a
+   press squash (transform-only, never layout); sidebar links drift toward their label
+   on hover. Both composite, both skipped under reduced motion by the global rule. */
+.pressable {
+	transition: transform 0.15s ease-out, background-color 0.15s, color 0.15s;
+}
+.pressable:active:not(:disabled) {
+	transform: scale(0.9);
+}
+aside.glass nav a {
+	transition: transform 0.18s ease-out, background-color 0.18s, color 0.18s;
+}
+aside.glass nav a:hover {
+	transform: translateX(2px);
+}
+@media (prefers-reduced-motion: reduce) {
+	.pressable:active:not(:disabled),
+	aside.glass nav a:hover {
+		transform: none;
+	}
+}
+
 /* Custom scrollbars everywhere (KI-5). WebKitGTK paints its *native* overlay
    scrollbars on a separate composited layer above all page content, so they
    float on top of modals/popovers regardless of z-index. Any ::-webkit-scrollbar

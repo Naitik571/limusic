@@ -340,13 +340,13 @@
 					class="h-4 w-4 {shuffleOn ? 'text-primary' : 'text-muted-foreground'}"
 				/>
 			</Button>
-			<Button variant="ghost" size="icon-sm" onclick={() => api.prevTrack()} aria-label="Previous">
+			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.prevTrack()} aria-label="Previous">
 				<HugeiconsIcon icon={PreviousIcon} class="h-5 w-5" />
 			</Button>
 			<Button
 				variant="default"
 				size="icon"
-				class="rounded-full"
+				class="rounded-full pressable"
 				onclick={() => api.togglePause()}
 				aria-label="Play/pause"
 			>
@@ -359,7 +359,7 @@
 				class="h-5 w-5"
 			/>
 			</Button>
-			<Button variant="ghost" size="icon-sm" onclick={() => api.nextTrack()} aria-label="Next">
+			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.nextTrack()} aria-label="Next">
 				<HugeiconsIcon icon={NextIcon} class="h-5 w-5" />
 			</Button>
 			<Button

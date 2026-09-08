@@ -442,12 +442,15 @@
 						</div>
 					{/if}
 					{#if heroSrc && attempt < srcs.length}
-						<img decoding="async"
-							src={heroSrc}
-							alt=""
-							onerror={handleHeroError}
-							class="aspect-square w-full rounded-3xl object-cover shadow-2xl"
-						/>
+						{#key heroSrc}
+							<img decoding="async"
+								src={heroSrc}
+								alt=""
+								onerror={handleHeroError}
+								in:fade={{ duration: 350 }}
+								class="aspect-square w-full rounded-3xl object-cover shadow-2xl"
+							/>
+						{/key}
 					{:else}
 						<div
 							class="flex aspect-square w-full items-center justify-center rounded-2xl bg-muted text-muted-foreground/40"

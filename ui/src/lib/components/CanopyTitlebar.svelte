@@ -30,7 +30,8 @@
 		dragVolume,
 		playback,
 		np,
-		toggleNowPlayingLike
+		toggleNowPlayingLike,
+		ui
 	} from '$lib/player.svelte';
 	import { cycleRepeat } from '$lib/player.svelte';
 	import '../../routes/layout-canopy.css';
@@ -54,13 +55,14 @@
 </script>
 
 <!-- 68px chrome bar. Everything is a drag region except the controls; the scrubber strip along
-     the bottom edge is the bar's LCD line — click anywhere on it to seek. -->
+     the bottom edge is the bar's LCD line — click anywhere on it to seek.
+     Native frame: drag regions off, window controls hidden (the OS owns them). -->
 <header
-	data-tauri-drag-region
+	data-tauri-drag-region={ui.nativeFrame ? undefined : ''}
 	class="relative z-50 flex h-[68px] shrink-0 select-none items-center gap-4 border-b px-4 canopy-bar"
 >
 	<!-- Brand -->
-	<div class="flex items-center gap-2.5" data-tauri-drag-region>
+	<div class="flex items-center gap-2.5" data-tauri-drag-region={ui.nativeFrame ? undefined : ''}>
 		<img decoding="async" src={logo} alt="" class="pointer-events-none h-5 w-5" />
 		<span class="hidden font-heading text-sm font-bold tracking-tight sm:inline">Limusic</span>
 	</div>
@@ -217,7 +219,8 @@
 		</button>
 	</div>
 
-	<!-- Window controls -->
+	<!-- Window controls (custom chrome only — the OS owns them under a native frame) -->
+	{#if !ui.nativeFrame}
 	<div class="flex items-center">
 		<div class="mx-1 h-4 w-px bg-border"></div>
 		<button
@@ -242,6 +245,7 @@
 			<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
 		</button>
 	</div>
+	{/if}
 
 	<!-- LCD scrubber: the bar's bottom edge IS the seek bar. -->
 	{#if playback.now}

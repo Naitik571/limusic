@@ -352,6 +352,7 @@
 		transition: opacity 0.15s, transform 0.15s;
 	}
 	.ps-mini-pill-btn:hover { opacity: 1; transform: scale(1.08); }
+	.ps-mini-pill-btn:active:not(:disabled) { transform: scale(0.88); }
 	.ps-mini-pill-btn svg { width: 14px; height: 14px; }
 	.ps-mini-pill-btn--play {
 		background: linear-gradient(180deg, #8fdef6, var(--accent) 55%, #2e9ecb);

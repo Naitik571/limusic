@@ -53,6 +53,63 @@
 	let requested = '';
 	// Bumped after attaching/removing custom lyrics so the effect below refetches.
 	let reloadKey = 0;
+	// Romaji view (kana→romaji via the `romanize_lyrics` command): one round-trip for the
+	// whole song — every word and line text joined by \n (romanization never touches
+	// newlines), mapped back positionally. Timings and the karaoke sweep are untouched.
+	let romanOn = $state(false);
+	let romanSeg = $state<string[] | null>(null);
+	let romanFor = '';
+	let romanBusy = $state(false);
+	function segList(l: api.Lyrics): { line: number; word: number }[] {
+		const out: { line: number; word: number }[] = [];
+		l.lines.forEach((ln, i) => {
+			if (ln.words?.length) ln.words.forEach((_, w) => out.push({ line: i, word: w }));
+			else out.push({ line: i, word: -1 });
+		});
+		return out;
+	}
+	const hasKana = $derived(
+		!!lyrics && lyrics.lines.some((l) => /[\u3040-\u30ff]/.test(l.text))
+	);
+	async function toggleRoman() {
+		if (!lyrics) return;
+		if (romanOn) {
+			romanOn = false;
+			return;
+		}
+		if (romanFor === requested && romanSeg) {
+			romanOn = true;
+			return;
+		}
+		romanBusy = true;
+		const id = requested;
+		try {
+			const l = lyrics;
+			const segs = segList(l);
+			const src = segs
+				.map((s) => (s.word >= 0 ? (l.lines[s.line].words?.[s.word].text ?? '') : l.lines[s.line].text))
+				.join('\n');
+			const out = await api.romanizeLyrics(src);
+			const parts = out.split('\n');
+			if (requested !== id || parts.length !== segs.length) return; // stale or reshaped
+			romanSeg = parts;
+			romanFor = id;
+			romanOn = true;
+		} catch {
+			toast.error('Romanization failed');
+		} finally {
+			romanBusy = false;
+		}
+	}
+	/** Display text for a line or word segment (romaji when toggled, original otherwise). */
+	function segText(line: number, word: number, fallback: string): string {
+		if (!romanOn || !romanSeg) return fallback;
+		const l = lyrics;
+		if (!l) return fallback;
+		const segs = segList(l);
+		const idx = segs.findIndex((s) => s.line === line && s.word === word);
+		return idx >= 0 ? (romanSeg[idx] ?? fallback) : fallback;
+	}
 
 	$effect(() => {
 		reloadKey;
@@ -61,6 +118,9 @@
 			requested = '';
 			lyrics = null;
 			loading = false;
+			romanOn = false;
+			romanSeg = null;
+			romanFor = '';
 			return;
 		}
 		if (now.videoId === requested) return;
@@ -83,6 +143,9 @@
 				lyrics = l;
 				loading = false;
 				hasScrolled = false; // first positioning on a new track is an instant jump
+				romanOn = false; // new song, new script — romaji starts off
+				romanSeg = null;
+				romanFor = '';
 				// Kodama per-song offset: apply the persisted shift to this song's cues on load.
 				api.getLyricOffset(id)
 					.then((o) => {
@@ -378,13 +441,13 @@
 												: ''}"
 										style="background-image: linear-gradient(90deg, {sung(pct / 100)} {pct}%, color-mix(in srgb, {sung(pct / 100)} 22%, oklch(0.55 0.02 var(--hue)) {pct}%) {pct}%)"
 									>
-										{cleanText}
+										{segText(i, wIdx, cleanText).trimEnd()}
 									</span>
 								{:else}
 									<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast
 										? (expanded ? 'text-muted-foreground/15' : 'text-muted-foreground/40')
 										: (expanded ? 'text-muted-foreground/25' : 'text-muted-foreground/70')}">
-										{cleanText}
+										{segText(i, wIdx, cleanText).trimEnd()}
 									</span>
 								{/if}
 							{/each}
@@ -400,7 +463,7 @@
 							{/each}
 						</span>
 					{:else}
-						<span>{line.text || '♪'}</span>
+						<span>{segText(i, -1, line.text) || '♪'}</span>
 					{/if}
 					</button>
 			{/each}
@@ -416,7 +479,7 @@
 			{#each lyrics.lines as line, i (i)}
 				{#if line.text}
 					<div class={sing ? 'text-2xl md:text-3xl' : ''}>
-						<p>{line.text}</p>
+						<p>{segText(i, -1, line.text)}</p>
 					</div>
 				{:else}
 					<div class="h-4"></div>
@@ -443,6 +506,19 @@
 		<span class="truncate">
 			{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
 		</span>
+		{#if hasKana}
+			<button
+				class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors {romanOn
+					? 'border-primary/60 text-primary'
+					: 'hover:border-foreground/20 hover:text-foreground'}"
+				onclick={toggleRoman}
+				disabled={romanBusy}
+				title="Show kana lyrics in romaji"
+				aria-pressed={romanOn}
+			>
+				{romanBusy ? '…' : romanOn ? 'かな' : 'Romaji'}
+			</button>
+		{/if}
 		{#if lyrics.source === 'Custom file'}
 			<button
 				class="ml-auto shrink-0 cursor-pointer underline-offset-2 hover:underline"

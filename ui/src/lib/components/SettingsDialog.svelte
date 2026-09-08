@@ -19,7 +19,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, markNotDownloaded, downloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer } from '$lib/player.svelte';
+	import { ui, toast, markNotDownloaded, downloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import {
 		THEMES,
@@ -142,7 +142,8 @@
 		{ tab: 'general', group: 'gen-activity', text: "Discord rich presence Show what you're listening to on your Discord profile. Needs the Discord desktop app running." },
 		{ tab: 'general', group: 'gen-system', text: 'Close to tray Closing the window keeps music playing in the background. Restore or quit from the tray icon.' },
 		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
-		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish).' },
+		{ tab: 'general', group: 'gen-system', text: 'System title bar Use the native window frame instead of the app chrome, with snap layouts and shadows. Applies instantly.' },
+		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish, Romanian).' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones.' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token.' },
@@ -332,6 +333,7 @@
 	const discordOn = $derived(settings.discord_rpc === 'true');
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
+	const frameOn = $derived(settings.native_frame === 'true');
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
 	const stickyShuffleOn = $derived(settings.sticky_shuffle === 'true');
 	// Sleep timer badge: live countdown while a minutes timer runs.
@@ -501,6 +503,11 @@
 	async function setTray(on: boolean) {
 		settings.close_to_tray = on ? 'true' : 'false';
 		await api.setSetting('close_to_tray', settings.close_to_tray);
+	}
+
+	async function setFrame(on: boolean) {
+		settings.native_frame = on ? 'true' : 'false';
+		await setNativeFrame(on);
 	}
 
 	async function setAutostart(on: boolean) {
@@ -735,6 +742,11 @@
 								desc: 'Launch Limusic automatically when you log in.',
 								control: autostartSwitch
 								})}
+								{@render row({
+								title: 'System title bar',
+								desc: "Use the OS window frame instead of the app's chrome — native snap layouts and shadows. The bar's buttons stay; only the window controls move. Applies instantly.",
+								control: frameSwitch
+								})}
 								</div>
 								</section>
 								<section class="{GROUP} {groupVisible('gen-system') ? '' : 'hidden'}">
@@ -742,7 +754,7 @@
 								<div class={CARD}>
 								{@render row({
 									title: 'Interface language',
-									desc: 'The app language. English and Turkish are bundled; more can be added as locale files.',
+									desc: 'The app language. English, Turkish and Romanian are bundled; more can be added as locale files.',
 									control: languageSelect
 								})}
 								</div>
@@ -1092,7 +1104,8 @@
 {#snippet wordFirstSwitch()}<Switch checked={wordFirstOn} onCheckedChange={setWordFirst} />{/snippet}
 {#snippet discordSwitch()}<Switch checked={discordOn} onCheckedChange={setDiscord} />{/snippet}
 {#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
-{#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
+	{#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
+	{#snippet frameSwitch()}<Switch checked={frameOn} onCheckedChange={setFrame} />{/snippet}
 {#snippet languageSelect()}
 	<Select.Root
 		type="single"

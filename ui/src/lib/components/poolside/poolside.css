@@ -3004,3 +3004,7 @@
 	transition-duration: .26s;
 	transition-timing-function: ease-out;
 }
+
+/* Feel pass: transport press squash (both .ps-tbtn copies collapse onto this one rule). */
+.ps-tbtn:active:not(:disabled) { transform: scale(0.88); }
+.ps-root.reduce .ps-tbtn:active:not(:disabled) { transform: none; }

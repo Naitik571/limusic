@@ -15,10 +15,11 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import { browser } from '$app/environment';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
-	import { fly } from 'svelte/transition';
+	import { fly, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import {
 		appearance,
@@ -137,7 +138,7 @@
 	     rounds the corners (the compositor can't round an undecorated window for us). `app-root` is
 	     a stable hook for the palette themes' background treatments (see layout.css). -->
 	<div
-		class="app-root flex h-screen flex-col overflow-hidden bg-background text-foreground {win.maximized
+		class="app-root flex h-screen flex-col overflow-hidden bg-background text-foreground {win.maximized || ui.nativeFrame
 			? ''
 			: 'rounded-[1.25rem]'}"
 	>
@@ -159,7 +160,7 @@
 			</div>
 		{/if}
 		<AmbientGlow />
-		<ResizeBorders />
+		{#if !ui.nativeFrame}<ResizeBorders />{/if}
 		<!-- Orchard mechanism: the layout swaps top-bar COMPONENTS, not CSS. Canopy mounts the
 		     transport bar up here and unmounts the bottom PlayerBar further down. Sing mode
 		     (fullscreen lyrics) unmounts the bar entirely: np.sing mirrors NowPlaying's takeover
@@ -177,12 +178,16 @@
 			<!-- dragScroll: dragging a card up to home's Shortcuts grid has to be possible from anywhere in
 			     the feed, so aiming at the top edge scrolls this container while the drag is in flight. -->
 			<main class="min-w-0 flex-1 overflow-y-auto" {@attach dragScroll}>
-				<!-- Remount the current page on sign-in/out so it refetches with the new account. -->
+				<!-- Remount the current page on sign-in/out so it refetches with the new account.
+				     Inner key fades the page in on navigation (in-only: never blocks the swap). -->
 				{#key auth.epoch}
-					{@render children()}
+					{#key page.url.pathname}
+						<div class="min-h-full" in:fade={{ duration: 140 }}>
+							{@render children()}
+						</div>
+					{/key}
 				{/key}
-			</main>
-			{#if np.open && playback.now}<NowPlaying {queueOpen} {lyricsOpen} />{/if}
+			</main>			{#if np.open && playback.now}<NowPlaying {queueOpen} {lyricsOpen} />{/if}
 			<!-- Lyrics before queue: side by side over the page, lyrics on the left, queue on the right. -->
 			{#if lyricsOpen}<LyricsPanel onClose={() => (lyricsOpen = false)} {queueOpen} />{/if}
 			{#if queueOpen}<QueuePanel onClose={() => (queueOpen = false)} />{/if}
