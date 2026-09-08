@@ -1361,6 +1361,27 @@
 	opacity: 0; transform: translateX(-8px);
 	transition: opacity .25s var(--ease-spring), transform .25s var(--ease-spring);
 }
+/* Per-water-theme wordmarks (BlazePod ships five logos; the mark re-tints per theme). */
+.ps-root.wt-aqua .ps-sidebar-word {
+	background: linear-gradient(180deg, #fff 5%, #BDE9F5 40%, #0A6E93 60%, #D6F2FA 85%);
+	-webkit-background-clip: text; background-clip: text;
+	filter: drop-shadow(0 1px 2px rgba(10,110,147,.45));
+}
+.ps-root.wt-verdant .ps-sidebar-word {
+	background: linear-gradient(180deg, #fff 5%, #CDE8C8 40%, #2E8C55 60%, #EEF8EC 85%);
+	-webkit-background-clip: text; background-clip: text;
+	filter: drop-shadow(0 1px 2px rgba(46,140,85,.45));
+}
+.ps-root.wt-goldfish .ps-sidebar-word {
+	background: linear-gradient(180deg, #FFF3E4 5%, #FFD08A 40%, #E0631F 60%, #FFB066 85%);
+	-webkit-background-clip: text; background-clip: text;
+	filter: drop-shadow(0 1px 2px rgba(224,99,31,.5));
+}
+.ps-root.wt-night .ps-sidebar-word {
+	background: linear-gradient(180deg, #F3F3F1 5%, #9FB3C8 45%, #3E5C76 65%, #DCE6F0 90%);
+	-webkit-background-clip: text; background-clip: text;
+	filter: drop-shadow(0 1px 2px rgba(0,0,0,.6));
+}
 .ps-sidebar-badge {
 	font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
 	background: var(--red); color: #fff; border-radius: 4px;
@@ -2863,6 +2884,70 @@
 	to { transform: translate(0); }
 }
 .ps-root.reduce .ps-ambient-grain { animation: none; }
+
+/* History lifetime-listened readout. */
+.ps-history-listened {
+	font-size: 9px;
+	letter-spacing: .12em;
+	text-transform: uppercase;
+	color: var(--ps-ink-dim);
+	align-self: center;
+	margin-right: 4px;
+}
+
+/* Swipe-to-remove underlay + translating inner (queue rows). The row keeps its glass;
+   the red underlay only shows while swiping, icon on the vacated side. */
+.ps-swipe-under {
+	position: absolute; inset: 0;
+	display: flex; align-items: center;
+	padding: 0 18px;
+	background: rgba(224, 64, 42, 0.92);
+	color: #fff;
+	border-radius: 16px;
+	pointer-events: none;
+}
+.ps-swipe-under.right { justify-content: flex-end; }
+.ps-swipe-under.left { justify-content: flex-start; }
+.ps-swipe-inner {
+	position: relative;
+	display: flex; align-items: center; gap: 16px;
+	width: 100%;
+	background: var(--glass, rgba(255, 255, 255, 0.32));
+	border-radius: 16px;
+}
+
+/* Intro-fly: once per session the sidebar mark starts huge at viewport center and lands
+   in its slot on the grow curve, fading out on arrival. */
+.ps-intro-ghost {
+	position: fixed; left: 0; top: 0; z-index: 100;
+	pointer-events: none;
+	animation: ps-intro-fly .56s var(--ease-grow) both;
+}
+.ps-intro-ghost .ps-sidebar-mark { display: block; width: 44px; height: 44px; }
+@keyframes ps-intro-fly {
+	from { transform: translate(var(--ix0), var(--iy0)) translate(-50%, -50%) scale(2.4); opacity: 0; }
+	15% { opacity: 1; }
+	to { transform: translate(var(--ix1), var(--iy1)) translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* Seek dial: time readout that floats over the deck while spin-to-seek is active. */
+.ps-seek-dial {
+	position: absolute;
+	left: 50%; top: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 5;
+	pointer-events: none;
+	background: rgba(6, 20, 24, 0.85);
+	border: 1px solid rgba(255, 255, 255, 0.3);
+	border-radius: 999px;
+	padding: 6px 14px;
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	font-variant-numeric: tabular-nums;
+	color: #fff;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
 
 /* CD-grid skin picker: the four disc treatments previewed as real mini discs (current
    art under each skin) instead of dropdown rows. Selected disc gets the accent ring. */

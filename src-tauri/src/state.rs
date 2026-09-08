@@ -1832,6 +1832,17 @@ impl AppState {
         f64::from_bits(self.latest_position.load(Ordering::SeqCst))
     }
 
+    /// Current track's videoId, but only while actually playing — the listen-seconds
+    /// accumulator's input. `try_lock`: a sync tick thread must never block the queue;
+    /// a contended tick just skips its 15 s rather than stalling playback.
+    pub(crate) fn now_for_stats(&self) -> Option<String> {
+        if !self.is_playing.load(Ordering::Relaxed) {
+            return None;
+        }
+        let q = self.queue.try_lock().ok()?;
+        q.items.get(q.current).map(|i| i.video_id.clone())
+    }
+
     /// Advance/rewind the queue (OS "next"/"previous" keys + the UI's skip buttons). `play_index`
     /// itself no-ops for guests.
     pub async fn next_in_queue(self: &std::sync::Arc<Self>) {

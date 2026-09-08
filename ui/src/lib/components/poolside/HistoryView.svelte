@@ -9,10 +9,19 @@
 
 	let entries = $state<HistoryEntry[]>([]);
 	let loading = $state(true);
+	let listenedSecs = $state(0);
 
 	onMount(async () => {
 		try { entries = await api.getHistory(200); } catch { /* ignore */ }
+		try { listenedSecs = await api.listenSecondsTotal(); } catch { /* ignore */ }
 		loading = false;
+	});
+
+	// "12 TRACKS · 3H 20M LISTENED" — hours only when nonzero.
+	const listenedLabel = $derived.by(() => {
+		const h = Math.floor(listenedSecs / 3600);
+		const m = Math.floor((listenedSecs % 3600) / 60);
+		return h > 0 ? `${h}H ${m}M LISTENED` : `${m}M LISTENED`;
 	});
 
 	const grouped = $derived.by(() => {
@@ -56,6 +65,7 @@
 	<div class="ps-history-head ps-anim-fade-up">
 		<h2 class="ps-page-title">HISTORY</h2>
 		<div class="ps-history-actions">
+			{#if listenedSecs > 0}<span class="ps-history-listened">{listenedLabel}</span>{/if}
 			<button class="ps-ghost" onclick={shuffleAll} disabled={!entries.length}>
 				<HugeiconsIcon icon={ShuffleIcon} /> Shuffle All
 			</button>

@@ -55,6 +55,15 @@
 	let dragStartX = 0;
 	let dragStartY = 0;
 	let dragStartState: { paused: boolean } | null = null;
+	// Spin-to-seek gesture state (see onDiscPointerDown/Move/Up).
+	let seekCX = 0;
+	let seekCY = 0;
+	let seekLastAngle = 0;
+	let seekSwept = 0;
+	let seekMode = $state(false);
+	let seekStartPos = 0;
+	let seekTarget = $state(0);
+	let lastSeekAt = 0;
 	// Local "drag intent" — true while the disc is being dragged past the eject
 	// threshold. Distinct from the visual "ejected" class so we can show a strong
 	// visual only during the drag itself.
@@ -78,10 +87,47 @@
 		dragStartY = e.clientY;
 		dragStartState = { paused };
 		dragPastEject = false;
+		// Spin-to-seek state: the disc center anchors angle math; the gesture becomes a
+		// seek (not an eject) once the pointer sweeps 12° around it before translating
+		// past the eject threshold. Whichever wins first owns the gesture.
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		seekCX = r.left + r.width / 2;
+		seekCY = r.top + r.height / 2;
+		seekLastAngle = Math.atan2(e.clientY - seekCY, e.clientX - seekCX);
+		seekSwept = 0;
+		seekMode = false;
+		seekStartPos = pos;
+		seekTarget = pos;
 		(e.target as HTMLElement).setPointerCapture(e.pointerId);
 	}
 	function onDiscPointerMove(e: PointerEvent) {
 		if (!isDragging) return;
+		if (!seekMode && dur > 0) {
+			// Circular sweep test runs until the eject threshold fires first.
+			const a = Math.atan2(e.clientY - seekCY, e.clientX - seekCX);
+			let d = ((a - seekLastAngle) * 180) / Math.PI;
+			if (d > 180) d -= 360;
+			if (d < -180) d += 360;
+			seekLastAngle = a;
+			seekSwept += d;
+			const dx0 = e.clientX - dragStartX;
+			const dy0 = e.clientY - dragStartY;
+			if (Math.abs(seekSwept) >= 12 && Math.sqrt(dx0 * dx0 + dy0 * dy0) <= EJECT_PX) {
+				seekMode = true;
+				dragPastEject = false;
+			}
+		}
+		if (seekMode) {
+			// Rotation scrubs: one full turn = the whole track. Throttled live seeks
+			// while turning, final exact seek on release.
+			seekTarget = Math.min(dur, Math.max(0, seekStartPos + (seekSwept / 360) * dur));
+			const now = performance.now();
+			if (now - lastSeekAt > 150) {
+				lastSeekAt = now;
+				api.seek(seekTarget).catch(() => {});
+			}
+			return;
+		}
 		dragX = e.clientX - dragStartX;
 		dragY = e.clientY - dragStartY;
 		const dist = Math.sqrt(dragX * dragX + dragY * dragY);
@@ -90,6 +136,13 @@
 	}
 	async function onDiscPointerUp() {
 		if (!isDragging) return;
+		if (seekMode) {
+			// Land exactly where the dial points, then reset the gesture.
+			seekMode = false;
+			isDragging = false;
+			api.seek(seekTarget).catch(() => {});
+			return;
+		}
 		const distance = Math.sqrt(dragX * dragX + dragY * dragY);
 		const withinSnapRadius = distance < SNAP_PX;
 		isDragging = false;
@@ -214,7 +267,7 @@
 				class:snapped={justSnapped}
 				class:ejected
 				role="application"
-				aria-label="Vinyl disc — drag off to pause, drop back to resume"
+				aria-label="Vinyl disc — drag off to pause, drop back to resume, or spin in a circle to seek"
 				onpointerdown={onDiscPointerDown}
 				onpointermove={onDiscPointerMove}
 				onpointerup={onDiscPointerUp}
@@ -232,7 +285,7 @@
 							playing={!paused && !isDragging}
 							style="width:100%"
 							flightTarget
-							title="Drag to eject · Double-click to drop back"
+							title="Drag to eject · Spin in a circle to seek · Double-click to drop back"
 							skin={discSkin}
 						/>
 					{/key}
@@ -241,6 +294,11 @@
 					<circle cx="29" cy="29" r="26" fill="#fff" stroke="#111" stroke-width="3" />
 					<text x="29" y="33" text-anchor="middle" font-family="monospace" font-size="7" font-weight="bold" letter-spacing="1.5" fill="#111">NOW PLAYING</text>
 				</svg>
+				{#if seekMode}
+					<div class="ps-seek-dial" aria-hidden="true">
+						<span>{fmt(seekTarget)}</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>

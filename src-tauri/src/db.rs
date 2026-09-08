@@ -76,6 +76,10 @@ impl Db {
                 song_json TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS plays_played_at ON plays(played_at);
+            CREATE TABLE IF NOT EXISTS play_seconds (
+                video_id TEXT PRIMARY KEY,
+                seconds  INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS local_tracks (
                 path          TEXT PRIMARY KEY,
                 title         TEXT NOT NULL,
@@ -498,10 +502,37 @@ impl Db {
     }
 
     /// Wipe the whole play diary (History page → Clear). On Repeat rebuilds from new plays.
+    /// Seconds survive: they're lifetime listening stats, not diary rows.
     pub fn clear_plays(&self) {
         let conn = self.0.lock().unwrap();
         conn.execute("DELETE FROM plays", [])
             .unwrap_or_else(warn_write("clear_plays", "plays"));
+    }
+
+    /// Credit listened seconds to a track (15 s accumulator ticks — see `spawn_listen_accumulator`
+    /// in lib.rs). Upsert so a track's lifetime total survives any number of sessions.
+    pub fn add_listen_seconds(&self, video_id: &str, secs: i64) {
+        if secs <= 0 {
+            return;
+        }
+        let conn = self.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO play_seconds(video_id, seconds) VALUES(?1, ?2)
+             ON CONFLICT(video_id) DO UPDATE SET seconds = seconds + excluded.seconds",
+            rusqlite::params![video_id, secs],
+        )
+        .unwrap_or_else(warn_write("add_listen_seconds", "play_seconds"));
+    }
+
+    /// Lifetime listened seconds across every track — the History header's "time listened".
+    pub fn total_listen_seconds(&self) -> i64 {
+        let conn = self.0.lock().unwrap();
+        conn.query_row(
+            "SELECT COALESCE(SUM(seconds), 0) FROM play_seconds",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
     }
 
     /// Play count per videoId since `since`. [`Db::top_plays`] answers "what are my N most played
@@ -782,6 +813,18 @@ mod tests {
 
     fn db() -> Db {
         Db::open(std::path::Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn listen_seconds_accumulate_per_track_and_total() {
+        let d = db();
+        assert_eq!(d.total_listen_seconds(), 0);
+        d.add_listen_seconds("a", 15);
+        d.add_listen_seconds("a", 15);
+        d.add_listen_seconds("b", 30);
+        d.add_listen_seconds("c", 0); // non-positive ticks never write
+        d.add_listen_seconds("c", -5);
+        assert_eq!(d.total_listen_seconds(), 60);
     }
 
     #[test]

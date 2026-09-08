@@ -58,6 +58,32 @@ fn spawn_sleep_timer(state: Arc<crate::state::AppState>) {
         if fire {
             let _ = state.player.pause();
             let _ = state.app.emit("sleep-timer-fired", ());
+            state.db.delete_setting("sleep_deadline");
+        }
+    });
+}
+
+/// Seconds-listened accumulator (BlazePod-style stats, Rust-enforced): every 15 s, credit
+/// the elapsed time to the track that's still playing. Track changes and pauses credit
+/// nothing for the partial interval — at most 15 s lost per change, never invented.
+fn spawn_listen_accumulator(state: Arc<crate::state::AppState>) {
+    std::thread::spawn(move || {
+        let mut last: Option<(String, std::time::Instant)> = None;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(15));
+            let now = std::time::Instant::now();
+            match state.now_for_stats() {
+                Some(id) => {
+                    if let Some((prev, at)) = &last {
+                        if *prev == id {
+                            let secs = now.duration_since(*at).as_secs().min(60) as i64;
+                            state.db.add_listen_seconds(&id, secs);
+                        }
+                    }
+                    last = Some((id, now));
+                }
+                None => last = None,
+            }
         }
     });
 }
@@ -363,6 +389,29 @@ pub fn run() {
             }
 
             spawn_sleep_timer(app_state.clone());
+            spawn_listen_accumulator(app_state.clone());
+            // Sleep deadline survives restarts: re-arm a persisted countdown (or the
+            // end-of-song mode) whose wall-clock time hasn't passed yet. Stale rows clear.
+            {
+                let restored = match app_state.db.get_setting("sleep_deadline").as_deref() {
+                    Some("end_of_song") => Some(crate::state::SleepTimer::EndOfSong),
+                    Some(unix) => unix.parse::<i64>().ok().and_then(|at| {
+                        let remaining = at.saturating_sub(crate::db::now_secs());
+                        if remaining > 0 {
+                            Some(crate::state::SleepTimer::At(
+                                std::time::Instant::now() + std::time::Duration::from_secs(remaining as u64),
+                            ))
+                        } else {
+                            None
+                        }
+                    }),
+                    _ => None,
+                };
+                match restored {
+                    Some(t) => *app_state.sleep_timer.lock().unwrap() = t,
+                    None => app_state.db.delete_setting("sleep_deadline"),
+                }
+            }
 
             // Pump mpv events â†’ UI events + queue advance. context/11 events, context/14 Â§TrackEnded.
             spawn_event_pump(app_state, handle, events);
@@ -451,6 +500,7 @@ pub fn run() {
             commands::waveform_peaks,
             commands::get_history,
             commands::clear_history,
+            commands::listen_seconds_total,
             commands::get_account,
             commands::get_account_identities,
             commands::switch_account,

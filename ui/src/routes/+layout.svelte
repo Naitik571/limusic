@@ -7,8 +7,14 @@
 	import {
 		CheckmarkCircle02Icon,
 		AlertCircleIcon,
-		InformationCircleIcon
+		InformationCircleIcon,
+		PreviousIcon,
+		PlayIcon,
+		PauseIcon,
+		NextIcon,
+		Cancel01Icon
 	} from '@hugeicons/core-free-icons';
+	import * as api from '$lib/api';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -242,6 +248,40 @@
 
 	{#if ui.toast}
 		{@const t = ui.toast}
+		{#if t.media}
+			{@const m = t.media}
+			{@const pct = playback.duration > 0 ? Math.min(100, (playback.position / playback.duration) * 100) : 0}
+			<!-- Media toast: track-change announcement with working transport + live progress. -->
+			<div
+				transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
+				class="fixed bottom-40 left-1/2 z-[100] flex w-[min(340px,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded-2xl glass-strong px-2.5 pt-2.5 pb-4 text-sm shadow-2xl"
+			>
+				{#if m.thumbnail}
+					<img src={m.thumbnail} alt="" class="h-10 w-10 shrink-0 rounded-lg object-cover" />
+				{/if}
+				<div class="min-w-0 flex-1">
+					<div class="truncate text-[13px] font-semibold">{m.title}</div>
+					<div class="truncate text-xs text-muted-foreground">{m.artists}</div>
+				</div>
+				<div class="flex shrink-0 items-center">
+					<button class="cursor-pointer rounded-full p-1.5 hover:bg-accent/10" onclick={() => api.prevTrack()} aria-label="Previous">
+						<HugeiconsIcon icon={PreviousIcon} class="h-4 w-4" />
+					</button>
+					<button class="cursor-pointer rounded-full p-1.5 hover:bg-accent/10" onclick={() => api.togglePause()} aria-label={playback.paused ? 'Play' : 'Pause'}>
+						<HugeiconsIcon icon={playback.paused ? PlayIcon : PauseIcon} class="h-4 w-4" />
+					</button>
+					<button class="cursor-pointer rounded-full p-1.5 hover:bg-accent/10" onclick={() => api.nextTrack()} aria-label="Next">
+						<HugeiconsIcon icon={NextIcon} class="h-4 w-4" />
+					</button>
+				</div>
+				<button class="absolute top-1.5 right-1.5 cursor-pointer rounded-full p-1 text-muted-foreground hover:text-foreground" onclick={() => (ui.toast = null)} aria-label="Dismiss">
+					<HugeiconsIcon icon={Cancel01Icon} class="h-3.5 w-3.5" />
+				</button>
+				<div class="absolute right-2.5 bottom-1.5 left-2.5 h-0.5 overflow-hidden rounded bg-muted">
+					<div class="h-full bg-primary" style="width: {pct}%"></div>
+				</div>
+			</div>
+		{:else}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
 			class="fixed bottom-40 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-xl glass-strong px-4 py-2 text-sm shadow-2xl"
@@ -260,5 +300,6 @@
 			{/if}
 			{t.msg}
 		</div>
+		{/if}
 	{/if}
 {/if}

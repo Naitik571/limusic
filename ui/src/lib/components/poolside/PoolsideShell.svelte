@@ -17,6 +17,11 @@
       panel; settings as floating panel; everything piled on the same z-stack
     - now: each surface has a defined slot in the grid, no overlap, no in-place modals
 -->
+<script module>
+	// Intro-fly runs once per app session, not on every return to poolside.
+	let introPlayed = false;
+</script>
+
 <script lang="ts">
 	// Two fonts, one accent (BlazePod discipline): Space Grotesk display + JetBrains Mono micro.
 	// Both are already bundled app-wide, so no new downloads — just stop loading the three
@@ -61,6 +66,7 @@
 	import MiniPlayer from './MiniPlayer.svelte';
 	import MiniPlayerPill from './MiniPlayerPill.svelte';
 	import StackedFanView from './StackedFanView.svelte';
+	import AlbumStackView from './AlbumStackView.svelte';
 
 	type View =
 		| 'home'
@@ -68,6 +74,7 @@
 		| 'library'
 		| 'library-coverflow'
 		| 'library-fan'
+		| 'library-stack'
 		| 'history'
 		| 'now'
 		| 'queue'
@@ -91,6 +98,41 @@
 	let ccAlbum = $state<BrowseItem | null>(null);
 	let ccFileInput = $state<HTMLInputElement>();
 	let settingsOpen = $state(false);
+	// Queue-sheet drag-to-dismiss: pull down on the handle past 120px (or flick) to go
+	// home. Handle-only so list scrolling never fights it; disabled in the wide split
+	// where the sheet is a docked panel, not an overlay.
+	let sheetDragY = $state(0);
+	let sheetDragging = $state(false);
+	let sheetStartY = 0;
+	let sheetLastY = 0;
+	let sheetLastT = 0;
+	function onSheetHandleDown(e: PointerEvent) {
+		if (window.matchMedia('(min-width: 1100px)').matches) return;
+		sheetDragging = true;
+		sheetStartY = e.clientY;
+		sheetLastY = e.clientY;
+		sheetLastT = performance.now();
+		sheetDragY = 0;
+		(e.target as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function onSheetHandleMove(e: PointerEvent) {
+		if (!sheetDragging) return;
+		sheetDragY = Math.max(0, e.clientY - sheetStartY);
+		sheetLastY = e.clientY;
+		sheetLastT = performance.now();
+	}
+	function onSheetHandleUp(e: PointerEvent) {
+		if (!sheetDragging) return;
+		sheetDragging = false;
+		const dy = Math.max(0, e.clientY - sheetStartY);
+		const dt = Math.max(1, performance.now() - sheetLastT);
+		const vel = (e.clientY - sheetLastY) / dt; // px/ms of the final flick
+		sheetDragY = 0;
+		if (dy > 120 || vel > 0.6) go('home');
+	}
+	// Intro-fly ghost: viewport center → sidebar mark, once per session (see onMount).
+	let shellRoot = $state<HTMLDivElement>();
+	let intro = $state<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 	let covers = $state<Record<string, string>>({});
 
 	// Sidebar hover-expand. Default = collapsed (icons only), expand on hover.
@@ -382,17 +424,36 @@
 		};
 		window.addEventListener('ps:open-lyrics', onOpenLyrics);
 		// Esc cascade, topmost-first: cover picker → settings sheet → queue view →
-		// fullscreen lyrics → lyrics drawer. One handler so two layers never fight over
-		// the same keypress (the old one closed only the takeover).
+		// library sub-views → fullscreen lyrics → lyrics drawer. One handler so two
+		// layers never fight over the same keypress (the old one closed only the takeover).
 		const onEsc = (e: KeyboardEvent) => {
 			if (e.key !== 'Escape') return;
 			if (ccOpen) ccOpen = false;
 			else if (settingsOpen) settingsOpen = false;
 			else if (view === 'queue') go('home');
+			else if (view === 'library-coverflow' || view === 'library-fan' || view === 'library-stack')
+				go('library');
 			else if (sing) sing = false;
 			else if (lyricsOpen) lyricsOpen = false;
 		};
 		window.addEventListener('keydown', onEsc);
+		// Intro-fly: the sidebar mark starts huge at viewport center and lands in its
+		// slot (grow curve, fading out on arrival). Skipped under reduce-motion.
+		if (!introPlayed && !reduce) {
+			introPlayed = true;
+			requestAnimationFrame(() => {
+				const mark = shellRoot?.querySelector('.ps-sidebar-mark');
+				const r = mark?.getBoundingClientRect();
+				if (!r) return;
+				intro = {
+					x0: window.innerWidth / 2,
+					y0: window.innerHeight / 2,
+					x1: r.left + r.width / 2,
+					y1: r.top + r.height / 2
+				};
+				setTimeout(() => (intro = null), 750);
+			});
+		}
 		return () => {
 			window.removeEventListener('ps:open-lyrics', onOpenLyrics);
 			window.removeEventListener('keydown', onEsc);
@@ -409,6 +470,7 @@
 </script>
 
 	<div
+	bind:this={shellRoot}
 	class="ps-root {dusk ? 'dusk' : ''} {waterTheme !== 'clear' ? `wt-${waterTheme}` : ''} {caustics ? '' : 'no-caustics'} {koi ? '' : 'no-koi'} {reduce ? 'reduce' : ''} {themeSwitch ? 'ps-theme-switch' : ''} {playback.paused ? 'paused' : ''} {sidebarHover ? 'sidebar-hover' : ''} {lyricsOpen ? 'lyrics-open' : ''} {settingsOpen ? 'settings-open' : ''}"
 	style="--ps-spin:{spin}"
 	data-view={view}
@@ -426,6 +488,15 @@
 	<!-- Procedural film grain, visible only in the goldfish motel treatment. -->
 	<div class="ps-grain" aria-hidden="true"></div>
 	<LiquidGlass />
+	{#if intro}
+		<div
+			class="ps-intro-ghost"
+			style="--ix0:{intro.x0}px;--iy0:{intro.y0}px;--ix1:{intro.x1}px;--iy1:{intro.y1}px"
+			aria-hidden="true"
+		>
+			<span class="ps-sidebar-mark"></span>
+		</div>
+	{/if}
 
 	<!-- ============================================================
 	     EDGE VINYLS — ambient depth decoration. Two large vinyl records anchored
@@ -544,6 +615,15 @@
 						onBack={() => go('library')}
 					/>
 				</div>
+				<div class="ps-view" class:on={view === 'library-stack'}>
+					<AlbumStackView
+						albums={mergedAlbums}
+						{artFor}
+						onOpenAlbum={openAlbum}
+						onPlayAlbum={playAlbum}
+						onBack={() => go('library')}
+					/>
+				</div>
 				<div class="ps-view" class:on={view === 'history'}>
 					<div class="ps-scroll-area">
 						<HistoryView />
@@ -623,8 +703,22 @@
 		     ============================================================ -->
 		{#if view === 'queue'}
 			<button class="ps-sheet-backdrop" onclick={() => go('home')} aria-label="Close queue"></button>
-			<div class="ps-queue-sheet" role="dialog" aria-modal="true" aria-label="Queue">
-				<div class="ps-sheet-handle" aria-hidden="true"></div>
+			<div
+				class="ps-queue-sheet"
+				role="dialog"
+				aria-modal="true"
+				aria-label="Queue"
+				style={sheetDragging && sheetDragY > 0 ? `transform: translateY(${sheetDragY}px); transition: none;` : ''}
+			>
+				<div
+					class="ps-sheet-handle"
+					aria-hidden="true"
+					style="touch-action: none; cursor: grab;"
+					onpointerdown={onSheetHandleDown}
+					onpointermove={onSheetHandleMove}
+					onpointerup={onSheetHandleUp}
+					onpointercancel={() => { sheetDragging = false; sheetDragY = 0; }}
+				></div>
 				<button class="ps-sheet-close" onclick={() => go('home')} aria-label="Close queue">✕</button>
 				<QueueView />
 			</div>
@@ -781,7 +875,7 @@
 				Always visible (even on the Now view) so the user has transport controls
 				anywhere in the app, but doesn't sit on top of the Now deck's own transport.
 				Hides on the coverflow view so the user can see the covers unobstructed. -->
-				{#if playback.now && view !== 'library-coverflow' && view !== 'library-fan'}
+				{#if playback.now && view !== 'library-coverflow' && view !== 'library-fan' && view !== 'library-stack'}
 					<MiniPlayerPill onOpenNow={() => go('now')} accent={albumAccent} />
 				{/if}
 

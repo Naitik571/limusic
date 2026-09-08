@@ -388,6 +388,8 @@ export interface HistoryEntry {
 }
 export const getHistory = (limit?: number) => invoke<HistoryEntry[]>('get_history', { limit });
 export const clearHistory = () => invoke<void>('clear_history');
+/** Lifetime listened seconds across every track (History header). */
+export const listenSecondsTotal = () => invoke<number>('listen_seconds_total');
 
 // --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
 /** One published release: the GitHub release description, verbatim markdown. */

@@ -299,10 +299,24 @@ pub fn get_volume(state: St<'_>) -> i64 {
 
 /// Arm or disarm the sleep timer. `mode` is `"off"`, `"end_of_song"`, or `"<minutes>"` (1–1440).
 /// Enforced in Rust (see `spawn_sleep_timer`), so it keeps counting even with the window closed.
+/// The deadline is persisted as a unix timestamp (`sleep_deadline` setting) so a restart
+/// re-arms it; firing or disarming clears the row.
 #[tauri::command]
 pub fn set_sleep_timer(state: St<'_>, mode: String) -> Result<(), String> {
     let timer = crate::state::parse_sleep_mode(&mode)?;
     *state.sleep_timer.lock().unwrap() = timer;
+    match &timer {
+        crate::state::SleepTimer::Off => state.db.delete_setting("sleep_deadline"),
+        crate::state::SleepTimer::EndOfSong => {
+            state.db.set_setting("sleep_deadline", "end_of_song")
+        }
+        crate::state::SleepTimer::At(end) => {
+            let remaining = end.saturating_duration_since(std::time::Instant::now());
+            let at_unix = crate::db::now_secs()
+                .saturating_add(remaining.as_secs().min(i64::MAX as u64) as i64);
+            state.db.set_setting("sleep_deadline", &at_unix.to_string());
+        }
+    }
     Ok(())
 }
 
@@ -1889,6 +1903,12 @@ pub async fn get_history(state: St<'_>, limit: Option<u32>) -> Result<Vec<Histor
 pub async fn clear_history(state: St<'_>) -> Result<(), String> {
     state.db.clear_plays();
     Ok(())
+}
+
+/// Lifetime listened seconds across every track (History header's "time listened").
+#[tauri::command]
+pub fn listen_seconds_total(state: St<'_>) -> i64 {
+    state.db.total_listen_seconds()
 }
 
 /// Catalogue of downloaded tracks, newest first, with `total_bytes`. Mirrors what the settings

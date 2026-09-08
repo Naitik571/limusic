@@ -6,6 +6,7 @@ import { InfinityIcon } from '@hugeicons/core-free-icons';
 import TrackRow from '$lib/components/TrackRow.svelte';
 import * as api from '$lib/api';
 import { queueBlocks, type QueueRow } from '$lib/queue';
+import { isSwipe, shouldRemove } from '$lib/swipe';
 import { playback, openAddToPlaylist } from '$lib/player.svelte';
 import { lt } from '$lib/lt.svelte';
 
@@ -33,8 +34,18 @@ const canReorder = $derived(lt.role !== 'guest');
 	let pressIndex: number | null = null;
 	let pressX = 0;
 	let pressY = 0;
+	let pressWidth = 0;
 	let swallowClick = false;
 	let detachPress: (() => void) | null = null;
+
+	// Horizontal swipe-to-remove shares the press with reorder: whichever axis dominates
+	// first owns the gesture (swipe = remove, vertical = reorder). Same guards as the
+	// remove button — guests and the playing row can't swipe anything away.
+	let swipeIdx: number | null = $state(null);
+	let swipedX = $state(0);
+	let swiping = $state(false);
+	let removingIdx: number | null = $state(null);
+	let removingDir = $state(1);
 
 	const DRAG_THRESHOLD_PX = 6;
 
@@ -43,6 +54,10 @@ const canReorder = $derived(lt.role !== 'guest');
 		pressIndex = i;
 		pressX = e.clientX;
 		pressY = e.clientY;
+		pressWidth =
+			(e.currentTarget as HTMLElement | null)?.clientWidth ??
+			(e.target as HTMLElement)?.closest?.('[data-queue-row]')?.clientWidth ??
+			300;
 		attachPressListeners();
 	}
 
@@ -50,9 +65,24 @@ const canReorder = $derived(lt.role !== 'guest');
 		if (detachPress) return;
 		const move = (e: PointerEvent) => {
 			if (pressIndex === null) return;
+			const dx = e.clientX - pressX;
+			const dy = e.clientY - pressY;
+			// Swipe arbitration runs before reorder: a dominant horizontal press becomes a
+			// removal swipe and reorder never arms for it. Non-removable rows (guests fall
+			// through to the old reorder path untouched.
+			if (!dragging && !swiping && canRemove && isSwipe(dx, dy)) {
+				swiping = true;
+				swipeIdx = pressIndex;
+				swipedX = dx;
+				e.preventDefault();
+				return;
+			}
+			if (swiping) {
+				swipedX = dx;
+				e.preventDefault();
+				return;
+			}
 			if (!dragging) {
-				const dx = e.clientX - pressX;
-				const dy = e.clientY - pressY;
 				if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return; // still a click
 				dragging = true;
 				dragFrom = pressIndex;
@@ -67,6 +97,26 @@ const canReorder = $derived(lt.role !== 'guest');
 		};
 		const up = (e: PointerEvent) => {
 			if (pressIndex === null) return;
+			// A swipe ends here: past the distance it flies off and removes; short of it
+			// the row snaps back. Either way the release never plays the song.
+			if (swiping) {
+				const idx = swipeIdx;
+				const dx = e.clientX - pressX;
+				const w = pressWidth;
+				detachPressListeners();
+				resetDrag();
+				swallowClick = true; // kill the click a same-row release synthesizes
+				setTimeout(() => (swallowClick = false), 300);
+				if (idx !== null && shouldRemove(dx, w)) {
+					removingIdx = idx;
+					removingDir = dx < 0 ? -1 : 1;
+					setTimeout(() => {
+						removingIdx = null;
+						api.removeFromQueue(idx);
+					}, 200);
+				}
+				return;
+			}
 			const wasDrag = dragging;
 			const from = dragFrom;
 			detachPressListeners();
@@ -115,6 +165,9 @@ const canReorder = $derived(lt.role !== 'guest');
 			dragFrom = null;
 			dragOver = null;
 			pressIndex = null;
+			swiping = false;
+			swipeIdx = null;
+			swipedX = 0;
 		}
 
 		// ——— Past-song peek —————————————————————————————————————————
@@ -174,6 +227,8 @@ const view = $derived(queueBlocks(playback.queue));
 
 {#snippet rows(list: QueueRow[], past = false)}
 	{#each list as { item, key, i, n } (key)}
+		{@const isSwiping = !past && swiping && swipeIdx === i}
+		{@const isRemoving = !past && removingIdx === i}
 		<div
 			animate:flip={{ duration: 200, easing: cubicOut }}
 			role="listitem"
@@ -182,12 +237,31 @@ const view = $derived(queueBlocks(playback.queue));
 			onpointerdown={past ? undefined : (e) => onRowPointerDown(e, i)}
 			onclickcapture={past ? undefined : swallowPostDragClick}
 			class={[
-				'select-none touch-pan-y',
+				'relative select-none touch-pan-y overflow-hidden rounded-md',
 				!past && canReorder && i !== playback.queue.currentIndex ? 'cursor-grab' : '',
 				!past && dragging && dragFrom === i ? 'cursor-grabbing opacity-60' : '',
 				!past && dragOver === i && dragFrom !== i ? 'rounded-md bg-muted/40 ring-1 ring-primary/60' : ''
 			].join(' ')}
 		>
+			{#if isSwiping}
+				<!-- Red underlay revealed by the swipe; icon sits on the vacated side. -->
+				<div
+					class="absolute inset-0 flex items-center bg-red-500/90 px-4 {swipedX < 0
+						? 'justify-end'
+						: 'justify-start'}"
+					aria-hidden="true"
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" class="h-4 w-4"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13h8l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</div>
+			{/if}
+			<div
+				class="relative rounded-md {isSwiping ? 'bg-background' : ''}"
+				style={isRemoving
+					? `transform: translateX(${removingDir * 120}%); transition: transform .2s ease-in, opacity .2s; opacity: 0;`
+					: isSwiping
+						? `transform: translateX(${swipedX}px); transition: none;`
+						: 'transition: transform .25s ease-out;'}
+			>
 			<TrackRow
 				song={item}
 				index={n - 1}
@@ -200,6 +274,7 @@ const view = $derived(queueBlocks(playback.queue));
 					: undefined}
 				removeLabel={past ? undefined : 'Remove from queue'}
 			/>
+			</div>
 		</div>
 	{/each}
 {/snippet}

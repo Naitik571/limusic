@@ -30,7 +30,7 @@
 		onPlayLocalAlbum: (item: BrowseItem) => void;
 		onPlaySong: (s: SongItem, i: number, list: SongItem[]) => void;
 		onImport: () => void;
-		onOpenFlow?: (view: 'library-coverflow' | 'library-fan') => void;
+		onOpenFlow?: (view: 'library-coverflow' | 'library-fan' | 'library-stack') => void;
 		/** Disc treatment for the hero tiles (pool settings → library skin). */
 		tileSkin?: 'photo' | 'noir' | 'crimson' | 'auto';
 	} = $props();
@@ -213,6 +213,10 @@
 						<button class="ps-expand-btn" onclick={() => onOpenFlow?.('library-coverflow')} aria-label="Open coverflow">
 							<HugeiconsIcon icon={PlusSignIcon} class="w-4 h-4" />
 							<span>CoverFlow</span>
+						</button>
+						<button class="ps-expand-btn" onclick={() => onOpenFlow?.('library-stack')} aria-label="Open album stack">
+							<HugeiconsIcon icon={PlusSignIcon} class="w-4 h-4" />
+							<span>Stack</span>
 						</button>
 					</div>
 				{/if}
