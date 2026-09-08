@@ -16,16 +16,15 @@ import { artworkAccent } from './artcolor';
 import { solveVeil } from './veil';
 import { allowFontFile } from './api';
 
-export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'apple' | 'catppuccin';
+export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin';
 
-export type LayoutId = 'default' | 'grove' | 'canopy' | 'poolside' | 'apple';
+export type LayoutId = 'default' | 'grove' | 'canopy' | 'poolside';
 
 export const LAYOUTS: { id: LayoutId; label: string; description: string }[] = [
 	{ id: 'default', label: 'Default', description: 'Balanced sidebar + feed - the classic Limusic look' },
 	{ id: 'grove', label: 'Grove', description: 'Rounded feed card + floating player island' },
 	{ id: 'canopy', label: 'Canopy', description: 'Transport in the top bar - no bottom bar at all' },
-	{ id: 'poolside', label: 'Poolside (Beta)', description: 'Y2K aqua-pool vinyl deck — full-app reskin' },
-	{ id: 'apple', label: 'Apple (Beta)', description: 'Quiet chrome, hairlines and restraint — Apple Music manners' }
+	{ id: 'poolside', label: 'Poolside (Beta)', description: 'Y2K aqua-pool vinyl deck — full-app reskin' }
 ];
 
 // `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (lime,
@@ -40,7 +39,6 @@ export const THEMES: Theme[] = [
 	{ id: 'lime', label: 'Lime', kind: 'accent', color: 'oklch(0.77 0.2 131)', fg: 'oklch(0.205 0 0)' },
 	{ id: 'purple', label: 'Purple', kind: 'accent', color: 'oklch(0.56 0.25 302)', fg: 'oklch(0.985 0 0)' },
 	{ id: 'teal', label: 'Teal', kind: 'accent', color: 'oklch(0.85 0.13 181)', fg: 'oklch(0.205 0 0)' },
-	{ id: 'apple', label: 'Apple', kind: 'palette', color: 'oklch(0.60 0.19 255)' },
 	{ id: 'catppuccin', label: 'Catppuccin', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' }
 ];
 

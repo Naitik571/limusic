@@ -1,6 +1,5 @@
 <script lang="ts">
 	import './layout.css';
-	import './layout-apple.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { ModeWatcher } from 'mode-watcher';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
