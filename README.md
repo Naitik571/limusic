@@ -60,7 +60,15 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.6.11`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.7.0`.
+
+**v0.7.0 — native frame, romaji,-prev restart, Romanian, feel:**
+- **Previous restarts past 3s** — YTM parity: a press deep in a song restarts it, from the top it steps back
+- **System title bar** (Settings → General → System) — native frame with snap layouts and shadows; the bars go chromeless but keep every button
+- **Romanian locale** — 284 keys from upstream's catalog, English fallback per key
+- **Romaji toggle in lyrics** — kana songs transliterate in one round-trip, timings untouched
+- **Feel pass** — page fade on navigation, NowPlaying hero crossfade, press-squash on transport, sidebar nudge
+- **Apple layout + preset removed** (−288 lines; stored selections fall back cleanly)
 
 **v0.6.11 — lyrics you can trust + poolside waters:**
 - **Musixmatch word-salad rejected** — restricted tracks came back as fake syllable-matched gibberish that parsed as valid synced lyrics and won every tie; the provider now honours the `restricted` flag, a strict shape check drops salad from any provider, and poisoned cache rows self-heal on next play
