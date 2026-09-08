@@ -457,8 +457,19 @@ function loadLikedIds(): Promise<void> {
 			// Set is reactive; reassigning this const binding would not be.
 			likedIds.clear();
 			for (const id of ids) likedIds.add(id);
+			lastLikedRefresh = Date.now();
 		})
 		.catch(() => {});
+}
+
+// Throttled refresh: likes made on other devices/sessions land here without re-walking on
+// every page open. Call when the Liked Music playlist opens (and anywhere hearts must be
+// authoritative); at most one walk per 10 minutes unless forced.
+let lastLikedRefresh = 0;
+export function refreshLikedIds(force = false): void {
+	if (!auth.account?.signedIn) return;
+	if (!force && Date.now() - lastLikedRefresh < 600_000) return;
+	loadLikedIds();
 }
 
 // Last like-ON per videoId (epoch ms). The heart burst lives here rather than in each component so

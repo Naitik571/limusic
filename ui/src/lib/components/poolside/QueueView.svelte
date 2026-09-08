@@ -5,6 +5,7 @@
 	import * as api from '$lib/api';
 	import { playback, toast } from '$lib/player.svelte';
 	import { isSwipe, shouldRemove } from '$lib/swipe';
+	import RadioMoods from '$lib/components/RadioMoods.svelte';
 
 	let {} = $props();
 
@@ -128,6 +129,7 @@
 	<!-- upcoming -->
 	{#if items.length > currentIdx + 1}
 		<h4 class="ps-section-title ps-anim-fade-up" style="animation-delay:.1s">UP NEXT</h4>
+		<RadioMoods moods={q.radioMoods} pool />
 		<div class="ps-songlist">
 			{#each items.slice(currentIdx + 1) as item, ri (item.video_id + ri)}
 				{@const i = currentIdx + 1 + ri}

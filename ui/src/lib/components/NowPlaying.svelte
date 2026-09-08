@@ -598,13 +598,11 @@
 				<!-- Controls -->
 				<div class="flex items-center justify-center gap-2">
 					<button
-						class="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground {playback.liked
-							? 'text-primary'
-							: ''}"
+						class="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
 						onclick={() => toggleNowPlayingLike()}
 						aria-label="Like"
 					>
-						<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4" />
+						<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : ''}" />
 					</button>
 					<button
 						class="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground {playback.queue.shuffle

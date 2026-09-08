@@ -179,6 +179,21 @@ pub struct NextResult {
     /// otherwise just the seed song — that's how a dead `RDAMVM` radio finds a live one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub automix_playlist_id: Option<String>,
+    /// Up Next mood chips (`All`, `Chill`, `Discover`, …): each carries the radio playlist id
+    /// and params token that re-requests the queue in that mood. Empty when the panel has none
+    /// (non-radio queues, signed-out responses).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mood_chips: Vec<MoodChip>,
+}
+
+/// One Up Next mood chip: selecting it re-requests `next` with its playlist id + params and
+/// replaces everything after the playing track. `selected` marks the active mood.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MoodChip {
+    pub title: String,
+    pub selected: bool,
+    pub playlist_id: String,
+    pub params: String,
 }
 
 /// Logged-in account summary from `account/account_menu`. context/01, context/04A, context/15.
@@ -243,7 +258,64 @@ pub fn parse_next(root: &Value) -> NextResult {
         continuation,
         lyrics_browse_id: lyrics_browse_id(root),
         automix_playlist_id,
+        mood_chips: parse_mood_chips(root),
     }
+}
+
+/// Up Next mood chips: the `chipCloudRenderer` in the queue header carries one chip per mood
+/// (`All` selected by default). Each chip's `queueUpdateCommand → fetchContentsCommand →
+/// watchEndpoint` names the radio playlist id + params token that reproduces that mood —
+/// anything without that exact chain (e.g. the header's Save button) is not a mood.
+fn parse_mood_chips(root: &Value) -> Vec<MoodChip> {
+    let mut out = Vec::new();
+    for cloud in find_all(root, "chipCloudRenderer") {
+        let Some(chips) = cloud.get("chips").and_then(|c| c.as_array()) else {
+            continue;
+        };
+        for chip in chips {
+            let Some(r) = chip.get("chipCloudChipRenderer") else {
+                continue;
+            };
+            let title: String = r
+                .get("text")
+                .and_then(|t| t.get("runs"))
+                .and_then(|rs| rs.as_array())
+                .map(|rs| {
+                    rs.iter()
+                        .filter_map(|x| x.get("text").and_then(|s| s.as_str()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if title.is_empty() {
+                continue;
+            }
+            let selected = r
+                .get("isSelected")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let watch = r.pointer(
+                "/navigationEndpoint/queueUpdateCommand/fetchContentsCommand/watchEndpoint",
+            );
+            let (Some(pid), Some(params)) = (
+                watch
+                    .and_then(|w| w.get("playlistId"))
+                    .and_then(|v| v.as_str()),
+                watch.and_then(|w| w.get("params")).and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            if out.iter().any(|m: &MoodChip| m.title == title) {
+                continue;
+            }
+            out.push(MoodChip {
+                title,
+                selected,
+                playlist_id: pid.to_owned(),
+                params: params.to_owned(),
+            });
+        }
+    }
+    out
 }
 
 /// The lyrics tab's browseId from a `next` response: the browseEndpoint whose pageType is
@@ -926,6 +998,40 @@ mod tests {
             } }
         });
         assert_eq!(parse_next(&root).automix_playlist_id, None);
+    }
+
+    // Up Next mood chips: only chips carrying the queue-update → fetch-contents → watch
+    // chain become moods; anything else (buttons, chips without it) is ignored.
+    #[test]
+    fn parses_mood_chips_from_the_queue_header() {
+        let root = json!({
+            "contents": { "x": { "chipCloudRenderer": { "chips": [
+                { "chipCloudChipRenderer": {
+                    "text": { "runs": [{ "text": "All" }] },
+                    "isSelected": true,
+                    "navigationEndpoint": { "queueUpdateCommand": { "fetchContentsCommand": {
+                        "watchEndpoint": { "playlistId": "RDAMVMseed1", "params": "ggUMALL" }
+                    } } }
+                } },
+                { "chipCloudChipRenderer": {
+                    "text": { "runs": [{ "text": "Chill" }] },
+                    "navigationEndpoint": { "queueUpdateCommand": { "fetchContentsCommand": {
+                        "watchEndpoint": { "playlistId": "RDATmXvseed1", "params": "ggU2CHILL" }
+                    } } }
+                } },
+                { "chipCloudChipRenderer": {
+                    "text": { "runs": [{ "text": "NoEndpoint" }] }
+                } }
+            ] } } }
+        });
+        let out = parse_next(&root);
+        assert_eq!(out.mood_chips.len(), 2);
+        assert_eq!(out.mood_chips[0].title, "All");
+        assert!(out.mood_chips[0].selected);
+        assert_eq!(out.mood_chips[0].playlist_id, "RDAMVMseed1");
+        assert_eq!(out.mood_chips[0].params, "ggUMALL");
+        assert_eq!(out.mood_chips[1].title, "Chill");
+        assert!(!out.mood_chips[1].selected);
     }
 
     #[test]

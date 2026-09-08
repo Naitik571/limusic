@@ -295,6 +295,11 @@ struct QueueState {
     /// This queue is a radio: YouTube generated every upcoming track, so "Add to queue" replaces
     /// them rather than queueing behind an endless feed the user never asked to finish.
     radio: bool,
+    /// Up Next mood chips (`All`, `Chill`, …) from the radio's `next` response, plus the params
+    /// token of the active mood. Continuation replays the params so the tail stays in-mood;
+    /// both persist across restarts with the seed.
+    radio_moods: Vec<innertube::MoodChip>,
+    radio_mood_params: Option<String>,
     /// The queue index we've already appended to mpv for gapless lookahead (if any).
     lookahead_loaded: Option<usize>,
     /// Which client served the currently-loaded track (for the WEB_REMIX-403 feedback). context/06.
@@ -863,6 +868,7 @@ impl AppState {
                 self.clients.get(innertube::METADATA_CLIENT).unwrap(),
                 Some(&video_id),
                 Some(&radio_id),
+                None,
             )
             .await
         {
@@ -875,6 +881,12 @@ impl AppState {
                     if item.video_id != video_id {
                         q.items.push(item);
                     }
+                }
+                // The hydration response carries the panel's mood chips — a single-song queue
+                // that grew a radio behind it gains moods without another round trip.
+                if !next.mood_chips.is_empty() {
+                    q.radio_moods = next.mood_chips;
+                    q.radio_mood_params = None;
                 }
                 // Shuffle on → the radio hydration is part of the queue: snapshot it as the
                 // "original" order, then shuffle the upcoming tracks. (Runs before the lookahead
@@ -1042,7 +1054,7 @@ impl AppState {
             other => return Err(format!("unknown radio kind: {other}")),
         };
 
-        let (items, seed) = self.fetch_radio(video_id.as_deref(), &playlist_id).await?;
+        let (items, seed, moods) = self.fetch_radio(video_id.as_deref(), &playlist_id).await?;
         let title = name.map(|n| format!("{n} Radio"));
 
         // Radio on the song that's already playing: splice instead of replacing, so the track
@@ -1052,7 +1064,7 @@ impl AppState {
             video_id.is_some() && q.items.get(q.current).map(|i| &i.video_id) == video_id.as_ref()
         };
         if playing_seed && !self.player.is_idle() {
-            self.splice_radio(items, seed, title).await;
+            self.splice_radio(items, seed, title, moods, None).await;
             return Ok(());
         }
         // The seed song comes back inside the first page (usually first, but the panel decides) —
@@ -1068,8 +1080,8 @@ impl AppState {
     }
 
     /// Fetch a radio's first page, escalating when YouTube hands back a dead one. Returns the
-    /// tracks plus the playlist id that actually produced them (autoplay's seed, which is not
-    /// necessarily the one asked for).
+    /// tracks, the playlist id that actually produced them (autoplay's seed, which is not
+    /// necessarily the one asked for), and the panel's mood chips.
     ///
     /// A `RDAMVM…` radio for an obscure or region-locked track routinely answers with the seed
     /// song and nothing else, and "start radio" then looks like it did nothing. So: ask the song
@@ -1082,7 +1094,7 @@ impl AppState {
         &self,
         video_id: Option<&str>,
         playlist_id: &str,
-    ) -> Result<(Vec<SongItem>, String), String> {
+    ) -> Result<(Vec<SongItem>, String, Vec<innertube::MoodChip>), String> {
         const NO_RADIO: &str = "YouTube has no radio for this.";
         let client = self
             .clients
@@ -1090,32 +1102,32 @@ impl AppState {
             .ok_or("no metadata client")?;
         let first = self
             .it
-            .next(client, video_id, Some(playlist_id))
+            .next(client, video_id, Some(playlist_id), None)
             .await
             .map_err(|e| e.to_string())?;
         if first.items.len() > 1 {
-            return Ok((first.items, playlist_id.to_owned()));
+            return Ok((first.items, playlist_id.to_owned(), first.mood_chips));
         }
         let Some(video_id) = video_id else {
             return Err(NO_RADIO.into());
         };
         let bare = self
             .it
-            .next(client, Some(video_id), None)
+            .next(client, Some(video_id), None, None)
             .await
             .map_err(|e| e.to_string())?;
         if let Some(mix) = bare.automix_playlist_id {
             let page = self
                 .it
-                .next(client, Some(video_id), Some(&mix))
+                .next(client, Some(video_id), Some(&mix), None)
                 .await
                 .map_err(|e| e.to_string())?;
             if page.items.len() > 1 {
-                return Ok((page.items, mix));
+                return Ok((page.items, mix, page.mood_chips));
             }
         }
         if bare.items.len() > 1 {
-            return Ok((bare.items, format!("RDAMVM{video_id}")));
+            return Ok((bare.items, format!("RDAMVM{video_id}"), bare.mood_chips));
         }
         Err(NO_RADIO.into())
     }
@@ -1129,10 +1141,14 @@ impl AppState {
         items: Vec<SongItem>,
         seed: String,
         title: Option<String>,
+        moods: Vec<innertube::MoodChip>,
+        mood_params: Option<String>,
     ) {
         {
             let mut q = self.queue.lock().await;
             splice_radio_into(&mut q, items, seed, title);
+            q.radio_moods = moods;
+            q.radio_mood_params = mood_params;
             // Whatever mpv had primed as the gapless next belongs to the old queue.
             if q.lookahead_loaded.take().is_some() {
                 let _ = self.player.clear_playlist();
@@ -1143,6 +1159,76 @@ impl AppState {
         self.prime_lookahead(self.generation.load(Ordering::SeqCst))
             .await;
         self.lt_broadcast_queue().await;
+    }
+
+    /// Switch the radio's mood (`All`, `Chill`, …): re-request `next` with the chip's radio
+    /// playlist id + params and replace everything after the playing track — history and the
+    /// current song stay, continuation keeps replaying the new mood's params. Errors when the
+    /// mood is unknown or YouTube answers empty (the queue is untouched then).
+    pub async fn set_radio_mood(self: &std::sync::Arc<Self>, title: String) -> Result<(), String> {
+        let (chip, current, source_name, existing) = {
+            let q = self.queue.lock().await;
+            let chip = q
+                .radio_moods
+                .iter()
+                .find(|m| m.title == title)
+                .cloned()
+                .ok_or_else(|| format!("unknown radio mood: {title}"))?;
+            (
+                chip,
+                q.items.get(q.current).map(|i| i.video_id.clone()),
+                q.source_name.clone(),
+                q.radio_moods.clone(),
+            )
+        };
+        let client = self
+            .clients
+            .get(innertube::METADATA_CLIENT)
+            .ok_or("no metadata client")?;
+        let res = self
+            .it
+            .next(
+                client,
+                current.as_deref(),
+                Some(&chip.playlist_id),
+                Some(&chip.params),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        if res.items.len() <= 1 {
+            return Err(format!("{title} came back empty."));
+        }
+        // Drop a leading echo of the playing track (the mix opens on it, like start_radio).
+        let items: Vec<SongItem> = res
+            .items
+            .into_iter()
+            .filter(|i| Some(&i.video_id) != current.as_ref())
+            .collect();
+        if items.is_empty() {
+            return Err(format!("{title} came back empty."));
+        }
+        // The mood response usually carries the chip cloud with the new selection; when it
+        // doesn't, move the selected flag on the existing chips instead of wiping them.
+        let moods = if res.mood_chips.is_empty() {
+            existing
+                .into_iter()
+                .map(|mut m| {
+                    m.selected = m.title == title;
+                    m
+                })
+                .collect()
+        } else {
+            res.mood_chips
+        };
+        self.splice_radio(
+            items,
+            chip.playlist_id,
+            source_name,
+            moods,
+            Some(chip.params),
+        )
+        .await;
+        Ok(())
     }
 
     /// Walk the rest of a playlist in the background and append it to the playing queue, page by
@@ -1756,7 +1842,7 @@ impl AppState {
                     let app = self.app.clone();
                     let video_id = item.video_id.clone();
                     tauri::async_runtime::spawn(async move {
-                        match it.next(&client, Some(&video_id), None).await {
+                        match it.next(&client, Some(&video_id), None, None).await {
                             Ok(next) => {
                                 if let Some(liked) = next
                                     .items
@@ -1894,6 +1980,7 @@ impl AppState {
                 "shuffle": q.shuffle_orig.is_some(),
                 "repeat": q.repeat,
                 "sourceName": &q.source_name,
+                "radioMoods": &q.radio_moods,
             }),
         );
     }
@@ -1940,6 +2027,7 @@ impl AppState {
             "shuffle": q.shuffle_orig.is_some(),
             "repeat": q.repeat,
             "sourceName": &q.source_name,
+            "radioMoods": &q.radio_moods,
         })
     }
 
@@ -2100,7 +2188,7 @@ impl AppState {
         if !self.autoplay_enabled() || self.lt.is_guest().await {
             return 0;
         }
-        let (last_video, seed, existing) = {
+        let (last_video, seed, mood_params, existing) = {
             let q = self.queue.lock().await;
             if q.repeat != RepeatMode::Off {
                 return 0; // the queue never exhausts under repeat
@@ -2118,8 +2206,9 @@ impl AppState {
                 .radio_seed
                 .clone()
                 .unwrap_or_else(|| format!("RDAMVM{}", last.video_id));
+            let mood_params = q.radio_mood_params.clone();
             let existing: HashSet<String> = q.items.iter().map(|i| i.video_id.clone()).collect();
-            (last.video_id.clone(), seed, existing)
+            (last.video_id.clone(), seed, mood_params, existing)
         };
         let Some(client) = self.clients.get(innertube::METADATA_CLIENT) else {
             return 0;
@@ -2127,7 +2216,17 @@ impl AppState {
         // Snapshot → network → re-lock, same discipline as `prime_lookahead`; the generation
         // check between them is what makes it safe. A track added *during* the fetch could
         // theoretically duplicate — accepted (YTM's own radio repeats occasionally too).
-        let fresh = match self.it.next(client, Some(&last_video), Some(&seed)).await {
+        // The active mood's params ride along so continuation stays in the same mood.
+        let fresh = match self
+            .it
+            .next(
+                client,
+                Some(&last_video),
+                Some(&seed),
+                mood_params.as_deref(),
+            )
+            .await
+        {
             Ok(next) => next.items,
             Err(e) => {
                 tracing::warn!(error = %e, "autoplay radio fetch failed");
@@ -2166,6 +2265,8 @@ impl AppState {
                 "radioSeed": &q.radio_seed,
                 "sourceName": &q.source_name,
                 "radio": q.radio,
+                "radioMoods": &q.radio_moods,
+                "radioMoodParams": &q.radio_mood_params,
             })
             .to_string()
         };
@@ -2212,6 +2313,14 @@ impl AppState {
             .get("radio")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let radio_moods: Vec<innertube::MoodChip> = saved
+            .get("radioMoods")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let radio_mood_params: Option<String> = saved
+            .get("radioMoodParams")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned);
         let pos = self
             .db
             .get_setting("queue_position")
@@ -2228,6 +2337,8 @@ impl AppState {
             q.radio_seed = radio_seed;
             q.source_name = source_name;
             q.radio = radio;
+            q.radio_moods = radio_moods;
+            q.radio_mood_params = radio_mood_params;
         }
         if repeat == RepeatMode::One {
             let _ = self.player.set_loop_file(true);

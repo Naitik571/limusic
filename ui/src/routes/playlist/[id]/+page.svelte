@@ -54,7 +54,8 @@
 		openMoveToPlaylist,
 		playSong,
 		downloadedIds,
-		loadDownloadedIds
+		loadDownloadedIds,
+		refreshLikedIds
 	} from '$lib/player.svelte';
 
 	let pl = $state<PlaylistPage | null>(null);
@@ -143,6 +144,27 @@
 		})
 	);
 	const searching = $derived(search.trim().length > 0);
+
+	// Liked Music hearts must be authoritative here (likes made on other devices land
+	// between visits). Throttled inside — at most one walk per 10 minutes.
+	$effect(() => {
+		if (id === 'VLLM') refreshLikedIds();
+	});
+
+	// A search has to cover the whole playlist, not the pages scrolled so far — otherwise
+	// unloaded songs never match. Walks the rest in (shared reentrant loadMore) the moment
+	// a query lands with pages still out; results stream in as pages land.
+	let searchWalking = $state(false);
+	$effect(() => {
+		if (!searching || !pl?.continuation || searchWalking) return;
+		const pid = id;
+		searchWalking = true;
+		loadAll().then((ok) => {
+			if (pid !== id) return;
+			searchWalking = false;
+			if (!ok) warnPartial('searched');
+		});
+	});
 
 	// Render cap: large playlists (5k rows) OOM/jank when every TrackRow mounts at once
 	// (upstream windowing was removed in the fork). Show 250 first, then grow on demand.
@@ -1179,7 +1201,7 @@
 							<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-muted-foreground" />
 						</Button>
 						<span class="shrink-0 text-xs text-muted-foreground">
-							{searched.length} of {shown.length}
+							{searchWalking ? `Searching all… ${shown.length} loaded` : `${searched.length} of ${shown.length}`}
 						</span>
 					{/if}
 				</div>

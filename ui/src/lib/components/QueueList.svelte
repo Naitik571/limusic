@@ -4,6 +4,7 @@ import { cubicOut } from 'svelte/easing';
 import { HugeiconsIcon } from '@hugeicons/svelte';
 import { InfinityIcon } from '@hugeicons/core-free-icons';
 import TrackRow from '$lib/components/TrackRow.svelte';
+import RadioMoods from '$lib/components/RadioMoods.svelte';
 import * as api from '$lib/api';
 import { queueBlocks, type QueueRow } from '$lib/queue';
 import { isSwipe, shouldRemove } from '$lib/swipe';
@@ -312,6 +313,7 @@ const view = $derived(queueBlocks(playback.queue));
 		<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Previously played</h3>
 		{@render rows(pastRows, true)}
 	{/if}
+	<RadioMoods moods={playback.queue.radioMoods} />
 	{#if view.now}
 		<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Now playing</h3>
 		{@render rows([view.now])}

@@ -436,10 +436,11 @@ pub async fn set_setting(
     Ok(())
 }
 
-/// The signed-in user's Liked Music video ids, newest first. Bounded walk (~30 pages ≈ 3k
-/// tracks) — this feeds the heart on every row: search/playlist rows don't carry `likeStatus`,
-/// so the UI checks membership here instead of trusting the row. A launch-time + on-demand
-/// snapshot; likes made in-app update the frontend set locally.
+/// The signed-in user's Liked Music video ids, newest first. Walked to the end (no page cap —
+/// a cap silently un-liked every older track's heart once the library passed ~3k). This feeds
+/// the heart on every row: search/playlist rows don't carry `likeStatus`, so the UI checks
+/// membership here instead of trusting the row. A launch-time + on-demand snapshot; likes made
+/// in-app update the frontend set locally.
 #[tauri::command]
 pub async fn get_liked_ids(state: St<'_>) -> Result<Vec<String>, String> {
     let client = metadata_client(&state)?;
@@ -450,21 +451,26 @@ pub async fn get_liked_ids(state: St<'_>) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())?;
     let mut ids: Vec<String> = page.items.iter().map(|i| i.video_id.clone()).collect();
     let mut token = page.continuation;
-    let mut pages = 0usize;
     while let Some(t) = token {
-        if pages >= 30 {
-            break;
-        }
-        pages += 1;
         let more = state
             .it
             .playlist_continuation(client, &t)
             .await
             .map_err(|e| e.to_string())?;
+        if more.items.is_empty() {
+            break;
+        }
         ids.extend(more.items.iter().map(|i| i.video_id.clone()));
         token = more.continuation;
     }
     Ok(ids)
+}
+
+/// Switch the radio's Up Next mood (`All`, `Chill`, …). Replaces everything after the
+/// playing track with that mood's mix; history and the current song stay.
+#[tauri::command]
+pub async fn set_radio_mood(state: St<'_>, title: String) -> Result<(), String> {
+    state.set_radio_mood(title).await
 }
 
 /// Status of the yt-dlp fallback for the settings screen: whether the toggle is on, whether
@@ -908,7 +914,7 @@ pub async fn get_similar_songs(
     let radio_id = format!("RDAMVM{video_id}");
     let next = state
         .it
-        .next(client, Some(&video_id), Some(&radio_id))
+        .next(client, Some(&video_id), Some(&radio_id), None)
         .await
         .map_err(|e| e.to_string())?;
     Ok(next
@@ -1954,6 +1960,24 @@ pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
         state.db.delete_download(&d.video_id);
     }
     Ok(())
+}
+
+/// Drop catalogue rows whose file is gone from disk (deleted outside the app, moved
+/// drives, …). Returns how many rows were pruned. Run when the download manager opens so
+/// the "already downloaded" badges stop lying — cheap metadata stats, no reads.
+#[tauri::command]
+pub async fn prune_missing_downloads(state: St<'_>) -> Result<usize, String> {
+    let mut pruned = 0usize;
+    for d in state.db.list_downloads() {
+        if !std::path::Path::new(&d.file_path).exists() {
+            state.db.delete_download(&d.video_id);
+            pruned += 1;
+        }
+    }
+    if pruned > 0 {
+        tracing::info!(pruned, "pruned download rows with missing files");
+    }
+    Ok(pruned)
 }
 
 // --- Crossfade / best mix ------------------------------------------------------------

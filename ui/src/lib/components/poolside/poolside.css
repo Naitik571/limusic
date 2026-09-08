@@ -2895,6 +2895,28 @@
 	margin-right: 4px;
 }
 
+/* Up Next radio mood chips (All / Chill / …). */
+.ps-mood-row {
+	display: flex; flex-wrap: wrap; gap: 8px;
+	padding: 2px 2px 12px;
+}
+.ps-mood-chip {
+	all: unset; cursor: pointer;
+	font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+	padding: 6px 12px; border-radius: 999px;
+	color: var(--ps-ink-dim);
+	background: rgba(255, 255, 255, 0.14);
+	border: 1px solid rgba(255, 255, 255, 0.25);
+	transition: background .18s, color .18s, transform .18s var(--ease-spring);
+}
+.ps-mood-chip:hover { transform: translateY(-1px); color: var(--ps-ink); }
+.ps-mood-chip.on {
+	color: #fff;
+	background: var(--ps-album-accent, var(--accent));
+	border-color: transparent;
+}
+.ps-mood-chip:disabled { opacity: 0.6; cursor: default; }
+
 /* Swipe-to-remove underlay + translating inner (queue rows). The row keeps its glass;
    the red underlay only shows while swiping, icon on the vacated side. */
 .ps-swipe-under {

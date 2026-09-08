@@ -71,6 +71,16 @@ export interface QueueState {
 	repeat?: RepeatMode;
 	/** What seeded the queue (playlist/album title, "<song> Radio") — the "Next from" header. */
 	sourceName?: string | null;
+	/** Up Next mood chips from the radio panel (`All`, `Chill`, …). Empty off-radio. */
+	radioMoods?: MoodChip[];
+}
+
+/** One Up Next mood: selecting it re-requests the radio in that mood. */
+export interface MoodChip {
+	title: string;
+	selected: boolean;
+	playlist_id: string;
+	params: string;
 }
 
 export interface Account {
@@ -350,6 +360,8 @@ export const listDownloads = () => invoke<DownloadList>('list_downloads');
 export const deleteDownload = (video_id: string) =>
 	invoke<void>('delete_download', { video_id });
 export const clearDownloads = () => invoke<void>('clear_downloads');
+/** Drop catalogue rows whose file is gone from disk. Returns pruned row count. */
+export const pruneMissingDownloads = () => invoke<number>('prune_missing_downloads');
 /** Stop one in-flight (or queued-behind-the-batch) download; its partial file is removed. */
 export const cancelDownload = (video_id: string) =>
 	invoke<boolean>('cancel_download', { video_id });
@@ -476,6 +488,8 @@ export const playPlaylist = (
  */
 export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: string, name?: string) =>
 	invoke<void>('start_radio', { kind, id, name });
+/** Switch the radio's Up Next mood. Replaces everything after the playing track. */
+export const setRadioMood = (title: string) => invoke<void>('set_radio_mood', { title });
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>

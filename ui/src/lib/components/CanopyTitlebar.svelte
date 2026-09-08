@@ -99,16 +99,16 @@
 			</div>
 		</div>
 	</div>
-	<!-- Like, inline with the readout — the bar is the only transport in this layout. -->
+	<!-- Like, inline with the readout — the bar is the only transport in this layout.
+	     Liked state lives on the ICON (ternary): appending text-primary next to the base
+	     muted class loses to cascade order and the heart never lit up. -->
 	{#if playback.now}
 		<button
-			class="shrink-0 p-1 text-muted-foreground transition-colors hover:text-foreground {playback.liked
-				? 'text-primary'
-				: ''}"
+			class="shrink-0 p-1 text-muted-foreground transition-colors hover:text-foreground"
 			onclick={() => toggleNowPlayingLike()}
 			aria-label={playback.liked ? 'Remove from liked songs' : 'Add to liked songs'}
 		>
-			<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4" />
+			<HugeiconsIcon icon={FavouriteIcon} class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : ''}" />
 		</button>
 	{/if}
 

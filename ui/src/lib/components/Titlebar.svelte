@@ -28,11 +28,25 @@
 	import AccountMenu from './AccountMenu.svelte';
 	import logo from '$lib/assets/favicon.svg';
 	import * as api from '$lib/api';
-	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor, cancelDownload, cancelAllDownloads } from '$lib/player.svelte';
+	import { openMiniPlayer, toast, ui, downloads, dismissDownloads, startDownloadMonitor, cancelDownload, cancelAllDownloads, loadDownloadedIds } from '$lib/player.svelte';
 	import { lt } from '$lib/lt.svelte';
 	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 
-let downloadsOpen = $state(false);
+	let downloadsOpen = $state(false);
+
+	// Opening the manager reconciles the catalogue with the disk: rows for files deleted
+	// outside the app get pruned, then badges refresh — cheap metadata stats.
+	async function toggleDownloads() {
+		downloadsOpen = !downloadsOpen;
+		if (!downloadsOpen) return;
+		try {
+			const pruned = await api.pruneMissingDownloads();
+			await loadDownloadedIds();
+			if (pruned > 0) toast.info(`Removed ${pruned} missing file${pruned === 1 ? '' : 's'} from downloads`);
+		} catch {
+			/* catalogue read failed — manager still opens with what it has */
+		}
+	}
 
 	const win = getCurrentWindow();
 
@@ -277,7 +291,7 @@ let downloadsOpen = $state(false);
 						? 'Downloads ready'
 						: 'Downloads'}
 				aria-label="Downloads"
-				onclick={() => (downloadsOpen = !downloadsOpen)}
+				onclick={toggleDownloads}
 			>
 				<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
 				{#if downloads.active > 0}

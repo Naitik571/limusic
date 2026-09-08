@@ -158,6 +158,7 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
             state.clients.get(innertube::METADATA_CLIENT).unwrap(),
             Some(&req.video_id),
             None,
+            None,
         );
         match tokio::time::timeout(PROVIDER_TIMEOUT, fut).await {
             Ok(Ok(n)) => Some(n),
