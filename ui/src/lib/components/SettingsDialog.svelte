@@ -19,7 +19,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, markNotDownloaded, downloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame } from '$lib/player.svelte';
+	import { ui, toast, markNotDownloaded, downloadedIds, loadDownloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import {
 		THEMES,
@@ -402,14 +402,25 @@
 	}
 
 	async function removeDownload(vid: string) {
-		await api.deleteDownload(vid);
+		try {
+			await api.deleteDownload(vid);
+		} catch (e) {
+			toast.error(String(e));
+			return;
+		}
 		markNotDownloaded(vid);
 		await refreshDownloads();
 	}
 
 	async function clearAllDownloads() {
-		await api.clearDownloads();
-		downloadedIds.clear();
+		try {
+			const cleared = await api.clearDownloads();
+			toast.success(`Cleared ${cleared} download${cleared === 1 ? '' : 's'}`);
+		} catch (e) {
+			// Partial clear (locked files keep their rows) — report, don't pretend.
+			toast.error(String(e));
+		}
+		await loadDownloadedIds();
 		await refreshDownloads();
 	}
 

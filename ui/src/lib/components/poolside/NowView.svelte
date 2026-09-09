@@ -135,7 +135,8 @@
 		if (past !== dragPastEject) dragPastEject = past;
 	}
 	async function onDiscPointerUp() {
-		if (!isDragging) return;		if (seekMode) {
+		if (!isDragging) return;
+		if (seekMode) {
 			// Land exactly where the dial points, then reset the gesture.
 			seekMode = false;
 			isDragging = false;

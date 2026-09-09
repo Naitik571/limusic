@@ -74,6 +74,10 @@ pub struct AppState {
     /// videoId of the last background like-status probe (`like-status` event). A track whose
     /// `liked` was unknown gets probed once; repeat plays of the same unknown track don't refetch.
     like_probe: std::sync::Mutex<Option<String>>,
+    /// Serializes gapless lookahead appends. The queue mutex can't do it (the blocking mpv
+    /// call must run unlocked), so without this two concurrent primes for different slots can
+    /// append out of verification order and offset mpv from `current` for the session.
+    lookahead_append: Mutex<()>,
 }
 
 /// Repeat mode for the queue. Serialized lowercase for the UI + `queue_json`.
@@ -360,6 +364,7 @@ impl AppState {
             last_pos_persist: AtomicU64::new(0),
             last_media_push: AtomicU64::new(0),
             like_probe: std::sync::Mutex::new(None),
+            lookahead_append: Mutex::new(()),
         }
     }
 
@@ -1766,6 +1771,12 @@ impl AppState {
         if self.generation.load(Ordering::SeqCst) != gen {
             return;
         }
+        // Serialize whole verify→append→record sequences: the queue mutex can't do it (the
+        // blocking mpv call must run unlocked), and without it two concurrent primes for
+        // different slots can append out of verification order — mpv's playlist then diverges
+        // from queue order and every later gapless advance is off by one for the session.
+        // Only appends serialize against each other here, never playback/UI against the queue.
+        let _append = self.lookahead_append.lock().await;
         let mut q = self.queue.lock().await;
         // The queue can change under a resolve (a guest add inserts at current+1) — enqueueing
         // then would gaplessly play the wrong song. Verify the slot still holds the same track.
@@ -1793,7 +1804,8 @@ impl AppState {
         }
         // Claim the slot BEFORE the blocking call: two concurrent resolves for the same slot
         // must not both reach mpv (a duplicate playlist entry offsets mpv from `current` for
-        // the rest of the session). The claim is verified again after the enqueue lands.
+        // the rest of the session). The claim is verified again after the enqueue lands; the
+        // append mutex above additionally guarantees appends land in verification order.
         q.lookahead_loaded = Some(next_idx);
         drop(q);
         // Headers are global in mpv; the direct-URL clients need none beyond UA, which the

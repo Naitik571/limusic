@@ -256,7 +256,11 @@
 					: 'hover:bg-accent/10'}"
 				onclick={(e) =>
 					run(e, () => {
-						if (downloaded) api.deleteDownload(song.video_id).then(() => markNotDownloaded(song.video_id));
+						if (downloaded)
+							api
+								.deleteDownload(song.video_id)
+								.then(() => markNotDownloaded(song.video_id))
+								.catch((e) => toast.error(String(e)));
 						else
 							api
 								.downloadTrack({

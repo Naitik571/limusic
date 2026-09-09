@@ -1953,26 +1953,29 @@ pub async fn delete_download(state: St<'_>, video_id: String) -> Result<(), Stri
 }
 
 /// Wipe every download. Files that refuse to delete (locked, permissions) keep their rows
-/// and are reported — same rule as `delete_track`: only gone files lose their catalogue entry.
+/// and are reported by path — same rule as `delete_track`: only gone files lose their
+/// catalogue entry.
 #[tauri::command]
 pub async fn clear_downloads(state: St<'_>) -> Result<usize, String> {
     let mut cleared = 0usize;
-    let mut stuck = 0usize;
+    let mut stuck: Vec<String> = Vec::new();
     for d in state.db.list_downloads() {
         match std::fs::remove_file(&d.file_path) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => {
-                stuck += 1;
+                stuck.push(d.file_path.clone());
                 continue;
             }
         }
         state.db.delete_download(&d.video_id);
         cleared += 1;
     }
-    if stuck > 0 {
+    if !stuck.is_empty() {
         return Err(format!(
-            "cleared {cleared}, but {stuck} file(s) could not be deleted and were kept"
+            "cleared {cleared}, but {} file(s) could not be deleted and were kept: {}",
+            stuck.len(),
+            stuck.join(", ")
         ));
     }
     Ok(cleared)
