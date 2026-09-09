@@ -1800,7 +1800,11 @@ impl AppState {
         // current track already set. Just append the URL. Unlocked: a slow mpv must not stall
         // the queue mutex (start_current/on_track_ended/UI ops all need it).
         // NOTE: player::Error is !Send (Rc inside) — stringify before any await below.
-        if let Err(e) = self.player.enqueue(&data.stream_url).map_err(|e| e.to_string()) {
+        if let Err(e) = self
+            .player
+            .enqueue(&data.stream_url)
+            .map_err(|e| e.to_string())
+        {
             tracing::warn!(error = %e, "enqueue lookahead failed");
             let mut q = self.queue.lock().await;
             if q.lookahead_loaded == Some(next_idx) {
