@@ -1,5 +1,6 @@
 <script lang="ts">
 	// Poolside Queue — full queue management with reorder, remove, play next.
+	import { onDestroy } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { TrashIcon, PlayIcon, ArrowUp02Icon, ArrowDown02Icon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
@@ -51,9 +52,7 @@
 			}
 		};
 		const up = (ev: PointerEvent) => {
-			window.removeEventListener('pointermove', move, true);
-			window.removeEventListener('pointerup', up, true);
-			window.removeEventListener('pointercancel', off, true);
+			detach();
 			if (!swiping) return;
 			const dx = ev.clientX - pressX;
 			swiping = false;
@@ -62,26 +61,45 @@
 			swipeAte = true;
 			setTimeout(() => (swipeAte = false), 300);
 			if (shouldRemove(dx, pressW)) {
+				// Resolve by videoId at fire time: a skip inside the 200ms fly-off
+				// would otherwise delete the wrong upcoming track.
+				const vid = items[idx]?.video_id;
 				removingIdx = idx;
 				removingDir = dx < 0 ? -1 : 1;
 				setTimeout(() => {
 					removingIdx = null;
-					removeAt(idx);
+					const live = vid
+						? items.findIndex(
+								(it, j) => j > currentIdx && it.video_id === vid
+							)
+						: -1;
+					if (live >= 0) removeAt(live);
 				}, 200);
 			}
 		};
 		const off = () => {
-			window.removeEventListener('pointermove', move, true);
-			window.removeEventListener('pointerup', up, true);
-			window.removeEventListener('pointercancel', off, true);
+			detach();
 			swiping = false;
 			swipeIdx = null;
 			swipedX = 0;
 		};
+		function detach() {
+			window.removeEventListener('pointermove', move, true);
+			window.removeEventListener('pointerup', up, true);
+			window.removeEventListener('pointercancel', off, true);
+			window.removeEventListener('blur', off, true);
+		}
 		window.addEventListener('pointermove', move, true);
 		window.addEventListener('pointerup', up, true);
 		window.addEventListener('pointercancel', off, true);
+		window.addEventListener('blur', off, true);
+		activeDetach = detach;
 	}
+	// Unmount/blur mid-press must not leave window listeners firing against dead state.
+	let activeDetach: (() => void) | null = null;
+	onDestroy(() => {
+		activeDetach?.();
+	});
 	function swallowSwipeClick(e: MouseEvent) {
 		if (!swipeAte) return;
 		e.preventDefault();

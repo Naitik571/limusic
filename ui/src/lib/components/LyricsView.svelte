@@ -104,12 +104,23 @@
 	/** Display text for a line or word segment (romaji when toggled, original otherwise). */
 	function segText(line: number, word: number, fallback: string): string {
 		if (!romanOn || !romanSeg) return fallback;
-		const l = lyrics;
-		if (!l) return fallback;
-		const segs = segList(l);
-		const idx = segs.findIndex((s) => s.line === line && s.word === word);
-		return idx >= 0 ? (romanSeg[idx] ?? fallback) : fallback;
+		const p = segIndex.get(`${line}:${word}`);
+		return p === undefined ? fallback : (romanSeg[p] ?? fallback);
 	}
+
+	// Segment positions (`line:word` → index into romanSeg), built once per lyrics instead of
+	// per word per frame — segText runs for every visible word on every karaoke frame.
+	const segIndex = $derived.by(() => {
+		const m = new Map<string, number>();
+		const l = lyrics;
+		if (!l) return m;
+		let k = 0;
+		l.lines.forEach((ln, i) => {
+			if (ln.words?.length) ln.words.forEach((_, w) => m.set(`${i}:${w}`, k++));
+			else m.set(`${i}:-1`, k++);
+		});
+		return m;
+	});
 
 	$effect(() => {
 		reloadKey;
@@ -322,6 +333,9 @@
 	// mpv's position arrives ~4x a second. Run a local clock forward from each one so the karaoke
 	// sweep moves every frame instead of stepping four times a second.
 	let interpolatedPosSecs = $state(playback.position);
+	// Aurora primary, sampled once per frame (not per word): getComputedStyle forces a style
+	// recalc, and the karaoke sweep calls sung() for every visible word on every frame.
+	let sungPrimary: [number, number, number] = [0.585, 0.233, 15.458];
 
 	$effect(() => {
 		const pos = playback.position;
@@ -335,6 +349,7 @@
 		const base = pos;
 		const baseAt = performance.now();
 		interpolatedPosSecs = pos;
+		sungPrimary = readPrimary();
 		let frameId = requestAnimationFrame(function tick() {
 			interpolatedPosSecs = base + (performance.now() - baseAt) / 1000;
 			frameId = requestAnimationFrame(tick);
@@ -354,10 +369,9 @@
 
 	// The Aurora headline ramp from .text-gradient — the exact colours line-mode karaoke shows,
 	// sampled at t so the word sweep and the line gradient read as one continuous system.
+	// Primary comes from the per-frame cache (see sungPrimary), never a per-word style read.
 	function sung(t: number): string {
-		const cs = getComputedStyle(document.documentElement);
-		const primary = parseOkLCH(cs.getPropertyValue('--primary').trim());
-		const stops: [number, number, number][] = [primary, [0.68, 0.19, 285], [0.65, 0.17, 335]];
+		const stops: [number, number, number][] = [sungPrimary, [0.68, 0.19, 285], [0.65, 0.17, 335]];
 		const x = Math.min(1, Math.max(0, t)) * (stops.length - 1);
 		const i = Math.min(stops.length - 2, Math.floor(x));
 		const f = x - i;
@@ -368,6 +382,14 @@
 	function parseOkLCH(v: string): [number, number, number] {
 		const m = v.match(/oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
 		return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0.585, 0.233, 15.458];
+	}
+	function readPrimary(): [number, number, number] {
+		try {
+			const cs = getComputedStyle(document.documentElement);
+			return parseOkLCH(cs.getPropertyValue('--primary').trim());
+		} catch {
+			return [0.585, 0.233, 15.458];
+		}
 	}
 
 </script>

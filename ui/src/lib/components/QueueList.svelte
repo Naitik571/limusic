@@ -1,6 +1,7 @@
 <script lang="ts">
 import { flip } from 'svelte/animate';
 import { cubicOut } from 'svelte/easing';
+import { onDestroy } from 'svelte';
 import { HugeiconsIcon } from '@hugeicons/svelte';
 import { InfinityIcon } from '@hugeicons/core-free-icons';
 import TrackRow from '$lib/components/TrackRow.svelte';
@@ -122,11 +123,19 @@ const canReorder = $derived(lt.role !== 'guest');
 				swallowClick = true; // kill the click a same-row release synthesizes
 				setTimeout(() => (swallowClick = false), 300);
 				if (idx !== null && shouldRemove(dx, w)) {
+					// Resolve by videoId at fire time, not release time: a skip/reorder
+					// inside the 200ms fly-off would otherwise delete the wrong row.
+					const vid = playback.queue.items[idx]?.video_id;
 					removingIdx = idx;
 					removingDir = dx < 0 ? -1 : 1;
 					setTimeout(() => {
 						removingIdx = null;
-						api.removeFromQueue(idx);
+						const live = vid
+							? playback.queue.items.findIndex(
+									(it, j) => j > playback.queue.currentIndex && it.video_id === vid
+								)
+							: -1;
+						if (live >= 0) api.removeFromQueue(live);
 					}, 200);
 				}
 				return;
@@ -173,6 +182,12 @@ const canReorder = $derived(lt.role !== 'guest');
 	function detachPressListeners() {
 		detachPress?.();
 	}
+
+	// Unmount mid-press (navigation while dragging): drop the window listeners so a later
+	// pointerup can't fire a reorder/remove against a dead press.
+	onDestroy(() => {
+		detachPressListeners();
+	});
 
 	function resetDrag() {
 			dragging = false;

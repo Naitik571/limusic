@@ -135,8 +135,7 @@
 		if (past !== dragPastEject) dragPastEject = past;
 	}
 	async function onDiscPointerUp() {
-		if (!isDragging) return;
-		if (seekMode) {
+		if (!isDragging) return;		if (seekMode) {
 			// Land exactly where the dial points, then reset the gesture.
 			seekMode = false;
 			isDragging = false;
@@ -158,6 +157,16 @@
 			triggerSnap();
 		}
 		// snap back to spindle visually
+		dragX = 0;
+		dragY = 0;
+		dragPastEject = false;
+	}
+	// Cancellation is not a release (OS interrupt, Alt-Tab, touch stolen): reset the gesture
+	// with zero side effects — no pause, no resume, no seek commit, no toast.
+	function onDiscPointerCancel() {
+		if (!isDragging) return;
+		isDragging = false;
+		seekMode = false;
 		dragX = 0;
 		dragY = 0;
 		dragPastEject = false;
@@ -271,7 +280,7 @@
 				onpointerdown={onDiscPointerDown}
 				onpointermove={onDiscPointerMove}
 				onpointerup={onDiscPointerUp}
-				onpointercancel={onDiscPointerUp}
+				onpointercancel={onDiscPointerCancel}
 				ondblclick={onDiscDoubleClick}
 			>
 				<div class="ps-sleeve"><div class="mouth"></div></div>

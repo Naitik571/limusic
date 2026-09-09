@@ -531,11 +531,16 @@ async fn download_track_inner(
     Ok(())
 }
 
-/// Hard-delete a download: drop the row and remove the file. Returns an error only on the DB
-/// side; a missing file is ignored (the catalogue is the source of truth).
+/// Hard-delete a download: remove the file, then drop the row. A missing file is ignored
+/// (the catalogue is the source of truth); any other fs failure aborts WITHOUT dropping the
+/// row, so a locked file reports an error instead of vanishing from the UI while still on disk.
 pub fn delete_track(db: &Db, video_id: &str) -> Result<(), String> {
     if let Some(path) = db.download_path(video_id) {
-        let _ = std::fs::remove_file(&path);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("could not delete file: {e}")),
+        }
     }
     db.delete_download(video_id);
     Ok(())

@@ -862,14 +862,14 @@ impl AppState {
         // directly (`RDAMVM<videoId>`): a bare next(videoId) returns only the seed song + an
         // automixPreviewVideoRenderer, so the queue would never grow past one track.
         let radio_id = format!("RDAMVM{video_id}");
+        let Some(client) = self.clients.get(innertube::METADATA_CLIENT) else {
+            tracing::warn!("next() radio hydration skipped: no metadata client");
+            self.prime_lookahead(gen).await;
+            return;
+        };
         match self
             .it
-            .next(
-                self.clients.get(innertube::METADATA_CLIENT).unwrap(),
-                Some(&video_id),
-                Some(&radio_id),
-                None,
-            )
+            .next(client, Some(&video_id), Some(&radio_id), None)
             .await
         {
             Ok(next) => {
@@ -958,9 +958,12 @@ impl AppState {
             q.radio_seed = radio_seed_for(source_id);
             q.source_name = source_name;
             q.radio = false; // a chosen playlist/album; `start_radio` sets it back on for its own
-                             // Explicitly requested by a page Shuffle button, or already on and set to stick
-                             // across queues (issue #117: off by default, so an album opened while shuffle is on
-                             // plays in order).
+                             // A fresh context carries no moods: stale chips would offer another queue's radios.
+            q.radio_moods = Vec::new();
+            q.radio_mood_params = None;
+            // Explicitly requested by a page Shuffle button, or already on and set to stick
+            // across queues (issue #117: off by default, so an album opened while shuffle is on
+            // plays in order).
             let keep_shuffled = shuffle || (self.sticky_shuffle() && q.shuffle_orig.is_some());
             if keep_shuffled {
                 // Snapshot the real playlist order (for un-shuffle), then play the clicked track
@@ -1075,7 +1078,16 @@ impl AppState {
             .unwrap_or(0);
         self.play_tracks(items, Some(start), Some(seed), title, false, None)
             .await;
-        self.queue.lock().await.radio = true;
+        // play_tracks wipes moods (fresh context) — install this radio's own chips, then
+        // re-emit/persist: start_current inside play_tracks already announced without them.
+        {
+            let mut q = self.queue.lock().await;
+            q.radio = true;
+            q.radio_moods = moods;
+            q.radio_mood_params = None;
+        }
+        self.emit_queue().await;
+        self.persist_queue().await;
         Ok(())
     }
 
@@ -1166,6 +1178,11 @@ impl AppState {
     /// current song stay, continuation keeps replaying the new mood's params. Errors when the
     /// mood is unknown or YouTube answers empty (the queue is untouched then).
     pub async fn set_radio_mood(self: &std::sync::Arc<Self>, title: String) -> Result<(), String> {
+        if self.lt.is_guest().await {
+            self.emit_guest_hint();
+            return Ok(());
+        }
+        let gen = self.generation.load(Ordering::SeqCst);
         let (chip, current, source_name, existing) = {
             let q = self.queue.lock().await;
             let chip = q
@@ -1220,6 +1237,11 @@ impl AppState {
         } else {
             res.mood_chips
         };
+        // A skip/track-end during the fetch means this mix belongs to the old song — drop it
+        // rather than installing a stale mood behind the new track.
+        if self.generation.load(Ordering::SeqCst) != gen {
+            return Ok(());
+        }
         self.splice_radio(
             items,
             chip.playlist_id,
@@ -1363,8 +1385,20 @@ impl AppState {
         // resume plays that track while the UI still shows the ended one (the "song plays but
         // the cover/title stay the same" bug). Mirror the gapless-advance bookkeeping, then
         // pause with everything consistent.
-        if *self.sleep_timer.lock().unwrap() == SleepTimer::EndOfSong {
-            *self.sleep_timer.lock().unwrap() = SleepTimer::Off;
+        // Single lock for compare-and-clear (a racing set_sleep_timer between two locks
+        // could arm a fresh timer just to have it eaten here), and drop the persisted row
+        // so a restart doesn't re-arm a timer that already fired.
+        let end_of_song = {
+            let mut timer = self.sleep_timer.lock().unwrap();
+            if *timer == SleepTimer::EndOfSong {
+                *timer = SleepTimer::Off;
+                true
+            } else {
+                false
+            }
+        };
+        if end_of_song {
+            self.db.delete_setting("sleep_deadline");
             let advanced = {
                 let mut q = self.queue.lock().await;
                 match next_index(q.items.len(), q.current, q.repeat) {
@@ -1605,6 +1639,10 @@ impl AppState {
             self.emit_error(&item.video_id, &e.to_string());
             return false;
         }
+        // Fresh timeline: readers (prev-restart's 3 s rule, scrubbers) must not see the
+        // previous track's position before the first time-pos tick lands.
+        self.latest_position
+            .store(0.0f64.to_bits(), Ordering::SeqCst);
         let _ = self.player.play();
         // Resume a restored position, but only for the exact track it was saved against (any first
         // play consumes it, so jumping elsewhere doesn't inherit it). mpv queues an absolute seek
@@ -1745,10 +1783,7 @@ impl AppState {
         // Another prime already claimed this slot while we resolved. Two run concurrently at the
         // autoplay trigger point — `start_current` spawns `extend_queue_radio` (which primes after
         // extending) and its caller primes right after, both on the same generation, so the
-        // pre-resolve "already primed" check in `prime_lookahead` can't see the other one. Appending
-        // again leaves a *duplicate* entry in mpv's playlist, and since the queue advances one index
-        // per end-file, that offsets mpv from `current` for the rest of the session: the dup replays
-        // while the UI shows the track after it.
+        // pre-resolve "already primed" check in `prime_lookahead` can't see the other one.
         if q.lookahead_loaded == Some(next_idx) {
             tracing::debug!(
                 index = next_idx,
@@ -1756,13 +1791,46 @@ impl AppState {
             );
             return;
         }
+        // Claim the slot BEFORE the blocking call: two concurrent resolves for the same slot
+        // must not both reach mpv (a duplicate playlist entry offsets mpv from `current` for
+        // the rest of the session). The claim is verified again after the enqueue lands.
+        q.lookahead_loaded = Some(next_idx);
+        drop(q);
         // Headers are global in mpv; the direct-URL clients need none beyond UA, which the
-        // current track already set. Just append the URL.
-        if let Err(e) = self.player.enqueue(&data.stream_url) {
+        // current track already set. Just append the URL. Unlocked: a slow mpv must not stall
+        // the queue mutex (start_current/on_track_ended/UI ops all need it).
+        // NOTE: player::Error is !Send (Rc inside) — stringify before any await below.
+        if let Err(e) = self.player.enqueue(&data.stream_url).map_err(|e| e.to_string()) {
             tracing::warn!(error = %e, "enqueue lookahead failed");
+            let mut q = self.queue.lock().await;
+            if q.lookahead_loaded == Some(next_idx) {
+                q.lookahead_loaded = None;
+            }
             return;
         }
-        q.lookahead_loaded = Some(next_idx);
+        if self.generation.load(Ordering::SeqCst) != gen {
+            let mut q = self.queue.lock().await;
+            if q.lookahead_loaded == Some(next_idx) {
+                q.lookahead_loaded = None;
+            }
+            return;
+        }
+        let mut q = self.queue.lock().await;
+        // A skip during the enqueue moved the slot: release the claim, don't record.
+        if q.items
+            .get(next_idx)
+            .map(|i| i.video_id != next_video)
+            .unwrap_or(true)
+        {
+            if q.lookahead_loaded == Some(next_idx) {
+                q.lookahead_loaded = None;
+            }
+            tracing::debug!(
+                index = next_idx,
+                "queue moved during lookahead enqueue — not recording"
+            );
+            return;
+        }
         q.lookahead_client = Some(data.stream_client.clone());
         q.lookahead_playback_url = data.playback_url.clone();
         // Same backfill as start_current: a gapless advance emits this item straight from the
@@ -1962,6 +2030,10 @@ impl AppState {
     /// Previous: restart the current track when more than 3 s in (YouTube Music parity),
     /// otherwise step back. A press from the top of a song goes to the previous one.
     pub async fn prev_in_queue(self: &std::sync::Arc<Self>) {
+        if self.lt.is_guest().await {
+            self.emit_guest_hint(); // guest playback is host-driven (play_index blocks too)
+            return;
+        }
         if self.current_position() > 3.0 {
             let _ = self.player.seek(0.0);
             return;

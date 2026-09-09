@@ -5,6 +5,44 @@
    SQLite) and glow white behind the playhead. Click or drag-scrub the wave to seek; the
    thin fill shows until peaks land.
 -->
+<script module lang="ts">
+	import * as apiMod from '$lib/api';
+
+	// Peak cache, genuinely module-level: every pill mount (coverflow, stack, shell) shares
+	// it, with an LRU cap and inflight dedup so rapid A→B→A skips never double-fetch.
+	const PEAK_CAP = 50;
+	const peakCache = new Map<string, number[]>();
+	const peakInflight = new Map<string, Promise<number[]>>();
+	function peakGet(id: string, bars: number): Promise<number[]> {
+		const hit = peakCache.get(id);
+		if (hit) {
+			peakCache.delete(id);
+			peakCache.set(id, hit);
+			return Promise.resolve(hit);
+		}
+		const flying = peakInflight.get(id);
+		if (flying) return flying;
+		const p = apiMod
+			.waveformPeaks(id, bars)
+			.then((res) => {
+				peakInflight.delete(id);
+				if (!res.length) throw new Error('empty');
+				if (peakCache.size >= PEAK_CAP) {
+					const oldest = peakCache.keys().next();
+					if (!oldest.done) peakCache.delete(oldest.value);
+				}
+				peakCache.set(id, res);
+				return res;
+			})
+			.catch((e) => {
+				peakInflight.delete(id);
+				throw e;
+			});
+		peakInflight.set(id, p);
+		return p;
+	}
+</script>
+
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { onMount } from 'svelte';
@@ -64,10 +102,9 @@
 	});
 
 	// Waveform peaks for the island seekbar (mooziac-style): decoded once per track by Rust,
-	// then cached in SQLite. Module-level map so remounts don't refetch; the plain thin fill
-	// shows until peaks land (decode needs the audio bytes first).
+	// then cached in SQLite. Shared module cache above, so remounts don't refetch; the plain
+	// thin fill shows until peaks land (decode needs the audio bytes first).
 	const WAVE_BARS = 96;
-	const peakCache = new Map<string, number[]>();
 	let peaks = $state<number[] | null>(null);
 	$effect(() => {
 		const id = cur?.videoId;
@@ -75,19 +112,11 @@
 			peaks = null;
 			return;
 		}
-		const hit = peakCache.get(id);
-		if (hit) {
-			peaks = hit;
-			return;
-		}
 		peaks = null;
 		let live = true;
-		api
-			.waveformPeaks(id, WAVE_BARS)
+		peakGet(id, WAVE_BARS)
 			.then((bars) => {
-				if (!live || !bars.length) return;
-				peakCache.set(id, bars);
-				peaks = bars;
+				if (live) peaks = bars;
 			})
 			.catch(() => {});
 		return () => {
@@ -111,8 +140,19 @@
 		if (ratio !== null) api.seek(ratio * dur).catch(() => {});
 	}
 	// Drag-scrub across the waveform: press seeks, moving with the button held keeps seeking.
+	// Throttled live seeks (150ms) with an exact seek on release — unthrottled pointermove
+	// floods IPC and stutters the audio.
+	let lastScrubAt = 0;
 	function scrub(e: PointerEvent) {
 		if (e.buttons !== 1) return;
+		const ratio = seekRatio(e);
+		if (ratio === null) return;
+		const now = performance.now();
+		if (now - lastScrubAt < 150) return;
+		lastScrubAt = now;
+		api.seek(ratio * dur).catch(() => {});
+	}
+	function scrubEnd(e: PointerEvent) {
 		const ratio = seekRatio(e);
 		if (ratio !== null) api.seek(ratio * dur).catch(() => {});
 	}
@@ -167,6 +207,7 @@
 			onclick={seek}
 			onpointerdown={scrub}
 			onpointermove={scrub}
+			onpointerup={scrubEnd}
 			onkeydown={(e) => {
 				if (e.key === 'ArrowLeft') { e.preventDefault(); api.seek(Math.max(0, pos - 5)).catch(() => {}); }
 				if (e.key === 'ArrowRight') { e.preventDefault(); api.seek(Math.min(dur, pos + 5)).catch(() => {}); }

@@ -54,6 +54,7 @@
 	let dragY = $state(0);
 	let dragging = $state(false);
 	let startY = 0;
+	let lastDragDist = 0;
 	function onDown(e: PointerEvent) {
 		if (e.button !== 0) return;
 		dragging = true;
@@ -68,8 +69,19 @@
 	function onUp() {
 		if (!dragging) return;
 		dragging = false;
+		// Stash the distance BEFORE resetting: the click that follows a drag tests this, and
+		// testing dragY after the reset below is always true (every flip opened the album).
+		lastDragDist = Math.abs(dragY);
 		if (dragY < -70) advance();
 		else if (dragY > 70) recede();
+		dragY = 0;
+	}
+	// Cancellation is not a release: reset without cycling, so a touchcancel past the
+	// threshold doesn't flip the stack the user never let go of.
+	function onCancel() {
+		if (!dragging) return;
+		dragging = false;
+		lastDragDist = Math.abs(dragY);
 		dragY = 0;
 	}
 	let wheelAt = 0;
@@ -108,7 +120,7 @@
 		onpointerdown={onDown}
 		onpointermove={onMove}
 		onpointerup={onUp}
-		onpointercancel={onUp}
+		onpointercancel={onCancel}
 		onwheel={onWheel}
 		onkeydown={(e) => {
 			if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); advance(); }
@@ -130,7 +142,7 @@
 					class="ps-stack-card {depth === 0 ? 'is-top' : ''}"
 					style="transform: translateY({depth * 44 + lift}px) translateZ({-depth * 110}px) scale({Math.max(0.6, 1 - depth * 0.07)}); opacity: {Math.max(0, 1 - depth * 0.16)}; z-index: {1000 - depth}; {dragging && depth === 0 ? 'transition: none;' : ''}"
 					onclick={() => {
-						if (depth === 0 && Math.abs(dragY) < 6) onOpenAlbum(a);
+						if (depth === 0 && lastDragDist < 6) onOpenAlbum(a);
 					}}
 				>
 					<img decoding="async" src={artFor(a)} alt="" draggable="false" />

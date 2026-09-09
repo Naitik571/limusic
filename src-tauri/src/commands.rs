@@ -1952,26 +1952,49 @@ pub async fn delete_download(state: St<'_>, video_id: String) -> Result<(), Stri
     crate::downloads::delete_track(&state.db, &video_id)
 }
 
-/// Wipe every download. The files go with the rows.
+/// Wipe every download. Files that refuse to delete (locked, permissions) keep their rows
+/// and are reported — same rule as `delete_track`: only gone files lose their catalogue entry.
 #[tauri::command]
-pub async fn clear_downloads(state: St<'_>) -> Result<(), String> {
+pub async fn clear_downloads(state: St<'_>) -> Result<usize, String> {
+    let mut cleared = 0usize;
+    let mut stuck = 0usize;
     for d in state.db.list_downloads() {
-        let _ = std::fs::remove_file(&d.file_path);
+        match std::fs::remove_file(&d.file_path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                stuck += 1;
+                continue;
+            }
+        }
         state.db.delete_download(&d.video_id);
+        cleared += 1;
     }
-    Ok(())
+    if stuck > 0 {
+        return Err(format!(
+            "cleared {cleared}, but {stuck} file(s) could not be deleted and were kept"
+        ));
+    }
+    Ok(cleared)
 }
 
 /// Drop catalogue rows whose file is gone from disk (deleted outside the app, moved
-/// drives, …). Returns how many rows were pruned. Run when the download manager opens so
-/// the "already downloaded" badges stop lying — cheap metadata stats, no reads.
+/// drives, …). Returns how many rows were pruned. Only true absence prunes: `metadata`
+/// errors (unmounted drive, permissions) leave the row alone. Run when the download manager
+/// opens so the "already downloaded" badges stop lying — cheap metadata stats, no reads.
 #[tauri::command]
 pub async fn prune_missing_downloads(state: St<'_>) -> Result<usize, String> {
     let mut pruned = 0usize;
     for d in state.db.list_downloads() {
-        if !std::path::Path::new(&d.file_path).exists() {
-            state.db.delete_download(&d.video_id);
-            pruned += 1;
+        match std::fs::metadata(&d.file_path) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                state.db.delete_download(&d.video_id);
+                pruned += 1;
+            }
+            Err(e) => {
+                tracing::debug!(path = %d.file_path, error = %e, "prune skipped: not a missing file");
+            }
         }
     }
     if pruned > 0 {

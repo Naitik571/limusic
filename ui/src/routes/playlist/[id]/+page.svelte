@@ -152,18 +152,35 @@
 	});
 
 	// A search has to cover the whole playlist, not the pages scrolled so far — otherwise
-	// unloaded songs never match. Walks the rest in (shared reentrant loadMore) the moment
-	// a query lands with pages still out; results stream in as pages land.
+	// unloaded songs never match. Walks the rest in (shared reentrant loadMore) once the
+	// query settles: 400ms debounce so fast typing doesn't walk on every keystroke, and no
+	// walk at all once the box is cleared. Results stream in as pages land.
 	let searchWalking = $state(false);
+	let searchWalkTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
-		if (!searching || !pl?.continuation || searchWalking) return;
+		const q = search.trim();
+		if (searchWalkTimer) {
+			clearTimeout(searchWalkTimer);
+			searchWalkTimer = null;
+		}
+		if (!q || !pl?.continuation || searchWalking) return;
 		const pid = id;
-		searchWalking = true;
-		loadAll().then((ok) => {
-			if (pid !== id) return;
-			searchWalking = false;
-			if (!ok) warnPartial('searched');
-		});
+		searchWalkTimer = setTimeout(() => {
+			searchWalkTimer = null;
+			if (pid !== id || !search.trim()) return;
+			searchWalking = true;
+			loadAll().then((ok) => {
+				if (pid !== id) return;
+				searchWalking = false;
+				if (!ok) warnPartial('searched');
+			});
+		}, 400);
+		return () => {
+			if (searchWalkTimer) {
+				clearTimeout(searchWalkTimer);
+				searchWalkTimer = null;
+			}
+		};
 	});
 
 	// Render cap: large playlists (5k rows) OOM/jank when every TrackRow mounts at once

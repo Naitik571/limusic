@@ -359,7 +359,7 @@ export const downloadTrack = (item: {
 export const listDownloads = () => invoke<DownloadList>('list_downloads');
 export const deleteDownload = (video_id: string) =>
 	invoke<void>('delete_download', { video_id });
-export const clearDownloads = () => invoke<void>('clear_downloads');
+export const clearDownloads = () => invoke<number>('clear_downloads');
 /** Drop catalogue rows whose file is gone from disk. Returns pruned row count. */
 export const pruneMissingDownloads = () => invoke<number>('prune_missing_downloads');
 /** Stop one in-flight (or queued-behind-the-batch) download; its partial file is removed. */
