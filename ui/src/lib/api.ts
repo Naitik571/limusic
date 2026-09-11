@@ -490,6 +490,8 @@ export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: s
 	invoke<void>('start_radio', { kind, id, name });
 /** Switch the radio's Up Next mood. Replaces everything after the playing track. */
 export const setRadioMood = (title: string) => invoke<void>('set_radio_mood', { title });
+/** Re-seed radio from the current track. Returns installed track count. */
+export const refreshRadio = () => invoke<number>('refresh_radio');
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>

@@ -60,7 +60,15 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.7.0`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.7.1`.
+
+**v0.7.1 — radio honesty + lyrics translation:**
+- **Refresh radio** — dead mix? Re-seed from the current track via the queue panel, in both layouts
+- **Autoplay respects its setting** — off means the queue ends at your song; filler is flagged so the divider, clear-queue and restores all agree
+- **Continuation hardened** — single in-flight extend, exhausted-radio latch, one failure notice per 5 minutes, mood params ride continuation
+- **Lyrics translation** — footer toggle (off/both/translated) across 9 languages, one round-trip per song
+- **Trailing-line wipe** — the active line eases out in its last 2 seconds
+- **Divider invariant tests** — filler can never share a block with chosen tracks again
 
 **v0.7.0 — native frame, romaji,-prev restart, Romanian, feel:**
 - **Previous restarts past 3s** — YTM parity: a press deep in a song restarts it, from the top it steps back

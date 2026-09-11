@@ -900,6 +900,13 @@ pub async fn start_radio(
     state.start_radio(&kind, &id, name).await
 }
 
+/// Re-seed radio from the current track (queue panel "Refresh radio"). Returns how many
+/// tracks the fresh mix installed behind what's playing.
+#[tauri::command]
+pub async fn refresh_radio(state: St<'_>) -> Result<usize, String> {
+    state.inner().clone().refresh_radio().await
+}
+
 /// Similar songs to a track — the same radio endpoint that powers autoplay (context/08),
 /// fetched read-only so a playlist page can show a "More like this" shelf. The radio playlist
 /// is seeded directly (`RDAMVM<videoId>`): a bare next(videoId) returns only the seed plus an

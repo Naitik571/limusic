@@ -526,6 +526,7 @@ pub fn run() {
             commands::get_browse_grid,
             commands::play_playlist,
             commands::start_radio,
+            commands::refresh_radio,
             commands::set_radio_mood,
             commands::get_similar_songs,
             commands::like,

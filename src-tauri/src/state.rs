@@ -852,8 +852,11 @@ impl AppState {
             // new track, ahead of its radio (hydration appends behind them).
             let mut carried = upcoming_queued(&q.items, q.current);
             // A local file has no radio behind it (see below), so don't promise one in the header.
-            q.source_name = (!crate::local::is_local_song(&seed.video_id))
-                .then(|| format!("{} Radio", seed.title));
+            // Same when autoplay is off and no radio will hydrate: no "Radio" header for a queue
+            // that ends at the chosen song.
+            q.source_name = (!crate::local::is_local_song(&seed.video_id)
+                && self.autoplay_enabled())
+            .then(|| format!("{} Radio", seed.title));
             q.items = vec![seed];
             q.items.append(&mut carried);
             q.current = 0;
@@ -1304,7 +1307,44 @@ impl AppState {
         Ok(())
     }
 
-    /// Walk the rest of a playlist in the background and append it to the playing queue, page by
+    /// Re-seed radio from the current track (queue panel "Refresh radio"): fetch a fresh mix
+    /// and install it behind what's playing. History and the current song stay; manual adds
+    /// ride along like any other splice. Errors when nothing is playing or the mix is empty.
+    pub async fn refresh_radio(self: &std::sync::Arc<Self>) -> Result<usize, String> {
+        if self.lt.is_guest().await {
+            self.emit_guest_hint();
+            return Ok(0);
+        }
+        let current = {
+            let q = self.queue.lock().await;
+            q.items.get(q.current).map(|i| i.video_id.clone())
+        };
+        let Some(video) = current else {
+            return Err("Nothing playing.".into());
+        };
+        if crate::local::is_local_song(&video) {
+            return Err("Local files have no radio.".into());
+        }
+        let (items, seed, moods) = self
+            .fetch_radio(Some(&video), &format!("RDAMVM{video}"))
+            .await?;
+        // Drop the seed echo if the mix opens on it; an empty remainder means a dead mix.
+        let items: Vec<SongItem> = items.into_iter().filter(|i| i.video_id != video).collect();
+        if items.is_empty() {
+            return Err("That mix came back empty.".into());
+        }
+        let title = {
+            self.queue
+                .lock()
+                .await
+                .source_name
+                .clone()
+                .or_else(|| Some("Radio".into()))
+        };
+        self.splice_radio(items.clone(), seed, title, moods, None)
+            .await;
+        Ok(items.len())
+    }
     /// page. The alternative (what the UI used to do) is loading every page *before* starting
     /// playback: continuation tokens are chained, so that's ~50 sequential round trips on a
     /// 5000-track playlist, all of them before the first note.

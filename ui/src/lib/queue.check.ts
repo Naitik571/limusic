@@ -128,4 +128,36 @@ v = queueBlocks(
 );
 ok(v.blocks[0].heading === 'Next in queue', 'all manual, two origins ⇒ "Next in queue"');
 
+// --- Autoplay divider invariants -------------------------------------------------------
+// Hydration-style filler behind a single song: its own block, never merged into context.
+v = queueBlocks(q([song('now'), song('r1', { autoplay: true }), song('r2', { autoplay: true })], 0));
+ok(v.blocks.length === 1 && v.blocks[0].autoplay, 'filler gets exactly one block');
+ok(v.blocks[0].heading === 'Autoplay', 'filler block is headed Autoplay');
+ok(v.blocks[0].rows.length === 2, 'both filler tracks land in it');
+
+// Reordered filler (a move dragged one radio track up): flags ride the items, so the
+// divider follows the flag runs instead of the old positions.
+v = queueBlocks(q([song('now'), song('r1', { autoplay: true }), song('c1'), song('r2', { autoplay: true })], 0));
+ok(v.blocks.length === 3, 'flag runs split: filler, chosen, filler');
+ok(v.blocks[0].autoplay && !v.blocks[1].autoplay && v.blocks[2].autoplay, 'order is filler/chosen/filler');
+ok(v.blocks[1].rows[0].item.video_id === 'c1', 'the chosen track keeps its own block');
+
+// Best-mix scramble (chosen + filler interleaved by key sort): no filler ever shares a
+// block with a chosen track, even though positions no longer group them.
+v = queueBlocks(
+	q(
+		[song('now'), song('a1'), song('r1', { autoplay: true }), song('a2'), song('r2', { autoplay: true })],
+		0,
+		'Afro'
+	)
+);
+ok(v.blocks.length === 4, 'interleave splits into four runs');
+ok(v.blocks.every((b) => b.rows.every((r) => !!r.item.autoplay === b.autoplay)), 'no mixed block survives');
+
+// Shuffle with filler at the tail: the shuffled run is one block, filler still its own.
+v = queueBlocks(
+	q([song('now'), song('a1'), song('a2'), song('r1', { autoplay: true })], 0, 'Afro', true)
+);
+ok(v.blocks.at(-1)?.autoplay === true, 'filler stays out of the shuffled run');
+
 console.log('ok');

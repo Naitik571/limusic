@@ -117,6 +117,23 @@
 		api.clearQueued().catch((e) => toast.error(String(e)));
 		toast.info('Upcoming tracks cleared');
 	}
+	// "Refresh radio" on radio queues (moods present or a Radio header): re-seed the mix.
+	const isRadio = $derived(
+		(q.radioMoods?.length ?? 0) > 0 || (q.sourceName ?? '').endsWith(' Radio')
+	);
+	let refreshingRadio = $state(false);
+	async function refreshRadio() {
+		if (refreshingRadio) return;
+		refreshingRadio = true;
+		try {
+			const n = await api.refreshRadio();
+			toast.success(`Radio refreshed — ${n} new track${n === 1 ? '' : 's'}`);
+		} catch (e) {
+			toast.error(String(e));
+		} finally {
+			refreshingRadio = false;
+		}
+	}
 </script>
 
 <div class="ps-queue">
@@ -124,6 +141,11 @@
 		<h2 class="ps-page-title">QUEUE</h2>
 		<div class="ps-queue-info">
 			<span>{items.length} tracks</span>
+			{#if isRadio}
+				<button class="ps-ghost" disabled={refreshingRadio} onclick={refreshRadio} title="Fetch a fresh mix from the current track">
+					{refreshingRadio ? 'Refreshing…' : 'Refresh radio'}
+				</button>
+			{/if}
 			{#if items.length > currentIdx + 1}
 				<button class="ps-ghost" onclick={clearUpcoming}>Clear upcoming</button>
 			{/if}
