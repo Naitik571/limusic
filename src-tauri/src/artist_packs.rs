@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager as _};
 
 const INDEX_URL: &str = "https://artist-packs.sfg545.dev/v1/index.json";
 

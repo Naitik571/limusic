@@ -27,7 +27,7 @@ const WAVEFORM_MAX_BYTES: u64 = 48_000_000;
 
 /// Peaks (0–255) for `video_id`, `count` bars wide. Cached after the first computation.
 pub async fn waveform_peaks(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     state: &Arc<AppState>,
     orchestrator: &Arc<Orchestrator>,
     video_id: &str,
@@ -50,7 +50,7 @@ pub async fn waveform_peaks(
 
 /// Prefer the downloaded file (no network); otherwise resolve + fetch the stream URL.
 async fn fetch_audio_bytes(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     state: &Arc<AppState>,
     orchestrator: &Arc<Orchestrator>,
     video_id: &str,

@@ -2443,7 +2443,10 @@ impl AppState {
                 .lock()
                 .unwrap()
                 .as_ref()
-                .is_some_and(|(s, t, g)| *s == seed && *t == last.video_id && *g == self.generation)
+                .is_some_and(|(s, t, g)| {
+                    let current = self.generation.load(Ordering::SeqCst);
+                    *s == seed && *t == last.video_id && *g == current
+                })
             {
                 return 0;
             }

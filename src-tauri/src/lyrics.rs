@@ -24,21 +24,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
 
-/// How long a cached "no lyrics found" verdict suppresses refetching. Short on purpose:
-/// negatives are only cached for genuine checked-everywhere runs, and a brief TTL lets a
-/// provider that was down (or a freshly indexed catalog entry) surface on the next play.
+// How long a cached "no lyrics found" verdict suppresses refetching. Short on purpose:
+// negatives are only cached for genuine checked-everywhere runs, and a brief TTL lets a
+// provider that was down (or a freshly indexed catalog entry) surface on the next play.
 const MISS_TTL_SECS: i64 = 120;
 
-/// Per-provider hard deadline. One stalled host costs at most this much — never the old
-/// serial 15–20 s default-client timeout per hop.
+// Per-provider hard deadline. One stalled host costs at most this much — never the old
+// serial 15–20 s default-client timeout per hop.
 const PROVIDER_TIMEOUT: Duration = Duration::from_millis(2500);
 
-/// Whole-lookup budget: `next()`, the concurrent wave, and any YTM follow-up together.
+// Whole-lookup budget: `next()`, the concurrent wave, and any YTM follow-up together.
 const FETCH_BUDGET: Duration = Duration::from_secs(5);
 
 const LRCLIB_ROOT: &str = "https://lrclib.net/api";
 
-/// One display line. `time_ms` present ⇔ the line is synced (a plain-lyrics response has none).
+// One display line. `time_ms` present ⇔ the line is synced (a plain-lyrics response has none).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LyricWord {
     pub text: String,
@@ -46,9 +46,9 @@ pub struct LyricWord {
     pub end_ms: u64,
 }
 
-/// One display line. `time_ms` present means the line is synced (a plain-lyrics response has none).
-/// `words` carries per-word timings when a provider returned them; `end_time_ms` is the line's own
-/// end cue (karaoke needs it to know when the last word stops).
+// One display line. `time_ms` present means the line is synced (a plain-lyrics response has none).
+// `words` carries per-word timings when a provider returned them; `end_time_ms` is the line's own
+// end cue (karaoke needs it to know when the last word stops).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LyricLine {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -63,7 +63,7 @@ pub struct LyricLine {
 }
 
 impl LyricLine {
-    /// Convenience constructor for the common case (plain text or a single cue, no words).
+// Convenience constructor for the common case (plain text or a single cue, no words).
     pub fn simple(time_ms: Option<u64>, text: String) -> Self {
         Self {
             time_ms,
@@ -75,10 +75,10 @@ impl LyricLine {
     }
 }
 
-/// What the UI gets (and what `lyrics_cache` stores as JSON).
+// What the UI gets (and what `lyrics_cache` stores as JSON).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lyrics {
-    /// Attribution shown in the panel footer ("LRCLIB", "Musixmatch", …).
+// Attribution shown in the panel footer ("LRCLIB", "Musixmatch", …).
     pub source: String,
     pub synced: bool,
     #[serde(default)]
@@ -91,11 +91,11 @@ pub struct LyricsRequest {
     pub title: String,
     pub artists: String,
     pub album: Option<String>,
-    /// Track length in seconds (mpv's), tightens LRCLIB matching. `None`/0 when unknown yet.
+// Track length in seconds (mpv's), tightens LRCLIB matching. `None`/0 when unknown yet.
     pub duration: Option<f64>,
 }
 
-/// Cache-through entry point for the `get_lyrics` command.
+// Cache-through entry point for the `get_lyrics` command.
 pub async fn get_lyrics(state: &AppState, req: LyricsRequest) -> Option<Lyrics> {
     let now = now_secs();
     let video_id = req.video_id.clone();
@@ -133,14 +133,14 @@ pub async fn get_lyrics(state: &AppState, req: LyricsRequest) -> Option<Lyrics> 
     lyrics
 }
 
-/// Run the provider wave. Second value: cache the outcome — true only for a genuine "every
-/// provider answered, nothing exists" run (LRCLIB's exact + fuzzy passes both spoke cleanly,
-/// no provider merely timed out, and the YTM lookups — when reachable — didn't error). Any
-/// transient trouble returns `false` so the next play retries instead of a poisoned negative.
-///
-/// Flow: resolve `next()` → launch all keyless providers CONCURRENTLY under per-provider
-/// deadlines → take the best answer by priority (synced beats instrumental beats plain; earlier
-/// provider wins ties) → optionally upgrade with YTM authenticated lyrics within budget.
+// Run the provider wave. Second value: cache the outcome — true only for a genuine "every
+// provider answered, nothing exists" run (LRCLIB's exact + fuzzy passes both spoke cleanly,
+// no provider merely timed out, and the YTM lookups — when reachable — didn't error). Any
+// transient trouble returns `false` so the next play retries instead of a poisoned negative.
+//
+// Flow: resolve `next()` → launch all keyless providers CONCURRENTLY under per-provider
+// deadlines → take the best answer by priority (synced beats instrumental beats plain; earlier
+// provider wins ties) → optionally upgrade with YTM authenticated lyrics within budget.
 async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, bool) {
     let started = std::time::Instant::now();
 
@@ -264,11 +264,11 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     };
 
-    /// synced-with-words > synced > instrumental > plain — the axis (besides priority)
-    /// that ranks answers. Word-level wins because a Musixmatch/NetEase/Kugou/QRC word hit
-    /// would otherwise always lose to an earlier line-level hit (LRCLIB usually has one for
-    /// exactly the popular tracks that carry word timings). Default on; Settings writes
-    /// `lyrics_word_first=false` to prefer plain line sync instead.
+// synced-with-words > synced > instrumental > plain — the axis (besides priority)
+// that ranks answers. Word-level wins because a Musixmatch/NetEase/Kugou/QRC word hit
+// would otherwise always lose to an earlier line-level hit (LRCLIB usually has one for
+// exactly the popular tracks that carry word timings). Default on; Settings writes
+// `lyrics_word_first=false` to prefer plain line sync instead.
     let prefer_words = state.db.get_setting("lyrics_word_first").as_deref() != Some("false");
     fn rank(l: &Lyrics, prefer_words: bool) -> u8 {
         if l.synced {
@@ -417,8 +417,8 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     (best.map(|(_, l)| l), definitive)
 }
 
-/// One provider under one hard deadline. `Err(())` = the deadline blew — a *transient* verdict
-/// the caller must never turn into a cached negative.
+// One provider under one hard deadline. `Err(())` = the deadline blew — a *transient* verdict
+// the caller must never turn into a cached negative.
 async fn bounded(
     fut: impl std::future::Future<Output = Result<Option<Lyrics>, reqwest::Error>>,
 ) -> Result<Option<Lyrics>, ()> {
@@ -443,8 +443,8 @@ struct LrclibTrack {
     duration: Option<f64>,
 }
 
-/// Shared client. LRCLIB asks integrations to identify themselves via User-Agent.
-/// The timeout is a backstop only — each provider runs under `PROVIDER_TIMEOUT`.
+// Shared client. LRCLIB asks integrations to identify themselves via User-Agent.
+// The timeout is a backstop only — each provider runs under `PROVIDER_TIMEOUT`.
 fn http() -> &'static reqwest::Client {
     static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
     HTTP.get_or_init(|| {
@@ -460,8 +460,8 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
-/// `/api/get`: exact signature match. `Ok(None)` = definitive "not in LRCLIB" (404);
-/// `Err` = transport trouble (don't cache a negative off it).
+// `/api/get`: exact signature match. `Ok(None)` = definitive "not in LRCLIB" (404);
+// `Err` = transport trouble (don't cache a negative off it).
 async fn lrclib_get(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest::Error> {
     let mut q: Vec<(&str, String)> = vec![
         ("track_name", req.title.clone()),
@@ -484,12 +484,12 @@ async fn lrclib_get(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest:
     Ok(Some(resp.error_for_status()?.json().await?))
 }
 
-/// `/api/search`: fuzzy pass, run as a second LRCLIB chance right next to the exact `/api/get`
-/// (previously it sat behind a dozen other providers and rarely got reached). Two queries: the
-/// fielded `track_name`/`artist_name` first, then a bare `q=` retry — parenthesis/feat.-junk
-/// titles defeat the fielded match. Prefers the synced candidate whose duration is closest to
-/// ours; if nothing is within ±5 s it still returns the closest synced candidate rather than
-/// hard-failing (duration narrows the choice, never gates it).
+// `/api/search`: fuzzy pass, run as a second LRCLIB chance right next to the exact `/api/get`
+// (previously it sat behind a dozen other providers and rarely got reached). Two queries: the
+// fielded `track_name`/`artist_name` first, then a bare `q=` retry — parenthesis/feat.-junk
+// titles defeat the fielded match. Prefers the synced candidate whose duration is closest to
+// ours; if nothing is within ±5 s it still returns the closest synced candidate rather than
+// hard-failing (duration narrows the choice, never gates it).
 async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwest::Error> {
     let mut list: Vec<LrclibTrack> = http()
         .get(format!("{LRCLIB_ROOT}/search"))
@@ -550,7 +550,7 @@ async fn lrclib_search(req: &LyricsRequest) -> Result<Option<LrclibTrack>, reqwe
         .or(best_plain))
 }
 
-/// Best `Lyrics` an LRCLIB track yields: instrumental > synced > plain > nothing.
+// Best `Lyrics` an LRCLIB track yields: instrumental > synced > plain > nothing.
 fn lrclib_to_lyrics(t: &LrclibTrack) -> Option<Lyrics> {
     if t.instrumental {
         return Some(Lyrics {
@@ -574,7 +574,7 @@ fn lrclib_to_lyrics(t: &LrclibTrack) -> Option<Lyrics> {
     plain_from_text(t.plain_lyrics.as_deref(), "LRCLIB")
 }
 
-/// Plain text → un-timed lines (blank lines kept as stanza breaks).
+// Plain text → un-timed lines (blank lines kept as stanza breaks).
 fn plain_from_text(text: Option<&str>, source: &str) -> Option<Lyrics> {
     let text = text?.trim();
     if text.is_empty() {
@@ -599,11 +599,11 @@ fn plain_from_text(text: Option<&str>, source: &str) -> Option<Lyrics> {
 
 const MXM_ROOT: &str = "https://apic-desktop.musixmatch.com/ws/1.1";
 const MXM_APP_ID: &str = "web-desktop-app-v1.0";
-/// Acceptance floor for title/artist token overlap between our request and the matched track.
+// Acceptance floor for title/artist token overlap between our request and the matched track.
 const MXM_MIN_OVERLAP: f64 = 0.35;
 
-/// Browser-ish UA — the desktop endpoint rejects bare clients (curl, reqwest default).
-/// The timeout is a backstop only — each provider runs under `PROVIDER_TIMEOUT`.
+// Browser-ish UA — the desktop endpoint rejects bare clients (curl, reqwest default).
+// The timeout is a backstop only — each provider runs under `PROVIDER_TIMEOUT`.
 fn web_http() -> &'static reqwest::Client {
     static WEB_HTTP: OnceLock<reqwest::Client> = OnceLock::new();
     WEB_HTTP.get_or_init(|| {
@@ -644,7 +644,7 @@ async fn mxm_usertoken() -> Option<String> {
     Some(tok)
 }
 
-/// `Ok(None)` = definitive "no Musixmatch result"; `Err` = transport/token trouble.
+// `Ok(None)` = definitive "no Musixmatch result"; `Err` = transport/token trouble.
 async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     // Token unavailable → definitive-ish "skip Musixmatch" (the caller doesn't cache a miss
     // on this path — only `Ok(Some)` marks the run definitive), never a hard error.
@@ -746,9 +746,9 @@ async fn musixmatch(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Erro
     Ok(plain_from_text(Some(&cleaned), "Musixmatch"))
 }
 
-/// Parse Musixmatch richsync JSON into word-level LyricLines. The macro response nests it at
-/// `macro_calls > track.richsync.get > message > body > richsync` when the track has one; the
-/// standalone endpoint returns it at `message.body.richsync`. Both shapes land here.
+// Parse Musixmatch richsync JSON into word-level LyricLines. The macro response nests it at
+// `macro_calls > track.richsync.get > message > body > richsync` when the track has one; the
+// standalone endpoint returns it at `message.body.richsync`. Both shapes land here.
 fn mxm_richsync_parse(rs: &serde_json::Value) -> Option<Vec<LyricLine>> {
     let arr = rs.get("lines")?.as_array()?;
     let mut out = Vec::new();
@@ -811,9 +811,9 @@ fn mxm_richsync_parse(rs: &serde_json::Value) -> Option<Vec<LyricLine>> {
     (!out.is_empty() && has_words).then_some(out)
 }
 
-/// Try to pull a richsync out of an already-fetched macro response. If the macro didn't include
-/// it, ask `track.richsync.get` directly with the matched track id (one extra request, only on
-/// this path — cheap compared with losing word timings for Musixmatch's whole catalog).
+// Try to pull a richsync out of an already-fetched macro response. If the macro didn't include
+// it, ask `track.richsync.get` directly with the matched track id (one extra request, only on
+// this path — cheap compared with losing word timings for Musixmatch's whole catalog).
 async fn mxm_richsync(resp: &serde_json::Value) -> Result<Option<Vec<LyricLine>>, reqwest::Error> {
     // 1. Already inside the macro response?
     if let Some(rs) =
@@ -864,7 +864,7 @@ async fn mxm_richsync(resp: &serde_json::Value) -> Result<Option<Vec<LyricLine>>
 
 const APPLE_ROOT: &str = "https://amp-api.music.apple.com/v1/catalog";
 
-/// Ok(None) = no tokens configured / no Apple result. Err = transport trouble.
+// Ok(None) = no tokens configured / no Apple result. Err = transport trouble.
 async fn apple_get(
     state: &AppState,
     req: &LyricsRequest,
@@ -1006,7 +1006,7 @@ async fn apple_get(
 
 // --- Genius (unauthenticated internal API + page scrape) --------------------------------------
 
-/// `Ok(None)` = no hit / no lyrics on the page; `Err` = transport trouble.
+// `Ok(None)` = no hit / no lyrics on the page; `Err` = transport trouble.
 async fn genius(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     // 1. Search via the internal endpoint the site itself uses (no OAuth token needed).
     let q = format!("{} {}", req.title, req.artists);
@@ -1095,9 +1095,9 @@ async fn genius(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     Ok(plain_from_text(Some(&blocks.join("\n\n")), "Genius"))
 }
 
-/// Megalobiz — keyless synced-lyrics source. The search page lists matches; each result links to
-/// an LRC page we scrape. Adds a fifth, no-token-needed provider so timed lyrics still appear when
-/// LRCLIB / Musixmatch / YTM come up empty (Genius only returns plain text).
+// Megalobiz — keyless synced-lyrics source. The search page lists matches; each result links to
+// an LRC page we scrape. Adds a fifth, no-token-needed provider so timed lyrics still appear when
+// LRCLIB / Musixmatch / YTM come up empty (Genius only returns plain text).
 async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     let q = format!("{} {}", req.title, req.artists);
     let search = web_http()
@@ -1197,20 +1197,20 @@ async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
     }
 }
 
-/// `<div data-lyrics-container="true" …> … </div>` — non-greedy up to the first close tag; the
-/// containers don't nest divs (spans/links only), so a simple match is safe enough.
+// `<div data-lyrics-container="true" …> … </div>` — non-greedy up to the first close tag; the
+// containers don't nest divs (spans/links only), so a simple match is safe enough.
 static GENIUS_CONTAINER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(r#"data-lyrics-container="true"[^>]*>((?s).*?)</div>"#).unwrap()
 });
 
-/// Strip every tag, keeping the text between them.
+// Strip every tag, keeping the text between them.
 fn strip_html_tags(s: &str) -> String {
     static TAGS: std::sync::LazyLock<regex::Regex> =
         std::sync::LazyLock::new(|| regex::Regex::new(r"<[^>]*>").unwrap());
     TAGS.replace_all(s, "").into_owned()
 }
 
-/// Minimal entity decode for what lyric pages actually use.
+// Minimal entity decode for what lyric pages actually use.
 fn html_unescape(s: &str) -> String {
     s.replace("&amp;", "&")
         .replace("&quot;", "\"")
@@ -1221,7 +1221,7 @@ fn html_unescape(s: &str) -> String {
         .replace("&nbsp;", " ")
 }
 
-/// Case-insensitive token-overlap (Dice-ish) between two strings, 0..1.
+// Case-insensitive token-overlap (Dice-ish) between two strings, 0..1.
 fn overlap(a: &str, b: &str) -> f64 {
     let toks = |s: &str| -> Vec<String> {
         s.to_lowercase()
@@ -1238,18 +1238,18 @@ fn overlap(a: &str, b: &str) -> f64 {
     2.0 * common as f64 / (ta.len() + tb.len()) as f64
 }
 
-/// Musixmatch's copyright scrambling: restricted tracks come back as word salad — same
-/// line/syllable shape as the real lyrics, every word replaced with a fake Latin token
-/// ("Wob gopini den / Tefe woxica fero …"). It parses as valid synced lyrics, so it must
-/// be caught by shape, not by parse failure. Deliberately strict (all four must hold —
-/// a false positive hides real lyrics, a false negative just shows salad):
-///   1. long enough to judge (10+ non-empty lines, 40+ tokens — short songs exempt);
-///   2. no repeated line (real songs repeat: choruses, hooks, "la la la");
-///   3. near-zero word reuse across the whole text (unique/total > 0.9);
-///   4. no short tokens at all (real lyrics in any language have 1–2 char words —
-///      "a", "I", "to", "de", "la", "na", "ke", "oh" — and contractions/digits split
-///      into short pieces, so their absence means every word is a fabricated 3+ char
-///      token of pure letters).
+// Musixmatch's copyright scrambling: restricted tracks come back as word salad — same
+// line/syllable shape as the real lyrics, every word replaced with a fake Latin token
+// ("Wob gopini den / Tefe woxica fero …"). It parses as valid synced lyrics, so it must
+// be caught by shape, not by parse failure. Deliberately strict (all four must hold —
+// a false positive hides real lyrics, a false negative just shows salad):
+//   1. long enough to judge (10+ non-empty lines, 40+ tokens — short songs exempt);
+//   2. no repeated line (real songs repeat: choruses, hooks, "la la la");
+//   3. near-zero word reuse across the whole text (unique/total > 0.9);
+//   4. no short tokens at all (real lyrics in any language have 1–2 char words —
+//      "a", "I", "to", "de", "la", "na", "ke", "oh" — and contractions/digits split
+//      into short pieces, so their absence means every word is a fabricated 3+ char
+//      token of pure letters).
 fn looks_scrambled(lines: &[LyricLine]) -> bool {
     let texts: Vec<&str> = lines
         .iter()
@@ -1293,9 +1293,9 @@ fn looks_scrambled(lines: &[LyricLine]) -> bool {
 
 // --- LRC parsing ----------------------------------------------------------------------------
 
-/// Parse LRC text (`[mm:ss.xx] line`) into sorted lines. Handles multiple timestamps per line
-/// (`[t1][t2]text` — the line repeats at both cues) and skips metadata tags (`[ar:…]`).
-/// Timestamped empty lines are kept: they're instrumental gaps the UI can show as such.
+// Parse LRC text (`[mm:ss.xx] line`) into sorted lines. Handles multiple timestamps per line
+// (`[t1][t2]text` — the line repeats at both cues) and skips metadata tags (`[ar:…]`).
+// Timestamped empty lines are kept: they're instrumental gaps the UI can show as such.
 pub(crate) fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
     let mut out = Vec::new();
     for raw in lrc.lines() {
@@ -1327,7 +1327,7 @@ pub(crate) fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
     out
 }
 
-/// `mm:ss`, `mm:ss.xx`, or `mm:ss.xxx` → milliseconds.
+// `mm:ss`, `mm:ss.xx`, or `mm:ss.xxx` → milliseconds.
 fn parse_lrc_time(tag: &str) -> Option<u64> {
     let (m, rest) = tag.split_once(':')?;
     let m: u64 = m.trim().parse().ok()?;
@@ -1351,7 +1351,7 @@ fn parse_lrc_time(tag: &str) -> Option<u64> {
     Some((m * 60 + s) * 1000 + ms)
 }
 
-/// `"3:21"` / `"1:02:03"` → seconds.
+// `"3:21"` / `"1:02:03"` → seconds.
 fn duration_str_secs(s: &str) -> Option<f64> {
     let mut total: u64 = 0;
     for part in s.split(':') {
@@ -1380,7 +1380,7 @@ const BOIDU_UA: &str = concat!(
     " (https://github.com/Naitik571/limusic)"
 );
 
-/// Ok(None) = no Boidu result; Err = transport trouble.
+// Ok(None) = no Boidu result; Err = transport trouble.
 async fn boidu_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     let mut q: Vec<(&str, String)> = vec![("s", req.title.clone()), ("a", req.artists.clone())];
     if let Some(album) = &req.album {
@@ -1442,8 +1442,8 @@ async fn boidu_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
     Ok(hit)
 }
 
-/// Kugou KRC — free, no key, huge pool. search -> candidates (id+accesskey) -> download fmt=krc.
-/// KRC is base64 + xor with key 'krc1' (0x6b,0x72,0x63,0x31). Decodes to LRC with per-word <start,dur,0>word blocks.
+// Kugou KRC — free, no key, huge pool. search -> candidates (id+accesskey) -> download fmt=krc.
+// KRC is base64 + xor with key 'krc1' (0x6b,0x72,0x63,0x31). Decodes to LRC with per-word <start,dur,0>word blocks.
 async fn kugou_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     let q = format!("{} {}", req.title, req.artists);
     let search: serde_json::Value = match web_http()
@@ -1858,9 +1858,9 @@ fn parse_krc_words(text: &str) -> Vec<LyricLine> {
     out
 }
 
-/// A provider's parsed lines as a result, or None when there was nothing to show.
-/// synced is derived from the lines rather than asserted by the caller. TTML without begin
-/// attributes, and JSON items carrying text but no time, both parse to real lines with no cue.
+// A provider's parsed lines as a result, or None when there was nothing to show.
+// synced is derived from the lines rather than asserted by the caller. TTML without begin
+// attributes, and JSON items carrying text but no time, both parse to real lines with no cue.
 fn from_parsed(source: &str, lines: Vec<LyricLine>) -> Option<Lyrics> {
     if lines.is_empty() {
         return None;
@@ -1873,8 +1873,8 @@ fn from_parsed(source: &str, lines: Vec<LyricLine>) -> Option<Lyrics> {
     })
 }
 
-/// Parse LRC, eLRC (inline word tags), TTML/AAML XML, or the Better-Lyrics/JSON array shape into
-/// LyricLines. Used by every provider that returns more than plain text.
+// Parse LRC, eLRC (inline word tags), TTML/AAML XML, or the Better-Lyrics/JSON array shape into
+// LyricLines. Used by every provider that returns more than plain text.
 fn parse_lrc_or_ttml(text: &str) -> Vec<LyricLine> {
     let trimmed = text.trim();
 
@@ -1970,7 +1970,7 @@ fn parse_lrc_or_ttml(text: &str) -> Vec<LyricLine> {
     parse_elrc(text)
 }
 
-/// TTML and Apple Music AAML XML parser - extracts per-line + per-word timings.
+// TTML and Apple Music AAML XML parser - extracts per-line + per-word timings.
 fn parse_ttml_aaml(xml: &str) -> Vec<LyricLine> {
     let mut lines = Vec::new();
     let mut pos = 0;
@@ -2059,7 +2059,7 @@ fn parse_ttml_aaml(xml: &str) -> Vec<LyricLine> {
     lines
 }
 
-/// Enhanced LRC parser - handles inline word-timing tags (<00:01.23>word).
+// Enhanced LRC parser - handles inline word-timing tags (<00:01.23>word).
 fn parse_elrc(lrc: &str) -> Vec<LyricLine> {
     let mut base_lines = parse_lrc(lrc);
     for line in &mut base_lines {
@@ -2107,8 +2107,8 @@ fn parse_elrc(lrc: &str) -> Vec<LyricLine> {
     base_lines
 }
 
-/// LRCMux: merge word timings from a second source into lines that lack them.
-/// mm:ss, mm:ss.xx, or mm:ss.xxx -> milliseconds (LRC timestamps).
+// LRCMux: merge word timings from a second source into lines that lack them.
+// mm:ss, mm:ss.xx, or mm:ss.xxx -> milliseconds (LRC timestamps).
 fn parse_ttml_time(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(rest) = s.strip_suffix("ms") {
@@ -2135,7 +2135,7 @@ fn parse_ttml_time(s: &str) -> Option<u64> {
     Some((secs * 1000.0) as u64)
 }
 
-/// Pull a name="value" or name='value' attribute out of a tag string.
+// Pull a name="value" or name='value' attribute out of a tag string.
 fn parse_xml_attr(tag: &str, attr: &str) -> Option<String> {
     let pattern = format!("{attr}=\"");
     if let Some(idx) = tag.find(&pattern) {
@@ -2152,7 +2152,7 @@ fn parse_xml_attr(tag: &str, attr: &str) -> Option<String> {
     None
 }
 
-/// A JSON number/string -> milliseconds. Sub-500 values are read as seconds (the APIs mix units).
+// A JSON number/string -> milliseconds. Sub-500 values are read as seconds (the APIs mix units).
 fn parse_time_val(v: &serde_json::Value) -> Option<u64> {
     if let Some(f) = v.as_f64() {
         if f < 500.0 {
@@ -2181,7 +2181,7 @@ fn parse_time_val(v: &serde_json::Value) -> Option<u64> {
     }
 }
 
-/// Strip XML tags, keeping the text between them (used for TTML span/word text).
+// Strip XML tags, keeping the text between them (used for TTML span/word text).
 fn strip_xml_tags(s: &str) -> String {
     let mut out = String::new();
     let mut in_tag = false;
@@ -2202,11 +2202,11 @@ fn strip_xml_tags(s: &str) -> String {
 // They delegate to the real providers above (or new ones below) so the provider chain name
 // matches the issue while behaviour stays covered by existing implementations.
 
-/// BetterLyrics / Boidu TTML alias (word-level karaoke provider).
+// BetterLyrics / Boidu TTML alias (word-level karaoke provider).
 pub async fn fetch_better_lyrics(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     boidu_get(req).await
 }
-/// Alias used by task description: fetchBetterLyrics.
+// Alias used by task description: fetchBetterLyrics.
 pub async fn fetchBetterLyrics(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     fetch_better_lyrics(req).await
 }
@@ -2508,7 +2508,7 @@ pub fn get_offset(db: &crate::db::Db, video_id: &str) -> i64 {
 pub fn set_offset(db: &crate::db::Db, video_id: &str, offset_ms: i64) {
     db.set_lyric_offset(video_id, offset_ms);
 }
-/// Apply stored offset to a Lyrics for display (shifts every cue).
+// Apply stored offset to a Lyrics for display (shifts every cue).
 pub fn apply_offset(lyrics: &mut Lyrics, offset_ms: i64) {
     if offset_ms == 0 {
         return;
@@ -2533,8 +2533,8 @@ pub fn apply_offset(lyrics: &mut Lyrics, offset_ms: i64) {
 // translate.googleapis is keyless and stable; romanize uses a small kana table (pykakasi-lite).
 // Both are best-effort: callers handle Err/empty gracefully.
 
-/// Translate `text` via https://translate.googleapis.com/translate_a/single.
-/// Caller should chunk per line (google limits q length). `target` is a 2-letter code (ja, es ...).
+// Translate `text` via https://translate.googleapis.com/translate_a/single.
+// Caller should chunk per line (google limits q length). `target` is a 2-letter code (ja, es ...).
 pub async fn translate_text(text: &str, target: &str) -> Result<String, reqwest::Error> {
     if text.trim().is_empty() || target.trim().is_empty() || target == "auto" {
         return Ok(text.to_string());
@@ -2570,7 +2570,7 @@ pub async fn translate_text(text: &str, target: &str) -> Result<String, reqwest:
     }
 }
 
-/// Translate every LyricLine's text in-place. Keeps sync data, fills `translation`.
+// Translate every LyricLine's text in-place. Keeps sync data, fills `translation`.
 pub async fn translate_lyrics(lines: &mut [LyricLine], target: &str) -> Result<(), reqwest::Error> {
     for line in lines.iter_mut() {
         if line.text.trim().is_empty() {
@@ -2808,7 +2808,7 @@ fn kana_to_romaji_char(c: char) -> String {
     kana_to_romaji(&c.to_string())
 }
 
-/// Romanize a string (kana→romaji). Non-kana passes through.
+// Romanize a string (kana→romaji). Non-kana passes through.
 pub fn romanize_text(text: &str) -> String {
     // If string contains kana, run mapping; else return as-is (pykakasi lite).
     if text
@@ -2843,7 +2843,7 @@ pub fn romanize_lyrics(lines: &mut [LyricLine]) {
 // Persist locally + fire-and-forget to Unison remote. The UI calls these via Tauri commands
 // `lyrics_vote` / `lyrics_report` which map to `POST /lyrics/vote` semantics in Kodama.
 
-/// Vote on a lyric source for a track. `vote` = +1 (up) / -1 (down). Stored per (videoId, source).
+// Vote on a lyric source for a track. `vote` = +1 (up) / -1 (down). Stored per (videoId, source).
 pub async fn vote_lyrics(
     state: &AppState,
     video_id: &str,
@@ -2861,7 +2861,7 @@ pub async fn vote_lyrics(
         .await;
     Ok(())
 }
-/// Report incorrect lyrics for a track (maps to Unison `POST /lyrics/report`).
+// Report incorrect lyrics for a track (maps to Unison `POST /lyrics/report`).
 pub async fn report_lyrics(
     state: &AppState,
     video_id: &str,
