@@ -48,6 +48,7 @@ export const THEMES: Theme[] = [
 export const FONTS: { label: string; value: string }[] = [
 	{ label: 'Inter', value: "'Inter Variable', sans-serif" },
 	{ label: 'JetBrains Mono', value: "'JetBrains Mono Variable', sans-serif" },
+	{ label: 'OpenDyslexic', value: "'OpenDyslexic', sans-serif" },
 	{ label: 'System', value: 'ui-sans-serif, system-ui, sans-serif' }
 ];
 

@@ -10,6 +10,8 @@ import { clearCached } from './pagecache';
 import * as pl from './personal';
 import type { Personal } from './personal';
 import { appearance, setAppearance } from './theme.svelte';
+import { bindingsFor, matchBinding, type ActionId } from './keys';
+import { spatialEnabled, spatialMove } from './spatial';
 
 export const playback = $state({
 	now: null as NowPlaying | null,
@@ -34,6 +36,63 @@ export async function loadCrossfade() {
 export function setCrossfadeSecs(s: number) { crossfade.secs = s; api.setCrossfade(s, crossfade.mode).catch(()=>{}); }
 export function setCrossfadeMode(m: string) { crossfade.mode = m; api.setCrossfade(crossfade.secs, m).catch(()=>{}); }
 export function setBestMix(on: boolean) { crossfade.best_mix = on; api.setBestMix(on).catch(()=>{}); }
+
+// --- Spectrum visualizer (WASAPI app-loopback + FFT) --------------------------------------
+export const visualizer = $state<{ on: boolean; style: 'bars' | 'circular' }>({ on: false, style: 'bars' });
+export async function loadVisualizer() {
+	try {
+		const s = await api.getSettings();
+		visualizer.on = s.visualizer === 'true';
+		if (s.visualizer_style === 'circular' || s.visualizer_style === 'bars') visualizer.style = s.visualizer_style;
+	} catch {}
+}
+export function setVisualizerOn(on: boolean) {
+	visualizer.on = on;
+	api.setVisualizer(on).catch(() => {});
+}
+export function setVisualizerStyle(style: 'bars' | 'circular') {
+	visualizer.style = style;
+	api.setSetting('visualizer_style', style).catch(() => {});
+}
+
+// --- Custom app icon ----------------------------------------------------------------------
+// PNG decoded frontend-side (canvas reads it, no image crate needed), pushed as RGBA to the
+// window. Only the source path persists; a moved file just fails to re-apply (clear it in
+// Settings). Clearing restores stock on next launch — there is no runtime stock-icon API.
+export async function applyAppIcon(path: string): Promise<void> {
+	const { convertFileSrc } = await import('@tauri-apps/api/core');
+	const url = convertFileSrc(path);
+	const img = new Image();
+	await new Promise<void>((res, rej) => {
+		img.onload = () => res();
+		img.onerror = () => rej(new Error('unreadable image'));
+		img.src = url;
+	});
+	const S = 256; // taskbar needs no more; keeps the IPC payload small
+	const c = document.createElement('canvas');
+	c.width = S;
+	c.height = S;
+	const ctx = c.getContext('2d');
+	if (!ctx) throw new Error('no 2d context');
+	const side = Math.min(img.width, img.height);
+	ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+	const d = ctx.getImageData(0, 0, S, S);
+	await api.setAppIcon(Array.from(d.data), S, S);
+	await api.setSetting('app_icon_path', path);
+}
+
+export async function restoreAppIcon(): Promise<void> {
+	try {
+		const s = await api.getSettings();
+		if (s.app_icon_path) await applyAppIcon(s.app_icon_path);
+	} catch {
+		/* nothing saved, or the file moved — stock icon stays */
+	}
+}
+
+export async function clearAppIcon(): Promise<void> {
+	await api.setSetting('app_icon_path', '');
+}
 
 // --- Offline download manager (Titlebar popover). A reactive list of in-flight / finished /
 // failed downloads, fed by the Rust event bus. Each track carries a 0–100 percent so the UI
@@ -103,6 +162,16 @@ export function startDownloadMonitor() {
 		downloadedIds.add(id);
 		downloads.active = Math.max(0, downloads.active - 1);
 		downloads.done += 1;
+		// Completed download announces itself with a Play action (plays from disk, offline).
+		const title = (it?.title ?? p.title ?? id) as string;
+		toast.action(`Downloaded ${title}`, 'Play', () =>
+			playSong({
+				video_id: id,
+				title,
+				artists: (it?.artists ?? p.artists ?? '') as string,
+				thumbnail: (it?.thumb ?? p.thumb ?? undefined) as string | undefined
+			})
+		);
 	});
 	api.onDownloadError((p: any) => {
 		const id = p.video_id as string;
@@ -643,45 +712,85 @@ function onShortcut(e: KeyboardEvent) {
 	// the first song-row click, which reads as "sometimes buggy".
 	const onButton = !!target?.closest('button, [role="button"]');
 	if (onButton && (e.key === ' ' || e.key === 'Enter')) return;
-	const key = e.key;
-	const pos = playback.position;
-	if (key === ' ' || key.toLowerCase() === 'k') {
+	// Spatial navigation owns Alt+Arrows when enabled (see spatial.ts) — never seek/volume.
+	if (e.altKey && e.key.startsWith('Arrow')) {
+		if (!spatialEnabled()) return;
+		const dir =
+			e.key === 'ArrowUp'
+				? 'up'
+				: e.key === 'ArrowDown'
+					? 'down'
+					: e.key === 'ArrowLeft'
+						? 'left'
+						: 'right';
+		if (spatialMove(dir as 'up' | 'down' | 'left' | 'right')) e.preventDefault();
+		return;
+	}	const pos = playback.position;
+	const run = (action: ActionId): boolean => bindingsFor(action).some((b) => matchBinding(e, b));
+	const precise = e.shiftKey;
+	// Shift+Arrows keep their legacy pear-parity meaning (precise 1% nudge) outside the map.
+	if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+		e.preventDefault();
+		nudgeVolume(e.key === 'ArrowUp' ? 1 : -1, true);
+		return;
+	}
+	if (run('playpause')) {
 		e.preventDefault();
 		api.togglePause();
-	} else if (e.shiftKey && key.toLowerCase() === 'n') {
+		return;
+	}
+	if (run('next')) {
 		e.preventDefault();
 		api.nextTrack();
-	} else if (e.shiftKey && key.toLowerCase() === 'p') {
+		return;
+	}
+	if (run('prev')) {
 		e.preventDefault();
 		api.prevTrack();
-	} else if (key.toLowerCase() === 'm') {
+		return;
+	}
+	if (run('mute')) {
 		e.preventDefault();
 		toggleMute();
-	} else if (key === 'ArrowUp') {
+		return;
+	}
+	if (run('seekback10')) {
 		e.preventDefault();
-		const precise = e.shiftKey;
+		api.seek(Math.max(0, pos - 10));
+		return;
+	}
+	if (run('seekfwd10')) {
+		e.preventDefault();
+		api.seek(pos + 10);
+		return;
+	}
+	if (run('volup')) {
+		e.preventDefault();
 		const step = precise ? SHORTCUT_STEP_PRECISE : SHORTCUT_STEP;
 		if (precise) nudgeVolume(step, true);
 		else commitVolume(Math.min(100, playback.volume + step));
-	} else if (key === 'ArrowDown') {
+		return;
+	}
+	if (run('voldown')) {
 		e.preventDefault();
-		const precise = e.shiftKey;
 		const step = precise ? SHORTCUT_STEP_PRECISE : SHORTCUT_STEP;
-		if (precise) nudgeVolume(-step, true);
+		if (precise) nudgeVolume(step, true);
 		else commitVolume(Math.max(0, playback.volume - step));
-	} else if (key === 'ArrowLeft') {
+		return;
+	}
+	if (run('seekback')) {
 		e.preventDefault();
 		api.seek(Math.max(0, pos - 5));
-	} else if (key === 'ArrowRight') {
+		return;
+	}
+	if (run('seekfwd')) {
 		e.preventDefault();
 		api.seek(pos + 5);
-	} else if (key.toLowerCase() === 'j') {
-		e.preventDefault();
-		api.seek(Math.max(0, pos - 10));
-	} else if (key.toLowerCase() === 'l') {
-		e.preventDefault();
-		api.seek(pos + 10);
+		return;
 	}
+	// Ctrl/Cmd chords (K, H, E, >/<) live in `shortcuts.ts`, which gates on the modifier first —
+	// this handler deliberately never sees them.
+}
 	// Ctrl/Cmd chords (K, H, E, >/<) live in `shortcuts.ts`, which gates on the modifier first —
 	// this handler deliberately never sees them.
 }
@@ -961,15 +1070,17 @@ export function openChannelPicker(required = false) {
 export type Toast = {
 	msg: string;
 	kind: 'info' | 'success' | 'error';
+	/** Optional call-to-action button (e.g. Play on a completed download). */
+	action?: { label: string; run: () => void };
 };
 
 // A counter, not the toast itself: $state proxies the stored object, so `ui.toast === t` is never
 // true and the toast would never clear. It also means a repeated message can't cut its own retry short.
 let seq = 0;
 
-function show(msg: string, kind: Toast['kind'], ms = 2500) {
+function show(msg: string, kind: Toast['kind'], ms = 2500, action?: Toast['action']) {
 	const id = ++seq;
-	ui.toast = { msg, kind };
+	ui.toast = { msg, kind, action };
 	setTimeout(() => {
 		if (seq === id) ui.toast = null;
 	}, ms);
@@ -979,7 +1090,21 @@ function show(msg: string, kind: Toast['kind'], ms = 2500) {
 export const toast = Object.assign((msg: string) => show(msg, 'info'), {
 	info: (msg: string) => show(msg, 'info'),
 	success: (msg: string) => show(msg, 'success'),
-	error: (msg: string) => show(msg, 'error')
+	error: (msg: string) => show(msg, 'error'),
+	/** Notice with an action button (stays up longer so it can be clicked). */
+	action: (msg: string, label: string, run: () => void) =>
+		show(
+			msg,
+			'success',
+			6000,
+			{
+				label,
+				run: () => {
+					ui.toast = null;
+					run();
+				}
+			}
+		)
 });
 
 export function openAddToPlaylist(song: SongItem) {
@@ -1291,6 +1416,8 @@ export function initApp(mini = false): () => void {
 	// Seed the Listen Together state (server URL, any active room after a UI reload).
 	api.ltGetState().then(applyLtState).catch(() => {});
 	loadCrossfade();
+	loadVisualizer();
+	void restoreAppIcon();
 	// Restore persisted volume (exponential EXPONENT=3)
 	api.getVolume().then((v) => { playback.volume = v; }).catch(()=>{});
 	return teardown;

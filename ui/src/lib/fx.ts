@@ -48,3 +48,76 @@ export function flyPlus(x: number, y: number): void {
 export function flyHeart(x: number, y: number): void {
 	fly('♥', x, y);
 }
+
+/**
+ * Particle dissolve at a point: ~26 canvas dots in accent/white tones with gravity + fade
+ * over ~600ms. Used on queue/playlist row removal. Skipped under reduced motion (nothing
+ * spawns — the row's own exit takes over).
+ */
+export function burst(x: number, y: number): void {
+	if (typeof document === 'undefined') return;
+	if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+	const canvas = document.createElement('canvas');
+	const W = 220;
+	const H = 220;
+	const dpr = Math.min(2, window.devicePixelRatio || 1);
+	canvas.width = W * dpr;
+	canvas.height = H * dpr;
+	canvas.setAttribute('aria-hidden', 'true');
+	canvas.style.cssText = [
+		'position:fixed',
+		`left:${x - W / 2}px`,
+		`top:${y - H / 2}px`,
+		`width:${W}px`,
+		`height:${H}px`,
+		'z-index:9999',
+		'pointer-events:none'
+	].join(';');
+	document.body.appendChild(canvas);
+	const ctx = canvas.getContext('2d');
+	if (!ctx) {
+		canvas.remove();
+		return;
+	}
+	ctx.scale(dpr, dpr);
+	const cs = getComputedStyle(document.documentElement);
+	const accent = cs.getPropertyValue('--primary').trim() || '#e0402a';
+	const colors = [accent, '#ffffff', accent, '#ffffff', accent];
+	type P = { x: number; y: number; vx: number; vy: number; r: number; c: string; life: number };
+	const parts: P[] = [];
+	for (let i = 0; i < 26; i++) {
+		const a = Math.random() * Math.PI * 2;
+		const sp = 60 + Math.random() * 160;
+		parts.push({
+			x: W / 2,
+			y: H / 2,
+			vx: Math.cos(a) * sp,
+			vy: Math.sin(a) * sp - 60,
+			r: 1.5 + Math.random() * 2.5,
+			c: colors[i % colors.length],
+			life: 1
+		});
+	}
+	const t0 = performance.now();
+	const dur = 600;
+	(function frame(now: number) {
+		const k = Math.min(1, (now - t0) / dur);
+		ctx.clearRect(0, 0, W, H);
+		const dt = 1 / 60;
+		for (const p of parts) {
+			p.vy += 420 * dt;
+			p.x += p.vx * dt;
+			p.y += p.vy * dt;
+			p.life = 1 - k;
+			ctx.globalAlpha = Math.max(0, p.life);
+			ctx.fillStyle = p.c;
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, p.r * (0.5 + p.life * 0.5), 0, Math.PI * 2);
+			ctx.fill();
+		}
+		ctx.globalAlpha = 1;
+		if (k < 1) requestAnimationFrame(frame);
+		else canvas.remove();
+	})(t0);
+	setTimeout(() => canvas.remove(), 800); // safety net
+}

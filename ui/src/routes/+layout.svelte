@@ -1,5 +1,7 @@
 <script lang="ts">
 	import './layout.css';
+	import '@fontsource/opendyslexic/400.css';
+	import '@fontsource/opendyslexic/700.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { ModeWatcher } from 'mode-watcher';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -23,6 +25,7 @@
 		layout
 	} from '$lib/theme.svelte';
 	import { thumb } from '$lib/thumb';
+	import { applyDys, loadDys } from '$lib/dys';
 	import { dragScroll } from '$lib/dnd';
 	import { suppressNative } from '$lib/menu';
 	import Sidebar from '$lib/components/Sidebar.svelte';
@@ -52,6 +55,7 @@
 	import {
 		updateState,
 		installUpdate,
+		dismissUpdateFailure,
 		openDownloadPage,
 		checkForUpdatesQuiet
 	} from '$lib/updater.svelte';
@@ -89,6 +93,7 @@
 	if (browser) {
 		initTheme();
 		initLayout();
+		applyDys(loadDys());
 	}
 
 	// Wire the Tauri event bridge once for the whole app; teardown on destroy. Check for an update
@@ -225,16 +230,39 @@
 			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-xl glass-strong px-4 py-2 text-sm shadow-2xl"
 		>
 			<span>Update available — v{updateState.available.version}</span>
-			{#if updateState.canInstall}
-				<Button size="sm" onclick={installUpdate} disabled={updateState.installing}>
-					{updateState.installing ? 'Updating…' : 'Update now'}
-				</Button>
+			{#if updateState.failed}
+				<span class="max-w-64 truncate text-xs text-destructive" title={updateState.failed}>
+					Failed — <button class="cursor-pointer underline" onclick={installUpdate}>Retry</button>
+					{' · '}
+					<button class="cursor-pointer underline" onclick={openDownloadPage}>Download manually</button>
+				</span>
+				<button
+					class="text-muted-foreground hover:text-foreground"
+					aria-label="Dismiss"
+					onclick={dismissUpdateFailure}>✕</button
+				>
+			{:else if updateState.canInstall}
+				{#if updateState.installing}
+					<div
+						class="h-1.5 w-32 overflow-hidden rounded-full bg-muted"
+						title={updateState.total > 0
+							? `${(updateState.downloaded / 1048576).toFixed(1)} / ${(updateState.total / 1048576).toFixed(1)} MB`
+							: 'Downloading…'}
+					>
+						<div
+							class="h-full rounded-full bg-primary transition-[width] duration-200"
+							style="width: {updateState.total > 0 ? updateState.progress * 100 : 30}%"
+						></div>
+					</div>
+				{:else}
+					<Button size="sm" onclick={installUpdate}>Update now</Button>
+				{/if}
 			{:else}
 				<!-- Packaged build (.rpm, AUR): the updater can only rewrite an AppImage, so send them
 				     to the releases page and let their package manager do it. -->
 				<Button size="sm" onclick={openDownloadPage}>Download</Button>
 			{/if}
-			{#if !updateState.installing}
+			{#if !updateState.installing && !updateState.failed}
 				<button
 					class="text-muted-foreground hover:text-foreground"
 					aria-label="Dismiss"
@@ -262,7 +290,15 @@
 					class="h-4 w-4 shrink-0 text-muted-foreground"
 				/>
 			{/if}
-			{t.msg}
+			<span class="min-w-0 truncate">{t.msg}</span>
+			{#if t.action}
+				<button
+					class="ml-1 shrink-0 cursor-pointer rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-transform hover:scale-105"
+					onclick={t.action.run}
+				>
+					{t.action.label}
+				</button>
+			{/if}
 		</div>
 	{/if}
 {/if}

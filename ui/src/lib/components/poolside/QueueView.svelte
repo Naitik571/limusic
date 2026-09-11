@@ -6,6 +6,7 @@
 	import * as api from '$lib/api';
 	import { playback, toast } from '$lib/player.svelte';
 	import { isSwipe, shouldRemove } from '$lib/swipe';
+	import { burst } from '$lib/fx';
 	import RadioMoods from '$lib/components/RadioMoods.svelte';
 
 	let {} = $props();
@@ -66,6 +67,7 @@
 				const vid = items[idx]?.video_id;
 				removingIdx = idx;
 				removingDir = dx < 0 ? -1 : 1;
+				burst(ev.clientX, ev.clientY);
 				setTimeout(() => {
 					removingIdx = null;
 					const live = vid
@@ -117,6 +119,30 @@
 		api.clearQueued().catch((e) => toast.error(String(e)));
 		toast.info('Upcoming tracks cleared');
 	}
+	function burstFromEvent(e: MouseEvent) {
+		const r = (e.currentTarget as HTMLElement | null)
+			?.closest('.ps-songrow')
+			?.getBoundingClientRect();
+		if (r) burst(r.left + r.width / 2, r.top + r.height / 2);
+		else burst(e.clientX, e.clientY);
+	}
+	// "Refresh radio" on radio queues (moods present or a Radio header): re-seed the mix.
+	const isRadio = $derived(
+		(q.radioMoods?.length ?? 0) > 0 || (q.sourceName ?? '').endsWith(' Radio')
+	);
+	let refreshingRadio = $state(false);
+	async function refreshRadio() {
+		if (refreshingRadio) return;
+		refreshingRadio = true;
+		try {
+			const n = await api.refreshRadio();
+			toast.success(`Radio refreshed — ${n} new track${n === 1 ? '' : 's'}`);
+		} catch (e) {
+			toast.error(String(e));
+		} finally {
+			refreshingRadio = false;
+		}
+	}
 </script>
 
 <div class="ps-queue">
@@ -124,6 +150,11 @@
 		<h2 class="ps-page-title">QUEUE</h2>
 		<div class="ps-queue-info">
 			<span>{items.length} tracks</span>
+			{#if isRadio}
+				<button class="ps-ghost" disabled={refreshingRadio} onclick={refreshRadio} title="Fetch a fresh mix from the current track">
+					{refreshingRadio ? 'Refreshing…' : 'Refresh radio'}
+				</button>
+			{/if}
 			{#if items.length > currentIdx + 1}
 				<button class="ps-ghost" onclick={clearUpcoming}>Clear upcoming</button>
 			{/if}
@@ -190,7 +221,7 @@
 						<button class="ps-qbtn" onclick={() => moveDown(i)} title="Move down" aria-label="Move down">
 							<HugeiconsIcon icon={ArrowDown02Icon} />
 						</button>
-						<button class="ps-qbtn" onclick={() => removeAt(i)} title="Remove" aria-label="Remove from queue">
+						<button class="ps-qbtn" onclick={(e) => { burstFromEvent(e); removeAt(i); }} title="Remove" aria-label="Remove from queue">
 							<HugeiconsIcon icon={TrashIcon} />
 						</button>
 					</div>

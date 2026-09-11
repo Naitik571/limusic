@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/opendyslexic':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -176,6 +179,9 @@ packages:
 
   '@fontsource/bungee@5.3.0':
     resolution: {integrity: sha512-vKwbDE7yMrqfGxgFan+diPLwgWp9j4FGYaLm+OhUoqYO6Pr02QIi/p0KiTW0E/7uiXqfTd6cMj+/E4h2sc3Ocg==}
+
+  '@fontsource/opendyslexic@5.3.0':
+    resolution: {integrity: sha512-BVYIW/ghc1U2iAghhYTN+GFWiZ3lnCy8Jf2KkZC23aHQHBNcMqKT718zckfqVxRx4qsXJmIMPWvczirRuhmtsg==}
 
   '@fontsource/press-start-2p@5.3.0':
     resolution: {integrity: sha512-gxWFxdeDglPhEYSwEeooomcaFK8kSQYLQwVxfnOJeYRj2sPEHXjpVtFgEaYfqzOjuAJGrIcJOipu2KY5YkbyuQ==}
@@ -982,6 +988,8 @@ snapshots:
   '@fontsource/audiowide@5.3.0': {}
 
   '@fontsource/bungee@5.3.0': {}
+
+  '@fontsource/opendyslexic@5.3.0': {}
 
   '@fontsource/press-start-2p@5.3.0': {}
 

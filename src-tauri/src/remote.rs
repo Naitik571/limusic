@@ -14,6 +14,8 @@ use crate::state::AppState;
 
 /// The phone-side remote control page served on `GET /?token=…`. Inline CSS/JS, no dependencies.
 const REMOTE_HTML: &str = include_str!("../remote.html");
+/// OBS BrowserSource overlay page (`GET /overlay?token=…&layout=…&…`). Same deal: self-contained.
+const OVERLAY_HTML: &str = include_str!("../overlay.html");
 
 /// Generate or load the pairing token (18B -> 24 char base64url).
 pub fn get_or_create_token(db: &Db) -> String {
@@ -159,6 +161,29 @@ pub fn spawn(state: Arc<AppState>) {
                     }
                     return;
                 }
+                // OBS BrowserSource overlay: same token gate, query params pick layout +
+                // elements (?layout=horizontal|vertical&art=1&title=1&prog=1&lyrics=1&queue=0).
+                if req.starts_with("GET /overlay") {
+                    let authorized = extract_token(&req).as_deref() == Some(expected.as_str());
+                    if !authorized {
+                        let body =
+                            "Open this page from the in-app overlay URL (Settings ▸ Remote).";
+                        let resp = format!(
+                            "HTTP/1.1 401 Unauthorized\r\n{cors}Content-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    } else {
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\n{cors}Content-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
+                            OVERLAY_HTML.len(),
+                            OVERLAY_HTML
+                        );
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    }
+                    return;
+                }
                 // Pair endpoint: POST /pair with token validation or approve flow
                 if req.contains("/pair") {
                     // For pairing, check token matches stored one -> approve.
@@ -187,6 +212,20 @@ pub fn spawn(state: Arc<AppState>) {
                 } else if req.contains("GET /api/playback") {
                     let p = state.playback_snapshot().await;
                     serde_json::to_string(&p).unwrap_or_else(|_| "{}".to_string())
+                } else if req.contains("GET /api/volume") {
+                    let v = state
+                        .db
+                        .get_setting("volume")
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .unwrap_or_else(|| state.player.get_volume());
+                    serde_json::json!({"volume": v}).to_string()
+                } else if req.contains("GET /api/lyrics") {
+                    // ?videoId=… — synced lines for the overlay (client caches per videoId and
+                    // advances the active line locally from /api/playback position).
+                    match lyrics_for_video(&state, extract_query(&req, "videoId")).await {
+                        Ok(j) => j,
+                        Err(e) => serde_json::json!({"error": e}).to_string(),
+                    }
                 } else if req.contains("GET /api/search") {
                     // ?q=...
                     let query = extract_query(&req, "q").unwrap_or_default();
@@ -211,8 +250,18 @@ pub fn spawn(state: Arc<AppState>) {
                         res.to_string()
                     }
                 } else if req.contains("POST /api/play") || req.contains("POST /api/queue") {
-                    // Expect JSON body with video_id or item; for brevity, acknowledge.
-                    serde_json::json!({"ok":true}).to_string()
+                    // Body: full SongItem JSON (picked from /api/search results) → play now.
+                    match extract_json_body(&req)
+                        .and_then(|v| serde_json::from_value::<innertube::SongItem>(v).ok())
+                    {
+                        Some(item) => {
+                            state.play_song(item).await;
+                            serde_json::json!({"ok":true}).to_string()
+                        }
+                        None => {
+                            serde_json::json!({"error":"POST a SongItem JSON body"}).to_string()
+                        }
+                    }
                 } else if req.contains("POST /api/toggle") {
                     state.resume_or_toggle().await;
                     serde_json::json!({"ok":true}).to_string()
@@ -235,6 +284,44 @@ pub fn spawn(state: Arc<AppState>) {
                     let _ = state.player.set_volume(volume);
                     state.db.set_setting("volume", &volume.to_string());
                     serde_json::json!({"ok":true,"volume":volume}).to_string()
+                } else if req.contains("POST /api/volume") {
+                    // Absolute level (?v=0..100 or {"volume": n}), for the phone slider.
+                    let v = extract_query(&req, "v")
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .or_else(|| {
+                            extract_json_body(&req)
+                                .and_then(|b| b.get("volume").and_then(|x| x.as_i64()))
+                        });
+                    match v {
+                        Some(volume) => {
+                            let volume = volume.clamp(0, 100);
+                            let _ = state.player.set_volume(volume);
+                            state.db.set_setting("volume", &volume.to_string());
+                            serde_json::json!({"ok":true,"volume":volume}).to_string()
+                        }
+                        None => serde_json::json!({"error":"?v=0..100"}).to_string(),
+                    }
+                } else if req.contains("POST /api/shuffle") {
+                    state.toggle_shuffle().await;
+                    serde_json::json!({"ok":true}).to_string()
+                } else if req.contains("POST /api/repeat") {
+                    // ?mode=off|all|one (default: cycle from the queue snapshot).
+                    use crate::state::RepeatMode;
+                    let mode = match extract_query(&req, "mode").as_deref() {
+                        Some("off") => RepeatMode::Off,
+                        Some("all") => RepeatMode::All,
+                        Some("one") => RepeatMode::One,
+                        _ => {
+                            let q = state.queue_snapshot().await;
+                            match q.get("repeat").and_then(|r| r.as_str()) {
+                                Some("all") => RepeatMode::One,
+                                Some("one") => RepeatMode::Off,
+                                _ => RepeatMode::All,
+                            }
+                        }
+                    };
+                    state.set_repeat(mode).await;
+                    serde_json::json!({"ok":true}).to_string()
                 } else {
                     serde_json::json!({"error":"not found"}).to_string()
                 };
@@ -243,6 +330,50 @@ pub fn spawn(state: Arc<AppState>) {
             });
         }
     });
+}
+
+/// JSON request body (the hand-rolled server reads headers + body in one go).
+fn extract_json_body(req: &str) -> Option<serde_json::Value> {
+    let idx = req.find("\r\n\r\n")?;
+    serde_json::from_str(req[idx + 4..].trim()).ok()
+}
+
+/// Synced lyrics for the overlay: resolves title/artists from the queue (the client only
+/// knows the videoId), then runs the normal provider wave. Serialized minimal for OBS.
+async fn lyrics_for_video(state: &AppState, video_id: Option<String>) -> Result<String, String> {
+    let vid = video_id.filter(|v| !v.is_empty()).ok_or("?videoId=")?;
+    let item = state
+        .queue_snapshot()
+        .await
+        .get("items")
+        .and_then(|v| v.as_array())
+        .and_then(|items| {
+            items.iter().find_map(|i| {
+                (i.get("video_id").and_then(|x| x.as_str()) == Some(vid.as_str())).then(|| {
+                    crate::lyrics::LyricsRequest {
+                        video_id: vid.clone(),
+                        title: i.get("title").and_then(|x| x.as_str()).unwrap_or("").into(),
+                        artists: i
+                            .get("artists")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .into(),
+                        album: i.get("album").and_then(|x| x.as_str()).map(str::to_owned),
+                        duration: None,
+                    }
+                })
+            })
+        })
+        .ok_or("track not in queue")?;
+    match crate::lyrics::get_lyrics(state, item).await {
+        Some(l) => Ok(serde_json::json!({
+            "synced": l.synced,
+            "source": l.source,
+            "lines": l.lines.iter().map(|x| serde_json::json!({"t": x.time_ms, "text": x.text})).collect::<Vec<_>>(),
+        })
+        .to_string()),
+        None => Err("no lyrics".into()),
+    }
 }
 
 fn extract_query(req: &str, key: &str) -> Option<String> {

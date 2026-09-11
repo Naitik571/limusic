@@ -13,7 +13,11 @@ export const updateState = $state({
 	available: null as { version: string } | null, // set when a newer version is waiting
 	canInstall: true, // false on packaged Linux builds; always resolved before `available` is set
 	checking: false, // Settings "Check for updates" is in flight
-	installing: false // downloading/installing the update
+	installing: false, // downloading/installing the update
+	progress: 0, // 0..1 download fraction while installing
+	downloaded: 0, // bytes so far (for the tooltip)
+	total: 0, // bytes total (0 = unknown)
+	failed: null as string | null // last install failure, with Retry beside it
 });
 
 // The resolved handle to download; kept out of reactive state (it's not serializable/renderable).
@@ -63,15 +67,38 @@ export function openDownloadPage() {
 	openExternal(RELEASES_URL).catch((e) => toast.error(`Couldn't open the browser: ${e}`));
 }
 
-/** Download + install the pending update, then relaunch into the new version. */
+/** Download + install the pending update, then relaunch into the new version. Progress
+ *  streams into `updateState` for the banner bar; failures stay visible with Retry. */
 export async function installUpdate() {
-	if (!pending) return;
+	if (!pending || updateState.installing) return;
 	updateState.installing = true;
+	updateState.failed = null;
+	updateState.progress = 0;
+	updateState.downloaded = 0;
+	updateState.total = 0;
 	try {
-		await pending.downloadAndInstall();
+		await pending.downloadAndInstall((e) => {
+			if (e.event === 'Started') {
+				updateState.total = e.data.contentLength ?? 0;
+			} else if (e.event === 'Progress') {
+				updateState.downloaded += e.data.chunkLength;
+				if (updateState.total > 0) {
+					updateState.progress = Math.min(1, updateState.downloaded / updateState.total);
+				}
+			} else if (e.event === 'Finished') {
+				updateState.progress = 1;
+			}
+		});
 		await relaunch();
 	} catch (e) {
-		toast.error(`Update failed: ${e}`);
+		updateState.failed = String(e);
 		updateState.installing = false;
 	}
+}
+
+/** Dismiss a failed install back to the plain banner (Retry lives beside the error). */
+export function dismissUpdateFailure() {
+	updateState.failed = null;
+	updateState.installing = false;
+	updateState.progress = 0;
 }

@@ -49,7 +49,21 @@
 		touch-action: manipulation;
 	}
 	button:active { background: rgba(255,255,255,.16); transform: scale(.96); }
+	button.on { border-color: rgba(124,140,248,.7); color: #b9c2ff; }
 	#play { background: linear-gradient(135deg, #6474f0, #9a6cf0); border-color: transparent; font-size: 26px; }
+	.volrow { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+	.volrow span { font-size: 18px; }
+	#vol { flex: 1; accent-color: #7c8cf8; height: 28px; }
+	.modes { display: flex; gap: 10px; margin-top: 10px; }
+	.modes button { flex: 1; min-height: 44px; font-size: 13px; font-weight: 600; }
+	.searchrow { display: flex; gap: 8px; margin-top: 10px; }
+	#q { flex: 1; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: #e8eaf2; border-radius: 12px; padding: 0 12px; font-size: 15px; min-height: 44px; outline: none; }
+	#qbtn { flex: none; padding: 0 16px; }
+	#results { margin-top: 8px; }
+	#results li { cursor: pointer; }
+	#results li:active { background: rgba(124,140,248,.2); }
+	#statusdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f87171; margin-right: 6px; vertical-align: 1px; }
+	#statusdot.ok { background: #4ade80; }
 	h2 { font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgba(232,234,242,.5); margin-bottom: 10px; }
 	ul { list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 42vh; overflow-y: auto; }
 	li { padding: 11px 12px; border-radius: 10px; font-size: 14px; color: rgba(232,234,242,.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -60,7 +74,7 @@
 </head>
 <body>
 	<h1>limusic remote</h1>
-	<div class="card">
+	<div class="card" id="nowcard">
 		<img id="art" class="cover" alt="" hidden />
 		<div id="title">Connecting…</div>
 		<div id="artist"></div>
@@ -73,17 +87,37 @@
 			<button id="volup" aria-label="Volume up">🔊</button>
 			<button id="next" aria-label="Next">⏭</button>
 		</div>
+		<div class="volrow"><span>🔈</span><input id="vol" type="range" min="0" max="100" value="100" aria-label="Volume" /><span>🔊</span></div>
+		<div class="modes">
+			<button id="shuffle" aria-label="Shuffle">SHUFFLE: OFF</button>
+			<button id="repeat" aria-label="Repeat">REPEAT: OFF</button>
+		</div>
+		<div class="searchrow">
+			<input id="q" type="search" placeholder="Add to queue…" aria-label="Search and add" />
+			<button id="qbtn" aria-label="Search">⌕</button>
+		</div>
+		<ul id="results"></ul>
 	</div>
 	<div class="card">
 		<h2>Up next</h2>
 		<ul id="queue"></ul>
 	</div>
-	<div id="status"></div>
+	<div id="status"><span id="statusdot"></span><span id="statustext"></span></div>
 <script>
-	var token = new URLSearchParams(location.search).get('token') || '';
+	// Token: QR first, then remembered per host so the QR is a one-time pairing.
+	var qs = new URLSearchParams(location.search);
+	var token = qs.get('token') || '';
+	try {
+		if (!token) token = localStorage.getItem('limusic-remote-token:' + location.host) || '';
+	} catch (e) {}
 	function url(path) { return path + '?token=' + encodeURIComponent(token); }
-	function post(path) {
-		return fetch(url(path), { method: 'POST' }).then(refresh).catch(function () {});
+	function post(path, body) {
+		var opts = { method: 'POST' };
+		if (body !== undefined) {
+			opts.headers = { 'Content-Type': 'application/json' };
+			opts.body = JSON.stringify(body);
+		}
+		return fetch(url(path), opts).then(refresh).catch(function () {});
 	}
 	function fmt(secs) {
 		if (!isFinite(secs) || secs <= 0) return '0:00';
@@ -97,13 +131,25 @@
 	}
 	var el = function (id) { return document.getElementById(id); };
 	var art = el('art'), title = el('title'), artist = el('artist'), pos = el('pos'),
-		tcur = el('tcur'), tdur = el('tdur'), play = el('play'), queue = el('queue'), status = el('status');
+		tcur = el('tcur'), tdur = el('tdur'), play = el('play'), queue = el('queue'),
+		dot = el('statusdot'), statustext = el('statustext'),
+		vol = el('vol'), shuffleBtn = el('shuffle'), repeatBtn = el('repeat'),
+		q = el('q'), qbtn = el('qbtn'), results = el('results'), nowcard = el('nowcard');
+	var volInit = false, volTimer = null;
+	function setStatus(ok, msg) {
+		dot.className = ok ? 'ok' : '';
+		dot.id = 'statusdot';
+		statustext.textContent = msg || '';
+		if (ok) {
+			try { localStorage.setItem('limusic-remote-token:' + location.host, token); } catch (e) {}
+		}
+	}
 	function refresh() {
 		fetch(url('/api/playback')).then(function (r) {
 			if (!r.ok) throw new Error('auth');
 			return r.json();
 		}).then(function (pb) {
-			status.textContent = '';
+			setStatus(true, '');
 			var n = pb.now;
 			title.textContent = n ? n.title : 'Nothing playing';
 			artist.textContent = n ? n.artists : 'Open limusic and play something';
@@ -112,8 +158,13 @@
 			pos.style.width = (pb.duration > 0 ? Math.min(100, pb.position / pb.duration * 100) : 0) + '%';
 			tcur.textContent = fmt(pb.position);
 			tdur.textContent = fmt(pb.duration);
-			return fetch(url('/api/queue')).then(function (r) { return r.ok ? r.json() : null; }).then(function (q) {
-				var items = (q && q.items) || [], cur = q ? q.currentIndex : -1;
+			return fetch(url('/api/queue')).then(function (r) { return r.ok ? r.json() : null; }).then(function (qq) {
+				var items = (qq && qq.items) || [], cur = qq ? qq.currentIndex : -1;
+				shuffleBtn.textContent = 'SHUFFLE: ' + (qq && qq.shuffle ? 'ON' : 'OFF');
+				shuffleBtn.className = qq && qq.shuffle ? 'on' : '';
+				var rep = (qq && qq.repeat ? String(qq.repeat).toUpperCase() : 'OFF');
+				repeatBtn.textContent = 'REPEAT: ' + rep;
+				repeatBtn.className = rep !== 'OFF' ? 'on' : '';
 				queue.innerHTML = items.slice(Math.max(cur, 0), Math.max(cur, 0) + 25).map(function (it, i) {
 					var isCur = Math.max(cur, 0) + i === cur;
 					return '<li class="' + (isCur ? 'current' : '') + '">' + esc(it.title) +
@@ -121,15 +172,61 @@
 				}).join('') || '<li>Queue is empty</li>';
 			});
 		}).catch(function (e) {
-			if (e && e.message === 'auth') status.textContent = 'Token invalid — re-open from the in-app QR.';
-			else status.textContent = 'Reconnecting…';
+			if (e && e.message === 'auth') setStatus(false, 'Token invalid — re-open from the in-app QR.');
+			else setStatus(false, 'Reconnecting…');
 		});
+		if (!volInit) {
+			volInit = true;
+			fetch(url('/api/volume')).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+				if (v && isFinite(v.volume)) vol.value = v.volume;
+			}).catch(function () {});
+		}
+	}
+	function doSearch() {
+		var term = q.value.trim();
+		if (!term) { results.innerHTML = ''; return; }
+		fetch(url('/api/search') + '&q=' + encodeURIComponent(term)).then(function (r) {
+			return r.ok ? r.json() : null;
+		}).then(function (r) {
+			var items = (r && r.items) || (Array.isArray(r) ? r : []);
+			results.innerHTML = items.slice(0, 8).map(function (it, i) {
+				return '<li data-i="' + i + '">' + esc(it.title) + '<small>' + esc(it.artists) + '</small></li>';
+			}).join('') || '<li>No results</li>';
+			Array.prototype.forEach.call(results.querySelectorAll('li[data-i]'), function (li) {
+				li.onclick = function () {
+					var it = items[Number(li.getAttribute('data-i'))];
+					post('/api/play', it).then(function () { results.innerHTML = ''; q.value = ''; });
+				};
+			});
+		}).catch(function () {});
 	}
 	prev.onclick = function () { post('/api/prev'); };
 	next.onclick = function () { post('/api/next'); };
 	play.onclick = function () { post('/api/toggle'); };
 	volup.onclick = function () { post('/api/volup'); };
 	voldown.onclick = function () { post('/api/voldown'); };
+	shuffleBtn.onclick = function () { post('/api/shuffle'); };
+	repeatBtn.onclick = function () { post('/api/repeat'); };
+	qbtn.onclick = doSearch;
+	q.onkeydown = function (e) { if (e.key === 'Enter') doSearch(); };
+	vol.oninput = function () {
+		if (volTimer) clearTimeout(volTimer);
+		volTimer = setTimeout(function () {
+			fetch(url('/api/volume') + '&v=' + encodeURIComponent(vol.value), { method: 'POST' }).catch(function () {});
+		}, 200);
+	};
+	// Swipe the now-playing card: left = next, right = previous.
+	(function () {
+		var x0 = null;
+		nowcard.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+		nowcard.addEventListener('touchend', function (e) {
+			if (x0 === null) return;
+			var dx = e.changedTouches[0].clientX - x0;
+			x0 = null;
+			if (dx < -60) post('/api/next');
+			else if (dx > 60) post('/api/prev');
+		}, { passive: true });
+	})();
 	refresh();
 	setInterval(refresh, 3000);
 </script>

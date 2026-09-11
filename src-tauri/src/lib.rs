@@ -21,6 +21,7 @@ mod remote;
 mod session;
 mod state;
 mod tray;
+mod visualizer;
 mod waveform;
 mod webview;
 mod ytdlp;
@@ -340,6 +341,10 @@ pub fn run() {
                     let _ = app_state.player.set_volume(v.clamp(0, 100));
                     let _ = handle.emit("volume", v.clamp(0, 100));
                 }
+                // Visualizer: re-arm the capture thread when it was left on.
+                if app_state.db.get_setting("visualizer").as_deref() == Some("true") {
+                    app_state.visualizer.set_enabled(&handle, true);
+                }
             }
             // Restore the last session's queue (paused, not autoplaying). context/11 Â§state.
             {
@@ -475,6 +480,9 @@ pub fn run() {
             commands::theater_fullscreen,
             commands::toggle_mute,
             commands::seek,
+            commands::set_playback_rate,
+            commands::set_app_icon,
+            commands::set_visualizer,
             commands::set_volume,
             commands::set_sleep_timer,
             commands::get_sleep_timer,
@@ -526,6 +534,7 @@ pub fn run() {
             commands::get_browse_grid,
             commands::play_playlist,
             commands::start_radio,
+            commands::refresh_radio,
             commands::set_radio_mood,
             commands::get_similar_songs,
             commands::like,

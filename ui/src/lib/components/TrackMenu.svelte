@@ -1,4 +1,33 @@
-﻿<script lang="ts">
+﻿<script module lang="ts">
+	import * as apiMod from '$lib/api';
+
+	// Shared crossfade-overrides map (one load for all row menus, refreshed on every save).
+	let fadeMap: Record<string, number> | null = null;
+	async function loadFadeMap(): Promise<Record<string, number>> {
+		if (!fadeMap) {
+			try {
+				const s = await apiMod.getSettings();
+				const raw = s.crossfade_overrides;
+				fadeMap = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+			} catch {
+				fadeMap = {};
+			}
+		}
+		return fadeMap;
+	}
+	export async function saveFadeMap(map: Record<string, number>): Promise<void> {
+		fadeMap = map;
+		await apiMod.setSetting('crossfade_overrides', JSON.stringify(map));
+	}
+	export async function fadeOverrideCount(): Promise<number> {
+		return Object.keys(await loadFadeMap()).length;
+	}
+	export async function clearFadeMap(): Promise<void> {
+		await saveFadeMap({});
+	}
+</script>
+
+<script lang="ts">
 	// The â‹¯ options menu shared by TrackRow (inline trigger) and MediaCard (overlay trigger).
 	// Right-clicking anywhere in the surrounding `[data-ctx]` element opens the same menu at the
 	// pointer (see `ctxHost`), which is what a track row's whole surface is for.
@@ -28,6 +57,7 @@
 	import type { SongItem } from '$lib/api';
 	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody, type MenuCloseReason } from '$lib/menu';
 	import { addPick, enqueue, isLiked, startRadio, toggleLike, rate, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
+	import { crossfade } from '$lib/player.svelte';
 
 	let {
 		song,
@@ -37,6 +67,7 @@
 		removeLabel = 'Remove from playlist',
 		linksOnly = false,
 		openAt = null,
+		fadeNext = null,
 		onclose = undefined
 	}: {
 		song: SongItem;
@@ -53,6 +84,9 @@
 		/** External open request at viewport coords (palette right-click): opens without a trigger.
 		    The palette dialog traps pointer events, so its menu must live outside the dialog. */
 		openAt?: { x: number; y: number } | null;
+		/** Queue-only: videoId of the track after this one — shows a "Crossfade into next"
+		    picker for this pair (gapless auto-advances always use the global duration). */
+		fadeNext?: string | null;
 		/** Fired when an externally-opened menu closes, with how: an item ran (`action`), the
 		    backdrop dismissed it (`dismiss`), or another menu claimed the stage (`claimed`). */
 		onclose?: (reason: MenuCloseReason) => void;
@@ -60,6 +94,39 @@
 
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
+
+	// Per-pair crossfade editor (queue rows only — needs the track after this one). The map
+	// lives in module scope so every row's menu shares one load, not one fetch per open.
+	let fadeOpen = $state(false);
+	let fadeCur = $state<number | null>(null);
+	const FADE_STEPS = [0, 2, 4, 6, 8, 12];
+	const fadeKey = $derived(`${song.video_id}__${fadeNext ?? ''}`);
+	async function openFade() {
+		fadeOpen = true;
+		fadeCur = null;
+		try {
+			const map = await loadFadeMap();
+			fadeCur = map[fadeKey] ?? null;
+		} catch {
+			fadeCur = null;
+		}
+	}
+	async function pickFade(secs: number | null) {
+		try {
+			const map = await loadFadeMap();
+			if (secs === null) delete map[fadeKey];
+			else map[fadeKey] = secs;
+			await saveFadeMap(map);
+			fadeCur = secs;
+			toast.success(
+				secs === null
+					? 'Crossfade reset to global'
+					: `Crossfade into next: ${secs === 0 ? 'off' : `${secs}s`}`
+			);
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
 
 	// External open (see `openAt`): anchor at the saved pointer, then open like a right-click.
 	// Runs on mount when the parent keys a fresh instance per open. One-shot: without the guard,
@@ -294,6 +361,46 @@
 			>
 				<HugeiconsIcon icon={PlayListRemoveIcon} class="h-4 w-4" /> {removeLabel}
 			</button>
+		{/if}
+		{#if fadeNext && !isLocal}
+			<button
+				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={(e) => {
+					e.stopPropagation();
+					fadeOpen = !fadeOpen;
+					if (fadeOpen) void openFade();
+				}}
+				aria-expanded={fadeOpen}
+				title="Gapless auto-advances always use the global duration"
+			>
+				<HugeiconsIcon icon={Vynil02Icon} class="h-4 w-4" />
+				<span class="flex-1">Crossfade into next…</span>
+				<span class="text-xs text-muted-foreground">
+					{fadeCur === null ? `Global (${crossfade.secs.toFixed(1)}s)` : fadeCur === 0 ? 'Off' : `${fadeCur}s`}
+				</span>
+			</button>
+			{#if fadeOpen}
+				<div class="flex flex-wrap gap-1 px-2 py-1.5" role="group" aria-label="Crossfade seconds">
+					{#each FADE_STEPS as s}
+						<button
+							class="cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors {fadeCur === s
+								? 'border-transparent bg-primary text-primary-foreground'
+								: 'hover:bg-accent/10'}"
+							onclick={(e) => run(e, () => pickFade(s))}
+						>
+							{s === 0 ? 'Off' : `${s}s`}
+						</button>
+					{/each}
+					<button
+						class="cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors hover:bg-accent/10 disabled:opacity-50"
+						disabled={fadeCur === null}
+						title="Forget this pair, use the global duration"
+						onclick={(e) => run(e, () => pickFade(null))}
+					>
+						Global
+					</button>
+				</div>
+			{/if}
 		{/if}
 	</div>
 {/if}

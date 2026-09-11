@@ -26,7 +26,8 @@
 		onRemove,
 		removeLabel = 'Remove from playlist',
 		highlight = '',
-		draggable = true
+		draggable = true,
+		fadeNext = null
 	}: {
 		song: SongItem;
 		/** Position badge when set (playlist/queue); omitted for flat search results. */
@@ -52,6 +53,9 @@
 		    the full song as JSON. Off in the queue: pointer-drag reorder owns the press there and
 		    a native drag would fight it. */
 		draggable?: boolean;
+		/** Queue-only: videoId of the track after this one — enables the "Crossfade into next"
+		    menu item for this pair. Omit everywhere else. */
+		fadeNext?: string | null;
 	} = $props();
 
 	function highlightParts(text: string, query: string): { text: string; match: boolean }[] {
@@ -244,6 +248,7 @@
 			onAdd={handleAdd}
 			{onRemove}
 			{removeLabel}
+			fadeNext={fadeNext ?? null}
 			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground focus-visible:opacity-100 {compact
 				? ''
 				: 'opacity-0 group-hover:opacity-100'}"

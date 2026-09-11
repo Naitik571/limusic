@@ -402,6 +402,16 @@ export const getHistory = (limit?: number) => invoke<HistoryEntry[]>('get_histor
 export const clearHistory = () => invoke<void>('clear_history');
 /** Lifetime listened seconds across every track (History header). */
 export const listenSecondsTotal = () => invoke<number>('listen_seconds_total');
+/** Playback speed multiplier (lyrics composer). Not persisted; resets on leave. */
+export const setPlaybackRate = (rate: number) => invoke<void>('set_playback_rate', { rate });
+/** Custom window icon from canvas-decoded RGBA pixels. */
+export const setAppIcon = (rgba: number[], width: number, height: number) =>
+	invoke<void>('set_app_icon', { rgba, width, height });
+/** Real-time spectrum on/off (WASAPI app-loopback + FFT). Persists. */
+export const setVisualizer = (on: boolean) => invoke<void>('set_visualizer', { on });
+/** 24-band spectrum frames (0..1), ~21Hz. Empty when the visualizer is off. */
+export const onVisualizerFrame = (cb: (bands: number[]) => void): Promise<UnlistenFn> =>
+	listen<number[]>('visualizer-frame', (e) => cb(e.payload));
 
 // --- audio visualizer (Rust emits `setting-changed` when toggled) --------------------------------
 /** One published release: the GitHub release description, verbatim markdown. */
@@ -490,6 +500,8 @@ export const startRadio = (kind: 'song' | 'artist' | 'album' | 'playlist', id: s
 	invoke<void>('start_radio', { kind, id, name });
 /** Switch the radio's Up Next mood. Replaces everything after the playing track. */
 export const setRadioMood = (title: string) => invoke<void>('set_radio_mood', { title });
+/** Re-seed radio from the current track. Returns installed track count. */
+export const refreshRadio = () => invoke<number>('refresh_radio');
 export const getAlbum = (id: string) => invoke<AlbumPage>('get_album', { id });
 export const getArtist = (id: string) => invoke<ArtistPage>('get_artist', { id });
 export const getBrowseGrid = (id: string, params?: string) =>

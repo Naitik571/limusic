@@ -31,15 +31,17 @@
 		ui,
 		wheelVolume,
 		toggleNowPlayingLike,
-		cycleRepeat
+		cycleRepeat,
+		visualizer
 	} from '$lib/player.svelte';
-	import { appearance, layout } from '$lib/theme.svelte';
+	import { appearance, layout, effective } from '$lib/theme.svelte';
 	import { thumb, thumbHQ } from '$lib/thumb';
 	import * as api from '$lib/api';
 	import { playFlight } from '$lib/flight';
 	import QueueList from './QueueList.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import LyricsView from './LyricsView.svelte';
+	import Visualizer from './Visualizer.svelte';
 	import { setAppearance } from '$lib/theme.svelte';
 
 	// Off in settings, this view drops its tabs and the queue/lyrics panels stay in charge of both
@@ -477,6 +479,11 @@
 					<TrackMenu song={currentSong} triggerClass="hidden" />
 				{/if}
 			</div>
+			</div>
+		{/if}
+		{#if visualizer.on}
+			<div class="mt-1 w-full" aria-hidden="true">
+				<Visualizer accent={effective.accent} style={visualizer.style} />
 			</div>
 		{/if}
 

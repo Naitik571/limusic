@@ -9,7 +9,8 @@ import RadioMoods from '$lib/components/RadioMoods.svelte';
 import * as api from '$lib/api';
 import { queueBlocks, type QueueRow } from '$lib/queue';
 import { isSwipe, shouldRemove } from '$lib/swipe';
-import { playback, openAddToPlaylist } from '$lib/player.svelte';
+import { burst } from '$lib/fx';
+import { playback, openAddToPlaylist, toast } from '$lib/player.svelte';
 import { lt } from '$lib/lt.svelte';
 
 // Guests are add-only in a session — no removing or reordering (theirs or anyone's). The
@@ -128,6 +129,7 @@ const canReorder = $derived(lt.role !== 'guest');
 					const vid = playback.queue.items[idx]?.video_id;
 					removingIdx = idx;
 					removingDir = dx < 0 ? -1 : 1;
+					burst(e.clientX, e.clientY);
 					setTimeout(() => {
 						removingIdx = null;
 						const live = vid
@@ -250,6 +252,21 @@ const canReorder = $derived(lt.role !== 'guest');
 		e.stopPropagation();
 	}
 
+	// Queue header "Refresh radio": re-seed the mix from the current track (dead radio rescue).
+	let refreshingRadio = $state(false);
+	async function refreshRadio() {
+		if (refreshingRadio) return;
+		refreshingRadio = true;
+		try {
+			const n = await api.refreshRadio();
+			toast.success(`Radio refreshed — ${n} new track${n === 1 ? '' : 's'}`);
+		} catch (e) {
+			toast.error(String(e));
+		} finally {
+			refreshingRadio = false;
+		}
+	}
+
 // Blocks in play order, cut wherever the upcoming tracks change origin (`queue.ts`).
 const view = $derived(queueBlocks(playback.queue));
 </script>
@@ -299,9 +316,18 @@ const view = $derived(queueBlocks(playback.queue));
 				onplay={() => api.playIndex(i)}
 				onAdd={() => openAddToPlaylist(item)}
 				onRemove={!past && canRemove && i !== playback.queue.currentIndex
-					? () => api.removeFromQueue(i)
+					? () => {
+							const r = document
+								.querySelector(`[data-queue-row="${i}"]`)
+								?.getBoundingClientRect();
+							if (r) burst(r.left + r.width / 2, r.top + r.height / 2);
+							api.removeFromQueue(i);
+						}
 					: undefined}
 				removeLabel={past ? undefined : 'Remove from queue'}
+				fadeNext={!past && i > playback.queue.currentIndex
+					? (playback.queue.items[i + 1]?.video_id ?? null)
+					: null}
 			/>
 			</div>
 		</div>
@@ -342,6 +368,14 @@ const view = $derived(queueBlocks(playback.queue));
 					<HugeiconsIcon icon={InfinityIcon} class="h-3.5 w-3.5" />
 					<span class="text-xs font-medium">Autoplay</span>
 					<span class="truncate text-xs">· similar music</span>
+					<button
+						class="ml-auto shrink-0 cursor-pointer text-xs font-medium transition-colors hover:text-foreground disabled:opacity-50"
+						disabled={refreshingRadio}
+						title="Fetch a fresh mix from the current track"
+						onclick={() => refreshRadio()}
+					>
+						{refreshingRadio ? 'Refreshing…' : 'Refresh radio'}
+					</button>
 				</div>
 			{:else}
 				<div class="mt-3 flex items-center justify-between gap-2 px-2 pb-1.5">

@@ -14,13 +14,17 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
+	import { lt } from '$lib/lt.svelte';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, markNotDownloaded, downloadedIds, loadDownloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame } from '$lib/player.svelte';
+	import { ui, toast, markNotDownloaded, downloadedIds, loadDownloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame, visualizer, setVisualizerOn, setVisualizerStyle, applyAppIcon, clearAppIcon } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
+	import { fadeOverrideCount, clearFadeMap } from '$lib/components/TrackMenu.svelte';
+	import { spatialEnabled, setSpatialEnabled } from '$lib/spatial';
+	import { loadDys, applyDys, type DysPrefs } from '$lib/dys';
 	import {
 		THEMES,
 		FONTS,
@@ -143,8 +147,8 @@
 		{ tab: 'general', group: 'gen-system', text: 'Close to tray Closing the window keeps music playing in the background. Restore or quit from the tray icon.' },
 		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
 		{ tab: 'general', group: 'gen-system', text: 'System title bar Use the native window frame instead of the app chrome, with snap layouts and shadows. Applies instantly.' },
-		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish, Romanian).' },
-		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones.' },
+		{ tab: 'general', group: 'gen-system', text: 'Spatial focus Move keyboard focus with Alt and arrow keys.' },
+		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish, Romanian).' },		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones.' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token.' },
 		// Appearance
@@ -161,6 +165,7 @@
 		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics in the player view Tabs and switching buttons in the player view.' },
 		{ tab: 'themes', group: 'thm-player', text: "Artwork background Tint the player view with the playing track's cover, blurred." },
 		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders." },
+		{ tab: 'themes', group: 'thm-player', text: 'Audio visualizer Live spectrum under the artwork, bars or ring.' },
 		{ tab: 'themes', group: 'thm-backdrops', text: 'Backdrop Off Subtle Auto artwork atmosphere behind the app.' },
 		{ tab: 'themes', group: 'thm-backdrops', text: 'Spotify Canvas Show looping Canvas video in Now Playing when available.' },
 		{ tab: 'themes', group: 'thm-packs', text: 'Get packs Per-artist ZIPs indexed every 15min. Injects style.css on the artist page.' },
@@ -173,6 +178,7 @@
 		{ tab: 'playback', group: 'pb-audio', text: 'Sleep timer Stop playback after a while. Off End of song minutes.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Smart Crossfade Gapless via mpv gapless-audio; crossfade is a volume ramp hint.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Crossfade mode Standard Smart.' },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Per-track crossfades Custom durations per queue transition from row menus, reset all.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Best Mix' },
 		{ tab: 'playback', group: 'pb-video', text: "Hide music videos Keep only the audio version of a track, so the official video doesn't turn up beside it." },
 		{ tab: 'playback', group: 'pb-video', text: 'yt-dlp fallback Last resort for tracks every YouTube client refuses. Resolve them through a self-updating yt-dlp binary.' },
@@ -251,6 +257,49 @@
 	let clearing = $state(false);
 	let version = $state('');
 	getVersion().then((v) => (version = v));
+	// Per-pair crossfade overrides (queue row menus): count for the Transitions row.
+	let fadeOverrides = $state(0);
+	// Custom app icon source path (window/taskbar icon).
+	let appIconPath = $state('');
+	// Dyslexia-friendly type extras (letter/word spacing, line height).
+	let dys = $state<DysPrefs>(loadDys());
+	function setDys(patch: Partial<DysPrefs>) {
+		dys = { ...dys, ...patch };
+		applyDys(dys);
+	}
+	async function resetFadeOverrides() {
+		try {
+			await clearFadeMap();
+			fadeOverrides = 0;
+			toast.success('Crossfade overrides cleared');
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+	async function pickAppIcon() {
+		try {
+			const { open } = await import('@tauri-apps/plugin-dialog');
+			const picked = await open({
+				multiple: false,
+				filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'ico', 'bmp'] }]
+			});
+			if (typeof picked !== 'string' || !picked) return;
+			await applyAppIcon(picked);
+			appIconPath = picked;
+			toast.success('App icon applied');
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+	async function resetAppIcon() {
+		try {
+			await clearAppIcon();
+			appIconPath = '';
+			toast.success('Stock icon returns on next launch');
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
 	// Result of the last "Check for updates" click — shown inline (a toast renders behind the modal).
 	let updateResult = $state<{ message: string; error: boolean } | null>(null);
 
@@ -276,7 +325,10 @@
 		untrack(() => {
 			load();
 			loadCrossfade();
-			api
+			void fadeOverrideCount().then((n) => (fadeOverrides = n));
+			api.getSettings().then((s) => {
+				appIconPath = s.app_icon_path ?? '';
+			}).catch(() => {});			api
 				.ytdlpInfo()
 				.then((info) => (ytdlp = { ...info }))
 				.catch(() => {});
@@ -334,6 +386,11 @@
 	const trayOn = $derived(settings.close_to_tray !== 'false');
 	const autostartOn = $derived(settings.autostart === 'true');
 	const frameOn = $derived(settings.native_frame === 'true');
+	let spatialNavOn = $state(spatialEnabled());
+	function setSpatialNav(on: boolean) {
+		spatialNavOn = on;
+		setSpatialEnabled(on);
+	}
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
 	const stickyShuffleOn = $derived(settings.sticky_shuffle === 'true');
 	// Sleep timer badge: live countdown while a minutes timer runs.
@@ -564,6 +621,24 @@
 			qrSvg = await api.getRemoteQr();
 		} catch {}
 	}
+	// OBS overlay URL: same host/token as the remote, query picks layout + elements.
+	let obsOpts = $state<Record<string, boolean>>({ art: true, title: true, prog: true, lyrics: true, queue: false });
+	let obsLayout = $state<'horizontal' | 'vertical'>('horizontal');
+	let obsTheme = $state<'transparent' | 'blur' | 'solid'>('transparent');
+	const obsUrl = $derived.by(() => {
+		if (!lanUrl) return '';
+		try {
+			const u = new URL(lanUrl);
+			u.pathname = '/overlay';
+			const p = u.searchParams;
+			for (const [k, v] of Object.entries(obsOpts)) p.set(k, v ? '1' : '0');
+			p.set('layout', obsLayout);
+			p.set('theme', obsTheme);
+			return u.toString();
+		} catch {
+			return '';
+		}
+	});
 	async function regenerateToken() {
 		try {
 			remoteToken = await api.pairRemote('__regenerate__').then(() => api.getRemoteToken());
@@ -758,6 +833,11 @@
 								desc: "Use the OS window frame instead of the app's chrome — native snap layouts and shadows. The bar's buttons stay; only the window controls move. Applies instantly.",
 								control: frameSwitch
 								})}
+								{@render row({
+								title: 'Spatial focus',
+								desc: 'Move keyboard focus with Alt+Arrow keys (nearest element in that direction).',
+								control: spatialSwitch
+								})}
 								</div>
 								</section>
 								<section class="{GROUP} {groupVisible('gen-system') ? '' : 'hidden'}">
@@ -865,10 +945,25 @@
 									below: custom.fontFiles.length ? fontFileList : undefined
 								})}
 								{@render row({
-									title: 'Lyrics font',
-									desc: 'Choose the font used only in the lyrics view.',
-									control: lyricsFontSelect
-								})}
+								title: 'Lyrics font',
+								desc: 'Choose the font used only in the lyrics view.',
+								control: lyricsFontSelect
+							})}
+								{@render row({
+								title: 'Letter spacing',
+								desc: 'Extra space between letters (dyslexia-friendly reading).',
+								control: dysLsSlider
+							})}
+								{@render row({
+								title: 'Word spacing',
+								desc: 'Extra space between words.',
+								control: dysWsSlider
+							})}
+								{@render row({
+								title: 'Line height',
+								desc: 'Taller lines for body text.',
+								control: dysLhSlider
+							})}
 								</div>
 								</section>
 
@@ -882,12 +977,26 @@
 									tall: true
 								})}
 								{@render row({
-									title: 'Adapt colors to artwork',
-									badge: 'Experimental',
-									desc: "Recolor the app from the playing track's cover: accent, surfaces and borders, fading between tracks. Off keeps the selected theme's own colors.",
-									control: artworkAccentSwitch,
-									tall: true
-								})}
+								title: 'Adapt colors to artwork',
+								badge: 'Experimental',
+								desc: "Recolor the app from the playing track's cover: accent, surfaces and borders, fading between tracks. Off keeps the selected theme's own colors.",
+								control: artworkAccentSwitch,
+								tall: true
+							})}
+								{@render row({
+								title: 'Custom app icon',
+								desc: appIconPath
+									? 'Window icon is custom. Reset restores stock on next launch.'
+									: 'Pick a PNG to use as the window/taskbar icon.',
+								control: appIconPick,
+								below: undefined
+							})}
+								{@render row({
+								title: 'Audio visualizer',
+								desc: 'Live spectrum under the Now Playing artwork, captured from what you hear. Bars or ring.',
+								control: visualizerSwitch,
+								below: visualizer.on ? visualizerStyle : undefined
+							})}
 							</div>
 						</section>
 
@@ -929,9 +1038,11 @@
 									control: qualityPicker
 								})}
 								{@render row({
-									title: 'Autoplay',
-									desc: 'Keep the music going with similar songs when your queue ends.',
-									control: autoplaySwitch
+								title: 'Autoplay',
+								desc: lt.role === 'guest'
+									? 'Host-controlled while you are a guest in a session.'
+									: 'Keep the music going with similar songs when your queue ends.',
+								control: autoplaySwitch
 								})}
 								{@render row({
 									title: 'Prevent duplicate tracks in queue',
@@ -962,8 +1073,15 @@
 									control: crossfadeSlider
 								})}
 								{@render row({
-									title: 'Crossfade mode',
-									control: crossfadeMode
+								title: 'Crossfade mode',
+								control: crossfadeMode
+								})}
+								{@render row({
+								title: 'Per-track crossfades',
+								desc: fadeOverrides > 0
+									? `${fadeOverrides} custom pair${fadeOverrides === 1 ? '' : 's'} set from queue row menus.`
+									: 'Set per-pair durations from any queue row ⋯ menu; they apply on skips and jumps.',
+								control: fadeReset
 								})}
 								{@render row({
 									title: 'Best Mix',
@@ -1117,6 +1235,7 @@
 {#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
 	{#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
 	{#snippet frameSwitch()}<Switch checked={frameOn} onCheckedChange={setFrame} />{/snippet}
+	{#snippet spatialSwitch()}<Switch checked={spatialNavOn} onCheckedChange={setSpatialNav} />{/snippet}
 {#snippet languageSelect()}
 	<Select.Root
 		type="single"
@@ -1135,7 +1254,7 @@
 		</Select.Content>
 	</Select.Root>
 {/snippet}
-{#snippet autoplaySwitch()}<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />{/snippet}
+	{#snippet autoplaySwitch()}<Switch checked={autoplayOn} disabled={lt.role === 'guest'} onCheckedChange={setAutoplay} />{/snippet}
 {#snippet dupSwitch()}<Switch
 	checked={preventDuplicatesOn}
 	onCheckedChange={setPreventDuplicates}
@@ -1155,6 +1274,36 @@
 		checked={appearance.artworkAccent}
 		onCheckedChange={(on) => setAppearance({ artworkAccent: on })}
 	/>{/snippet}
+{#snippet appIconPick()}
+	<div class="flex gap-2">
+		<Button size="sm" variant="outline" onclick={pickAppIcon}>Choose file…</Button>
+		{#if appIconPath}
+			<Button size="sm" variant="ghost" onclick={resetAppIcon}>Reset</Button>
+		{/if}
+	</div>
+{/snippet}
+{#snippet visualizerSwitch()}<Switch
+		checked={visualizer.on}
+		onCheckedChange={(on) => setVisualizerOn(on)}
+	/>{/snippet}
+{#snippet visualizerStyle()}
+	<div class="flex gap-2">
+		<Button
+			size="sm"
+			variant={visualizer.style === 'bars' ? 'default' : 'outline'}
+			onclick={() => setVisualizerStyle('bars')}
+		>
+			Bars
+		</Button>
+		<Button
+			size="sm"
+			variant={visualizer.style === 'circular' ? 'default' : 'outline'}
+			onclick={() => setVisualizerStyle('circular')}
+		>
+			Ring
+		</Button>
+	</div>
+{/snippet}
 {#snippet bestMixSwitch()}<Switch
 		checked={crossfade.best_mix}
 		onCheckedChange={(on) => {
@@ -1216,6 +1365,64 @@
 				<Button size="sm" variant="outline" onclick={refreshRemote}>Refresh</Button>
 				<Button size="sm" variant="ghost" onclick={regenerateToken}>Regenerate</Button>
 			</div>
+		</div>
+	</div>
+	<div class="mt-3 rounded-lg border p-3">
+		<p class="text-xs font-semibold tracking-wide uppercase">OBS overlay</p>
+		<p class="mt-1 text-xs text-muted-foreground">
+			BrowserSource URL: now playing, progress, lyrics and queue over transparency.
+		</p>
+		<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+			{#each [['art', 'Artwork'], ['title', 'Title'], ['prog', 'Progress'], ['lyrics', 'Lyrics'], ['queue', 'Queue']] as [k, label]}
+				<label class="flex cursor-pointer items-center gap-1.5">
+					<input
+						type="checkbox"
+						checked={obsOpts[k]}
+						onchange={() => (obsOpts = { ...obsOpts, [k]: !obsOpts[k] })}
+					/>
+					{label}
+				</label>
+			{/each}
+			<label class="flex items-center gap-1.5">
+				Layout
+				<select
+					class="cursor-pointer rounded-md border bg-transparent px-1.5 py-1"
+					value={obsLayout}
+					onchange={(e) => (obsLayout = e.currentTarget.value as 'horizontal' | 'vertical')}
+				>
+					<option value="horizontal">Horizontal</option>
+					<option value="vertical">Vertical</option>
+				</select>
+			</label>
+			<label class="flex items-center gap-1.5">
+				Backdrop
+				<select
+					class="cursor-pointer rounded-md border bg-transparent px-1.5 py-1"
+					value={obsTheme}
+					onchange={(e) => (obsTheme = e.currentTarget.value as 'transparent' | 'blur' | 'solid')}
+				>
+					<option value="transparent">Transparent</option>
+					<option value="blur">Blur</option>
+					<option value="solid">Solid</option>
+				</select>
+			</label>
+		</div>
+		<div class="mt-2 rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs break-all">
+			{obsUrl || 'Loading…'}
+		</div>
+		<div class="mt-2 flex gap-2">
+			<Button
+				size="sm"
+				variant="outline"
+				onclick={() => {
+					void navigator.clipboard.writeText(obsUrl).then(
+						() => toast.success('Overlay URL copied — add it as a BrowserSource'),
+						() => toast.error('Copy failed')
+					);
+				}}
+			>
+				Copy URL
+			</Button>
 		</div>
 	</div>
 {/snippet}
@@ -1301,6 +1508,32 @@
 		</span>
 	</div>
 {/snippet}
+
+{#snippet dysSlider(kind: 'ls' | 'ws' | 'lh')}
+	{@const cfg =
+		kind === 'ls'
+			? { max: 0.3, step: 0.01, get: () => dys.ls, set: (v: number) => setDys({ ls: v }), fmt: (v: number) => v.toFixed(2) }
+			: kind === 'ws'
+				? { max: 0.5, step: 0.01, get: () => dys.ws, set: (v: number) => setDys({ ws: v }), fmt: (v: number) => v.toFixed(2) }
+				: { max: 2.0, step: 0.05, get: () => dys.lh, set: (v: number) => setDys({ lh: v }), fmt: (v: number) => v.toFixed(2) }}
+	<div class="flex w-44 shrink-0 items-center gap-3">
+		<Slider
+			type="single"
+			aria-label={kind === 'ls' ? 'Letter spacing' : kind === 'ws' ? 'Word spacing' : 'Line height'}
+			max={cfg.max}
+			min={kind === 'lh' ? 1.2 : 0}
+			step={cfg.step}
+			value={cfg.get()}
+			onValueChange={(v) => cfg.set(Array.isArray(v) ? v[0] : v)}
+		/>
+		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+			{cfg.fmt(cfg.get())}
+		</span>
+	</div>
+{/snippet}
+{#snippet dysLsSlider()}{@render dysSlider('ls')}{/snippet}
+{#snippet dysWsSlider()}{@render dysSlider('ws')}{/snippet}
+{#snippet dysLhSlider()}{@render dysSlider('lh')}{/snippet}
 
 
 
@@ -1636,6 +1869,11 @@
 			Smart
 		</Button>
 	</div>
+{/snippet}
+{#snippet fadeReset()}
+	<Button size="sm" variant="outline" disabled={fadeOverrides === 0} onclick={resetFadeOverrides}>
+		Reset all
+	</Button>
 {/snippet}
 
 {#snippet sleepTimerPresets()}

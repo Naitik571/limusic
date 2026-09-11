@@ -615,6 +615,14 @@ input[type='range'].range:active::-webkit-slider-thumb {
 	transform: scale(1.25);
 }
 
+/* Dyslexia-friendly extras (see dys.ts): neutral by default, so untouched installs render
+   exactly as before. Explicit tracking/leading utilities still win where components set them. */
+body {
+	letter-spacing: var(--dys-ls, 0em);
+	word-spacing: var(--dys-ws, 0em);
+	line-height: var(--dys-lh, 1.5);
+}
+
 /* Feel pass: press feedback + sidebar nudge. `.pressable` opts icon buttons into a
    press squash (transform-only, never layout); sidebar links drift toward their label
    on hover. Both composite, both skipped under reduced motion by the global rule. */

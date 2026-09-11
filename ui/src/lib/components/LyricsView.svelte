@@ -108,6 +108,69 @@
 		return p === undefined ? fallback : (romanSeg[p] ?? fallback);
 	}
 
+	// Translation (translate_lyrics command, one round-trip for the whole song, joined by \n).
+	// Line-level only: word timings stay on the original script, and the translated line
+	// renders under it (Both) or in its place (Translated). Cached per song + language.
+	const TRANS_LANGS = [
+		['en', 'English'],
+		['es', 'Español'],
+		['fr', 'Français'],
+		['de', 'Deutsch'],
+		['pt', 'Português'],
+		['it', 'Italiano'],
+		['hi', 'हिन्दी'],
+		['tr', 'Türkçe'],
+		['ro', 'Română']
+	] as const;
+	let transMode = $state<'off' | 'both' | 'only'>('off');
+	let transLang = $state<string>('');
+	let transSeg = $state<string[] | null>(null);
+	let transFor = '';
+	let transBusy = $state(false);
+	function defaultTransLang(): string {
+		const sys = navigator.language?.toLowerCase().split('-')[0] ?? 'en';
+		return (TRANS_LANGS as readonly (readonly [string, string])[]).some(([c]) => c === sys)
+			? sys
+			: 'en';
+	}
+	async function setTransMode(mode: 'off' | 'both' | 'only') {
+		if (!lyrics || mode === 'off') {
+			transMode = mode;
+			return;
+		}
+		if (!transLang) transLang = defaultTransLang();
+		const key = `${requested}:${transLang}`;
+		if (transFor === key && transSeg) {
+			transMode = mode;
+			return;
+		}
+		transBusy = true;
+		const id = requested;
+		const lang = transLang;
+		try {
+			const src = lyrics.lines.map((l) => l.text).join('\n');
+			const out = await api.translateLyrics(src, lang);
+			const parts = out.split('\n');
+			if (requested !== id || parts.length !== lyrics.lines.length) return;
+			transSeg = parts;
+			transFor = key;
+			transMode = mode;
+		} catch {
+			toast.error('Translation failed');
+		} finally {
+			transBusy = false;
+		}
+	}
+	function cycleTrans() {
+		void setTransMode(transMode === 'off' ? 'both' : transMode === 'both' ? 'only' : 'off');
+	}
+	/** Translated line text, or null when translation is off/empty for this line. */
+	function transText(i: number): string | null {
+		if (transMode === 'off' || !transSeg) return null;
+		const t = transSeg[i]?.trim();
+		return t ? t : null;
+	}
+
 	// Segment positions (`line:word` → index into romanSeg), built once per lyrics instead of
 	// per word per frame — segText runs for every visible word on every karaoke frame.
 	const segIndex = $derived.by(() => {
@@ -132,6 +195,9 @@
 			romanOn = false;
 			romanSeg = null;
 			romanFor = '';
+			transMode = 'off';
+			transSeg = null;
+			transFor = '';
 			return;
 		}
 		if (now.videoId === requested) return;
@@ -157,6 +223,9 @@
 				romanOn = false; // new song, new script — romaji starts off
 				romanSeg = null;
 				romanFor = '';
+				transMode = 'off'; // same for translation
+				transSeg = null;
+				transFor = '';
 				// Kodama per-song offset: apply the persisted shift to this song's cues on load.
 				api.getLyricOffset(id)
 					.then((o) => {
@@ -421,10 +490,15 @@
 			{#each lyrics.lines as line, i (i)}
 				{@const isActive = i === activeIndex}
 				{@const isPast = i < activeIndex}
+				{@const nextT = lyrics.lines[i + 1]?.time_ms}
+				{@const wiping =
+					isActive && nextT !== undefined && nextT > posMs && nextT - posMs < 2000}
 				<button
 					data-line={i}
 					onclick={() => seekTo(line)}
-					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
+					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] {wiping
+						? 'opacity-50 saturate-50'
+						: ''}
 						{sing
 						? `py-4 ${isActive ? 'text-4xl md:text-6xl' : 'text-2xl md:text-3xl'}`
 						: expanded
@@ -440,6 +514,9 @@
 							? (expanded ? 'text-muted-foreground/15 blur-[1.5px] opacity-80 hover:blur-0 hover:text-muted-foreground/50 hover:blur-none transition-[filter]' : 'text-muted-foreground/40 hover:text-muted-foreground/75')
 							: (expanded ? 'text-muted-foreground/25 blur-[1px] opacity-90 hover:blur-0 hover:text-muted-foreground/60 transition-[filter] scale-[0.97]' : 'text-muted-foreground/70 hover:text-foreground/90')}"
 				>
+					{#if transMode === 'only' && transText(i)}
+						<span>{transText(i)}</span>
+					{:else}
 					{#if line.words && line.words.length > 0}
 						<!-- Word-by-word karaoke — the Aurora gradient sweeps across each word, with a gentle vertical float -->
 						{@const wordCount = Math.max(1, line.words.length)}
@@ -487,6 +564,10 @@
 					{:else}
 						<span>{segText(i, -1, line.text) || '♪'}</span>
 					{/if}
+					{#if transMode === 'both' && transText(i)}
+						<span class="mt-1 block text-[0.55em] font-medium normal-case tracking-normal opacity-60">{transText(i)}</span>
+					{/if}
+					{/if}
 					</button>
 			{/each}
 		</div>
@@ -501,7 +582,10 @@
 			{#each lyrics.lines as line, i (i)}
 				{#if line.text}
 					<div class={sing ? 'text-2xl md:text-3xl' : ''}>
-						<p>{segText(i, -1, line.text)}</p>
+						<p>{transMode === 'only' ? (transText(i) ?? segText(i, -1, line.text)) : segText(i, -1, line.text)}</p>
+						{#if transMode === 'both' && transText(i)}
+							<p class="mt-0.5 text-[0.7em] opacity-60">{transText(i)}</p>
+						{/if}
 					</div>
 				{:else}
 					<div class="h-4"></div>
@@ -519,6 +603,12 @@
 					>
 						<HugeiconsIcon icon={Attachment01Icon} class="h-3.5 w-3.5" /> Import .lrc
 					</button>
+					<a
+						class="text-xs font-medium text-primary hover:underline"
+						href={`/lyrics/compose?videoId=${encodeURIComponent(playback.now.videoId)}`}
+					>
+						or time it yourself →
+					</a>
 				{/if}
 			</div>
 		{/if}
@@ -540,6 +630,34 @@
 			>
 				{romanBusy ? '…' : romanOn ? 'かな' : 'Romaji'}
 			</button>
+		{/if}
+		<button
+			class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors {transMode !== 'off'
+				? 'border-primary/60 text-primary'
+				: 'hover:border-foreground/20 hover:text-foreground'}"
+			onclick={cycleTrans}
+			disabled={transBusy}
+			title="Cycle translation: off → both → translated only"
+			aria-pressed={transMode !== 'off'}
+		>
+			{transBusy ? '…' : transMode === 'off' ? 'Translate' : transMode === 'both' ? 'Both' : 'Translated'}
+		</button>
+		{#if transMode !== 'off'}
+			<select
+				class="shrink-0 cursor-pointer rounded-full border bg-transparent px-1.5 py-0.5 text-[11px]"
+				value={transLang || defaultTransLang()}
+				aria-label="Translation language"
+				onchange={(e) => {
+					transLang = e.currentTarget.value;
+					transSeg = null;
+					transFor = '';
+					void setTransMode(transMode);
+				}}
+			>
+				{#each TRANS_LANGS as [code, label]}
+					<option value={code}>{label}</option>
+				{/each}
+			</select>
 		{/if}
 		{#if lyrics.source === 'Custom file'}
 			<button

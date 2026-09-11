@@ -13,7 +13,8 @@
 		PinIcon,
 		MusicNote01Icon,
 		ListRestartIcon,
-		HistoryIcon
+		HistoryIcon,
+		Download01Icon
 	} from '@hugeicons/core-free-icons';
 	import { toggleMode } from 'mode-watcher';
 	import { Button } from '$lib/components/ui/button';
@@ -24,14 +25,15 @@
 	import { goto } from '$app/navigation';
 	import { thumb } from '$lib/thumb';
 	import PlaylistMenu from './PlaylistMenu.svelte';
-	import { auth, library, personal, ui, createLibraryPlaylist, toast } from '$lib/player.svelte';
+	import { auth, library, personal, ui, createLibraryPlaylist, toast, downloads } from '$lib/player.svelte';
 	import { orderLibrary } from '$lib/personal';
 
 	const nav = [
 		{ href: '/', label: 'Home', icon: Home01Icon },
 		{ href: '/search', label: 'Search', icon: Search01Icon },
 		{ href: '/library', label: 'Library', icon: LibraryIcon },
-		{ href: '/history', label: 'History', icon: HistoryIcon }
+		{ href: '/history', label: 'History', icon: HistoryIcon },
+		{ href: '/downloads', label: 'Downloads', icon: Download01Icon }
 	];
 	const isActive = (href: string) =>
 		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
@@ -149,6 +151,14 @@
 					class="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110"
 				/>
 				<span class="hidden lg:inline">{n.label}</span>
+				{#if n.href === '/downloads' && downloads.active > 0}
+					<span
+						class="ml-auto hidden rounded-full bg-yellow-400/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-500 tabular-nums lg:inline"
+						title="{downloads.active} downloading"
+					>
+						{downloads.active}
+					</span>
+				{/if}
 			</a>
 		{/each}
 		<button

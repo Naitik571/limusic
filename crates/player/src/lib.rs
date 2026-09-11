@@ -197,6 +197,13 @@ impl Player {
         Ok(())
     }
 
+    /// Playback speed multiplier (0.5–1.5 for the lyrics composer; mpv keeps pitch by
+    /// default via audio-pitch-correction). Clamped, never zero.
+    pub fn set_speed(&self, rate: f64) -> Result<(), Error> {
+        self.mpv.set_property("speed", rate.clamp(0.25, 2.0))?;
+        Ok(())
+    }
+
     /// Set output volume (0–100). Perceptual percent → mpv volume via the square-law
     /// taper below. 0 stays hard mute.
     pub fn set_volume(&self, volume: i64) -> Result<(), Error> {

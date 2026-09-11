@@ -278,6 +278,47 @@ pub async fn seek(state: St<'_>, position: f64) -> Result<(), String> {
     state.user_seek(position).await
 }
 
+/// Playback speed multiplier for the lyrics composer (0.25–2, pitch preserved by mpv).
+/// Not persisted: every composer session starts at 1× and resets on leave.
+#[tauri::command]
+pub fn set_playback_rate(state: St<'_>, rate: f64) -> Result<(), String> {
+    state.player.set_speed(rate).map_err(|e| e.to_string())
+}
+
+/// Custom window icon from raw RGBA pixels (decoded frontend-side — this crate has no image
+/// decoder, and canvas does it for free). 512px cap keeps payloads sane. The source path
+/// persists separately (`app_icon_path`) so restarts can re-apply it.
+#[tauri::command]
+pub async fn set_app_icon(
+    app: tauri::AppHandle,
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if width == 0 || height == 0 || width > 512 || height > 512 {
+        return Err("icon must be 1–512px per side".into());
+    }
+    if rgba.len() != (width * height * 4) as usize {
+        return Err("pixel buffer does not match dimensions".into());
+    }
+    let icon = tauri::image::Image::new_owned(rgba, width, height);
+    let Some(w) = app.get_webview_window("main") else {
+        return Err("main window not found".into());
+    };
+    w.set_icon(icon).map_err(|e| e.to_string())
+}
+
+/// Real-time spectrum visualizer (WASAPI app-loopback + FFT). Persists + spawns the
+/// capture thread on enable; disabling stops events (the UI decays to flat on its own).
+#[tauri::command]
+pub fn set_visualizer(app: tauri::AppHandle, state: St<'_>, on: bool) -> Result<(), String> {
+    state
+        .db
+        .set_setting("visualizer", if on { "true" } else { "false" });
+    state.visualizer.set_enabled(&app, on);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn set_volume(state: St<'_>, volume: i64) -> Result<(), String> {
     state.player.set_volume(volume).map_err(|e| e.to_string())?;
@@ -342,7 +383,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `data_sync_id`, `account_json`, `visitor_data`) and internal blobs (`queue_json`,
 /// `queue_position`) never cross into the webview — they'd otherwise ship the login credential to
 /// the renderer on every open — and the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 24] = [
+const UI_SETTINGS: [&str; 28] = [
     "proxy",
     "quality",
     "enable_history",
@@ -374,6 +415,13 @@ const UI_SETTINGS: [&str; 24] = [
     "sticky_shuffle",
     // Native OS window frame instead of the custom titlebar (Settings → General → System).
     "native_frame",
+    // Spectrum visualizer (Settings → Appearance) + its style.
+    "visualizer",
+    "visualizer_style",
+    // Custom window icon source path (Settings → Themes). Pixels re-decoded on launch.
+    "app_icon_path",
+    // Per-pair crossfade overrides (`fromId__toId` → secs JSON, queue row menu). Plain data.
+    "crossfade_overrides",
     // Custom app icon: an absolute file path on this machine, not a secret.
 ];
 
@@ -898,6 +946,13 @@ pub async fn start_radio(
 ) -> Result<(), String> {
     let state = state.inner().clone();
     state.start_radio(&kind, &id, name).await
+}
+
+/// Re-seed radio from the current track (queue panel "Refresh radio"). Returns how many
+/// tracks the fresh mix installed behind what's playing.
+#[tauri::command]
+pub async fn refresh_radio(state: St<'_>) -> Result<usize, String> {
+    state.inner().clone().refresh_radio().await
 }
 
 /// Similar songs to a track — the same radio endpoint that powers autoplay (context/08),
