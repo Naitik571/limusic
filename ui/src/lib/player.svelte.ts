@@ -725,7 +725,8 @@ function onShortcut(e: KeyboardEvent) {
 						: 'right';
 		if (spatialMove(dir as 'up' | 'down' | 'left' | 'right')) e.preventDefault();
 		return;
-	}	const pos = playback.position;
+	}
+	const pos = playback.position;
 	const run = (action: ActionId): boolean => bindingsFor(action).some((b) => matchBinding(e, b));
 	const precise = e.shiftKey;
 	// Shift+Arrows keep their legacy pear-parity meaning (precise 1% nudge) outside the map.
