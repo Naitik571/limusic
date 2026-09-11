@@ -74,6 +74,17 @@ pub struct AppState {
     /// videoId of the last background like-status probe (`like-status` event). A track whose
     /// `liked` was unknown gets probed once; repeat plays of the same unknown track don't refetch.
     like_probe: std::sync::Mutex<Option<String>>,
+    /// Autoplay extend in flight: track-start, track-end, skip-at-tail and unshuffle can all
+    /// trigger continuation for the same tail — without this they fetch + merge concurrently off
+    /// stale snapshots and the tail doubles up.
+    extend_inflight: AtomicBool,
+    /// (seed, tail videoId) whose last continuation returned nothing new. Stops the
+    /// per-track-end refetch loop on dead radios; keyed so any queue change invalidates it.
+    /// Fetch *errors* don't latch (a flaky network shouldn't kill autoplay for the session) —
+    /// their notice is time-gated by `extend_err_at` instead.
+    extend_exhausted: std::sync::Mutex<Option<(String, String)>>,
+    /// Unix secs of the last autoplay-fetch failure notice (at most one toast per 5 minutes).
+    extend_err_at: AtomicU64,
     /// Serializes gapless lookahead appends. The queue mutex can't do it (the blocking mpv
     /// call must run unlocked), so without this two concurrent primes for different slots can
     /// append out of verification order and offset mpv from `current` for the session.
@@ -365,6 +376,9 @@ impl AppState {
             last_media_push: AtomicU64::new(0),
             like_probe: std::sync::Mutex::new(None),
             lookahead_append: Mutex::new(()),
+            extend_inflight: AtomicBool::new(false),
+            extend_exhausted: std::sync::Mutex::new(None),
+            extend_err_at: AtomicU64::new(0),
         }
     }
 
@@ -866,6 +880,12 @@ impl AppState {
         // Hydrate up-next radio (context/08) — non-fatal if it fails. Seed the radio playlist
         // directly (`RDAMVM<videoId>`): a bare next(videoId) returns only the seed song + an
         // automixPreviewVideoRenderer, so the queue would never grow past one track.
+        // Gated on the autoplay setting: with autoplay off the queue ends at the chosen song
+        // instead of silently growing (and playing) twenty radio tracks behind it.
+        if !self.autoplay_enabled() {
+            self.prime_lookahead(gen).await;
+            return;
+        }
         let radio_id = format!("RDAMVM{video_id}");
         let Some(client) = self.clients.get(innertube::METADATA_CLIENT) else {
             tracing::warn!("next() radio hydration skipped: no metadata client");
@@ -882,8 +902,11 @@ impl AppState {
                 if self.generation.load(Ordering::SeqCst) != gen {
                     return; // superseded
                 }
-                for item in next.items {
+                // Mark hydration as radio filler (like merge_radio does): without the flag the
+                // panel shows these as chosen tracks and clear-queue/restore treat them as such.
+                for mut item in next.items {
                     if item.video_id != video_id {
+                        item.autoplay = true;
                         q.items.push(item);
                     }
                 }
@@ -1247,6 +1270,29 @@ impl AppState {
         if self.generation.load(Ordering::SeqCst) != gen {
             return Ok(());
         }
+        // No current track (empty queue): starting the mood's mix outright beats building a
+        // queue nobody plays.
+        if current.is_none() {
+            self.play_tracks(
+                items,
+                Some(0),
+                Some(chip.playlist_id.clone()),
+                source_name,
+                false,
+                None,
+            )
+            .await;
+            // play_tracks wipes moods (fresh context) — install this mood's own chips.
+            {
+                let mut q = self.queue.lock().await;
+                q.radio = true;
+                q.radio_moods = moods;
+                q.radio_mood_params = Some(chip.params);
+            }
+            self.emit_queue().await;
+            self.persist_queue().await;
+            return Ok(());
+        }
         self.splice_radio(
             items,
             chip.playlist_id,
@@ -1364,6 +1410,7 @@ impl AppState {
                 return;
             }
             q.current = index;
+            rederive_radio(&mut q);
             q.lookahead_loaded = None;
         }
         if self.start_current(gen).await {
@@ -1409,6 +1456,7 @@ impl AppState {
                 match next_index(q.items.len(), q.current, q.repeat) {
                     Some(next) if q.lookahead_loaded == Some(next) => {
                         q.current = next;
+                        rederive_radio(&mut q);
                         q.lookahead_loaded = None;
                         q.current_client = q.lookahead_client.take();
                         q.playback_url = q.lookahead_playback_url.take();
@@ -1437,6 +1485,7 @@ impl AppState {
                 Some(next) => {
                     let primed = q.lookahead_loaded == Some(next);
                     q.current = next;
+                    rederive_radio(&mut q);
                     (true, primed)
                 }
                 None => (false, false),
@@ -2262,6 +2311,10 @@ impl AppState {
                 let dist = (k as i8 - cur_key as i8).abs() as u8;
                 dist.min(12 - dist)
             });
+            // Stable partition second: radio filler sinks below chosen tracks (same relative
+            // order inside each part). Without this the queue panel's Autoplay divider is
+            // fiction — filler interleaves with the tracks the user picked.
+            upcoming.sort_by_key(|it| it.autoplay);
         }
     }
 
@@ -2272,10 +2325,26 @@ impl AppState {
     /// Dedupes against the entire current queue; caps at `AUTOPLAY_BATCH` per hop. When the radio
     /// returns nothing new, playback later stops exactly as pre-autoplay (no retry loop).
     async fn extend_queue_radio(self: &std::sync::Arc<Self>, gen: u64) -> usize {
-        const AUTOPLAY_BATCH: usize = 20;
         if !self.autoplay_enabled() || self.lt.is_guest().await {
             return 0;
         }
+        // Only one continuation fetch merges at a time: concurrent triggers snapshot the same
+        // `existing` set and both merges land, doubling the tail. The flag always clears —
+        // the inner fn owns every return past this point.
+        if self
+            .extend_inflight
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return 0;
+        }
+        let out = self.extend_queue_radio_inner(gen).await;
+        self.extend_inflight.store(false, Ordering::SeqCst);
+        out
+    }
+
+    async fn extend_queue_radio_inner(self: &std::sync::Arc<Self>, gen: u64) -> usize {
+        const AUTOPLAY_BATCH: usize = 20;
         let (last_video, seed, mood_params, existing) = {
             let q = self.queue.lock().await;
             if q.repeat != RepeatMode::Off {
@@ -2296,6 +2365,17 @@ impl AppState {
                 .unwrap_or_else(|| format!("RDAMVM{}", last.video_id));
             let mood_params = q.radio_mood_params.clone();
             let existing: HashSet<String> = q.items.iter().map(|i| i.video_id.clone()).collect();
+            // Dead radio latch: this exact tail already came back empty — don't spend another
+            // round trip (or toast) until the queue itself changes.
+            if self
+                .extend_exhausted
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|(s, t)| *s == seed && *t == last.video_id)
+            {
+                return 0;
+            }
             (last.video_id.clone(), seed, mood_params, existing)
         };
         let Some(client) = self.clients.get(innertube::METADATA_CLIENT) else {
@@ -2318,6 +2398,12 @@ impl AppState {
             Ok(next) => next.items,
             Err(e) => {
                 tracing::warn!(error = %e, "autoplay radio fetch failed");
+                // Time-gated notice: an outage shouldn't toast on every track end.
+                let now = now_secs() as u64;
+                if now.saturating_sub(self.extend_err_at.load(Ordering::Relaxed)) >= 300 {
+                    self.extend_err_at.store(now, Ordering::Relaxed);
+                    self.emit_notice("Couldn't load more similar songs — the queue ends here.");
+                }
                 return 0;
             }
         };
@@ -2328,6 +2414,10 @@ impl AppState {
             let mut q = self.queue.lock().await;
             merge_radio(&mut q.items, fresh, existing, AUTOPLAY_BATCH)
         };
+        if added == 0 {
+            // Nothing new behind this tail — latch it so the next track end doesn't refetch.
+            *self.extend_exhausted.lock().unwrap() = Some((seed.clone(), last_video.clone()));
+        }
         if added > 0 {
             tracing::info!(added, seed = %seed, "autoplay extended the queue");
             self.emit_queue().await;
@@ -2341,15 +2431,31 @@ impl AppState {
     }
 
     /// Persist the queue (items + current index) as a JSON blob so a restart can restore it
-    /// losslessly (context/11 §state). Called whenever the queue changes or advances.
+    /// losslessly (context/11 §state). Called whenever the queue changes or advances. The heard
+    /// prefix is capped (last 100 before current) so an all-day radio session doesn't grow the
+    /// row without bound — the live queue is untouched, only what hits the disk.
     async fn persist_queue(&self) {
+        const MAX_HEARD: usize = 100;
         let json = {
             let q = self.queue.lock().await;
+            let drop = q.current.saturating_sub(MAX_HEARD);
+            // The shuffle snapshot rides the same cap (only tracks still in the queue matter
+            // for un-shuffle — heard ones it would resurrect are gone for good).
+            let kept: HashSet<&str> = q.items[drop..]
+                .iter()
+                .map(|i| i.video_id.as_str())
+                .collect();
+            let shuffle_orig: Option<Vec<SongItem>> = q.shuffle_orig.as_ref().map(|orig| {
+                orig.iter()
+                    .filter(|i| kept.contains(i.video_id.as_str()))
+                    .cloned()
+                    .collect()
+            });
             serde_json::json!({
-                "items": &q.items,
-                "current": q.current,
+                "items": &q.items[drop..],
+                "current": q.current - drop,
                 "repeat": q.repeat,
-                "shuffleOrig": &q.shuffle_orig,
+                "shuffleOrig": &shuffle_orig,
                 "radioSeed": &q.radio_seed,
                 "sourceName": &q.source_name,
                 "radio": q.radio,
@@ -2950,6 +3056,8 @@ impl AppState {
                 }
             }
             q.items.splice(at..at, items);
+            // The add may have left a pure-radio tail (or completed one) — re-derive.
+            rederive_radio(&mut q);
             // Drop the primed lookahead when what plays next moved (an append past the tail
             // retargets a primed repeat-all wrap from index 0 to the new item) or when a different
             // song now sits in the primed slot — otherwise the gapless advance plays the wrong one.
@@ -2997,6 +3105,7 @@ impl AppState {
             if index < q.current {
                 q.current -= 1;
             }
+            rederive_radio(&mut q);
             match q.lookahead_loaded {
                 // mpv holds the removed song as the gapless next — drop it. (Compared against the
                 // recorded index, not `current + 1`, so a primed repeat-all wrap target is caught.)
@@ -3202,6 +3311,16 @@ fn track_to_song(t: &Track) -> SongItem {
         autoplay: false,
         is_video: false,
         is_upload: false,
+    }
+}
+
+/// A queue whose upcoming tracks are all radio filler is a radio again, even if a manual
+/// add once cleared the flag — re-derive so later adds land right after current (wholesale)
+/// instead of at the tail, and the panel keeps treating the tail as generated. One-way only:
+/// only ever flips false→true, never the reverse.
+fn rederive_radio(q: &mut QueueState) {
+    if !q.radio && q.items.iter().skip(q.current + 1).all(|i| i.autoplay) {
+        q.radio = true;
     }
 }
 
@@ -3541,8 +3660,8 @@ mod tests {
     use super::{
         append_page, apply_queue_move, backfill_metadata, drop_duplicates, enqueue_at,
         format_duration, guest_insert_index, is_mix, merge_radio, next_index, parse_duration_ms,
-        parse_sleep_mode, radio_seed_for, shuffle_new_queue, shuffle_upcoming, splice_radio_into,
-        unshuffled, upcoming_queued, QueueState, RepeatMode, SleepTimer,
+        parse_sleep_mode, radio_seed_for, rederive_radio, shuffle_new_queue, shuffle_upcoming,
+        splice_radio_into, unshuffled, upcoming_queued, QueueState, RepeatMode, SleepTimer,
     };
 
     #[test]
@@ -3821,6 +3940,29 @@ mod tests {
         assert_eq!(q.source_name.as_deref(), Some("Now Radio"));
         // Radio tracks are the queue, not autoplay filler — no "Autoplay" divider under them.
         assert!(q.items.iter().all(|i| !i.autoplay));
+    }
+
+    // A queue whose upcoming tracks are all radio filler is a radio again, even after a manual
+    // add cleared the flag: later adds land right after current instead of at the tail.
+    #[test]
+    fn radio_flag_rederives_once_upcoming_is_all_filler() {
+        let filler = |id: &str| innertube::SongItem {
+            autoplay: true,
+            ..song(id, None)
+        };
+        let mut q = QueueState {
+            items: vec![song("now", None), filler("r1"), filler("r2")],
+            current: 0,
+            radio: false,
+            ..QueueState::default()
+        };
+        rederive_radio(&mut q);
+        assert!(q.radio);
+        // ...but a single chosen track upcoming keeps it a non-radio.
+        q.items.insert(1, song("mine", Some("me")));
+        q.radio = false;
+        rederive_radio(&mut q);
+        assert!(!q.radio);
     }
 
     #[test]

@@ -30,10 +30,9 @@
 	import StackCard from './StackCard.svelte';
 	import SectionHeading from './SectionHeading.svelte';
 	import TrackRow from './TrackRow.svelte';
-	import * as api from '$lib/api';
 	import type { BrowseItem } from '$lib/api';
 	import { asSong } from '$lib/browse';
-	import { openAddToPlaylist, openPlayer, playback } from '$lib/player.svelte';
+	import { openAddToPlaylist, playSong, playback } from '$lib/player.svelte';
 
 	let {
 		title,
@@ -91,10 +90,13 @@
 			songs.slice(c * ROWS, c * ROWS + ROWS)
 		)
 	);
-	// Clicking any row starts there and queues the whole shelf, so a shelf plays as the set it is.
+	// Clicking a row plays just that song plus its own autoplay (single-song radio), not the
+	// whole shelf — a shelf is a discovery list, not a playlist, and playing through fifteen
+	// unrelated tracks before autoplay even starts is never what the click meant.
 	const play = (start: number) => {
-		openPlayer();
-		return api.playPlaylist(songs, start, undefined, title);
+		const song = songs[start];
+		if (!song) return;
+		playSong(song);
 	};
 
 	// Slot width per form, and the height the rail reserves before it has been laid out.

@@ -14,6 +14,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
+	import { lt } from '$lib/lt.svelte';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -929,9 +930,11 @@
 									control: qualityPicker
 								})}
 								{@render row({
-									title: 'Autoplay',
-									desc: 'Keep the music going with similar songs when your queue ends.',
-									control: autoplaySwitch
+								title: 'Autoplay',
+								desc: lt.role === 'guest'
+									? 'Host-controlled while you are a guest in a session.'
+									: 'Keep the music going with similar songs when your queue ends.',
+								control: autoplaySwitch
 								})}
 								{@render row({
 									title: 'Prevent duplicate tracks in queue',
@@ -1135,7 +1138,7 @@
 		</Select.Content>
 	</Select.Root>
 {/snippet}
-{#snippet autoplaySwitch()}<Switch checked={autoplayOn} onCheckedChange={setAutoplay} />{/snippet}
+	{#snippet autoplaySwitch()}<Switch checked={autoplayOn} disabled={lt.role === 'guest'} onCheckedChange={setAutoplay} />{/snippet}
 {#snippet dupSwitch()}<Switch
 	checked={preventDuplicatesOn}
 	onCheckedChange={setPreventDuplicates}
