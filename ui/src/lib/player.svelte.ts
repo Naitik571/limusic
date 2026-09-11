@@ -791,9 +791,6 @@ function onShortcut(e: KeyboardEvent) {
 	// Ctrl/Cmd chords (K, H, E, >/<) live in `shortcuts.ts`, which gates on the modifier first —
 	// this handler deliberately never sees them.
 }
-	// Ctrl/Cmd chords (K, H, E, >/<) live in `shortcuts.ts`, which gates on the modifier first —
-	// this handler deliberately never sees them.
-}
 
 // --- Sleep timer -------------------------------------------------------------------------------
 // Rust enforces the actual pause (a 1 Hz tick thread in lib.rs, so it keeps counting with the
