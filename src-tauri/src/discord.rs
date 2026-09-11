@@ -714,7 +714,7 @@ mod tests {
 
         match p.plan() {
             Act::Wait(d) => assert!(d <= SEND_FLOOR, "waits out the floor, got {d:?}"),
-            other => panic!("expected a deferred push, got {other:?}"),
+            other => assert!(false, "test invariant failed: expected deferred push, got {other:?}"),
         }
         // Once the floor clears, the *pending* scrub still goes out.
         p.last_send = Some(Instant::now() - SEND_FLOOR - Duration::from_millis(10));

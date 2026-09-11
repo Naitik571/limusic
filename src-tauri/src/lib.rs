@@ -210,14 +210,23 @@ pub fn run() {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!(error = %e, "init libmpv failed, app will open without audio");
-                    // Create a fallback player that at least allows UI to open; audio will be unavailable
                     // Try once more with minimal config
-                    Player::new(std::env::temp_dir().to_str().unwrap_or("C:\\Temp")).unwrap_or_else(|e2| {
-                        tracing::error!(error = %e2, "fallback libmpv also failed, using dummy");
-                        // Last resort: create a dummy player that doesn't use mpv (will fail later but lets UI open)
-                        // For now panic with a user-visible error instead of silent close
-                        panic!("libmpv init failed: {} (fallback also failed: {}) - ensure libmpv-2.dll is next to the exe", e, e2);
-                    })
+                    match Player::new(std::env::temp_dir().to_str().unwrap_or("C:\\Temp")) {
+                        Ok(p) => p,
+                        Err(e2) => {
+                            tracing::error!(error = %e2, "fallback libmpv also failed, using dummy");
+                            // Both attempts failed. Log and exit cleanly so the user sees a
+                            // readable message in the log instead of a Windows crash dialog.
+                            tracing::error!(error = %e, fallback_error = %e2, "libmpv init failed twice — ensure libmpv-2.dll is next to the exe");
+                            let _ = handle.emit(
+                                "playback-notice",
+                                serde_json::json!({ "message": "Audio unavailable: libmpv-2.dll missing or corrupted. Reinstall the app." }),
+                            );
+                            // Give the UI a moment to display the notice, then exit.
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            std::process::exit(1);
+                        }
+                    }
                 }
             };
             let events = player.take_events().unwrap_or_else(|| {

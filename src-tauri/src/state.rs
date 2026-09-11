@@ -87,7 +87,7 @@ pub struct AppState {
     /// per-track-end refetch loop on dead radios; keyed so any queue change invalidates it.
     /// Fetch *errors* don't latch (a flaky network shouldn't kill autoplay for the session) —
     /// their notice is time-gated by `extend_err_at` instead.
-    extend_exhausted: std::sync::Mutex<Option<(String, String)>>,
+    extend_exhausted: std::sync::Mutex<Option<(String, String, u64)>>,
     /// Unix secs of the last autoplay-fetch failure notice (at most one toast per 5 minutes).
     extend_err_at: AtomicU64,
     /// Serializes gapless lookahead appends. The queue mutex can't do it (the blocking mpv
@@ -1550,7 +1550,8 @@ impl AppState {
                 if me.extend_queue_radio(gen).await > 0 {
                     {
                         let mut q = me.queue.lock().await;
-                        q.current += 1; // the first appended track
+                        let next = next_index(q.items.len(), q.current, q.repeat);
+                        q.current = next.unwrap_or(q.current + 1);
                         q.lookahead_loaded = None; // start_current's loadfile replaces mpv's playlist
                     }
                     if me.start_current(gen).await {
@@ -2442,7 +2443,7 @@ impl AppState {
                 .lock()
                 .unwrap()
                 .as_ref()
-                .is_some_and(|(s, t)| *s == seed && *t == last.video_id)
+                .is_some_and(|(s, t, g)| *s == seed && *t == last.video_id && *g == generation)
             {
                 return 0;
             }
@@ -2486,7 +2487,8 @@ impl AppState {
         };
         if added == 0 {
             // Nothing new behind this tail — latch it so the next track end doesn't refetch.
-            *self.extend_exhausted.lock().unwrap() = Some((seed.clone(), last_video.clone()));
+            // Include generation so a queue change invalidates the latch.
+            *self.extend_exhausted.lock().unwrap() = Some((seed.clone(), last_video.clone(), gen));
         }
         if added > 0 {
             tracing::info!(added, seed = %seed, "autoplay extended the queue");
