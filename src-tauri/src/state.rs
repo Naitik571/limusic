@@ -2443,7 +2443,7 @@ impl AppState {
                 .lock()
                 .unwrap()
                 .as_ref()
-                .is_some_and(|(s, t, g)| *s == seed && *t == last.video_id && *g == generation)
+                .is_some_and(|(s, t, g)| *s == seed && *t == last.video_id && *g == self.generation)
             {
                 return 0;
             }
