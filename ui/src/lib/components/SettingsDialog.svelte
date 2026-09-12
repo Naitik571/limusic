@@ -20,7 +20,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, markNotDownloaded, downloadedIds, loadDownloadedIds, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame, visualizer, setVisualizerOn, setVisualizerStyle, applyAppIcon, clearAppIcon } from '$lib/player.svelte';
+	import { ui, toast, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame, visualizer, setVisualizerOn, setVisualizerStyle, applyAppIcon, clearAppIcon } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import { fadeOverrideCount, clearFadeMap } from '$lib/components/TrackMenu.svelte';
 	import { spatialEnabled, setSpatialEnabled } from '$lib/spatial';
@@ -67,7 +67,7 @@
 		{ id: 'general', label: 'General', hint: 'History, integrations and how the app starts.', icon: Settings02Icon },
 		{ id: 'themes', label: 'Appearance', hint: 'Colors, fonts, layouts and the player view.', icon: PaintBoardIcon },
 		{ id: 'playback', label: 'Playback', hint: 'Quality, transitions and streams.', icon: PlayCircleIcon },
-		{ id: 'downloads', label: 'Downloads', hint: 'Offline files: location, quality and cleanup.', icon: Download04Icon },
+		{ id: 'downloads', label: 'Downloads', hint: 'Offline files: location and quality.', icon: Download04Icon },
 		{ id: 'data', label: 'Data & storage', hint: 'Network and cached files.', icon: Database02Icon },
 		{ id: 'about', label: 'About', hint: 'Version and updates.', icon: InformationCircleIcon }
 	];
@@ -189,7 +189,6 @@
 		{ tab: 'downloads', group: 'dl-quality', text: 'Audio format Container/codec for saved files. M4A is the most compatible.' },
 		{ tab: 'downloads', group: 'dl-quality', text: 'Use downloads when available Play the saved file instead of streaming whenever you have one.' },
 		{ tab: 'downloads', group: 'dl-auto', text: 'Keep new music offline automatically New liked songs are fetched in the background — no manual downloads.' },
-		{ tab: 'downloads', group: 'dl-saved', text: 'Downloaded tracks Saved tracks and their size.' },
 		// Data & storage
 		{ tab: 'data', group: 'dt-network', text: 'Proxy HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.' },
 		{ tab: 'data', group: 'dt-storage', text: 'Cache Clear cached stream URLs and downloaded audio bytes.' },
@@ -411,13 +410,6 @@
 	const downloadQuality = $derived(settings.download_quality ?? 'AUTO');
 	const downloadFormat = $derived(settings.download_format ?? 'm4a');
 	const useOffline = $derived(settings.use_offline === 'true');
-	const downloads = $state<api.DownloadedTrack[]>([]);
-
-	async function refreshDownloads() {
-		try {
-			downloads.splice(0, downloads.length, ...(await api.listDownloads()).items);
-		} catch {}
-	}
 
 	async function pickDownloadDir() {
 		const picked = await open({ directory: true, defaultPath: downloadDir || undefined });
@@ -457,40 +449,6 @@
 		settings.use_offline = on ? 'true' : 'false';
 		await api.setSetting('use_offline', settings.use_offline);
 	}
-
-	async function removeDownload(vid: string) {
-		try {
-			await api.deleteDownload(vid);
-		} catch (e) {
-			toast.error(String(e));
-			return;
-		}
-		markNotDownloaded(vid);
-		await refreshDownloads();
-	}
-
-	async function clearAllDownloads() {
-		try {
-			const cleared = await api.clearDownloads();
-			toast.success(`Cleared ${cleared} download${cleared === 1 ? '' : 's'}`);
-		} catch (e) {
-			// Partial clear (locked files keep their rows) — report, don't pretend.
-			toast.error(String(e));
-		}
-		await loadDownloadedIds();
-		await refreshDownloads();
-	}
-
-	function fmtSize(bytes: number) {
-		if (!bytes) return '—';
-		const mb = bytes / (1024 * 1024);
-		return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
-	}
-
-	// Load the list whenever the tab is opened.
-	$effect(() => {
-		if (tab === 'downloads') refreshDownloads();
-	});
 
 	const disabled = $derived(
 		new Set(
@@ -1156,18 +1114,8 @@
 									tall: true
 								})}
 							</div>
-						</section>
-						<section class="{GROUP} {groupVisible('dl-saved') ? '' : 'hidden'}">
-							<h3 class={LABEL}>Saved tracks</h3>
-							<div class={CARD}>
-								{@render row({
-									title: 'Downloaded tracks',
-									control: clearAllButton,
-									below: downloadsList
-								})}
-							</div>
-						</section>
-					{:else if tab === 'data'}
+					</section>
+				{:else if tab === 'data'}
 						<section class="{GROUP} {groupVisible('dt-network') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Network</h3>
 							<div class={CARD}>
@@ -1934,44 +1882,7 @@
 	</div>
 {/snippet}
 
-{#snippet clearAllButton()}
-	<Button
-		size="sm"
-		variant="ghost"
-		disabled={downloads.length === 0}
-		onclick={clearAllDownloads}
-	>
-		Clear all
-	</Button>
-{/snippet}
-
-{#snippet downloadsList()}
-	{#if downloads.length === 0}
-		<p class="text-sm text-muted-foreground">
-			Nothing saved yet. Use the ⋮ menu on any track and choose “Download”.
-		</p>
-	{:else}
-		<div class="flex flex-col gap-1.5">
-			{#each downloads as d (d.video_id)}
-				<div class="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-					<div class="min-w-0">
-						<div class="truncate text-sm font-medium">{d.title}</div>
-						<div class="truncate text-xs text-muted-foreground">{d.artists}</div>
-					</div>
-					<div class="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-						<span class="uppercase">{d.format}</span>
-						<span>{fmtSize(d.size_bytes)}</span>
-						<Button size="sm" variant="ghost" onclick={() => removeDownload(d.video_id)}>
-							Remove
-						</Button>
-					</div>
-				</div>
-			{/each}
-		</div>
-	{/if}
-{/snippet}
-
-{#snippet proxyForm()}
+	{#snippet proxyForm()}
 	<form
 		class="flex gap-2"
 		onsubmit={(e) => {
