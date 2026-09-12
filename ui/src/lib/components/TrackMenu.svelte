@@ -56,6 +56,7 @@
 	import { toast } from '$lib/player.svelte';
 	import type { SongItem } from '$lib/api';
 	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody, type MenuCloseReason } from '$lib/menu';
+	import { particleBurst } from '$lib/particleburst';
 	import { addPick, enqueue, isLiked, startRadio, toggleLike, rate, downloadedIds, markDownloaded, markNotDownloaded } from '$lib/player.svelte';
 	import { crossfade } from '$lib/player.svelte';
 
@@ -205,6 +206,28 @@
 	// Shared with every other row: downloading here, in a playlist bulk download, or in Settings
 	// flips this instantly (and deleting anywhere clears it).
 	const downloaded = $derived(downloadedIds.has(song.video_id));
+
+	// MIUI-style disintegrate before a removal lands. Positioning stays in menu.ts
+	// (anchorMenu/fitMenu own it); this only plays the visual. A proxy node at the
+	// pointer carries the cover for the palette since the popup lives on <body>.
+	function burstAt(e: MouseEvent) {
+		try {
+			const proxy = document.createElement('div');
+			proxy.setAttribute('aria-hidden', 'true');
+			proxy.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;width:8px;height:8px;pointer-events:none;opacity:0;`;
+			if (song.thumbnail) {
+				const img = document.createElement('img');
+				img.src = song.thumbnail;
+				img.style.cssText = 'width:8px;height:8px;';
+				proxy.appendChild(img);
+			}
+			document.body.appendChild(proxy);
+			particleBurst(proxy);
+			setTimeout(() => proxy.remove(), 60);
+		} catch {
+			/* visual only */
+		}
+	}
 </script>
 
 <!-- Externally-opened menus (palette) need no trigger: rendering the hidden button would let
@@ -237,7 +260,7 @@
 		{@attach toBody}
 	></button>
 	<div
-		class="fixed z-[60] min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		class="ctx-pop fixed z-[60] min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style={anchor.style}
 		data-menu
 		{@attach toBody}
@@ -322,7 +345,9 @@
 					? 'text-destructive hover:bg-destructive/10'
 					: 'hover:bg-accent/10'}"
 				onclick={(e) =>
-					run(e, () => {
+					{
+						if (downloaded) burstAt(e);
+						run(e, () => {
 						if (downloaded)
 							api
 								.deleteDownload(song.video_id)
@@ -341,7 +366,7 @@
 									.then(() => markDownloaded(song.video_id))
 									.catch((err) => toast.error(`Download failed: ${err}`));
 					})}
-				>
+				}>
 				<HugeiconsIcon icon={downloaded ? Delete01Icon : Download01Icon} class="h-4 w-4" />
 				{downloaded ? 'Remove download' : 'Download'}
 			</button>
@@ -357,7 +382,10 @@
 		{#if onRemove}
 			<button
 				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
-				onclick={(e) => run(e, onRemove)}
+				onclick={(e) => {
+					burstAt(e);
+					run(e, onRemove);
+				}}
 			>
 				<HugeiconsIcon icon={PlayListRemoveIcon} class="h-4 w-4" /> {removeLabel}
 			</button>

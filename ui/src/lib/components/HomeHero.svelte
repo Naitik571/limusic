@@ -63,7 +63,7 @@
 	</div>
 	<div class="relative z-10 p-6 pt-8">
 		<div class="flex items-start justify-between gap-4">
-			<div class="flex min-w-0 items-center gap-3">
+			<div class="stagger-in flex min-w-0 items-center gap-3" style="--stagger-i:0">
 				{#if auth.account?.signedIn && auth.account.thumbnail}
 					<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
 					     clamps width to the content-box while height stays fixed → a vertical oval. Inline so
@@ -79,7 +79,7 @@
 					{daypart}{auth.account?.name ? `, ${auth.account.name.split(' ')[0]}` : ''}
 				</h1>
 			</div>
-			<div class="flex shrink-0 items-center gap-2">
+			<div class="stagger-in flex shrink-0 items-center gap-2" style="--stagger-i:1">
 				<button
 					onclick={() => (ui.ltOpen = true)}
 					title="Listen Together"
@@ -112,8 +112,8 @@
 			<!-- Signed-out onboarding: one card — what sign-in unlocks, sign in, or continue
 			     without. The feed below stays held until either choice (see +page.svelte). -->
 			<div
-				class="mx-auto mt-6 max-w-md border p-5 text-center"
-				style="background:var(--surface-1);border-color:var(--border);border-radius:var(--r-lg)"
+				class="stagger-in mx-auto mt-6 max-w-md border p-5 text-center"
+				style="--stagger-i:2;background:var(--surface-1);border-color:var(--border);border-radius:var(--r-lg)"
 			>
 				<p class="text-sm font-semibold" style="color:var(--text-1)">Your music, everywhere you left it</p>
 				<p class="mt-1.5 text-sm" style="color:var(--text-2)">

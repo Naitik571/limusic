@@ -350,13 +350,13 @@
 </script>
 
 <div {@attach watchScroll}>
-	<HomeHero />
+	<div class="stagger-in" style="--stagger-i:0"><HomeHero /></div>
 	<!-- Mood chips filter the whole feed, so they're page-level controls: sticky, they stay reachable
 	     while the feed scrolls under them instead of leaving with the header they were pinned to.
 	     Opaque rather than blurred — a backdrop-filter repainting on every scroll frame is the one
 	     thing WebKitGTK reliably chokes on. -->
 	{#if chips.length}
-		<div class="sticky top-0 z-20 border-b bg-background px-6 pt-2.5">
+		<div class="stagger-in sticky top-0 z-20 border-b bg-background px-6 pt-2.5" style="--stagger-i:1">
 			<div class="flex gap-2 overflow-x-auto pb-2">
 				<!-- An explicit "All" is the way out of a filter. Clicking the active chip again also
 				     clears it, but nobody discovers that, and nothing else on screen says you're filtered. -->

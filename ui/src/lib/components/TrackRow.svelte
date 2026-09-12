@@ -35,6 +35,7 @@
 	import { flyPlus } from '$lib/fx';
 	import TrackMenu from './TrackMenu.svelte';
 	import ArtistLine from './ArtistLine.svelte';
+	import EqIndicator from './EqIndicator.svelte';
 
 	let {
 		song,
@@ -205,6 +206,9 @@
 						{song.title}
 					{/if}
 				</span>
+				{#if active}
+					<EqIndicator class="shrink-0" />
+				{/if}
 				{#if song.queued_by}
 					<span
 						class="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"

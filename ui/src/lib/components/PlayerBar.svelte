@@ -147,6 +147,11 @@
 	let seekDrag = $state<number | null>(null);
 	const shownPosition = $derived(seekDrag ?? playback.position);
 
+	// No loading/resolving flag exists on `playback` (now/queue/paused/position/duration/volume/liked
+	// only): while a new stream is resolving we know the track but have no duration yet, so that
+	// window stands in for "resolving" and drives the .seek-preparing shimmer (layout.css).
+	const seekResolving = $derived(playback.now != null && !(playback.duration > 0));
+
 	function onSeekInput(e: Event) {
 		seekDrag = Number((e.target as HTMLInputElement).value);
 	}
@@ -380,7 +385,7 @@
 				/>
 			</Button>
 		</div>
-		<div class="flex w-full max-w-md items-center gap-2 text-xs text-muted-foreground">
+		<div class="flex w-full max-w-md items-center gap-2 text-xs text-muted-foreground" class:seek-preparing={seekResolving}>
 			<span class="timer" data-timer>{fmt(shownPosition)}</span>
 			<input
 				type="range"

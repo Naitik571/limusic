@@ -244,6 +244,11 @@
 	}
 
 	const actionQuery = $derived(query.trim().toLowerCase());
+	// Open counter: keys the default-row stagger so it runs on open, not per keystroke.
+	let openCount = $state(0);
+	$effect(() => {
+		if (ui.paletteOpen) openCount += 1;
+	});
 	// Substring match on the label; empty query shows the eight defaults above. The results
 	// themselves are unfiltered here (shouldFilter={false}) — this list is ours alone.
 	const visibleActions = $derived(
@@ -275,13 +280,16 @@
 	<Command.List class="max-h-[22rem]">
 		{#if visibleActions.length}
 			<!-- Grouped actions (interior #12): every group carries its header whenever it has rows,
-			     so Jump to / Playback / System read as sections, not one long list. -->
+			     so Jump to / Playback / System read as sections, not one long list.
+			     Default rows stagger on open (keyed by openCount); filtered rows don't — so
+			     typing never replays the entrance. -->
+			{#key openCount}
 			{#each GROUPS as g (g)}
 				{@const grows = visibleActions.filter((a) => a.group === g)}
 				{#if grows.length}
 					<Command.Group heading={g}>
-						{#each grows as a (a.label)}
-							<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
+						{#each grows as a, ai (a.label)}
+							<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2 {actionQuery ? '' : 'stagger-in'}" style={actionQuery ? undefined : `--stagger-i:${ai % 8}`}>
 								<span class="truncate">{a.label}</span>
 								{#if a.layoutId === layout.id}
 									<span
@@ -300,6 +308,7 @@
 					</Command.Group>
 				{/if}
 			{/each}
+			{/key}
 		{/if}
 
 		{#if loading}

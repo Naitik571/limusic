@@ -4,8 +4,19 @@
 	// completion. An 8s safety net hides it no matter what; pointer-events-none so a stuck
 	// node can never block input.
 	import { auth, ui } from '$lib/player.svelte';
+	import favicon from '$lib/assets/favicon.svg';
+	import { browser } from '$app/environment';
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	// Branded first-paint splash (black fullscreen): pulsing logo mark + app name
+	// rising with .stagger-in, scale-out exit into the app. Skipped entirely under
+	// prefers-reduced-motion — the loading pill below is the only boot UI there.
+	const reducedMotion = $derived(
+		browser && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+	);
+	// First paint only: once the veil clears it never comes back this session.
+	let splashed = $state(true);
 
 	// Onboarding (interior #1): while the signed-out hero card waits for a choice, the boot
 	// pill stands down — the card owns the visitor's attention, and a pill over it reads as
@@ -29,6 +40,20 @@
 </script>
 
 {#if ui.bootVeil && !onboardingHold}
+	{#if splashed && !reducedMotion}
+		<!-- Branded splash: black fullscreen, logo pulse, name rises via .stagger-in,
+		     scale-out exit once the boot is done. pointer-events-none so it never blocks. -->
+		<div
+			class="bp-splash {ui.bootVeil.done ? 'leaving' : ''}"
+			role="status"
+			aria-live="polite"
+			aria-hidden="false"
+		>
+			<img decoding="async" src={favicon} alt="" class="bp-splash-logo" aria-hidden="true" />
+			<div class="bp-splash-name stagger-in" style="--stagger-i:0">Limusic</div>
+			<div class="bp-splash-sub stagger-in" style="--stagger-i:1">{ui.bootVeil.label}</div>
+		</div>
+	{/if}
 	<div
 		class="bp-boot-veil {ui.bootVeil.done ? 'complete' : ''}"
 		role="status"
@@ -50,6 +75,47 @@
 {/if}
 
 <style>
+	.bp-splash {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 14px;
+		background: #000;
+		pointer-events: none;
+		transition: opacity 0.32s ease-out, transform 0.32s ease-out;
+	}
+	.bp-splash.leaving {
+		opacity: 0;
+		transform: scale(1.12);
+	}
+	.bp-splash-logo {
+		width: 76px;
+		height: 76px;
+		animation: bp-splash-pulse 1.6s ease-in-out infinite;
+	}
+	@keyframes bp-splash-pulse {
+		0%, 100% { transform: scale(1); opacity: 1; }
+		50% { transform: scale(1.08); opacity: 0.82; }
+	}
+	.bp-splash-name {
+		color: #fff;
+		font-size: 30px;
+		font-weight: 800;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+	.bp-splash-sub {
+		color: rgb(255 255 255 / 0.6);
+		font-size: 12.5px;
+		letter-spacing: 0.04em;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.bp-splash, .bp-splash-logo { animation: none; transition: none; }
+	}
 	.bp-boot-veil {
 		position: fixed;
 		left: 50%;

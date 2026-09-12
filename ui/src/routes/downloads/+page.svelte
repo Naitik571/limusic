@@ -13,6 +13,7 @@
 	import * as api from '$lib/api';
 	import type { DownloadedTrack } from '$lib/api';
 	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { particleBurst } from '$lib/particleburst';
 	import {
 		downloads,
 		downloadedIds,
@@ -72,22 +73,59 @@
 			thumbnail: t.thumb ?? undefined
 		});
 	}
-	async function removeStored(t: DownloadedTrack) {
+	async function removeStored(t: DownloadedTrack, btn?: HTMLElement) {
 		// Delete undo (interior #19): the file is already gone, but the catalogue row comes back
 		// for 6s — same toast.action contract as the queue's Clear. Re-download re-fetches bytes.
+		// MIUI-style burst plays before the splice; visual only, undo toast kept.
 		const idx = catalogue.findIndex((x) => x.video_id === t.video_id);
+		const row = btn?.closest?.('[data-dl-row]') ?? null;
 		try {
 			await api.deleteDownload(t.video_id);
 		} catch (e) {
 			toast.error(String(e));
+			if (row) shakeRow(row);
 			return;
 		}
 		markNotDownloaded(t.video_id);
+		if (row) {
+			try {
+				particleBurst(row);
+			} catch {
+				/* visual only */
+			}
+		}
 		catalogue = catalogue.filter((x) => x.video_id !== t.video_id);
 		toast.action(`Removed ${t.title}`, 'Undo', () => {
 			catalogue = [...catalogue.slice(0, Math.max(0, idx)), t, ...catalogue.slice(Math.max(0, idx))];
 			markDownloaded(t.video_id);
 		});
+	}
+
+	/** Retrigger .pin-shake on a row (remove class, force reflow, re-add). */
+	function shakeRow(row: Element | null) {
+		if (!row) return;
+		row.classList.remove('pin-shake');
+		void (row as HTMLElement).offsetWidth;
+		row.classList.add('pin-shake');
+	}
+
+	/** Retry a failed live row. A rejected retry shakes the row; success re-emits
+	    progress through the monitor and the row flips back to downloading. */
+	async function retryLive(id: string, title: string, artists: string | undefined, thumb: string | null | undefined, btn: HTMLElement) {
+		const row = btn.closest('[data-dl-row]');
+		try {
+			await api.downloadTrack({
+				videoId: id,
+				title,
+				artists: artists ?? '',
+				album: null,
+				duration: 0,
+				thumb: thumb ?? null
+			});
+		} catch (e) {
+			toast.error(String(e));
+			shakeRow(row);
+		}
 	}
 
 	// Footer summary (interior #6): what the list below actually holds, in bytes on disk.
@@ -128,7 +166,7 @@
 		{/if}
 		<div class="flex flex-col gap-1.5">
 			{#each downloads.items as it (it.id)}
-				<div class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2">
+				<div data-dl-row class="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2">
 					{#if it.thumb}
 						<img decoding="async" src={it.thumb} alt="" class="h-10 w-10 shrink-0 rounded-md object-cover" />
 					{:else}
@@ -161,11 +199,20 @@
 						>
 							<HugeiconsIcon icon={Cancel01Icon} class="h-3.5 w-3.5" />
 						</button>
+					{:else if it.state === 'error'}
+						<button
+							class="shrink-0 cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+							onclick={(e) => retryLive(it.id, it.title, it.artists, it.thumb, e.currentTarget as HTMLElement)}
+							aria-label="Retry download of {it.title}"
+							title="Retry download"
+						>
+							Retry
+						</button>
 					{/if}
 				</div>
 			{/each}
 			{#each stored as t (t.video_id)}
-				<div class="group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-accent/10">
+				<div data-dl-row class="group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-accent/10">
 					{#if t.thumb}
 						<img decoding="async" src={t.thumb} alt="" loading="lazy" class="h-10 w-10 shrink-0 rounded-md object-cover" />
 					{:else}
@@ -192,7 +239,7 @@
 					</button>
 					<button
 						class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100"
-						onclick={() => removeStored(t)}
+						onclick={(e) => removeStored(t, e.currentTarget as HTMLElement)}
 						aria-label="Delete {t.title}"
 						title="Delete file and entry"
 					>

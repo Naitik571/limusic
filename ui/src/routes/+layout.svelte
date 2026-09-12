@@ -48,7 +48,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { auth, initApp, np, playback, ui, bootStage, bootDone, dismissToast } from '$lib/player.svelte';
+	import { auth, initApp, np, playback, ui, bootStage, bootDone, dismissToast, type ToastItem } from '$lib/player.svelte';
 	import TheaterMode from '$lib/components/TheaterMode.svelte';
 	import { win, initWin } from '$lib/win.svelte';
 	import { initZoom } from '$lib/zoom';
@@ -62,6 +62,41 @@
 	} from '$lib/updater.svelte';
 
 	let { children } = $props();
+	// Toast exit: .toast-out plays ~180ms before the item leaves. Manual dismissal
+	// delays the splice here (store untouched); store-side TTL removals are mirrored
+	// into `shown` with the same 180ms grace so they fade instead of vanishing.
+	let shown = $state<ToastItem[]>([]);
+	let exitingIds = $state<number[]>([]);
+	const isExiting = (id: number) => exitingIds.includes(id);
+	function dismissWithExit(id: number) {
+		if (isExiting(id)) return;
+		exitingIds = [...exitingIds, id];
+		setTimeout(() => {
+			dismissToast(id);
+			shown = shown.filter((x) => x.id !== id);
+			exitingIds = exitingIds.filter((x) => x !== id);
+		}, 180);
+	}
+	$effect(() => {
+		const live = ui.toasts;
+		const liveIds = new Set(live.map((t) => t.id));
+		for (const t of live) {
+			if (!shown.some((s) => s.id === t.id) && !isExiting(t.id)) {
+				shown = [t, ...shown].slice(0, 4);
+			}
+		}
+		shown = shown.map((s) => live.find((l) => l.id === s.id) ?? s);
+		for (const s of [...shown]) {
+			if (!liveIds.has(s.id) && !isExiting(s.id)) {
+				const id = s.id;
+				exitingIds = [...exitingIds, id];
+				setTimeout(() => {
+					shown = shown.filter((x) => x.id !== id);
+					exitingIds = exitingIds.filter((x) => x !== id);
+				}, 180);
+			}
+		}
+	});
 	// Queue and lyrics toggle independently and both float over the page rather than docking into
 	// it — two docked columns squeezed the content down to an unusable strip. At lg+ they sit side
 	// by side over the content; narrower, they stack (see QueuePanel / LyricsPanel).
@@ -273,16 +308,17 @@
 		</div>
 	{/if}
 
-	{#if ui.toasts.length}
+	{#if shown.length}
 		<!-- Toast stack: newest-on-top, capped at 3 in player.svelte.ts. z-[200] sits above
 		     dialogs/menus (z-50) and the update banner (z-[100]). Variants use the shared
-		     --status-* tokens; icons are h-4 chrome (strokeWidth 2). -->
+		     --status-* tokens; icons are h-4 chrome (strokeWidth 2). Exit runs .toast-out
+		     ~180ms before the splice (see dismissWithExit above). -->
 		<div class="pointer-events-none fixed bottom-40 left-1/2 z-[200] flex -translate-x-1/2 flex-col items-center gap-2">
-			{#each ui.toasts as t (t.id)}
+			{#each shown as t (t.id)}
 				<div
 					transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
 					role="status"
-					class="pointer-events-auto flex max-w-[min(28rem,90vw)] items-center gap-2 rounded-[var(--r-md)] border px-4 py-2 text-sm shadow-2xl backdrop-blur-xl {t.kind === 'success'
+					class="{isExiting(t.id) ? 'toast-out' : ''} pointer-events-auto flex max-w-[min(28rem,90vw)] items-center gap-2 rounded-[var(--r-md)] border px-4 py-2 text-sm shadow-2xl backdrop-blur-xl {t.kind === 'success'
 						? 'border-[var(--status-success-line)] bg-[var(--status-success-soft)] text-[var(--text-1)]'
 						: t.kind === 'error'
 							? 'border-[var(--status-danger-line)] bg-[var(--status-danger-soft)] text-[var(--text-1)]'
@@ -317,7 +353,7 @@
 					<button
 						class="shrink-0 cursor-pointer rounded px-1 text-[var(--text-3)] hover:text-[var(--text-1)]"
 						aria-label="Dismiss notification"
-						onclick={() => dismissToast(t.id)}>✕</button
+						onclick={() => dismissWithExit(t.id)}>✕</button
 					>
 				</div>
 			{/each}

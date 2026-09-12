@@ -668,10 +668,25 @@
 		await api.setSetting('disabled_stream_clients', settings.disabled_stream_clients);
 	}
 
-	async function saveProxy() {
-		settings.proxy = proxyInput.trim();
+	async function saveProxy(host?: HTMLElement | null) {
+		const raw = proxyInput.trim();
+		// Invalid proxy values never reach the store: shake the row so the rejection reads.
+		if (raw && !/^(https?|socks5h?|socks5|socks4?|socks):\/\/[^/\s]+(:\d{1,5})?(\/\S*)?$/.test(raw)) {
+			toast.error('Proxy looks invalid — use http://host:port (blank = none)');
+			pinShake(host ?? document.getElementById('proxy-form'));
+			return;
+		}
+		settings.proxy = raw;
 		await api.setSetting('proxy', settings.proxy);
 		toast.success('Proxy saved — restart to apply');
+	}
+
+	/** Retrigger .pin-shake (remove class, force reflow, re-add). */
+	function pinShake(el: Element | null | undefined) {
+		if (!el) return;
+		el.classList.remove('pin-shake');
+		void (el as HTMLElement).offsetWidth;
+		el.classList.add('pin-shake');
 	}
 
 	// Destructive rows confirm inline: Clear caches is a neutral outline button that expands a
@@ -766,13 +781,13 @@
 	}
 	async function installPackFromUrl(){
 		if(!packUrl.trim()) return; packLoading=true;
-		try{ const p = await api.installArtistPack(packUrl.trim()); toast.success(`Installed ${p.name}`); packUrl=''; await refreshPacks(); }catch(e){ toast.error(String(e)); } finally{ packLoading=false; }
+		try{ const p = await api.installArtistPack(packUrl.trim()); toast.success(`Installed ${p.name}`); packUrl=''; await refreshPacks(); }catch(e){ toast.error(String(e)); pinShake(document.getElementById('pack-install-row')); } finally{ packLoading=false; }
 	}
 	async function installPackFromZip(){
 		const picked = await open({ multiple:false, title:'Pick artist pack ZIP', filters:[{name:'ZIP', extensions:['zip']} ]});
 		const path = Array.isArray(picked)? picked[0] : picked;
 		if(!path) return; packLoading=true;
-		try{ const p = await api.installArtistPackZip(path as string); toast.success(`Installed ${p.name}`); await refreshPacks(); }catch(e){ toast.error(String(e)); } finally{ packLoading=false; }
+		try{ const p = await api.installArtistPackZip(path as string); toast.success(`Installed ${p.name}`); await refreshPacks(); }catch(e){ toast.error(String(e)); pinShake(document.getElementById('pack-install-row')); } finally{ packLoading=false; }
 	}
 	async function removePack(id:string){
 		try{ await api.removeArtistPack(id); toast.success('Removed'); await refreshPacks(); }catch(e){ toast.error(String(e)); }
@@ -1923,7 +1938,7 @@
 {/snippet}
 
 {#snippet packInstall()}
-	<div class="flex gap-2">
+	<div class="flex gap-2" id="pack-install-row">
 		<Input
 			placeholder="https://…/pack.zip or id"
 			class="flex-1"
@@ -2124,12 +2139,13 @@
 	</div>
 {/snippet}
 
-	{#snippet proxyForm()}
+ 	{#snippet proxyForm()}
 	<form
+		id="proxy-form"
 		class="flex gap-2"
 		onsubmit={(e) => {
 			e.preventDefault();
-			saveProxy();
+			saveProxy(e.currentTarget as HTMLElement);
 		}}
 	>
 		<Input bind:value={proxyInput} placeholder="http://host:port (blank = none)" class="min-w-0 flex-1" />

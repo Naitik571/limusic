@@ -223,6 +223,32 @@
 		swipeEngaged = false;
 	}
 
+	// --- Track-change artwork animation ---------------------------------------------------------
+	// On videoId change the artwork wrapper remounts (coverKey) playing .cover-pop, or
+	// .skip-left/.skip-right when the queue index reveals prev/next direction.
+	// Falls back to .cover-pop when the direction is unknown. Tap/wheel/swipe below
+	// are untouched — this is a pure entrance on the image wrapper.
+	let prevVideoId: string | null = null;
+	let prevIndex = -1;
+	let coverAnim = $state('cover-pop');
+	let coverKey = $state('');
+	$effect(() => {
+		const vid = playback.now?.videoId;
+		const idx = playback.queue.currentIndex;
+		if (vid && vid !== prevVideoId) {
+			if (prevVideoId !== null && prevIndex >= 0 && idx !== prevIndex) {
+				coverAnim = idx > prevIndex ? 'skip-right' : 'skip-left';
+			} else {
+				coverAnim = 'cover-pop';
+			}
+			coverKey = vid;
+		} else if (!vid) {
+			coverKey = '';
+		}
+		prevVideoId = vid ?? prevVideoId;
+		prevIndex = idx;
+	});
+
 	// Google's CDN doesn't serve every rewritten size for every image (see MediaCard), and at this
 	// size a broken-image glyph *is* the page. So step down until one loads: crisp, then the size
 	// proven everywhere else in the app, then the 120 the player bar is already showing for this
@@ -399,6 +425,13 @@
 				onpointerup={onArtPointerEnd}
 				onpointercancel={onArtPointerEnd}
 			>
+				<!-- Decorative floating layer: blurred shapes only, never interactive.
+				     transform/opacity animation (.note-float), aria-hidden, pointer-events-none. -->
+				<div class="pointer-events-none absolute -inset-6 overflow-visible" aria-hidden="true">
+					<span class="note-float absolute left-[6%] top-[10%] h-16 w-16 rounded-full bg-primary/25 blur-2xl" style="animation-delay:-1.5s"></span>
+					<span class="note-float absolute bottom-[12%] right-[8%] h-20 w-20 rounded-full bg-accent/20 blur-2xl" style="animation-delay:-4s"></span>
+					<span class="note-float absolute right-[18%] top-[4%] h-10 w-10 rounded-full bg-primary/15 blur-xl" style="animation-delay:-2.6s"></span>
+				</div>
 				{#if canvasUrl}
 					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
 					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
@@ -465,14 +498,16 @@
 						</div>
 					{/if}
 					{#if heroSrc && attempt < srcs.length}
-						{#key heroSrc}
-							<img decoding="async"
-								src={heroSrc}
-								alt=""
-								onerror={handleHeroError}
-								in:fade={{ duration: 350 }}
-								class="aspect-square w-full rounded-3xl object-cover shadow-2xl"
-							/>
+						{#key coverKey || heroSrc}
+							<div class={coverAnim}>
+								<img decoding="async"
+									src={heroSrc}
+									alt=""
+									onerror={handleHeroError}
+									in:fade={{ duration: 350 }}
+									class="aspect-square w-full rounded-3xl object-cover shadow-2xl"
+								/>
+							</div>
 						{/key}
 					{:else}
 						<div
