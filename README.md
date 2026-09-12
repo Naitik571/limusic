@@ -60,7 +60,16 @@ YouTube Music client, and grew from there.
 
 ## What's different in this fork
 
-All available in the latest release. Fork tracks upstream versioning — this release is `v0.7.0`.
+All available in the latest release. Fork tracks upstream versioning — this release is `v0.7.3`.
+
+**v0.7.3 — shortcuts rebinding, spatial nav, visualizer, app icon, OBS overlay, UX polish:**
+- **Rebindable shortcuts** — every keyboard shortcut (volume, seek, queue, lyrics, zoom) remappable from Settings, with clash detection and Alt-modifier support
+- **Spatial navigation** — Alt+Arrow moves focus spatially (dialog-contained, with wrap-around); hardcoded Shift+Arrow volume and Ctrl chords now follow your bindings
+- **Audio visualizer** — real-time WASAPI app-loopback spectrum (bars/ring) in Now Playing; engine-chosen buffer, wait-first drain, no shutdown hang
+- **Custom app icon** — canvas-decoded PNG pushed to the window from Settings
+- **OBS overlay URL** — Now Playing overlay link now carries the remote token
+- **Downloads view owns downloads** — the duplicated downloaded-tracks list is gone from Settings; the dedicated Downloads route (live progress, cancel-all, play-from-disk) is the single place
+- **Hardening pass** — Zip-Slip guard on artist-pack install, command-injection guard on external URLs, yt-dlp option/integrity guards, DB/sleep-timer poison-tolerant locks, Liked-walk page cap, atomic cipher-cache writes, CI `--locked` + minimal permissions, CSP `base-uri`/`form-action`
 
 **v0.7.0 — native frame, romaji,-prev restart, Romanian, feel:**
 - **Previous restarts past 3s** — YTM parity: a press deep in a song restarts it, from the top it steps back
