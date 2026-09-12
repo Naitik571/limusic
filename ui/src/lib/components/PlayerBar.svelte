@@ -44,6 +44,7 @@
 	} from '$lib/player.svelte';
 	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
+	import { t } from '$lib/i18n.svelte';
 	import { appearance, setAppearance } from '$lib/theme.svelte';
 	import ArtistLine from './ArtistLine.svelte';
 	import TrackMenu from './TrackMenu.svelte';
@@ -215,14 +216,14 @@
 				e.stopPropagation();
 				api.togglePause();
 			}}
-			aria-label={playback.paused ? 'Play' : 'Pause'}
-			title={playback.paused ? 'Play' : 'Pause'}
+			aria-label={playback.paused ? t('player.play') : t('player.pause')}
+			title={playback.paused ? t('player.play') : t('player.pause')}
 		>
 			{#key playback.now?.videoId}
 				{#if playback.now?.thumbnail}
 					<img decoding="async"
 						src={thumb(playback.now.thumbnail, 120)}
-						alt=""
+						alt={playback.now?.title ? `${playback.now.title}${playback.now.artists ? ` by ${playback.now.artists}` : ''}` : ''}
 						style="max-width:none"
 						class="h-12 w-12 rounded-lg object-cover"
 						in:fade={{ duration: 250 }}
@@ -279,7 +280,7 @@
 				<!-- A local file has no YouTube identity (see api.isLocalId): nothing to like, and no
 				     YTM playlist to add it to. -->
 				{#if !api.isLocalId(playback.now.videoId)}
-					<Button variant="ghost" size="icon-sm" onclick={toggleLike} aria-label="Like">
+					<Button variant="ghost" size="icon-sm" onclick={toggleLike} aria-label={playback.liked ? t('player.remove_from_liked') : t('player.save_to_liked')}>
 					<span class="relative inline-flex">
 						{#if burst}
 							<!-- 6 sparks flying outward; angles are spread by --a in the keyframes (layout.css). -->
@@ -309,7 +310,7 @@
 								duration: now.duration
 							});
 						}}
-						aria-label="Add to playlist"
+						aria-label={t('player.add_to_playlist')}
 					>
 						<HugeiconsIcon icon={Add01Icon} class="h-4 w-4 text-muted-foreground" />
 					</Button>
@@ -332,7 +333,7 @@
 				variant="ghost"
 				size="icon-sm"
 				onclick={() => api.toggleShuffle()}
-				aria-label="Shuffle"
+				aria-label={t('player.shuffle')}
 				aria-pressed={shuffleOn}
 			>
 				<HugeiconsIcon
@@ -340,7 +341,7 @@
 					class="h-4 w-4 {shuffleOn ? 'text-primary' : 'text-muted-foreground'}"
 				/>
 			</Button>
-			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.prevTrack()} aria-label="Previous">
+			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.prevTrack()} aria-label={t('player.previous')}>
 				<HugeiconsIcon icon={PreviousIcon} class="h-5 w-5" />
 			</Button>
 			<Button
@@ -348,7 +349,7 @@
 				size="icon"
 				class="rounded-full pressable"
 				onclick={() => api.togglePause()}
-				aria-label="Play/pause"
+				aria-label={playback.paused ? t('player.play') : t('player.pause')}
 			>
 				<!-- HugeiconsIcon only re-renders `altIcon`/`showAlt`, not `icon` (frozen at mount) â€”
 			     so toggle via showAlt, not a ternary on `icon`. -->
@@ -359,7 +360,7 @@
 				class="h-5 w-5"
 			/>
 			</Button>
-			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.nextTrack()} aria-label="Next">
+			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.nextTrack()} aria-label={t('player.next')}>
 				<HugeiconsIcon icon={NextIcon} class="h-5 w-5" />
 			</Button>
 			<Button
@@ -389,7 +390,7 @@
 				value={shownPosition}
 				oninput={onSeekInput}
 				onchange={onSeekCommit}
-				aria-label="Seek"
+				aria-label={t('player.seek')}
 			/>
 			<span class="tabular-nums">{fmt(playback.duration)}</span>
 		</div>
@@ -404,7 +405,7 @@
 				size="icon-sm"
 				class="text-muted-foreground"
 				onclick={toggleMute}
-				aria-label={playback.volume === 0 ? 'Unmute' : 'Mute'}
+				aria-label={playback.volume === 0 ? t('player.unmute') : t('player.mute')}
 			>
 				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
 				<HugeiconsIcon
@@ -424,7 +425,7 @@
 				oninput={onVolume}
 				onchange={onVolumeCommit}
 				onwheel={wheelVolume}
-				aria-label="Volume"
+				aria-label={t('player.volume')}
 			/>
 		</div>
 		<!-- One cluster, so they sit tighter to each other than to the volume slider. -->

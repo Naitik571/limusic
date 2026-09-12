@@ -77,6 +77,9 @@ export async function applyAppIcon(path: string): Promise<void> {
 	const side = Math.min(img.width, img.height);
 	ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
 	const d = ctx.getImageData(0, 0, S, S);
+	// NOTE(perf): this ships 256×256×4 numbers over IPC; a base64 string would be ~4×
+	// smaller on the wire, but `set_app_icon` takes a number array today — switching the
+	// encoding needs the Rust command to change too, so this stays until then.
 	await api.setAppIcon(Array.from(d.data), S, S);
 	await api.setSetting('app_icon_path', path);
 }
@@ -110,10 +113,27 @@ export type DownloadItem = {
 export const downloads = $state<{ items: DownloadItem[]; active: number; done: number; errored: number }>(
 	{ items: [], active: 0, done: 0, errored: 0 }
 );
+// VideoIds with a counted in-flight start. Progress events can arrive more than once per
+// id (retries re-emit), and error/cancel can arrive without any progress at all — without
+// this set every terminal event would decrement `active` and drive it below the real count.
+const downloadInflight = new Set<string>();
+function downloadStarted(id: string): boolean {
+	if (downloadInflight.has(id)) return false;
+	downloadInflight.add(id);
+	downloads.active += 1;
+	return true;
+}
+function downloadSettled(id: string): boolean {
+	if (!downloadInflight.delete(id)) return false;
+	if (downloads.active > 0) downloads.active -= 1;
+	return true;
+}
 // Hide the green "all done" state once the user has seen it: drop every row that is no
 // longer in flight and reset the counters to the surviving rows.
 export const dismissDownloads = () => {
 	downloads.items = downloads.items.filter((i) => i.state === 'downloading');
+	downloadInflight.clear();
+	for (const i of downloads.items) downloadInflight.add(i.id);
 	downloads.done = 0;
 	downloads.errored = 0;
 	downloads.active = downloads.items.length;
@@ -148,7 +168,14 @@ export function startDownloadMonitor() {
 		if (!it) {
 			it = { id, title: (p.title as string) ?? id, artists: p.artists, thumb: p.thumb, percent: 0, state: 'downloading' };
 			downloads.items.push(it);
-			downloads.active += 1;
+			downloadStarted(id);
+		} else {
+			// A retry re-emits progress for a settled row: count it as a fresh start.
+			if (it.state !== 'downloading') {
+				it.state = 'downloading';
+				it.message = undefined;
+				downloadStarted(id);
+			}
 		}
 		it.percent = Math.max(it.percent, Math.min(100, Math.round(p.percent ?? 0)));
 		it.title = (p.title as string) ?? it.title;
@@ -160,8 +187,8 @@ export function startDownloadMonitor() {
 		const it = downloads.items.find((x) => x.id === id);
 		if (it) { it.state = 'done'; it.percent = 100; }
 		downloadedIds.add(id);
-		downloads.active = Math.max(0, downloads.active - 1);
-		downloads.done += 1;
+		if (downloadSettled(id)) downloads.done += 1;
+		else if (it) downloads.done += 1;
 		// Completed download announces itself with a Play action (plays from disk, offline).
 		const title = (it?.title ?? p.title ?? id) as string;
 		toast.action(`Downloaded ${title}`, 'Play', () =>
@@ -181,7 +208,9 @@ export function startDownloadMonitor() {
 		// A failed id is by definition not on disk — drop any optimistic badge (a later success
 		// re-adds via onDownloadComplete).
 		markNotDownloaded(id);
-		downloads.active = Math.max(0, downloads.active - 1);
+		// Only a counted start decrements: an error that arrived without any progress
+		// (backend-side rejection before the first tick) never incremented.
+		downloadSettled(id);
 		downloads.errored += 1;
 	});
 	api.onDownloadCancelled((p: any) => {
@@ -190,7 +219,7 @@ export function startDownloadMonitor() {
 		if (it) { it.state = 'cancelled'; it.message = undefined; }
 		// Cancelled mid-write drops its partial file — not downloaded.
 		markNotDownloaded(id);
-		downloads.active = Math.max(0, downloads.active - 1);
+		downloadSettled(id);
 	});
 }
 
@@ -608,24 +637,26 @@ export function volumeStep(precise: boolean): number {
 	return precise ? VOLUME_STEP_PRECISE : VOLUME_STEP_COARSE;
 }
 
-/** Precise HUD: shows on every volume change, auto-hides after 1.5s. */
-export const volumeHud = $state<{ visible: boolean; value: number; timeout: ReturnType<typeof setTimeout> | undefined }>({
+/** Precise HUD: shows on every volume change, auto-hides after 1.5s. The timer id lives
+ *  outside `$state` — only the rendered fields (visible/value) are reactive. */
+let volumeHudTimer: ReturnType<typeof setTimeout> | undefined;
+export const volumeHud = $state<{ visible: boolean; value: number }>({
 	visible: false,
-	value: 100,
-	timeout: undefined
+	value: 100
 });
 
 export function showVolumeHud(value: number) {
 	volumeHud.value = value;
 	volumeHud.visible = true;
-	clearTimeout(volumeHud.timeout);
-	volumeHud.timeout = setTimeout(() => {
+	clearTimeout(volumeHudTimer);
+	volumeHudTimer = setTimeout(() => {
 		volumeHud.visible = false;
 	}, 1500);
 }
 
 export function hideVolumeHud() {
-	clearTimeout(volumeHud.timeout);
+	clearTimeout(volumeHudTimer);
+	volumeHudTimer = undefined;
 	volumeHud.visible = false;
 }
 
@@ -712,19 +743,30 @@ function onShortcut(e: KeyboardEvent) {
 	// the first song-row click, which reads as "sometimes buggy".
 	const onButton = !!target?.closest('button, [role="button"]');
 	if (onButton && (e.key === ' ' || e.key === 'Enter')) return;
-	// Spatial navigation owns Alt+Arrows when enabled (see spatial.ts) — never seek/volume.
+	// Spatial navigation owns Alt+Arrows when enabled (see spatial.ts) — never seek/volume,
+	// unless the keystroke is explicitly bound to an action below (a rebind wins over spatial).
 	if (e.altKey && e.key.startsWith('Arrow')) {
-		if (!spatialEnabled()) return;
-		const dir =
-			e.key === 'ArrowUp'
-				? 'up'
-				: e.key === 'ArrowDown'
-					? 'down'
-					: e.key === 'ArrowLeft'
-						? 'left'
-						: 'right';
-		if (spatialMove(dir as 'up' | 'down' | 'left' | 'right')) e.preventDefault();
-		return;
+		const ALL_ACTIONS: ActionId[] = [
+			'playpause', 'next', 'prev', 'mute', 'volup', 'voldown',
+			'seekback', 'seekfwd', 'seekback10', 'seekfwd10',
+			'palette', 'shortcuts', 'nowplaying'
+		];
+		const rebound = ALL_ACTIONS.some((a) =>
+			bindingsFor(a).some((b) => b.alt && matchBinding(e, b))
+		);
+		if (!rebound) {
+			if (!spatialEnabled()) return;
+			const dir =
+				e.key === 'ArrowUp'
+					? 'up'
+					: e.key === 'ArrowDown'
+						? 'down'
+						: e.key === 'ArrowLeft'
+							? 'left'
+							: 'right';
+			if (spatialMove(dir as 'up' | 'down' | 'left' | 'right')) e.preventDefault();
+			return;
+		}
 	}
 	const pos = playback.position;
 	const run = (action: ActionId): boolean => bindingsFor(action).some((b) => matchBinding(e, b));
@@ -1075,11 +1117,13 @@ export type Toast = {
 // A counter, not the toast itself: $state proxies the stored object, so `ui.toast === t` is never
 // true and the toast would never clear. It also means a repeated message can't cut its own retry short.
 let seq = 0;
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 function show(msg: string, kind: Toast['kind'], ms = 2500, action?: Toast['action']) {
 	const id = ++seq;
 	ui.toast = { msg, kind, action };
-	setTimeout(() => {
+	clearTimeout(toastTimer);
+	toastTimer = setTimeout(() => {
 		if (seq === id) ui.toast = null;
 	}, ms);
 }
@@ -1176,6 +1220,9 @@ export function notePlaylistAdd(playlistId: string, songs: SongItem[]) {
 }
 
 let started = false;
+// Generation for the cold-start seeds in initApp: a late resolution from a previous (or
+// superseded) seed must not overwrite state a live event already set.
+let coldSeq = 0;
 
 /**
  * Wire the Tauri event listeners once and seed initial state. Returns a teardown fn.
@@ -1331,12 +1378,23 @@ export function initApp(mini = false): () => void {
 	subs.push(gp);
 	// After next/prev, keep the active queue row on screen. Delayed so the queue-changed event (and
 	// TrackRow's re-render with its data-active row) lands before we go looking for it.
+	let gpRevealTimer: ReturnType<typeof setTimeout> | undefined;
 	function gpRevealActive() {
-		setTimeout(() => {
+		clearTimeout(gpRevealTimer);
+		gpRevealTimer = setTimeout(() => {
 			document.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 		}, 300);
 	}
-	const teardown = () => subs.forEach((u) => u.then((f) => f()));
+	const teardown = () => {
+		clearTimeout(gpNavTimer);
+		clearTimeout(gpRevealTimer);
+		clearTimeout(toastTimer);
+		subs.forEach((u) => u.then((f) => f()));
+	};
+	// Cold-start guard: initApp runs once per window, but the async seeds below race live
+	// events (a now-playing event landing mid-seed must win). Captured per call; stale
+	// resolutions no-op instead of overwriting fresher event-driven state.
+	const mySeq = ++coldSeq;
 	api.getQueue()
 		.then((q) => (playback.queue = q))
 		.catch(() => {});
@@ -1373,9 +1431,13 @@ export function initApp(mini = false): () => void {
 	// is created mid-song. Ask for the current state once rather than guessing at it.
 	api.getPlayback()
 		.then((s) => {
+			if (mySeq !== coldSeq) return; // superseded seed — a newer init owns the state
 			if (playback.now) return; // a real now-playing event beat us to it
 			playback.now = s.now;
-			playback.liked = s.now?.liked ?? false;
+			// The snapshot may predate the liked-ids walk: fall back to the local caches
+			// (likedSongs override, then the walked set) instead of flashing unliked.
+			playback.liked = s.now?.liked
+				?? (s.now ? (likedSongs[s.now.videoId] ?? likedIds.has(s.now.videoId)) : false);
 			playback.paused = s.paused;
 			playback.position = s.position;
 			playback.duration = s.duration;
@@ -1417,6 +1479,6 @@ export function initApp(mini = false): () => void {
 	loadVisualizer();
 	void restoreAppIcon();
 	// Restore persisted volume (exponential EXPONENT=3)
-	api.getVolume().then((v) => { playback.volume = v; }).catch(()=>{});
+	api.getVolume().then((v) => { if (mySeq === coldSeq) playback.volume = v; }).catch(()=>{});
 	return teardown;
 }

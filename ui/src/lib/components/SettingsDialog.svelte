@@ -634,6 +634,8 @@
 			for (const [k, v] of Object.entries(obsOpts)) p.set(k, v ? '1' : '0');
 			p.set('layout', obsLayout);
 			p.set('theme', obsTheme);
+			// Same pairing token as the remote: without it the overlay is rejected.
+			if (remoteToken) p.set('token', remoteToken);
 			return u.toString();
 		} catch {
 			return '';

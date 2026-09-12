@@ -113,19 +113,47 @@ impl YtDlp {
             return Err("yt-dlp fallback is disabled".into());
         }
         {
-            let mut s = self.state.lock().unwrap();
-            if s.busy {
-                // Someone else is handling it; treat as success — the caller retries its
-                // resolve right after and will see the fresh binary.
-                return Ok(());
+            // Another task is downloading/updating: wait briefly for it to finish instead
+            // of claiming success while the binary may still be missing/stale.
+            let mut waited = 0u32;
+            loop {
+                {
+                    let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if !s.busy {
+                        break;
+                    }
+                }
+                if waited >= 300 {
+                    return Err("yt-dlp install already in progress, try again shortly".into());
+                }
+                waited += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
-            s.busy = true;
+            // Re-check under the lock: the waiter that just finished may have recorded
+            // a failure — don't blindly proceed; claim the slot if it is still free.
+            {
+                let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                if s.busy {
+                    return Err("yt-dlp install already in progress, try again shortly".into());
+                }
+                s.busy = true;
+            }
         }
         let result = self.download_or_update().await;
-        self.state.lock().unwrap().busy = false;
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).busy = false;
         match &result {
-            Ok(()) => self.state.lock().unwrap().last_error = None,
-            Err(e) => self.state.lock().unwrap().last_error = Some(e.clone()),
+            Ok(()) => {
+                self.state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .last_error = None
+            }
+            Err(e) => {
+                self.state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .last_error = Some(e.clone())
+            }
         }
         result
     }
@@ -165,6 +193,31 @@ impl YtDlp {
             .map_err(|e| format!("yt-dlp download: {e}"))?
             .error_for_status()
             .map_err(|e| format!("yt-dlp download: {e}"))?;
+        // Hardening notes:
+        // - No SHA256 pin: upstream re-releases the single-file binary every few days, so a
+        //   pinned hash would brick first-install within a week. The MIN_BIN_SIZE floor below
+        //   is the cheap integrity tripwire (an HTML error/captcha page is bytes, not MBs).
+        // - Redirect guard: reqwest follows `.../releases/latest/download/...` (302) for us, so
+        //   verify the *final* URL still points at GitHub release infrastructure. A hijacked
+        //   redirect serving a trojan from elsewhere aborts here instead of landing on disk.
+        //   (`--no-config` is passed to every yt-dlp invocation so rogue config files can't
+        //   inject flags; see resolve()/run_update().)
+        {
+            let final_host = resp
+                .url()
+                .host_str()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let ok = final_host == "github.com"
+                || final_host == "objects.githubusercontent.com"
+                || final_host == "release-assets.githubusercontent.com"
+                || final_host.ends_with(".githubusercontent.com");
+            if !ok {
+                return Err(format!(
+                    "yt-dlp download redirected to unexpected host ({final_host}) — aborting"
+                ));
+            }
+        }
         let bytes = tokio::time::timeout(DOWNLOAD_TIMEOUT, resp.bytes())
             .await
             .map_err(|_| "yt-dlp download timed out".to_string())?
@@ -193,7 +246,8 @@ impl YtDlp {
 
     async fn run_update(&self, bin: &PathBuf) -> Result<(), String> {
         let mut cmd = tokio::process::Command::new(bin);
-        cmd.arg("-U")
+        cmd.arg("--no-config")
+            .arg("-U")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .stdin(Stdio::null());
@@ -216,6 +270,10 @@ impl YtDlp {
         if !self.enabled() {
             return None;
         }
+        if !valid_video_id(video_id) {
+            tracing::warn!(video_id, "yt-dlp resolve rejected: bad video id");
+            return None;
+        }
         if self.ensure_ready().await.is_err() {
             return None;
         }
@@ -227,10 +285,12 @@ impl YtDlp {
             "bestaudio[ext=webm]/bestaudio",
             "--no-playlist",
             "--no-warnings",
+            "--no-config",
             "--socket-timeout",
             "10",
             "--extractor-args",
             "youtube:player_client=tv,android_vr",
+            "--",
             video_id,
         ])
         .stdout(Stdio::piped())
@@ -258,4 +318,62 @@ fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// Validate a video id before passing it to the yt-dlp child process.
+///
+/// A leading `-` would be parsed as a flag (option injection) even with the `--` separator
+/// as defense in depth, so reject it outright. Normal ids are YouTube's 11-char base64url
+/// shape; the allowlist `[A-Za-z0-9_-]{5,32}` covers those plus SoundCloud-style slugs.
+/// The `LOCAL:` prefix carries a bundled/local test path (resolved by the caller, never
+/// fetched from the network) — keep it tight: non-empty, bounded length, no `..` escape
+/// and no shell metacharacters.
+fn valid_video_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > 260 {
+        return false;
+    }
+    if let Some(path) = id.strip_prefix("LOCAL:") {
+        if path.is_empty() || path.len() > 248 {
+            return false;
+        }
+        if path.contains("..") {
+            return false;
+        }
+        const FORBIDDEN: &[u8] = b"\"&|;$`\n\r";
+        if path.bytes().any(|b| FORBIDDEN.contains(&b)) {
+            return false;
+        }
+        return true;
+    }
+    if id.starts_with('-') {
+        return false;
+    }
+    (5..=32).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn video_id_allowlist_blocks_option_injection() {
+        // Normal YouTube ids pass…
+        assert!(valid_video_id("dQw4w9WgXcQ"));
+        assert!(valid_video_id("abc-123_XYZ"));
+        // …a leading `-` (flag injection) never does, even if the rest is clean.
+        assert!(!valid_video_id("-rf"));
+        assert!(!valid_video_id("-dQw4w9WgXcQ"));
+        // Length + charset bounds.
+        assert!(!valid_video_id("abc"));
+        assert!(!valid_video_id("ab cd12"));
+        assert!(!valid_video_id("abc;rm -rf /"));
+        assert!(!valid_video_id(""));
+        // LOCAL: prefix carries a path, not flags.
+        assert!(valid_video_id("LOCAL:/music/track.mp3"));
+        assert!(!valid_video_id("LOCAL:"));
+        assert!(!valid_video_id("LOCAL:../evil.mp3"));
+    }
 }

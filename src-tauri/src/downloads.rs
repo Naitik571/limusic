@@ -156,16 +156,30 @@ pub(crate) struct Stream {
 }
 
 /// Where downloads live. A user-set `download_dir` wins; otherwise `<app_data>/downloads`.
+///
+/// Hardening: the setting is trimmed and empty is rejected (falls back to the default); the
+/// directory is created (`create_dir_all`) so callers can rely on it existing. A custom path
+/// containing `..` is the user's own explicit choice (not an attacker-controlled join), so no
+/// further containment is enforced here — per-file names are still sanitized separately.
 pub fn download_dir(app: &AppHandle, db: &Db) -> PathBuf {
-    if let Some(custom) = db.get_setting("download_dir") {
-        if !custom.trim().is_empty() {
-            return PathBuf::from(custom);
-        }
-    }
-    app.path()
+    let default_dir = app
+        .path()
         .app_data_dir()
         .unwrap_or_else(|_| std::env::temp_dir())
-        .join("downloads")
+        .join("downloads");
+    if let Some(custom) = db.get_setting("download_dir") {
+        let trimmed = custom.trim();
+        if !trimmed.is_empty() {
+            let p = PathBuf::from(trimmed);
+            // Ensure it exists; on failure fall back to the default rather than erroring
+            // every download (the default is always writable).
+            if std::fs::create_dir_all(&p).is_ok() {
+                return p;
+            }
+        }
+    }
+    let _ = std::fs::create_dir_all(&default_dir);
+    default_dir
 }
 
 fn download_quality(db: &Db) -> AudioQuality {
@@ -380,7 +394,7 @@ async fn download_track_inner(
     // Two distinct tracks can share a `Title - Artist` name; the catalogue is keyed by video id,
     // so a second one must disambiguate with an id suffix instead of overwriting the first one's
     // audio while both rows persist. A stray untracked file with the same name is left alone too.
-    let id8 = &video_id[..video_id.len().min(8)];
+    let id8 = video_id.get(..8).unwrap_or(video_id);
     let mut file_name = format!("{base_name}.{format}");
     let target = dir.join(&file_name);
     let owner = state.db.video_id_for_path(&target.to_string_lossy());

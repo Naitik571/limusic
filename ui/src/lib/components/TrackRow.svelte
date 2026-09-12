@@ -1,3 +1,24 @@
+<script module lang="ts">
+	// One shared pointer tracker for every row. Each row used to add its own capture-phase
+	// `window` pointerdown listener (one per rendered row — thousands on a big playlist) just
+	// to seed the flyPlus "+" origin. A module-level singleton does it once: the add-to-playlist
+	// action lives in TrackMenu's items, so the click coordinates never reach the row directly.
+	const sharedPoint = { x: 0, y: 0 };
+	let sharedListening = false;
+	function ensurePointerTrack() {
+		if (sharedListening || typeof window === 'undefined') return;
+		sharedListening = true;
+		window.addEventListener(
+			'pointerdown',
+			(e: PointerEvent) => {
+				sharedPoint.x = e.clientX;
+				sharedPoint.y = e.clientY;
+			},
+			true
+		);
+	}
+</script>
+
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -95,23 +116,14 @@
 	}
 
 	// The add-to-playlist action lives in TrackMenu's items, so the click coordinates never reach
-	// this component directly — track the last pointer press globally (capture phase, so menu
-	// item clicks included) and fly the "+" from there before handing off to onAdd.
-	let lastPoint = { x: 0, y: 0 };
-
-	$effect(() => {
-		const track = (e: PointerEvent) => {
-			lastPoint.x = e.clientX;
-			lastPoint.y = e.clientY;
-		};
-		window.addEventListener('pointerdown', track, true);
-		return () => window.removeEventListener('pointerdown', track, true);
-	});
+	// this component directly — fly the "+" from the shared last-press point (module singleton
+	// above, so N rows cost one window listener) before handing off to onAdd.
+	ensurePointerTrack();
 
 	const handleAdd = $derived(
 		onAdd
 			? () => {
-					flyPlus(lastPoint.x, lastPoint.y);
+					flyPlus(sharedPoint.x, sharedPoint.y);
 					onAdd();
 				}
 			: undefined

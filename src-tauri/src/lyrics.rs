@@ -154,12 +154,12 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     let next = if crate::local::is_local_song(&req.video_id) {
         None
     } else {
-        let fut = state.it.next(
-            state.clients.get(innertube::METADATA_CLIENT).unwrap(),
-            Some(&req.video_id),
-            None,
-            None,
-        );
+        let Some(metadata_client) = state.clients.get(innertube::METADATA_CLIENT) else {
+            return (None, false);
+        };
+        let fut = state
+            .it
+            .next(metadata_client, Some(&req.video_id), None, None);
         match tokio::time::timeout(PROVIDER_TIMEOUT, fut).await {
             Ok(Ok(n)) => Some(n),
             Ok(Err(e)) => {
@@ -1098,6 +1098,17 @@ async fn genius(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
 // Megalobiz — keyless synced-lyrics source. The search page lists matches; each result links to
 // an LRC page we scrape. Adds a fifth, no-token-needed provider so timed lyrics still appear when
 // LRCLIB / Musixmatch / YTM come up empty (Genius only returns plain text).
+// Regexes hoisted to statics: compiling per fetch costs ~ms each and this runs on every lookup.
+static MEGALOBIZ_HREF_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"href="(/lyrics/[^"]+\.html)""#).expect("megalobiz href regex")
+});
+static MEGALOBIZ_BLOCK_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"<p id="[^"]*" class="lb-offset[^"]*">(.*?)</p>"#)
+        .expect("megalobiz block regex")
+});
+static MEGALOBIZ_LINE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]").expect("megalobiz line regex")
+});
 async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
     let q = format!("{} {}", req.title, req.artists);
     let search = web_http()
@@ -1112,8 +1123,7 @@ async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
     // ("artist-title"), so gate on it like Genius does: taking the first href blind once
     // surfaced an unrelated song's (sometimes placeholder-salad) LRC as synced lyrics.
     let href = {
-        let re = regex::Regex::new(r#"href="(/lyrics/[^"]+\.html)""#).unwrap();
-        match re.captures(&search) {
+        match MEGALOBIZ_HREF_RE.captures(&search) {
             Some(c) => c.get(1).map(|m| m.as_str().to_owned()),
             None => None,
         }
@@ -1150,8 +1160,8 @@ async fn megalobiz(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
         .text()
         .await?;
     // LRC lines live in <p id="..." class="lb-offset">[mm:ss.xx] text</p>
-    let block_re = regex::Regex::new(r#"<p id="[^"]*" class="lb-offset[^"]*">(.*?)</p>"#).unwrap();
-    let line_re = regex::Regex::new(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]").unwrap();
+    let block_re = &*MEGALOBIZ_BLOCK_RE;
+    let line_re = &*MEGALOBIZ_LINE_RE;
     let mut out = String::new();
     let mut last_was_ts = false;
     for cap in block_re.captures_iter(&page) {
@@ -2571,14 +2581,19 @@ pub async fn translate_text(text: &str, target: &str) -> Result<String, reqwest:
 }
 
 // Translate every LyricLine's text in-place. Keeps sync data, fills `translation`.
+// Bounded concurrency (8 at a time via chunked join_all): a 60-line song no longer pays
+// 60 serial round trips, and a 200-line song no longer opens 200 concurrent connections.
 pub async fn translate_lyrics(lines: &mut [LyricLine], target: &str) -> Result<(), reqwest::Error> {
-    for line in lines.iter_mut() {
-        if line.text.trim().is_empty() {
-            continue;
-        }
-        match translate_text(&line.text, target).await {
-            Ok(t) if t != line.text => line.translation = Some(t),
-            _ => {}
+    const CONCURRENCY: usize = 8;
+    for chunk in lines.chunks_mut(CONCURRENCY) {
+        let texts: Vec<String> = chunk.iter().map(|l| l.text.clone()).collect();
+        let results: Vec<Result<String, reqwest::Error>> =
+            join_all(texts.iter().map(|t| translate_text(t, target))).await;
+        for (line, res) in chunk.iter_mut().zip(results) {
+            match res {
+                Ok(t) if t != line.text => line.translation = Some(t),
+                _ => {}
+            }
         }
     }
     Ok(())

@@ -234,9 +234,15 @@ fn capture_session(
 #[cfg(target_os = "windows")]
 fn apply_hann(scratch: &mut [f32], frame: &[f32]) {
     let n = frame.len().min(scratch.len());
-    let norm = 2.0 / (n as f32);
+    if n <= 1 {
+        if n == 1 {
+            scratch[0] = 0.0;
+        }
+        return;
+    }
+    let denom = n as f32 - 1.0;
     for i in 0..n {
-        let w = norm * (1.0 - ((2.0 * std::f32::consts::PI * i as f32) / (n as f32 - 1.0)).cos());
+        let w = 0.5 * (1.0 - ((2.0 * std::f32::consts::PI * i as f32) / denom).cos());
         scratch[i] = frame[i] * w;
     }
 }

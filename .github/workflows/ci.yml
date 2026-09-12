@@ -13,12 +13,22 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: this workflow only reads the repo (no release uploads, no packages).
+permissions:
+  contents: read
+
 jobs:
   rust:
     name: Rust ΓÇö test ┬╖ clippy ┬╖ fmt
     runs-on: windows-latest
     env:
+      # Pinned libmpv dev build (shinchiro). Baseline x86_64 — NOT the `-v3-` variant, which
+      # requires AVX2 and would crash on older CPUs. Do NOT bump casually: a new mpv is a new
+      # 117 MB DLL in the installer. URL intentionally pinned; verify out-of-band before bumping.
+      # MPV_DEV_SHA256: (unset — fill in with `sha256sum mpv-dev.7z` when bumping MPV_DEV_URL,
+      # then enforce with a hash check in the download step below).
       MPV_DEV_URL: https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z
+      MPV_DEV_SHA256: ""
       MPV_DIR: ${{ github.workspace }}\.libmpv
     steps:
       - uses: actions/checkout@v4
@@ -62,12 +72,13 @@ jobs:
 
       - name: Clippy
         # Advisory: pre-existing warnings are paid down separately; tests + rustfmt gate.
-        run: cargo clippy --workspace --all-targets
+        # --locked enforces Cargo.lock is in sync with Cargo.toml (supply-chain hygiene).
+        run: cargo clippy --workspace --all-targets --locked
         env:
           RUSTFLAGS: -L native=${{ github.workspace }}\.libmpv
 
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
         env:
           RUSTFLAGS: -L native=${{ github.workspace }}\.libmpv
 

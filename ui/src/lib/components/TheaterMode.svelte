@@ -25,12 +25,16 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import {
+		commitVolume,
+		dragVolume,
 		playback,
+		toggleMute,
 		ui,
 		toggleNowPlayingLike
 	} from '$lib/player.svelte';
 	import { artworkAccent } from '$lib/artcolor';
 	import { hexToHsv } from '$lib/color';
+	import { t } from '$lib/i18n.svelte';
 	import { appearance } from '$lib/theme.svelte';
 	import { thumb } from '$lib/thumb';
 	import LyricsView from './LyricsView.svelte';
@@ -91,6 +95,8 @@
 	});
 
 	const MAX_WASHES = 8;
+	const WASH = 160;
+	const WASH_BLUR = 28;
 	const washes = new Map<string, string>();
 	let wash = $state<string | null>(null);
 	$effect(() => {
@@ -99,7 +105,10 @@
 			wash = null;
 			return;
 		}
-		const hit = washes.get(url);
+		// Cache key includes the bake size: changing WASH must not serve stale thumbnails
+		// baked at the old resolution.
+		const key = `${url}@${WASH}`;
+		const hit = washes.get(key);
 		if (hit !== undefined) {
 			wash = hit;
 			return;
@@ -107,11 +116,11 @@
 		let alive = true;
 		bake(url).then((data) => {
 			if (!alive || !data) return;
-			if (washes.size >= MAX_WASHES && !washes.has(url)) {
+			if (washes.size >= MAX_WASHES && !washes.has(key)) {
 				const oldest = washes.keys().next().value;
 				if (oldest !== undefined) washes.delete(oldest);
 			}
-			washes.set(url, data);
+			washes.set(key, data);
 			wash = data;
 		});
 		return () => {
@@ -119,8 +128,6 @@
 		};
 	});
 
-	const WASH = 160;
-	const WASH_BLUR = 28;
 	async function bake(url: string): Promise<string | null> {
 		try {
 			const img = new Image();
@@ -186,6 +193,34 @@
 	let volDragging = $state(false);
 	const volOpen = $derived(volHover || volDragging);
 
+	// Wheel over the lyrics column scrolls it (the column hides its own scrollbar). A native
+	// non-passive listener: Svelte's `onwheel` can't take `{ passive: false }`, and an always-
+	// preventDefault wheel would trap page scroll. Gestures starting on sliders/buttons are
+	// ignored, and preventDefault only fires when the lyrics actually consume the scroll.
+	let theaterRoot: HTMLElement | undefined = $state();
+	$effect(() => {
+		const root = theaterRoot;
+		if (!root) return;
+		const onWheel = (e: WheelEvent) => {
+			const target = e.target as HTMLElement | null;
+			if (target?.closest?.('input, select, textarea, button, [role="button"], a')) return;
+			const host = root.querySelector('[data-theater-lyrics]') as HTMLElement | null;
+			const scroller =
+				(host?.querySelector('.lyrics-scroller') as HTMLElement | null) ?? host;
+			if (!scroller) return;
+			const delta = e.deltaY ?? 0;
+			if (!delta) return;
+			const canDown =
+				scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1;
+			const canUp = scroller.scrollTop > 0;
+			if ((delta > 0 && !canDown) || (delta < 0 && !canUp)) return;
+			e.preventDefault();
+			scroller.scrollBy({ top: delta > 0 ? 120 : -120, behavior: 'smooth' });
+		};
+		root.addEventListener('wheel', onWheel, { passive: false });
+		return () => root.removeEventListener('wheel', onWheel);
+	});
+
 	let showLyrics = $state(true);
 
 	let justLiked = $state(false);
@@ -210,16 +245,7 @@
 
 <section
 	transition:fade={{ duration: 220 }}
-	onwheel={(e) => {
-		const delta = e.deltaY ?? 0;
-		if (delta > 0) {
-			const el = document.querySelector('[data-theater-lyrics]') as HTMLElement | null;
-			el?.scrollBy({ top: 120, behavior: 'smooth' });
-		} else if (delta < 0) {
-			const el = document.querySelector('[data-theater-lyrics]') as HTMLElement | null;
-			el?.scrollBy({ top: -120, behavior: 'smooth' });
-		}
-	}}
+	bind:this={theaterRoot}
 	onpointermove={wake}
 	class="theater fixed inset-0 z-40 flex flex-col overflow-hidden bg-background text-foreground {idle
 		? 'cursor-none'
@@ -279,7 +305,7 @@
 						{#if src && attempt < srcs.length}
 							<img decoding="async"
 								{src}
-								alt=""
+								alt={playback.now?.title ? `${playback.now.title}${playback.now.artists ? ` by ${playback.now.artists}` : ''}` : t('player.now_playing')}
 								onerror={() => attempt++}
 								style={srcs[2] ? `background-image:url(${srcs[2]})` : undefined}
 								class="aspect-square w-full rounded-2xl bg-cover object-cover ring-1 ring-white/10"
@@ -306,8 +332,8 @@
 				>
 					<button
 						class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/75 transition-colors hover:text-white"
-						onclick={() => api.toggleMute()}
-						aria-label={playback.volume === 0 ? 'Unmute' : 'Mute'}
+						onclick={() => toggleMute()}
+						aria-label={playback.volume === 0 ? t('player.unmute') : t('player.mute')}
 					>
 						<HugeiconsIcon
 							icon={VolumeHighIcon}
@@ -326,9 +352,9 @@
 						max="100"
 						value={playback.volume}
 						onpointerdown={() => (volDragging = true)}
-						oninput={(e) => playback.volume = Number(e.currentTarget.value)}
-						onchange={(e) => api.setVolume(Number(e.currentTarget.value))}
-						aria-label="Volume"
+						oninput={(e) => dragVolume(Number(e.currentTarget.value))}
+						onchange={(e) => commitVolume(Number(e.currentTarget.value))}
+						aria-label={t('player.volume')}
 					/>
 				</div>
 			</div>
@@ -354,7 +380,7 @@
 						class="hidden h-10 w-10 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-foreground/10 lg:flex {showLyrics
 							? 'text-primary'
 							: 'text-muted-foreground hover:text-foreground'}"
-						aria-label="Lyrics"
+						aria-label={t('player.lyrics')}
 						aria-pressed={showLyrics}
 						title="Lyrics"
 					>
@@ -364,7 +390,7 @@
 						<button
 							onclick={toggleLike}
 							class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-							aria-label="Like"
+							aria-label={playback.liked ? t('player.remove_from_liked') : t('player.save_to_liked')}
 						>
 							<span
 								class="inline-flex"
@@ -398,7 +424,7 @@
 						seekDrag = null;
 						api.seek(v);
 					}}
-					aria-label="Seek"
+					aria-label={t('player.seek')}
 				/>
 				<div class="mt-2 flex justify-between text-xs font-medium tabular-nums text-muted-foreground">
 					<span>{fmt(shownPosition)}</span>
@@ -412,7 +438,7 @@
 					class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-foreground/10 {shuffleOn
 						? 'text-primary'
 						: 'text-muted-foreground hover:text-foreground'}"
-					aria-label="Shuffle"
+					aria-label={t('player.shuffle')}
 					aria-pressed={shuffleOn}
 				>
 					<HugeiconsIcon icon={ShuffleIcon} class="h-[18px] w-[18px]" />
@@ -420,14 +446,14 @@
 				<button
 					onclick={() => api.prevTrack()}
 					class="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-foreground/90 transition-colors hover:bg-foreground/10 hover:text-foreground"
-					aria-label="Previous"
+					aria-label={t('player.previous')}
 				>
 					<HugeiconsIcon icon={PreviousIcon} class="h-6 w-6" />
 				</button>
 				<button
 					onclick={() => api.togglePause()}
 					class="mx-1 flex h-[68px] w-[68px] cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-150 hover:scale-[1.06] active:scale-95"
-					aria-label={playback.paused ? 'Play' : 'Pause'}
+					aria-label={playback.paused ? t('player.play') : t('player.pause')}
 				>
 					<HugeiconsIcon
 						icon={PauseIcon}
@@ -439,7 +465,7 @@
 				<button
 					onclick={() => api.nextTrack()}
 					class="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-foreground/90 transition-colors hover:bg-foreground/10 hover:text-foreground"
-					aria-label="Next"
+					aria-label={t('player.next')}
 				>
 					<HugeiconsIcon icon={NextIcon} class="h-6 w-6" />
 				</button>

@@ -19,25 +19,45 @@ export function setSpatialEnabled(on: boolean): void {
 	}
 }
 
+const FOCUS_SEL =
+	'button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])';
+
+function visible(el: HTMLElement): boolean {
+	if (el.closest('[hidden], [aria-hidden="true"]')) return false;
+	const style = getComputedStyle(el);
+	if (style.display === 'none' || style.visibility === 'hidden') return false;
+	const r = el.getBoundingClientRect();
+	if (r.width < 2 || r.height < 2) return false;
+	if ((el as HTMLButtonElement).disabled) return false;
+	return true;
+}
+
 function focusables(): HTMLElement[] {
+	// An open dialog owns the focus: trap movement inside it so Alt+Arrows can't wander
+	// the dimmed page behind the modal. Last dialog wins (stacked menus).
+	const dialogs = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].filter(visible);
+	const scope = dialogs.length ? dialogs[dialogs.length - 1] : document;
 	const out: HTMLElement[] = [];
-	for (const el of document.querySelectorAll<HTMLElement>(
-		'button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])'
-	)) {
-		if (el.closest('[hidden], [aria-hidden="true"]')) continue;
-		const style = getComputedStyle(el);
-		if (style.display === 'none' || style.visibility === 'hidden') continue;
-		const r = el.getBoundingClientRect();
-		if (r.width < 2 || r.height < 2) continue;
-		if ((el as HTMLButtonElement).disabled) continue;
-		out.push(el);
+	for (const el of scope.querySelectorAll<HTMLElement>(FOCUS_SEL)) {
+		if (visible(el)) out.push(el);
 	}
 	return out;
+}
+
+function focusEl(el: HTMLElement): void {
+	el.focus({ preventScroll: false });
+	try {
+		el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+	} catch {
+		/* older webview */
+	}
 }
 
 /** Focus the nearest focusable in `dir` from the current anchor. Returns whether it moved. */
 export function spatialMove(dir: 'up' | 'down' | 'left' | 'right'): boolean {
 	const active = document.activeElement as HTMLElement | null;
+	const els = focusables();
+	if (!els.length) return false;
 	const ax = window.innerWidth / 2;
 	const ay = window.innerHeight / 2;
 	const ar = active?.getBoundingClientRect();
@@ -45,7 +65,7 @@ export function spatialMove(dir: 'up' | 'down' | 'left' | 'right'): boolean {
 	const cy = ar ? ar.top + ar.height / 2 : ay;
 	let best: HTMLElement | null = null;
 	let bestScore = Infinity;
-	for (const el of focusables()) {
+	for (const el of els) {
 		if (el === active) continue;
 		const r = el.getBoundingClientRect();
 		const ex = r.left + r.width / 2;
@@ -70,13 +90,13 @@ export function spatialMove(dir: 'up' | 'down' | 'left' | 'right'): boolean {
 		}
 	}
 	if (best) {
-		best.focus({ preventScroll: false });
-		try {
-			best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-		} catch {
-			/* older webview */
-		}
+		focusEl(best);
 		return true;
 	}
-	return false;
+	// Dead end wraps around instead of stranding focus: forward (down/right) lands on the
+	// first element, back (up/left) on the last — the same cycle Tab/Shift+Tab give.
+	const others = els.filter((el) => el !== active);
+	if (!others.length) return false;
+	focusEl(dir === 'down' || dir === 'right' ? others[0] : others[others.length - 1]);
+	return true;
 }

@@ -222,7 +222,20 @@ impl PlayerConfigStore {
         };
         if changed {
             if let Some(raw) = newest_raw {
-                let _ = std::fs::write(&self.cache_file, raw);
+                // Atomic cache write (tmp + rename) so a crash/power-loss never leaves a
+                // half-written JSON that parses as empty on the next start. A missing parent
+                // dir is created; failures are warn!-loud, never silent (`let _ =` hid them).
+                if let Some(parent) = self.cache_file.parent() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        tracing::warn!(path = %self.cache_file.display(), error = %e, "player config cache dir create failed");
+                    }
+                }
+                let tmp = self.cache_file.with_extension("json.tmp");
+                if let Err(e) = std::fs::write(&tmp, &raw)
+                    .and_then(|()| std::fs::rename(&tmp, &self.cache_file))
+                {
+                    tracing::warn!(path = %self.cache_file.display(), error = %e, "player config cache write failed");
+                }
             }
             self.epoch.fetch_add(1, Ordering::SeqCst);
             tracing::info!("player config table updated → cipher rebuild");

@@ -345,7 +345,7 @@ pub fn get_volume(state: St<'_>) -> i64 {
 #[tauri::command]
 pub fn set_sleep_timer(state: St<'_>, mode: String) -> Result<(), String> {
     let timer = crate::state::parse_sleep_mode(&mode)?;
-    *state.sleep_timer.lock().unwrap() = timer;
+    *state.sleep_timer.lock().unwrap_or_else(|e| e.into_inner()) = timer;
     match &timer {
         crate::state::SleepTimer::Off => state.db.delete_setting("sleep_deadline"),
         crate::state::SleepTimer::EndOfSong => {
@@ -364,7 +364,7 @@ pub fn set_sleep_timer(state: St<'_>, mode: String) -> Result<(), String> {
 /// Current sleep timer for window restore: `"off"`, `"end_of_song"`, or remaining seconds.
 #[tauri::command]
 pub fn get_sleep_timer(state: St<'_>) -> String {
-    match *state.sleep_timer.lock().unwrap() {
+    match *state.sleep_timer.lock().unwrap_or_else(|e| e.into_inner()) {
         crate::state::SleepTimer::Off => "off".to_string(),
         crate::state::SleepTimer::EndOfSong => "end_of_song".to_string(),
         crate::state::SleepTimer::At(end) => end
@@ -499,12 +499,24 @@ pub async fn get_liked_ids(state: St<'_>) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())?;
     let mut ids: Vec<String> = page.items.iter().map(|i| i.video_id.clone()).collect();
     let mut token = page.continuation;
+    let mut last_token: Option<String> = None;
+    let mut pages: usize = 0;
+    const MAX_LIKED_PAGES: usize = 100;
     while let Some(t) = token {
+        if pages >= MAX_LIKED_PAGES {
+            break;
+        }
+        // A backend that repeats a continuation token would otherwise loop forever.
+        if last_token.as_deref() == Some(&t) {
+            break;
+        }
+        last_token = Some(t.clone());
         let more = state
             .it
             .playlist_continuation(client, &t)
             .await
             .map_err(|e| e.to_string())?;
+        pages += 1;
         if more.items.is_empty() {
             break;
         }
@@ -1194,7 +1206,24 @@ pub async fn set_playlist_cover(
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
         .collect();
     let dest = dir.join(format!("{stem}-{}.{ext}", crate::db::now_secs()));
-    std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
+    // Blocking copy + size re-check off the async runtime (8 MB through the async
+    // executor would stall other commands). Re-check after copy: the source could
+    // have grown between the pre-check and the copy.
+    let src_owned = src.to_path_buf();
+    let dest_owned = dest.clone();
+    tokio::task::spawn_blocking(move || -> Result<u64, String> {
+        std::fs::copy(&src_owned, &dest_owned).map_err(|e| e.to_string())?;
+        let n = std::fs::metadata(&dest_owned)
+            .map(|m| m.len())
+            .map_err(|e| e.to_string())?;
+        if n > MAX_BYTES {
+            let _ = std::fs::remove_file(&dest_owned);
+            return Err("That image is over 8 MB. Pick a smaller one.".into());
+        }
+        Ok(n)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     // Only now is the cover it replaces safe to unlink. Dropping it any earlier means a picked
     // file this command goes on to refuse (wrong format, too big, unreadable) takes the artwork
     // already on screen down with it, and the toast talks about the new file while the old one is
@@ -1663,7 +1692,9 @@ pub fn can_self_update(app: tauri::AppHandle) -> bool {
 /// the app itself off the SPA, with no way back.
 #[tauri::command]
 pub async fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
+    // Defense in depth: same validator as lastfm::open_browser (which re-checks). Rejects
+    // shell metacharacters (`" & | ; $` backtick) and enforces https?://[A-Za-z0-9.-]+ host shape.
+    if !crate::lastfm::valid_browser_url(&url) {
         return Err("only http(s) links".into());
     }
     crate::lastfm::open_browser(&url)
@@ -2157,8 +2188,27 @@ pub async fn install_artist_pack_zip(
     state: St<'_>,
     path: String,
 ) -> Result<crate::artist_packs::ArtistPack, String> {
+    // The path is expected to come from the file dialog (dialog:allow-open only — no save/write
+    // scope in capabilities/default.json), but a compromised frontend could send anything, so
+    // validate as if it were fully attacker-controlled: .zip extension, file must exist, 50 MB cap.
+    const MAX_PACK_ZIP_BYTES: u64 = 50 * 1024 * 1024;
+    let p = std::path::Path::new(&path);
+    let is_zip = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("zip"));
+    if !is_zip {
+        return Err("only .zip files".into());
+    }
+    let meta = std::fs::metadata(p).map_err(|_| "file not found".to_string())?;
+    if !meta.is_file() {
+        return Err("not a file".into());
+    }
+    if meta.len() > MAX_PACK_ZIP_BYTES {
+        return Err("ZIP too large (50 MB cap)".into());
+    }
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    crate::artist_packs::install_from_zip(&state.db, &data_dir, std::path::Path::new(&path))
+    crate::artist_packs::install_from_zip(&state.db, &data_dir, p)
 }
 #[tauri::command]
 pub async fn fetch_artist_packs_index() -> Result<crate::artist_packs::ArtistPackIndex, String> {

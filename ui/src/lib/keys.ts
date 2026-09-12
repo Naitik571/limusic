@@ -25,6 +25,7 @@ export interface Binding {
 	key: string;
 	ctrl?: boolean;
 	shift?: boolean;
+	alt?: boolean;
 }
 
 type Slot = { action: ActionId; label: string };
@@ -119,6 +120,7 @@ export function describe(b: Binding): string {
 								: b.key;
 	const mods: string[] = [];
 	if (b.ctrl) mods.push('Ctrl');
+	if (b.alt) mods.push('Alt');
 	if (b.shift) mods.push('Shift');
 	return [...mods, key].join(' + ');
 }
@@ -127,16 +129,19 @@ function same(a: Binding, b: Binding): boolean {
 	return (
 		a.key.toLowerCase() === b.key.toLowerCase() &&
 		!!a.ctrl === !!b.ctrl &&
-		!!a.shift === !!b.shift
+		!!a.shift === !!b.shift &&
+		!!a.alt === !!b.alt
 	);
 }
 
 export function matchBinding(e: KeyboardEvent, b: Binding): boolean {
-	// Meta counts as Ctrl (macOS ⌘ chords). Shift is compared by flag, not by character:
-	// Shift+N must not fire a plain-n binding and vice versa.
+	// Meta counts as Ctrl (macOS ⌘ chords). Shift/Alt are compared by flag, not by
+	// character: Shift+N must not fire a plain-n binding and vice versa, and an
+	// explicitly Alt-bound Arrow must match so it can win over spatial navigation.
 	const ctrl = e.ctrlKey || e.metaKey;
 	if (!!ctrl !== !!b.ctrl) return false;
 	if (!!e.shiftKey !== !!b.shift) return false;
+	if (!!e.altKey !== !!b.alt) return false;
 	return e.key.toLowerCase() === b.key.toLowerCase();
 }
 

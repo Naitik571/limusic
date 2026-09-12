@@ -47,7 +47,7 @@ fn spawn_sleep_timer(state: Arc<crate::state::AppState>) {
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
         let fire = {
-            let mut timer = state.sleep_timer.lock().unwrap();
+            let mut timer = state.sleep_timer.lock().unwrap_or_else(|e| e.into_inner());
             match *timer {
                 crate::state::SleepTimer::At(end) if std::time::Instant::now() >= end => {
                     *timer = crate::state::SleepTimer::Off;
@@ -206,7 +206,8 @@ pub fn run() {
             it.set_hide_videos(db.get_setting("hide_videos").as_deref() == Some("true"));
             let clients = Clients::bundled();
 
-            let mut player = match Player::new(cache_dir.to_str().unwrap()) {
+            let cache_dir_str = cache_dir.to_string_lossy().into_owned();
+            let mut player = match Player::new(&cache_dir_str) {
                 Ok(p) => p,
                 Err(e) => {
                     tracing::error!(error = %e, "init libmpv failed, app will open without audio");
@@ -422,7 +423,7 @@ pub fn run() {
                     _ => None,
                 };
                 match restored {
-                    Some(t) => *app_state.sleep_timer.lock().unwrap() = t,
+                    Some(t) => *app_state.sleep_timer.lock().unwrap_or_else(|e| e.into_inner()) = t,
                     None => app_state.db.delete_setting("sleep_deadline"),
                 }
             }

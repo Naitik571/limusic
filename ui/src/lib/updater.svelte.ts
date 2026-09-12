@@ -34,6 +34,8 @@ async function look(): Promise<boolean> {
 		updateState.available = { version: u.version };
 		return true;
 	}
+	// No update: drop any stale handle so Install can't download a superseded build.
+	pending = null;
 	return false;
 }
 

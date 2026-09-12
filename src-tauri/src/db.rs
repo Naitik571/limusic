@@ -39,7 +39,7 @@ pub struct CachedStream {
 impl Db {
     /// Expose inner mutex for modules that need raw queries (artist_packs, remote).
     pub fn conn_lock(&self) -> std::sync::MutexGuard<'_, rusqlite::Connection> {
-        self.0.lock().unwrap()
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn open(path: &std::path::Path) -> rusqlite::Result<Self> {
@@ -164,7 +164,7 @@ impl Db {
     // --- settings ---------------------------------------------------------------------------
 
     pub fn get_setting(&self, key: &str) -> Option<String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
             r.get(0)
         })
@@ -172,7 +172,7 @@ impl Db {
     }
 
     pub fn set_setting(&self, key: &str, value: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO settings(key, value) VALUES(?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -182,7 +182,7 @@ impl Db {
     }
 
     pub fn delete_setting(&self, key: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute("DELETE FROM settings WHERE key = ?1", [key])
             .unwrap_or_else(warn_write("delete_setting", "settings"));
     }
@@ -197,7 +197,7 @@ impl Db {
         data_sync_id: Option<&str>,
         account_json: &str,
     ) -> rusqlite::Result<()> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let tx = conn.transaction()?;
         tx.execute(
             "INSERT INTO settings(key, value) VALUES('session_cookie', ?1)
@@ -234,7 +234,7 @@ impl Db {
     /// the marker and removal of stale identity projections in the same transaction means a crash
     /// during the required picker cannot restart into YouTube's default channel silently.
     pub fn set_pending_auth_selection(&self, session_cookie: &str) -> rusqlite::Result<()> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let tx = conn.transaction()?;
         tx.execute(
             "INSERT INTO settings(key, value) VALUES('session_cookie', ?1)
@@ -253,7 +253,7 @@ impl Db {
     }
 
     pub fn clear_auth_identity(&self) -> rusqlite::Result<()> {
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let tx = conn.transaction()?;
         for key in [
             "selected_identity_json",
@@ -267,7 +267,7 @@ impl Db {
     }
 
     pub fn all_settings(&self) -> Vec<(String, String)> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
         if let Ok(mut stmt) = conn.prepare("SELECT key, value FROM settings") {
             if let Ok(rows) = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))) {
@@ -281,7 +281,7 @@ impl Db {
 
     /// Return the cached URL only if still valid (`expires_at` in the future). context/11.
     pub fn get_stream(&self, video_id: &str, now: i64) -> Option<CachedStream> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT url, itag, expires_at, loudness_db FROM stream_url_cache WHERE video_id = ?1 AND expires_at > ?2",
             rusqlite::params![video_id, now],
@@ -299,7 +299,7 @@ impl Db {
 
     /// Drop a cached URL (e.g. it 403'd on the real GET). context/06 §2.
     pub fn evict_stream(&self, video_id: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "DELETE FROM stream_url_cache WHERE video_id = ?1",
             [video_id],
@@ -315,7 +315,7 @@ impl Db {
         expires_at: i64,
         loudness_db: Option<f64>,
     ) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO stream_url_cache(video_id, url, itag, expires_at, loudness_db) VALUES(?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(video_id) DO UPDATE SET url = excluded.url, itag = excluded.itag, expires_at = excluded.expires_at, loudness_db = excluded.loudness_db",
@@ -326,7 +326,7 @@ impl Db {
 
     /// Wipe the whole URL cache (settings "Clear caches"). context/11.
     pub fn clear_stream_cache(&self) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute("DELETE FROM stream_url_cache", [])
             .unwrap_or_else(warn_write("clear_stream_cache", "stream_url_cache"));
         conn.execute("DELETE FROM lyrics_cache", [])
@@ -338,7 +338,7 @@ impl Db {
     /// Cached lyrics JSON for a track. `Some(None)` = a cached "no lyrics" verdict (NULL row),
     /// still valid; misses expire after `miss_ttl` secs while hits live forever.
     pub fn get_lyrics(&self, video_id: &str, now: i64, miss_ttl: i64) -> Option<Option<String>> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let (lyrics, fetched_at): (Option<String>, i64) = conn
             .query_row(
                 "SELECT lyrics, fetched_at FROM lyrics_cache WHERE video_id = ?1",
@@ -354,7 +354,7 @@ impl Db {
 
     /// `lyrics = None` records a "no lyrics found" verdict.
     pub fn put_lyrics(&self, video_id: &str, lyrics: Option<&str>, now: i64) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO lyrics_cache(video_id, lyrics, fetched_at) VALUES(?1, ?2, ?3)
              ON CONFLICT(video_id) DO UPDATE SET lyrics = excluded.lyrics, fetched_at = excluded.fetched_at",
@@ -365,7 +365,7 @@ impl Db {
 
     /// Drop one cached row (scramble self-heal — the next read refetches providers).
     pub fn evict_lyrics(&self, video_id: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute("DELETE FROM lyrics_cache WHERE video_id = ?1", [video_id])
             .unwrap_or_else(warn_write("evict_lyrics", "lyrics_cache"));
     }
@@ -374,7 +374,7 @@ impl Db {
 
     /// Per-song sync offset in milliseconds. Positive = delay lyrics, negative = advance.
     pub fn get_lyric_offset(&self, video_id: &str) -> i64 {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT offset_ms FROM lyric_offsets WHERE video_id = ?1",
             [video_id],
@@ -384,7 +384,7 @@ impl Db {
     }
 
     pub fn set_lyric_offset(&self, video_id: &str, offset_ms: i64) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if offset_ms == 0 {
             conn.execute("DELETE FROM lyric_offsets WHERE video_id = ?1", [video_id])
                 .unwrap_or_else(warn_write("delete_lyric_offset", "lyric_offsets"));
@@ -401,7 +401,7 @@ impl Db {
     /// User-attached .lrc for one track (imported from disk when no provider had lyrics).
     /// Outranks every provider: the user said so explicitly.
     pub fn get_custom_lyrics(&self, video_id: &str) -> Option<String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT lrc FROM custom_lyrics WHERE video_id = ?1",
             [video_id],
@@ -411,7 +411,7 @@ impl Db {
     }
 
     pub fn set_custom_lyrics(&self, video_id: &str, lrc: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO custom_lyrics(video_id, lrc, updated_at) VALUES(?1, ?2, ?3)
              ON CONFLICT(video_id) DO UPDATE SET lrc = excluded.lrc, updated_at = excluded.updated_at",
@@ -421,13 +421,13 @@ impl Db {
     }
 
     pub fn delete_custom_lyrics(&self, video_id: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute("DELETE FROM custom_lyrics WHERE video_id = ?1", [video_id])
             .unwrap_or_else(warn_write("delete_custom_lyrics", "custom_lyrics"));
     }
 
     pub fn get_lyric_vote(&self, video_id: &str, source: &str) -> Option<i32> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT vote FROM lyric_votes WHERE video_id = ?1 AND source = ?2",
             rusqlite::params![video_id, source],
@@ -437,7 +437,7 @@ impl Db {
     }
 
     pub fn set_lyric_vote(&self, video_id: &str, source: &str, vote: i32) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO lyric_votes(video_id, source, vote, updated_at) VALUES(?1, ?2, ?3, ?4)
              ON CONFLICT(video_id, source) DO UPDATE SET vote = excluded.vote, updated_at = excluded.updated_at",
@@ -453,7 +453,7 @@ impl Db {
     /// playlist. `song_json` is the serialized `SongItem`, kept per row so the playlist can be
     /// rebuilt without asking YouTube for metadata it already gave us.
     pub fn record_play(&self, video_id: &str, song_json: &str, now: i64, window: i64) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO plays(video_id, played_at, song_json) VALUES(?1, ?2, ?3)",
             rusqlite::params![video_id, now, song_json],
@@ -467,7 +467,7 @@ impl Db {
     /// by recency. Each row's JSON comes from that song's latest play: SQLite resolves a bare
     /// column against the row matching the single `max()` in the query.
     pub fn top_plays(&self, since: i64, limit: usize) -> Vec<(String, i64)> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT song_json, COUNT(*) AS plays, MAX(played_at) AS last FROM plays
@@ -489,7 +489,7 @@ impl Db {
     /// Repeat answers "what do I play most"; this answers "what did I play, when", which is what
     /// the History page renders.
     pub fn recent_plays(&self, limit: i64) -> Vec<(i64, String)> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT played_at, song_json FROM plays ORDER BY played_at DESC, id DESC LIMIT ?1",
@@ -504,7 +504,7 @@ impl Db {
     /// Wipe the whole play diary (History page → Clear). On Repeat rebuilds from new plays.
     /// Seconds survive: they're lifetime listening stats, not diary rows.
     pub fn clear_plays(&self) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute("DELETE FROM plays", [])
             .unwrap_or_else(warn_write("clear_plays", "plays"));
     }
@@ -515,7 +515,7 @@ impl Db {
         if secs <= 0 {
             return;
         }
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO play_seconds(video_id, seconds) VALUES(?1, ?2)
              ON CONFLICT(video_id) DO UPDATE SET seconds = seconds + excluded.seconds",
@@ -526,7 +526,7 @@ impl Db {
 
     /// Lifetime listened seconds across every track — the History header's "time listened".
     pub fn total_listen_seconds(&self) -> i64 {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT COALESCE(SUM(seconds), 0) FROM play_seconds",
             [],
@@ -539,7 +539,7 @@ impl Db {
     /// songs"; this answers "how many times have I played each of these", which is what sorting an
     /// arbitrary playlist by plays needs. Same table, so the same trailing window applies.
     pub fn play_counts(&self, since: i64) -> Vec<(String, i64)> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
         if let Ok(mut stmt) = conn
             .prepare("SELECT video_id, COUNT(*) FROM plays WHERE played_at >= ?1 GROUP BY video_id")
@@ -555,7 +555,7 @@ impl Db {
 
     /// Every known file with its recorded mtime — the scanner re-reads tags only where it differs.
     pub fn local_mtimes(&self) -> std::collections::HashMap<String, i64> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = std::collections::HashMap::new();
         if let Ok(mut stmt) = conn.prepare("SELECT path, mtime FROM local_tracks") {
             if let Ok(rows) = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))) {
@@ -571,7 +571,7 @@ impl Db {
         if tracks.is_empty() {
             return;
         }
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let Ok(tx) = conn.transaction() else { return };
         for t in tracks {
             tx.execute(
@@ -600,7 +600,7 @@ impl Db {
         if paths.is_empty() {
             return;
         }
-        let mut conn = self.0.lock().unwrap();
+        let mut conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let Ok(tx) = conn.transaction() else { return };
         for p in paths {
             tx.execute("DELETE FROM local_tracks WHERE path = ?1", [p])
@@ -614,7 +614,7 @@ impl Db {
     /// All tracks, or one album's, in album order. ponytail: loads the whole table — a personal
     /// collection is thousands of rows, so paging it would buy nothing.
     pub fn local_tracks(&self, album_key: Option<&str>) -> Vec<LocalTrack> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let sql =
             "SELECT path, title, artist, album, album_key, track_no, duration_secs, cover, mtime
                    FROM local_tracks {WHERE} ORDER BY album, track_no, title";
@@ -673,7 +673,7 @@ pub struct DownloadTrack {
 impl Db {
     /// Path of the downloaded audio file for `video_id`, if one exists.
     pub fn download_path(&self, video_id: &str) -> Option<String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT file_path FROM downloads WHERE video_id = ?1",
             [video_id],
@@ -686,7 +686,7 @@ impl Db {
     /// the writer consults this before renaming so the second one disambiguates instead of
     /// silently overwriting the first one's audio.
     pub fn video_id_for_path(&self, path: &str) -> Option<String> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT video_id FROM downloads WHERE file_path = ?1",
             [path],
@@ -697,7 +697,7 @@ impl Db {
 
     /// Record a finished download (replaces any prior entry for the same video id).
     pub fn put_download(&self, d: &DownloadTrack) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO downloads(video_id, file_path, title, artists, album, duration, thumb, quality, format, size_bytes, added_at)
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
@@ -714,7 +714,7 @@ impl Db {
 
     /// All downloaded tracks, newest first.
     pub fn list_downloads(&self) -> Vec<DownloadTrack> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
             "SELECT video_id, file_path, title, artists, album, duration, thumb, quality, format, size_bytes, added_at
@@ -743,14 +743,14 @@ impl Db {
 
     /// Remove one download's row (the file itself is deleted by the caller).
     pub fn delete_download(&self, video_id: &str) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute("DELETE FROM downloads WHERE video_id = ?1", [video_id])
             .unwrap_or_else(warn_write("delete_download", "downloads"));
     }
 
     /// How much disk the offline library currently occupies.
     pub fn downloads_total_bytes(&self) -> i64 {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT COALESCE(SUM(size_bytes),0) FROM downloads",
             [],
@@ -761,7 +761,7 @@ impl Db {
 
     /// Cached waveform peaks for `video_id`: `(bars 0–255, bar count)`, if computed before.
     pub fn get_waveform(&self, video_id: &str) -> Option<(Vec<u8>, i64)> {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row(
             "SELECT bars, bar_count FROM waveforms WHERE video_id = ?1",
             [video_id],
@@ -772,7 +772,7 @@ impl Db {
 
     /// Store computed waveform peaks (replaces any prior entry for the same video id).
     pub fn put_waveform(&self, video_id: &str, bars: &[u8], count: i64) {
-        let conn = self.0.lock().unwrap();
+        let conn = self.0.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT INTO waveforms(video_id, bars, bar_count, computed_at)
              VALUES(?1,?2,?3,?4)

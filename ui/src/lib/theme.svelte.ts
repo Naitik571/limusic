@@ -474,8 +474,10 @@ function fadeTo(to: Hsv): void {
  * immediately; an unreadable or colourless image leaves the current colours alone rather than
  * flashing to grey.
  */
+let artReq = 0;
 export function applyArtworkAccent(url: string | undefined | null): void {
 	wanted = url ?? '';
+	const my = ++artReq;
 	if (!url) {
 		artAccentHex = null;
 		cancelAnimationFrame(frame);
@@ -486,9 +488,13 @@ export function applyArtworkAccent(url: string | undefined | null): void {
 		return;
 	}
 	artworkAccent(url).then((hex) => {
-		if (wanted !== url) return; // a faster track change already won
+		// Only the latest decode applies: a slow fetch for a skipped track must not repaint
+		// over the current one. A null/unparseable result leaves the theme alone rather than
+		// flashing black (toHex's '#000000' fallback is for reading tokens, never for fading).
+		if (my !== artReq || wanted !== url) return;
+		if (!hex) return;
 		artAccentHex = hex;
-		const hsv = hex && hexToHsv(hex);
+		const hsv = hexToHsv(hex);
 		if (hsv) fadeTo(hsv);
 	});
 }

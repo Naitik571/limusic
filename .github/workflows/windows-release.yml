@@ -45,8 +45,12 @@ concurrency:
 env:
   # Pinned libmpv dev build (shinchiro). Baseline x86_64 — NOT the `-v3-` variant, which requires
   # AVX2 and would crash on older CPUs. libmpv2 needs mpv >= 0.35 (client API 2.x). Bump
-  # deliberately: a new mpv is a new 117 MB DLL in the installer.
+  # deliberately: a new mpv is a new 117 MB DLL in the installer. URL intentionally pinned —
+  # verify out-of-band before bumping.
+  # MPV_DEV_SHA256: (unset — fill in with `sha256sum mpv-dev.7z` when bumping MPV_DEV_URL,
+  # then enforce with a hash check in the import-library step below).
   MPV_DEV_URL: https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260610/mpv-dev-x86_64-20260610-git-304426c.7z
+  MPV_DEV_SHA256: ""
   MPV_DIR: ${{ github.workspace }}\.libmpv
 
 jobs:
@@ -202,7 +206,14 @@ jobs:
           # beforeBuildCommand emptied: we just ran it. Left on, tauri runs `pnpm build` from the
           # repo root, which has no package.json, so pnpm's choice between ui/ and website/ is down
           # to the filesystem — it resolves to ui here and to website on Linux. Working by accident.
-          tauri build --config '{"build":{"beforeBuildCommand":""}}'   # → target/release/bundle/{nsis,msi}/
+           tauri build --config '{"build":{"beforeBuildCommand":""}}'   # → target/release/bundle/{nsis,msi}/
+
+      # build.rs bakes lastfm.keys into the binary; the file itself must never survive into an
+      # artifact or a cache. Delete it right after the build (can't be done in build.rs — the
+      # keys must exist *during* compilation).
+      - name: Delete lastfm.keys after build
+        shell: bash
+        run: rm -f src-tauri/lastfm.keys
 
       - name: Dry run — built and signed, attaching nothing
         if: ${{ inputs.dry_run }}
@@ -228,7 +239,24 @@ jobs:
             echo "::error::no .sig next to the installer — signing key missing, or createUpdaterArtifacts got turned off"; exit 1
           fi
 
-          gh release upload "$TAG" "$EXE" "$SIG" ${MSI:+"$MSI"} --clobber --repo "$GITHUB_REPOSITORY"
+           gh release upload "$TAG" "$EXE" "$SIG" ${MSI:+"$MSI"} --clobber --repo "$GITHUB_REPOSITORY"
+
+           # Version-monotonicity guard: never let an older build downgrade latest.json (e.g. a
+           # re-run of an old tag after a newer release). Compare against the manifest already
+           # attached to the release, if any; abort when it carries a HIGHER version.
+           rm -rf check && mkdir -p check
+           if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir check 2>/dev/null; then
+             EXISTING="$(jq -r '.version // ""' check/latest.json)"
+             if [ -n "$EXISTING" ] && [ "$EXISTING" != "$VERSION" ]; then
+               HIGHER="$(printf '%s\n%s\n' "$EXISTING" "$VERSION" | sort -V | tail -1)"
+               if [ "$HIGHER" = "$EXISTING" ]; then
+                 echo "::error::existing latest.json on $TAG is version $EXISTING > $VERSION — refusing to downgrade the updater manifest"
+                 exit 1
+               fi
+             fi
+           else
+             echo "no existing latest.json on $TAG — writing fresh"
+           fi
 
           # Windows is the only platform this fork ships, so this workflow owns latest.json outright:
           # write the full manifest from scratch and clobber whatever is there. No merge dance —

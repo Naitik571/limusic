@@ -39,8 +39,15 @@
 	function stopCapture() {
 		capturing = null;
 		clashMsg = '';
+		forceArmedUntil = 0;
 		window.removeEventListener('keydown', onCapture, true);
 	}
+
+	// Closing the dialog abandons the capture too — otherwise the armed listener (and a
+	// stale force window) survives behind the closed modal.
+	$effect(() => {
+		if (!ui.shortcutsOpen) stopCapture();
+	});
 	function onCapture(e: KeyboardEvent) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -53,6 +60,7 @@
 		if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
 		const b: Binding = { key: e.key.length === 1 ? e.key.toLowerCase() : e.key };
 		if (e.ctrlKey || e.metaKey) b.ctrl = true;
+		if (e.altKey) b.alt = true;
 		if (e.shiftKey) b.shift = true;
 		const force = Date.now() < forceArmedUntil;
 		const res = setBinding(capturing.action, capturing.slot, b, force);

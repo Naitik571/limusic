@@ -2923,14 +2923,19 @@ impl AppState {
                 return;
             }
             if let Some(orig) = q.shuffle_orig.take() {
-                let playing = q.items[q.current].video_id.clone();
+                let Some(playing_item) = q.items.get(q.current) else {
+                    q.shuffle_orig = Some(orig);
+                    return;
+                };
+                let playing = playing_item.video_id.clone();
                 let fallback = q.current;
                 // The shuffled prefix (through the playing track) is what's already been played —
                 // the restored order must not offer any of it again.
-                let heard: HashSet<String> = q.items[..=q.current]
-                    .iter()
-                    .map(|i| i.video_id.clone())
-                    .collect();
+                let Some(prefix) = q.items.get(..=q.current) else {
+                    q.shuffle_orig = Some(orig);
+                    return;
+                };
+                let heard: HashSet<String> = prefix.iter().map(|i| i.video_id.clone()).collect();
                 let (items, idx) = unshuffled(orig, &heard, &playing, fallback);
                 q.items = items;
                 q.current = idx;

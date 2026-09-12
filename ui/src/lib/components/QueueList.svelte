@@ -124,19 +124,27 @@ const canReorder = $derived(lt.role !== 'guest');
 				swallowClick = true; // kill the click a same-row release synthesizes
 				setTimeout(() => (swallowClick = false), 300);
 				if (idx !== null && shouldRemove(dx, w)) {
-					// Resolve by videoId at fire time, not release time: a skip/reorder
-					// inside the 200ms fly-off would otherwise delete the wrong row.
+					// Remove by absolute index, not by first videoId match: duplicates of the
+					// same song would otherwise delete the wrong copy. The videoId is still
+					// captured to verify the row didn't shift under the 200ms fly-off — only
+					// then fall back to a videoId lookup.
 					const vid = playback.queue.items[idx]?.video_id;
 					removingIdx = idx;
 					removingDir = dx < 0 ? -1 : 1;
 					burst(e.clientX, e.clientY);
 					setTimeout(() => {
 						removingIdx = null;
-						const live = vid
-							? playback.queue.items.findIndex(
-									(it, j) => j > playback.queue.currentIndex && it.video_id === vid
-								)
-							: -1;
+						if (!vid) return; // idx is non-null here (outer guard); vid may be missing
+						if (
+							idx > playback.queue.currentIndex &&
+							playback.queue.items[idx]?.video_id === vid
+						) {
+							api.removeFromQueue(idx);
+							return;
+						}
+						const live = playback.queue.items.findIndex(
+							(it, j) => j > playback.queue.currentIndex && it.video_id === vid
+						);
 						if (live >= 0) api.removeFromQueue(live);
 					}, 200);
 				}
@@ -223,14 +231,16 @@ const canReorder = $derived(lt.role !== 'guest');
 			return out.toReversed(); // oldest first — new chunks grow above, none must ever move
 		});
 
-		// A reshuffle (new queue, clear, reorder — anything that changes the items themselves)
+		// A reshuffle (new queue, clear — anything that changes the items themselves)
 		// drops the peek: back to "what's next". Position advances must NOT reset it, so the
 		// fingerprint keys on the tracks' video_ids, not on `queue` identity — the backend
 		// swaps the whole queue object on every event, which would otherwise wipe the peek
-		// every time the song changes.
+		// every time the song changes. Order-insensitive (sorted) plus length: our own
+		// reorder keeps the same set and must not collapse the peek we just opened.
 		let lastPeekFp = '';
 		$effect(() => {
-			const fp = playback.queue.items.map((i) => i.video_id).join('\u0000');
+			const items = playback.queue.items;
+			const fp = `${items.length}|${[...items].map((i) => i.video_id).sort().join(' ')}`;
 			if (fp !== lastPeekFp) pastShown = 0;
 			lastPeekFp = fp;
 		});

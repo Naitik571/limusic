@@ -238,6 +238,15 @@
 			.catch(() => {
 				if (requested !== id) return;
 				loading = false;
+				lyrics = null;
+				// Same reset as the success path: a failed fetch must not leave romaji or a
+				// translation from the previous song armed for this one.
+				romanOn = false;
+				romanSeg = null;
+				romanFor = '';
+				transMode = 'off';
+				transSeg = null;
+				transFor = '';
 			});
 	});
 

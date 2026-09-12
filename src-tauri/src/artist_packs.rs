@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
 const INDEX_URL: &str = "https://artist-packs.sfg545.dev/v1/index.json";
+// SECURITY: INDEX_URL and install_from_url() require https:// only — plain http would let a
+// network attacker swap the ZIP. There is deliberately NO checksum/signature verification yet:
+// the index carries no digest field, so a compromised origin (or TLS MITM with a valid cert)
+// could ship a malicious style.css/artist.json. Mitigation gap: add `sha256` per pack entry
+// in index.json and verify before unzip; until then only the fixed https origin is trusted.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtistPackIndexEntry {
@@ -172,7 +177,23 @@ pub fn install_from_zip(
     let mut archive2 = zip::ZipArchive::new(file2).map_err(|e| e.to_string())?;
     for i in 0..archive2.len() {
         let mut f = archive2.by_index(i).map_err(|e| e.to_string())?;
-        let out_path = dir.join(f.name());
+        let name = f.name().to_string();
+        // Zip-Slip protection: reject absolute paths, drive letters, backslashes,
+        // and any `..` segment; then verify the joined path stays inside `dir`.
+        if name.contains("..")
+            || name.starts_with('/')
+            || name.starts_with('\\')
+            || name.contains(':')
+            || name.contains('\\')
+        {
+            tracing::warn!(entry = %name, "artist pack zip entry rejected (unsafe path)");
+            continue;
+        }
+        let out_path = dir.join(&name);
+        if !out_path.starts_with(&dir) {
+            tracing::warn!(entry = %name, "artist pack zip entry rejected (escapes pack dir)");
+            continue;
+        }
         if f.is_dir() {
             std::fs::create_dir_all(&out_path).ok();
         } else {
@@ -254,13 +275,17 @@ pub fn spawn_index_poller(app: tauri::AppHandle, _db: Arc<crate::db::Db>) {
 }
 
 /// Download ZIP from URL and install.
+///
+/// SECURITY: https:// only (http rejected — see INDEX_URL comment). No checksum verification:
+/// the index provides no digest, so authenticity rests entirely on TLS + the fixed origin.
+/// Do not widen to user-supplied hosts without adding a `sha256` manifest field + verify step.
 pub async fn install_from_url(
     db: Arc<crate::db::Db>,
     data_dir: PathBuf,
     url: String,
 ) -> Result<ArtistPack, String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
-        return Err("only http(s) URLs".into());
+    if !url.starts_with("https://") {
+        return Err("only https URLs".into());
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -274,8 +299,15 @@ pub async fn install_from_url(
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
-    // zip crate needs Seek, write to temp file
-    let tmp = data_dir.join(format!("pack-{}.zip", crate::db::now_secs()));
+    // zip crate needs Seek, write to temp file. Unique per call (secs + pid + an
+    // atomic counter) so concurrent installs can't clobber each other's download.
+    static PACK_TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let tmp = data_dir.join(format!(
+        "pack-{}-{}-{}.zip",
+        crate::db::now_secs(),
+        std::process::id(),
+        PACK_TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::create_dir_all(&data_dir).ok();
     std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
     let pack = install_from_zip(&db, &data_dir, &tmp)?;

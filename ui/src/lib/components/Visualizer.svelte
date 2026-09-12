@@ -89,22 +89,34 @@
 
 	onMount(() => {
 		if (!canvas) return;
+		let mounted = true;
 		resize(canvas);
 		const ro = new ResizeObserver(() => canvas && resize(canvas));
 		ro.observe(canvas);
+		// The subscribe promise can resolve after unmount: only keep the unsubscriber while
+		// still mounted, otherwise unsubscribe immediately so the event can't write into a
+		// dead component.
 		api.onVisualizerFrame((bands) => {
 			for (let i = 0; i < barCount; i++) target[i] = bands[i] ?? 0;
-		}).then((u) => (unsub = u)).catch(() => {});
+		}).then((u) => {
+			if (mounted) unsub = u;
+			else u();
+		}).catch(() => {});
 		raf = requestAnimationFrame(draw);
 		return () => {
+			mounted = false;
 			cancelAnimationFrame(raf);
+			raf = 0;
 			ro.disconnect();
 			unsub?.();
+			unsub = null;
 		};
 	});
 	onDestroy(() => {
 		cancelAnimationFrame(raf);
+		raf = 0;
 		unsub?.();
+		unsub = null;
 	});
 </script>
 

@@ -205,7 +205,7 @@ impl Scrobbler {
             params.push(("duration".to_string(), (self.duration as i64).to_string()));
         }
         match call(&self.http, "track.scrobble", params, true).await {
-            Ok(_) => tracing::info!(track = %t.title, "scrobbled to last.fm"),
+            Ok(_) => tracing::debug!(track = %t.title, "scrobbled to last.fm"),
             Err(e) => tracing::warn!(error = %e.message, "last.fm scrobble failed"),
         }
     }
@@ -415,16 +415,74 @@ pub fn status(state: &AppState) -> serde_json::Value {
     serde_json::json!({ "connected": key.is_some(), "username": username })
 }
 
+/// Validate a URL before handing it to the OS shell/browser.
+///
+/// `cmd.exe` re-parses its command line, so shell metacharacters in the URL are a command-
+/// injection vector even when passed via `raw_arg` (a `"` breaks out of the quoting, and
+/// `& | ;` chain a second command). Reject anything containing them, then enforce an
+/// `https?://[A-Za-z0-9.-]+` host shape (strict char check — no `url` crate in deps, and
+/// adding one would churn the lockfile). Userinfo (`@`), backslashes, whitespace and
+/// control chars are all rejected.
+pub(crate) fn valid_browser_url(url: &str) -> bool {
+    if url.len() > 2048 || url.is_empty() {
+        return false;
+    }
+    // Shell metacharacters / quoting / whitespace — never allow near cmd.exe.
+    // NOTE: `&` is allowed (query strings like ?api_key=X&token=Y need it) and is
+    // escaped as `^&` in open_browser() below. `"` can never be escaped safely, so
+    // it stays rejected along with `| ; $` backtick.
+    const FORBIDDEN: &[u8] = b"\"|;$`<\\> \t\n\r";
+    if url.bytes().any(|b| FORBIDDEN.contains(&b)) {
+        return false;
+    }
+    let rest = if let Some(r) = url.strip_prefix("https://") {
+        r
+    } else if let Some(r) = url.strip_prefix("http://") {
+        r
+    } else {
+        return false;
+    };
+    // Authority = up to the first / ? #.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() {
+        return false;
+    }
+    // Reject userinfo; allow an optional :port.
+    if authority.contains('@') {
+        return false;
+    }
+    let host = match authority.split_once(':') {
+        Some((h, port)) => {
+            if port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            h
+        }
+        None => authority,
+    };
+    if host.is_empty() || host.len() > 253 {
+        return false;
+    }
+    host.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+}
+
 /// Open a URL in the user's default browser. No opener plugin in the app.
 pub(crate) fn open_browser(url: &str) -> Result<(), String> {
+    if !valid_browser_url(url) {
+        return Err("refusing to open that URL".into());
+    }
     // cmd.exe re-parses its own command line, and `Command::arg` only quotes args containing
     // spaces — so an unquoted `&` in the URL split it into a second command and the browser got
     // `…/auth?api_key=X` with the token chopped off ("Invalid API key" once the user clicks Allow).
-    // raw_arg passes the quoted URL through verbatim.
+    // raw_arg passes the quoted URL through verbatim, with `&` escaped as `^&` so cmd.exe
+    // treats it literally. Safe only because valid_browser_url() above rejected `"` `|` `;`
+    // `$` backtick and friends — never call raw_arg with an unvalidated URL.
+    let escaped = url.replace('&', "^&");
     let cmd = {
         use std::os::windows::process::CommandExt;
         std::process::Command::new("cmd")
-            .raw_arg(format!("/C start \"\" \"{url}\""))
+            .raw_arg(format!("/C start \"\" \"{escaped}\""))
             .spawn()
     };
     cmd.map(|_| ())
@@ -472,5 +530,33 @@ mod tests {
         // Unknown duration: only the 4-minute rule applies.
         assert!(!crosses_threshold(120.0, 0.0));
         assert!(crosses_threshold(240.0, 0.0));
+    }
+
+    #[test]
+    fn browser_url_validator_blocks_shell_metachars() {
+        // Plain https/http URLs with a sane host pass, including multi-param queries
+        // (connect()'s auth URL is api_key=X&token=Y; `&` is escaped as `^&` for cmd.exe).
+        assert!(valid_browser_url("https://www.last.fm/api/auth/"));
+        assert!(valid_browser_url("https://example.com/some/page?q=1"));
+        assert!(valid_browser_url(
+            "https://www.last.fm/api/auth/?api_key=abc&token=xyz"
+        ));
+        assert!(valid_browser_url("http://localhost:5183/"));
+        // The cmd.exe injection alphabet is rejected: `"` breaks quoting, `| ;` chain
+        // commands, `$` backtick are other-shell expansions.
+        for bad in [
+            "https://example.com/x\"",
+            "https://example.com/x|evil",
+            "https://example.com/x;evil",
+            "https://example.com/x$evil",
+            "https://example.com/x`evil`",
+            "https://example.com/a b",
+            "ftp://example.com/x",
+            "https://",
+            "https://user@example.com/",
+            "",
+        ] {
+            assert!(!valid_browser_url(bad), "{bad} must be rejected");
+        }
     }
 }

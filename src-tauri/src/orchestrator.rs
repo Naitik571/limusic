@@ -418,13 +418,14 @@ impl Orchestrator {
     }
 
     /// HEAD validation (context/06 §validateStatus). Success = 2xx. False on any error.
+    /// Only the playback User-Agent is sent — never the login Cookie. The URL being
+    /// validated is an arbitrary per-format stream URL (often googlevideo), and leaking
+    /// the session credential there serves no playback purpose (the playback path
+    /// carries UA only; see `build`).
     async fn validate_head(&self, url: &str, ua: Option<&str>) -> bool {
         let mut req = self.http.head(url);
         if let Some(ua) = ua {
             req = req.header("User-Agent", ua);
-        }
-        if let Some(cookie) = self.it.cookie() {
-            req = req.header("Cookie", cookie.as_str());
         }
         matches!(req.send().await, Ok(r) if r.status().is_success())
     }
