@@ -63,7 +63,7 @@ pub struct LyricLine {
 }
 
 impl LyricLine {
-// Convenience constructor for the common case (plain text or a single cue, no words).
+    // Convenience constructor for the common case (plain text or a single cue, no words).
     pub fn simple(time_ms: Option<u64>, text: String) -> Self {
         Self {
             time_ms,
@@ -78,7 +78,7 @@ impl LyricLine {
 // What the UI gets (and what `lyrics_cache` stores as JSON).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lyrics {
-// Attribution shown in the panel footer ("LRCLIB", "Musixmatch", …).
+    // Attribution shown in the panel footer ("LRCLIB", "Musixmatch", …).
     pub source: String,
     pub synced: bool,
     #[serde(default)]
@@ -91,7 +91,7 @@ pub struct LyricsRequest {
     pub title: String,
     pub artists: String,
     pub album: Option<String>,
-// Track length in seconds (mpv's), tightens LRCLIB matching. `None`/0 when unknown yet.
+    // Track length in seconds (mpv's), tightens LRCLIB matching. `None`/0 when unknown yet.
     pub duration: Option<f64>,
 }
 
@@ -264,11 +264,11 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         }
     };
 
-// synced-with-words > synced > instrumental > plain — the axis (besides priority)
-// that ranks answers. Word-level wins because a Musixmatch/NetEase/Kugou/QRC word hit
-// would otherwise always lose to an earlier line-level hit (LRCLIB usually has one for
-// exactly the popular tracks that carry word timings). Default on; Settings writes
-// `lyrics_word_first=false` to prefer plain line sync instead.
+    // synced-with-words > synced > instrumental > plain — the axis (besides priority)
+    // that ranks answers. Word-level wins because a Musixmatch/NetEase/Kugou/QRC word hit
+    // would otherwise always lose to an earlier line-level hit (LRCLIB usually has one for
+    // exactly the popular tracks that carry word timings). Default on; Settings writes
+    // `lyrics_word_first=false` to prefer plain line sync instead.
     let prefer_words = state.db.get_setting("lyrics_word_first").as_deref() != Some("false");
     fn rank(l: &Lyrics, prefer_words: bool) -> u8 {
         if l.synced {
