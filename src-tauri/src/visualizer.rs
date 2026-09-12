@@ -66,15 +66,17 @@ impl Visualizer {
                 let me = Arc::clone(self);
                 move || run_loop(&me, &app)
             });
-            *self.handle.lock().unwrap() = Some(handle);
+            *self.handle.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
         }
     }
 
-    /// Stop the background thread if it is running.
+    /// Stop the background thread if it is running. `running` is checked before
+    /// `enabled` in the loops below, so this returns promptly even while disabled
+    /// (a disabled loop previously slept past the shutdown flag and hung join).
     pub fn shutdown(&self) {
         self.enabled.store(false, Ordering::Relaxed);
         self.running.store(false, Ordering::SeqCst);
-        if let Some(handle) = self.handle.lock().unwrap().take() {
+        if let Some(handle) = self.handle.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = handle.join();
         }
     }
@@ -120,13 +122,16 @@ fn run_loop(me: &Arc<Visualizer>, app: &tauri::AppHandle) {
     let bins = band_bins();
     let mut smooth = vec![0.0f32; BANDS];
 
+    // `running` first: shutdown must break out even while disabled, otherwise join
+    // hangs (the disabled branch sleeps past the flag).
+    let mut warned = false;
     loop {
-        if !me.enabled.load(Ordering::Relaxed) {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            continue;
-        }
         if !me.running.load(Ordering::SeqCst) {
             return;
+        }
+        if !me.enabled.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            continue;
         }
         if let Err(e) = capture_session(
             me,
@@ -137,12 +142,21 @@ fn run_loop(me: &Arc<Visualizer>, app: &tauri::AppHandle) {
             &bins,
             &mut smooth,
         ) {
-            tracing::debug!(error = %e, "visualizer capture failed — retrying");
+            // First consecutive failure is a warn (visible in logs); repeats stay debug
+            // so a persistently broken device doesn't spam.
+            if warned {
+                tracing::debug!(error = %e, "visualizer capture failed — retrying");
+            } else {
+                tracing::warn!(error = %e, "visualizer capture failed — retrying");
+                warned = true;
+            }
             me.emit_capture_notice(
                 app,
                 "Visualizer capture failed — retrying. If this persists, try switching playback devices.",
             );
             std::thread::sleep(RETRY_DELAY);
+        } else {
+            warned = false;
         }
         if !me.running.load(Ordering::SeqCst) {
             return;
@@ -167,14 +181,13 @@ fn capture_session(
     let mut audio_client = AudioClient::new_application_loopback_client(pid, true)
         .map_err(|e| format!("loopback: {e:?}"))?;
 
-    // Explicit format (app-loopback has no mix format to query): f32 stereo 44.1k, converted.
+    // Explicit format (app-loopback has no mix format to query): f32 stereo 44.1k,
+    // converted. Buffer duration 0 lets the engine choose (the wasapi loopback example
+    // pattern) — an explicit minimum-period buffer is rejected on some drivers.
     let format = WaveFormat::new(32, 32, &SampleType::Float, 44100, 2, None);
-    let (_def, min_period) = audio_client
-        .get_device_period()
-        .map_err(|e| format!("period: {e:?}"))?;
     let mode = StreamMode::EventsShared {
         autoconvert: true,
-        buffer_duration_hns: min_period,
+        buffer_duration_hns: 0,
     };
     audio_client
         .initialize_client(&format, &Direction::Capture, &mode)
@@ -194,15 +207,27 @@ fn capture_session(
     let mut mono: Vec<f32> = Vec::with_capacity(FFT_LEN);
 
     loop {
-        if !me.enabled.load(Ordering::Relaxed) || !me.running.load(Ordering::SeqCst) {
+        if !me.running.load(Ordering::SeqCst) || !me.enabled.load(Ordering::Relaxed) {
             let _ = audio_client.stop_stream();
             return Ok(());
         }
-        capture
-            .read_from_device_to_deque(&mut bytes)
-            .map_err(|e| format!("read: {e:?}"))?;
+        // Wait-first (the wasapi example pattern): the event fires per packet, then
+        // drain everything queued. Reading before waiting starves the first window
+        // and doubles wakeups.
         if h_event.wait_for_event(1000).is_err() {
             continue;
+        }
+        loop {
+            let pending = capture
+                .get_next_packet_size()
+                .map_err(|e| format!("packet: {e:?}"))?
+                .unwrap_or(0);
+            if pending == 0 {
+                break;
+            }
+            capture
+                .read_from_device_to_deque(&mut bytes)
+                .map_err(|e| format!("read: {e:?}"))?;
         }
         // Drain whole f32 stereo frames → mono. 8 bytes per frame.
         while bytes.len() >= 8 && mono.len() < FFT_LEN {
