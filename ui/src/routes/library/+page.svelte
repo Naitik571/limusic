@@ -27,6 +27,7 @@
 	import LocalMusic from '$lib/components/LocalMusic.svelte';
 	import MediaCard from '$lib/components/MediaCard.svelte';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import type { BrowseItem } from '$lib/api';
 	import {
@@ -82,7 +83,7 @@
 	}
 </script>
 
-{#snippet grid(items: BrowseItem[], empty: string)}
+{#snippet grid(items: BrowseItem[], empty: string, icon: any)}
 	{#if items.length}
 		<div class="card-grid content-in">
 			{#each items as item (item.kind + item.id)}
@@ -90,7 +91,7 @@
 			{/each}
 		</div>
 	{:else}
-		<p class="text-sm text-muted-foreground">{empty}</p>
+		<EmptyState {icon} line={empty} />
 	{/if}
 {/snippet}
 
@@ -197,16 +198,17 @@
 			<ErrorState message={error} onRetry={load} />
 		{:else}
 			<Tabs.Content value="all">
-				{#if tab === 'all'}{@render grid(all, 'Your library is empty.')}{/if}
+				{#if tab === 'all'}{@render grid(all, 'Your library is empty.', SquareStackIcon)}{/if}
 			</Tabs.Content>
 			<Tabs.Content value="playlists">
-				{#if tab === 'playlists'}{@render grid(library.items, 'No playlists yet.')}{/if}
+				{#if tab === 'playlists'}{@render grid(library.items, 'No playlists yet.', Playlist02Icon)}{/if}
 			</Tabs.Content>
 			<Tabs.Content value="albums">
 				{#if tab === 'albums'}
 					{@render grid(
 						library.albums,
-						'No saved albums yet. Open an album and hit Save to library.'
+						'No saved albums yet. Open an album and hit Save to library.',
+						MusicNoteSquare02Icon
 					)}
 				{/if}
 			</Tabs.Content>
@@ -214,7 +216,8 @@
 				{#if tab === 'artists'}
 					{@render grid(
 						library.artists,
-						'No artists yet. They show up once you save their songs or albums.'
+						'No artists yet. They show up once you save their songs or albums.',
+						UserSharingIcon
 					)}
 				{/if}
 			</Tabs.Content>

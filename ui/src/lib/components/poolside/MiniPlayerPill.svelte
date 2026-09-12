@@ -184,13 +184,13 @@
 			<span class="ps-live-dot" aria-hidden="true" title="Playing"></span>
 		{/if}
 		<button class="ps-mini-pill-btn" onclick={() => api.prevTrack().catch(() => {})} aria-label="Previous">
-			<HugeiconsIcon icon={PreviousIcon} />
+			<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} />
 		</button>
 		<button class="ps-mini-pill-btn ps-mini-pill-btn--play" onclick={() => api.togglePause().catch(() => {})} aria-label={paused ? 'Play' : 'Pause'}>
-			<HugeiconsIcon icon={paused ? PlayIcon : PauseIcon} />
+			<HugeiconsIcon strokeWidth={2} icon={paused ? PlayIcon : PauseIcon} />
 		</button>
 		<button class="ps-mini-pill-btn" onclick={() => api.nextTrack().catch(() => {})} aria-label="Next">
-			<HugeiconsIcon icon={NextIcon} />
+			<HugeiconsIcon strokeWidth={2} icon={NextIcon} />
 		</button>
 		<button
 			class="ps-mini-pill-btn {liked ? 'is-liked' : ''}"
@@ -198,7 +198,7 @@
 			aria-label={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
 			title={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
 		>
-			<HugeiconsIcon icon={FavouriteIcon} />
+			<HugeiconsIcon strokeWidth={2} icon={FavouriteIcon} />
 		</button>
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
@@ -271,7 +271,7 @@
 			aria-expanded={expanded}
 			title="Up next"
 		>
-			<HugeiconsIcon icon={ArrowUp01Icon} />
+			<HugeiconsIcon strokeWidth={2} icon={ArrowUp01Icon} />
 		</button>
 	</div>
 	{#if expanded}
@@ -291,7 +291,7 @@
 						aria-label="Toggle shuffle"
 						title="Shuffle"
 					>
-						<HugeiconsIcon icon={ShuffleIcon} />
+						<HugeiconsIcon strokeWidth={2} icon={ShuffleIcon} />
 					</button>
 					<button
 						class="ps-mini-pill-btn sm {repeat !== 'off' ? 'is-on' : ''}"
@@ -299,7 +299,7 @@
 						aria-label="Cycle repeat mode"
 						title={repeat === 'one' ? 'Repeat one' : repeat === 'all' ? 'Repeat all' : 'Repeat off'}
 					>
-						<HugeiconsIcon icon={RepeatIcon} />
+						<HugeiconsIcon strokeWidth={2} icon={RepeatIcon} />
 					</button>
 				</div>
 			</div>
@@ -328,7 +328,7 @@
 		align-items: center;
 		gap: 10px;
 		padding: 8px 14px;
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		/* Dynamic-island look: near-black glass, white-on-dark chrome. The pool tint comes
 		   from the glow accents, not the shell, so it reads as hardware on any backdrop. */
 		background: linear-gradient(180deg, rgba(12, 12, 14, 0.84) 0%, rgba(12, 12, 14, 0.68) 100%);
@@ -363,7 +363,7 @@
 		cursor: pointer;
 	}
 	.ps-mini-pill-title {
-		font-size: 12px;
+		font-size: var(--text-caption);
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -390,7 +390,7 @@
 		place-items: center;
 		color: #fff;
 		opacity: 0.85;
-		transition: opacity 0.15s, transform 0.15s;
+		transition: opacity var(--dur-1), transform var(--dur-1);
 	}
 	.ps-mini-pill-btn:hover { opacity: 1; transform: scale(1.08); }
 	.ps-mini-pill-btn:active:not(:disabled) { transform: scale(0.88); }
@@ -407,7 +407,7 @@
 	.ps-mini-pill-btn.sm { width: 26px; height: 26px; }
 	.ps-mini-pill-btn.sm svg { width: 13px; height: 13px; }
 	.ps-mini-pill-btn.is-on { color: #8ce1f0; opacity: 1; }
-	.ps-mini-pill-expand svg { transition: transform 0.2s; }
+	.ps-mini-pill-expand svg { transition: transform var(--dur-2); }
 	.ps-mini-pill-expand.open svg { transform: rotate(180deg); }
 	.ps-mini-pill-sleep {
 		all: unset;
@@ -419,7 +419,7 @@
 		color: #ffd88a;
 		background: rgba(255, 216, 138, 0.12);
 		border: 1px solid rgba(255, 216, 138, 0.3);
-		border-radius: 999px;
+		border-radius: var(--r-full);
 		padding: 3px 8px;
 		white-space: nowrap;
 	}
@@ -464,7 +464,7 @@
 		max-width: calc(100vw - 36px);
 		max-height: 320px;
 		overflow-y: auto;
-		border-radius: 20px;
+		border-radius: var(--r-2xl);
 		padding: 10px;
 		background: linear-gradient(180deg, rgba(12, 12, 14, 0.92) 0%, rgba(12, 12, 14, 0.8) 100%);
 		backdrop-filter: blur(24px) saturate(1.8);
@@ -493,7 +493,7 @@
 		width: 100%;
 		box-sizing: border-box;
 		padding: 7px 10px;
-		border-radius: 12px;
+		border-radius: var(--r-xl);
 		cursor: pointer;
 		text-align: left;
 	}
@@ -551,7 +551,7 @@
 		min-width: 1px;
 		border-radius: 1px;
 		background: rgba(255, 255, 255, 0.22);
-		transition: background 0.2s;
+		transition: background var(--dur-2);
 	}
 	.ps-mini-pill-bar.on {
 		background: linear-gradient(180deg, #fff, var(--ps-pill-accent, rgba(140, 225, 240, 0.9)));

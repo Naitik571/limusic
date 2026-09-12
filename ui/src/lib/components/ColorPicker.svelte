@@ -77,7 +77,7 @@
 	<div
 		role="application"
 		aria-label="Saturation and brightness"
-		class="relative h-32 w-full cursor-crosshair rounded-lg"
+		class="relative h-32 w-full cursor-crosshair rounded-[var(--r-lg)]"
 		style="background:
 			linear-gradient(to top, #000, transparent),
 			linear-gradient(to right, #fff, transparent),
@@ -92,7 +92,7 @@
 		}}
 	>
 		<div
-			class="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.5)]"
+			class="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-full)] border-2 border-white shadow-[0_0_0_1px_color-mix(in_srgb,var(--scrim)_50%,transparent)]"
 			style="left:{hsv.s * 100}%; top:{(1 - hsv.v) * 100}%"
 		></div>
 	</div>
@@ -113,7 +113,7 @@
 				type="button"
 				onclick={eyeDrop}
 				aria-label="Pick a colour from the screen"
-				class="flex size-8 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+				class="flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] border text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 			>
 				<HugeiconsIcon icon={ColorPickerIcon} size={16} />
 			</button>

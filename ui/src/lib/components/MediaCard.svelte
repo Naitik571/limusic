@@ -161,13 +161,13 @@
 		<TrackMenu
 			song={asSong(item)}
 			onAdd={() => openAddToPlaylist(asSong(item))}
-			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-md transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 cursor-pointer"
+			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground opacity-40 shadow-md transition hover:bg-background hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 cursor-pointer"
 		/>
 	{:else}
 		<PlaylistMenu
 			{item}
 			showPin={item.kind === 'playlist'}
-			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow-md transition hover:bg-background focus-visible:opacity-100 group-hover:opacity-100 cursor-pointer"
+			triggerClass="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-background/90 text-foreground opacity-40 shadow-md transition hover:bg-background hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 cursor-pointer"
 		/>
 	{/if}
 </div>

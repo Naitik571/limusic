@@ -20,7 +20,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Select from '$lib/components/ui/select';
 	import * as api from '$lib/api';
-	import { ui, toast, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame, visualizer, setVisualizerOn, setVisualizerStyle, applyAppIcon, clearAppIcon } from '$lib/player.svelte';
+	import { ui, toast, crossfade, loadCrossfade, setCrossfadeSecs, setCrossfadeMode, setBestMix, sleepTimer, setSleepTimer, setNativeFrame, visualizer, setVisualizerOn, setVisualizerStyle, applyAppIcon, clearAppIcon, lastStreamError } from '$lib/player.svelte';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import { fadeOverrideCount, clearFadeMap } from '$lib/components/TrackMenu.svelte';
 	import { spatialEnabled, setSpatialEnabled } from '$lib/spatial';
@@ -59,7 +59,7 @@
 		installUpdate,
 		openDownloadPage
 	} from '$lib/updater.svelte';
-	import { getVersion } from '@tauri-apps/api/app';
+	import { getVersion, getTauriVersion } from '@tauri-apps/api/app';
 	import { setLocale, currentLocale, LOCALES, type LocaleId } from '$lib/i18n.svelte';
 
 	type TabId = 'general' | 'themes' | 'playback' | 'downloads' | 'data' | 'about';
@@ -74,10 +74,11 @@
 
 	// Shared shapes for the settings rows. Kept as strings so the markup below stays readable and
 	// every group looks identical without a wrapper component per row.
+	// Radii follow the shared --r scale: dialog 16 (--r-xl), card 12 (--r-lg), row 8 (--r-md).
 	const GROUP = 'mb-7 last:mb-1';
 	const LABEL =
 		'mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground';
-	const CARD = 'divide-y divide-border/60 overflow-hidden rounded-xl border bg-card';
+	const CARD = 'divide-y divide-border/60 overflow-hidden rounded-[var(--r-lg)] border bg-card';
 
 	const ACCENT_THEMES = THEMES.filter((t) => t.kind === 'accent');
 	const PALETTE_THEMES = THEMES.filter((t) => t.kind === 'palette');
@@ -140,17 +141,20 @@
 	const qnorm = $derived(search.trim().toLowerCase());
 
 	type SearchEntry = { tab: TabId; group: string; text: string };
+	// Mirrors the row titles + descriptions below word-for-word (including the Canvas toggle
+	// and the Backdrop intensity) so the chips, the collapsing and the highlight always agree
+	// with what's on screen.
 	const SEARCH_INDEX: SearchEntry[] = [
 		// General
 		{ tab: 'general', group: 'gen-activity', text: 'Watch history Register plays in your YouTube Music history. Needs sign-in.' },
-		{ tab: 'general', group: 'gen-activity', text: "Discord rich presence Show what you're listening to on your Discord profile. Needs the Discord desktop app running." },
+		{ tab: 'general', group: 'gen-activity', text: "Discord rich presence Show what you're listening to on your Discord profile. Needs the Discord desktop app running — no login here." },
 		{ tab: 'general', group: 'gen-system', text: 'Close to tray Closing the window keeps music playing in the background. Restore or quit from the tray icon.' },
 		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
-		{ tab: 'general', group: 'gen-system', text: 'System title bar Use the native window frame instead of the app chrome, with snap layouts and shadows. Applies instantly.' },
-		{ tab: 'general', group: 'gen-system', text: 'Spatial focus Move keyboard focus with Alt and arrow keys.' },
-		{ tab: 'general', group: 'gen-system', text: 'Interface language Switch the app between the bundled languages (English, Turkish, Romanian).' },		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones.' },
+		{ tab: 'general', group: 'gen-system', text: "System title bar Use the OS window frame instead of the app's chrome — native snap layouts and shadows. Applies instantly." },
+		{ tab: 'general', group: 'gen-system', text: 'Spatial focus Move keyboard focus with Alt+Arrow keys (nearest element in that direction).' },
+		{ tab: 'general', group: 'gen-system', text: 'Interface language The app language. English, Turkish and Romanian are bundled; more can be added as locale files.' },		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones. Off keeps the fastest line-synced match instead.' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
-		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token.' },
+		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token stored in the DB; HTTP listens on 0.0.0.0:32145.' },
 		// Appearance
 		{ tab: 'themes', group: 'thm-theme', text: 'Preset Accent colors tint the default look; palettes swap every color.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Accent color Buttons, highlights and the progress bar. Applies over any preset.' },
@@ -162,12 +166,16 @@
 		{ tab: 'themes', group: 'thm-typography', text: 'Heading font Page and section titles.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Font files Load a .ttf, .otf or .woff from anywhere on this computer.' },
 		{ tab: 'themes', group: 'thm-typography', text: 'Lyrics font Choose the font used only in the lyrics view.' },
-		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics in the player view Tabs and switching buttons in the player view.' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Letter spacing Extra space between letters (dyslexia-friendly reading).' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Word spacing Extra space between words.' },
+		{ tab: 'themes', group: 'thm-typography', text: 'Line height Taller lines for body text.' },
+		{ tab: 'themes', group: 'thm-player', text: 'Queue and lyrics tabs Player view carries queue + lyrics as tabs.' },
+		{ tab: 'themes', group: 'thm-player', text: 'Custom app icon Pick a PNG to use as the window/taskbar icon.' },
 		{ tab: 'themes', group: 'thm-player', text: "Artwork background Tint the player view with the playing track's cover, blurred." },
-		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders." },
-		{ tab: 'themes', group: 'thm-player', text: 'Audio visualizer Live spectrum under the artwork, bars or ring.' },
-		{ tab: 'themes', group: 'thm-backdrops', text: 'Backdrop Off Subtle Auto artwork atmosphere behind the app.' },
-		{ tab: 'themes', group: 'thm-backdrops', text: 'Spotify Canvas Show looping Canvas video in Now Playing when available.' },
+		{ tab: 'themes', group: 'thm-player', text: "Adapt colors to artwork Recolor the app from the playing track's cover: accent, surfaces and borders. Off keeps the selected theme's own colors." },
+		{ tab: 'themes', group: 'thm-player', text: 'Audio visualizer Live spectrum under the Now Playing artwork, captured from what you hear. Bars or ring.' },
+		{ tab: 'themes', group: 'thm-backdrops', text: 'Backdrop Artwork atmosphere behind the app. Off is plain surfaces, Subtle tints the player view, Auto adds the full blurred wash. Wash strength Subtle Balanced Vivid.' },
+		{ tab: 'themes', group: 'thm-backdrops', text: 'Spotify Canvas Show the looping Canvas video in Now Playing when available.' },
 		{ tab: 'themes', group: 'thm-packs', text: 'Get packs Per-artist ZIPs indexed every 15min. Injects style.css on the artist page.' },
 		{ tab: 'themes', group: 'thm-packs', text: 'Installed packs Packs currently installed.' },
 		// Playback
@@ -176,10 +184,10 @@
 		{ tab: 'playback', group: 'pb-audio', text: "Prevent duplicate tracks in queue Adding a track that's already in the queue moves it from its old position." },
 		{ tab: 'playback', group: 'pb-audio', text: 'Keep shuffle across queue When shuffle is on, opening an album/playlist/radio appends to the queue instead of resetting playback.' },
 		{ tab: 'playback', group: 'pb-audio', text: 'Sleep timer Stop playback after a while. Off End of song minutes.' },
-		{ tab: 'playback', group: 'pb-transitions', text: 'Smart Crossfade Gapless via mpv gapless-audio; crossfade is a volume ramp hint.' },
-		{ tab: 'playback', group: 'pb-transitions', text: 'Crossfade mode Standard Smart.' },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Smart Crossfade Gapless via mpv gapless-audio; crossfade is a volume ramp hint (1–12s).' },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Crossfade mode Standard constant-volume overlap. Smart beat-aware overlap.' },
 		{ tab: 'playback', group: 'pb-transitions', text: 'Per-track crossfades Custom durations per queue transition from row menus, reset all.' },
-		{ tab: 'playback', group: 'pb-transitions', text: 'Best Mix' },
+		{ tab: 'playback', group: 'pb-transitions', text: 'Best Mix Prefer smoother, beat-aware transitions between similar tracks.' },
 		{ tab: 'playback', group: 'pb-video', text: "Hide music videos Keep only the audio version of a track, so the official video doesn't turn up beside it." },
 		{ tab: 'playback', group: 'pb-video', text: 'yt-dlp fallback Last resort for tracks every YouTube client refuses. Resolve them through a self-updating yt-dlp binary.' },
 		{ tab: 'playback', group: 'pb-video', text: 'Stream clients Turn a client off to skip it when resolving streams.' },
@@ -191,10 +199,11 @@
 		{ tab: 'downloads', group: 'dl-auto', text: 'Keep new music offline automatically New liked songs are fetched in the background — no manual downloads.' },
 		// Data & storage
 		{ tab: 'data', group: 'dt-network', text: 'Proxy HTTP/SOCKS proxy for all YouTube traffic. Takes effect on restart.' },
-		{ tab: 'data', group: 'dt-storage', text: 'Cache Clear cached stream URLs and downloaded audio bytes.' },
+		{ tab: 'data', group: 'dt-storage', text: 'Cached files Clear cached stream URLs. Downloads on disk are kept.' },
 		// About
 		{ tab: 'about', group: 'ab-hero', text: 'Limusic cross-platform desktop YouTube Music client. Ad-free playback straight from YouTube private API, real library and OS media keys.' },
-		{ tab: 'about', group: 'ab-updates', text: 'Updates Check GitHub for a newer release. Version available. Update now. Download.' }
+		{ tab: 'about', group: 'ab-updates', text: 'Updates Check GitHub for a newer release. Version available. Update now. Download.' },
+		{ tab: 'about', group: 'ab-diag', text: 'Diagnostics Last stream error. Disabled clients. Proxy. yt-dlp status. Copy report.' }
 	];
 
 	function rowMatch(title: string, desc?: string) {
@@ -222,6 +231,35 @@
 
 	function switchTab(t: TabId) {
 		tab = t; // query stays applied — that's the point of the chips
+	}
+
+	// --- Search highlight + jump -----------------------------------------------------------------
+	// `<mark>` wraps the query inside row titles/descriptions (HTML-escaped first, so a row
+	// can never inject markup). Enter jumps to the tab holding the first index match.
+	function escapeHtml(s: string): string {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	}
+	function hi(text: string): string {
+		const q = qnorm;
+		if (!q) return escapeHtml(text);
+		const lower = text.toLowerCase();
+		let out = '';
+		let from = 0;
+		for (;;) {
+			const at = lower.indexOf(q, from);
+			if (at < 0) return out + escapeHtml(text.slice(from));
+			out += escapeHtml(text.slice(from, at)) + '<mark>' + escapeHtml(text.slice(at, at + q.length)) + '</mark>';
+			from = at + q.length;
+		}
+	}
+	function firstMatch(): SearchEntry | undefined {
+		if (!qnorm) return undefined;
+		return SEARCH_INDEX.find((e) => e.text.toLowerCase().includes(qnorm));
+	}
+	function onSearchKey(e: KeyboardEvent) {
+		if (e.key !== 'Enter') return;
+		const m = firstMatch();
+		if (m) switchTab(m.tab);
 	}
 
 	// Bring-your-own-token lyrics (Apple Music). Stored in the internal settings DB; empty means off.
@@ -255,7 +293,19 @@
 	let loaded = $state(false);
 	let clearing = $state(false);
 	let version = $state('');
+	let tauriVersion = $state('');
 	getVersion().then((v) => (version = v));
+	getTauriVersion().then((v) => (tauriVersion = v)).catch(() => {});
+	// WebView2 has no version API in Tauri JS — read the Chromium build out of the user agent
+	// (Windows shows WebView2; other platforms show their own WebKit).
+	const webviewLabel = $derived.by(() => {
+		try {
+			const m = navigator.userAgent.match(/Chrome\/([\d.]+)/);
+			return m ? `WebView2 · Chromium ${m[1]}` : 'System WebView';
+		} catch {
+			return 'System WebView';
+		}
+	});
 	// Per-pair crossfade overrides (queue row menus): count for the Transitions row.
 	let fadeOverrides = $state(0);
 	// Custom app icon source path (window/taskbar icon).
@@ -347,6 +397,25 @@
 		updateResult = await checkForUpdatesInteractive();
 	}
 
+	// Diagnostics report (About tab): everything here is read from existing settings/state —
+	// no backend changes. Copy puts it on the clipboard for bug reports.
+	async function copyReport() {
+		const lines = [
+			'# Limusic diagnostics',
+			`App v${version || '?'} · Tauri ${tauriVersion || '?'} · ${webviewLabel}`,
+			`Last stream error: ${lastStreamError.msg ? `${lastStreamError.msg} (${new Date(lastStreamError.at).toLocaleString()})` : 'none'}`,
+			`Disabled clients: ${settings.disabled_stream_clients || 'none (all enabled)'}`,
+			`Proxy: ${settings.proxy || 'none'}`,
+			`yt-dlp: ${ytdlp.enabled ? 'enabled' : 'disabled'}, ${ytdlp.installed ? 'installed' : 'not installed'}${ytdlp.last_error ? ` — ${ytdlp.last_error}` : ''}`
+		];
+		try {
+			await navigator.clipboard.writeText(lines.join('\n'));
+			toast.success('Diagnostics copied');
+		} catch (e) {
+			toast.error(String(e));
+		}
+	}
+
 	async function load() {
 		try {
 			const [s, c] = await Promise.all([api.getSettings(), api.getStreamClients()]);
@@ -376,6 +445,12 @@
 		else if (mode === 'subtle') setAppearance({ artworkBackground: true, ambientMode: false });
 		else setAppearance({ artworkBackground: true, ambientMode: true, ambientIntensity: 'balanced' });
 	}
+	// Wash strength lives inside the Backdrop row (only for Auto) — one backdrop control, not four.
+	const WASH_MODES = [
+		{ id: 'subtle', label: 'Subtle' },
+		{ id: 'balanced', label: 'Balanced' },
+		{ id: 'vivid', label: 'Vivid' }
+	];
 	const historyOn = $derived(settings.enable_history !== 'false');
 	const wordFirstOn = $derived(settings.lyrics_word_first !== 'false');
 	const autoplayOn = $derived(settings.autoplay !== 'false');
@@ -392,6 +467,13 @@
 	}
 	const ytdlpOn = $derived(settings.ytdlp_enabled !== 'false');
 	const stickyShuffleOn = $derived(settings.sticky_shuffle === 'true');
+	// Spotify Canvas (Backdrops row): on unless explicitly turned off. Persisted only — the
+	// Now Playing view reads it when it fetches; unknown keys are ignored by older builds.
+	const canvasOn = $derived(settings.canvas_enabled !== 'false');
+	async function setCanvas(on: boolean) {
+		settings.canvas_enabled = on ? 'true' : 'false';
+		await api.setSetting('canvas_enabled', settings.canvas_enabled);
+	}
 	// Sleep timer badge: live countdown while a minutes timer runs.
 	const sleepBadge = $derived(
 		sleepTimer.mode === 'off'
@@ -433,6 +515,38 @@
 			toast.info('Syncing your Liked Music…');
 			api.autoOfflineSync().catch(() => {});
 		}
+	}
+
+	// Auto-offline needs a confirm with an estimate: enabling it starts a background walk over
+	// Liked Music right away. Turning it off applies immediately (nothing to estimate).
+	let pendingAuto = $state<string | null>(null);
+	let autoEstimate = $state('');
+	const pendingAutoLabel = $derived(
+		AUTO_OFFLINE_MODES.find((m) => m.id === pendingAuto)?.label ?? pendingAuto ?? ''
+	);
+	async function pickAutoOffline(mode: string) {
+		if (mode === 'off' || mode === autoOffline) {
+			pendingAuto = null;
+			await setAutoOffline(mode);
+			return;
+		}
+		pendingAuto = mode;
+		autoEstimate = 'estimating…';
+		try {
+			const liked = await api.getPlaylist(api.LIKED_MUSIC_ID);
+			const n = liked.items.length;
+			autoEstimate = `about ${n} liked song${n === 1 ? '' : 's'} (~${Math.max(1, Math.round(n * 8))} MB at ~8 MB each)`;
+		} catch {
+			autoEstimate = 'your Liked Music (size unknown while offline)';
+		}
+	}
+	async function confirmAutoOffline() {
+		const mode = pendingAuto;
+		pendingAuto = null;
+		if (mode) await setAutoOffline(mode);
+	}
+	function cancelAutoOffline() {
+		pendingAuto = null;
 	}
 
 	async function setDownloadQuality(q: string) {
@@ -560,14 +674,50 @@
 		toast.success('Proxy saved — restart to apply');
 	}
 
-	async function doClearCaches() {
-		clearing = true;
+	// Destructive rows confirm inline: Clear caches is a neutral outline button that expands a
+	// confirm showing what's kept (size included), and the actual clear runs on a 5s delay so
+	// the toast's Undo can still cancel it. Nothing is gone until the timer fires.
+	let confirmClear = $state(false);
+	let keptCount = $state(0);
+	let keptBytes = $state(0);
+	let clearTimer: ReturnType<typeof setTimeout> | undefined;
+	function fmtKept(bytes: number): string {
+		if (!bytes) return '0 MB';
+		const mb = bytes / (1024 * 1024);
+		return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+	}
+	async function askClearCaches() {
+		confirmClear = true;
 		try {
-			await api.clearCaches();
-			toast.success('Caches cleared');
-		} finally {
-			clearing = false;
+			const r = await api.listDownloads();
+			keptCount = r.items.length;
+			keptBytes = r.total_bytes;
+		} catch {
+			/* confirm still renders with last known counts */
 		}
+	}
+	function cancelClearCaches() {
+		confirmClear = false;
+	}
+	function confirmClearCaches() {
+		confirmClear = false;
+		clearing = true;
+		clearTimer = setTimeout(async () => {
+			try {
+				await api.clearCaches();
+				toast.success('Caches cleared');
+			} catch (e) {
+				toast.error(String(e));
+			} finally {
+				clearing = false;
+			}
+		}, 5000);
+		toast.action('Clearing caches in 5s…', 'Undo', () => {
+			clearTimeout(clearTimer);
+			clearTimer = undefined;
+			clearing = false;
+			toast.info('Kept caches');
+		});
 	}
 
 	// --- Remote QR helpers: the QR itself is rendered by Rust (qrcode crate → SVG) so the code
@@ -643,11 +793,11 @@
 	<!-- Settings search: a non-empty query that matches neither the title nor the description
 	     skips the row entirely; sections collapse via groupVisible() when nothing survives. -->
 	{#if rowMatch(o.title, o.desc)}
-		<div class="px-4 py-3.5">
+		<div class="settings-row px-4 py-3.5">
 			<div class="flex {o.tall ? 'items-start' : 'items-center'} justify-between gap-6">
 				<div class="min-w-0">
 					<div class="flex items-center gap-2">
-						<span class="text-sm font-medium">{o.title}</span>
+						<span class="text-sm font-medium">{@html hi(o.title)}</span>
 						{#if o.badge}
 							<span
 								class="rounded-full bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
@@ -657,7 +807,7 @@
 						{/if}
 					</div>
 					{#if o.desc}
-						<p class="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{o.desc}</p>
+						<p class="mt-1 max-w-prose text-xs leading-relaxed text-muted-foreground">{@html hi(o.desc)}</p>
 					{/if}
 				</div>
 				{#if o.control}
@@ -672,7 +822,7 @@
 {/snippet}
 
 <Dialog.Root bind:open={ui.settingsOpen}>
-	<Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-3xl">
+	<Dialog.Content class="gap-0 overflow-hidden rounded-[var(--r-xl)] p-0 sm:max-w-3xl">
 		<Dialog.Description class="sr-only">Application settings</Dialog.Description>
 
 		<div class="flex h-[min(38rem,80vh)]">
@@ -686,7 +836,7 @@
 						<button
 							onclick={() => (tab = t.id)}
 							aria-current={tab === t.id}
-							class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors {tab === t.id ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'}"
+							class="flex w-full cursor-pointer items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-left text-sm font-medium transition-colors {tab === t.id ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'}"
 						>
 							<HugeiconsIcon
 								icon={t.icon}
@@ -721,9 +871,10 @@
 					<div class="mb-4 flex items-center gap-2">
 						<Input
 							bind:value={search}
-							placeholder="Search settings…"
+							placeholder="Search settings… (Enter jumps to first match)"
 							aria-label="Search settings"
 							class="h-8 min-w-0 flex-1"
+							onkeydown={onSearchKey}
 						/>
 						{#if search}
 							<Button
@@ -739,7 +890,7 @@
 
 					{#if qnorm && !tabHasMatches}
 						<div
-							class="mb-4 flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed bg-muted/40 px-3 py-2"
+							class="mb-4 flex flex-wrap items-center gap-1.5 rounded-[var(--r-md)] border border-dashed bg-muted/40 px-3 py-2"
 						>
 							<span class="text-xs text-muted-foreground">
 								No matches in {currentTab.label} — found in:
@@ -930,12 +1081,13 @@
 						<section class="{GROUP} {groupVisible('thm-player') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Player view</h3>
 							<div class={CARD}>
-								{@render row({
-									title: 'Queue and lyrics in the player view',
-									desc: "On, the player view carries them as tabs and the bar's two buttons switch between them. Off, those buttons only ever open the side panels, which stay open over the player view so you can see both at once.",
-									control: tabbedSwitch,
-									tall: true
-								})}
+							{@render row({
+								title: 'Queue and lyrics tabs',
+								desc: 'Player view carries queue + lyrics as tabs.',
+								control: tabbedSwitch,
+								below: tabbedDetails,
+								tall: true
+							})}
 								{@render row({
 								title: 'Adapt colors to artwork',
 								badge: 'Experimental',
@@ -963,16 +1115,18 @@
 						<section class="{GROUP} {groupVisible('thm-backdrops') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Backdrops</h3>
 							<div class={CARD}>
-								{@render row({
-									title: 'Backdrop',
-									desc: 'Artwork atmosphere behind the app. Off is plain surfaces, Subtle tints the player view, Auto adds the full blurred wash.',
-									control: backdropPicker
-								})}
-								{@render row({
-									title: 'Spotify Canvas',
-									badge: 'Auto',
-									desc: 'Show looping Canvas video in Now Playing when available (#8). Fetches via https://api.simpmusic.org/canvas (or Spotify API stub) with palette gradient fallback, muted autoplay loop.'
-								})}
+							{@render row({
+								title: 'Backdrop',
+								desc: 'Artwork atmosphere behind the app. Off is plain surfaces, Subtle tints the player view, Auto adds the full blurred wash.',
+								control: backdropPicker,
+								below: backdrop === 'auto' ? washPicker : undefined
+							})}
+							{@render row({
+								title: 'Spotify Canvas',
+								desc: 'Show the looping Canvas video in Now Playing when available.',
+								control: canvasSwitch,
+								below: canvasStatus
+							})}
 							</div>
 						</section>
 
@@ -1032,10 +1186,11 @@
 									desc: 'Gapless via mpv gapless-audio; crossfade is a volume ramp hint (1–12s).',
 									control: crossfadeSlider
 								})}
-								{@render row({
-								title: 'Crossfade mode',
-								control: crossfadeMode
-								})}
+							{@render row({
+							title: 'Crossfade mode',
+							desc: 'Standard is a constant-volume overlap; Smart listens for the beat.',
+							control: crossfadeMode
+							})}
 								{@render row({
 								title: 'Per-track crossfades',
 								desc: fadeOverrides > 0
@@ -1043,10 +1198,11 @@
 									: 'Set per-pair durations from any queue row ⋯ menu; they apply on skips and jumps.',
 								control: fadeReset
 								})}
-								{@render row({
-									title: 'Best Mix',
-									control: bestMixSwitch
-								})}
+							{@render row({
+								title: 'Best Mix',
+								desc: 'Prefer smoother, beat-aware transitions between similar tracks.',
+								control: bestMixSwitch
+							})}
 							</div>
 						</section>
 
@@ -1107,15 +1263,16 @@
 						<section class="{GROUP} {groupVisible('dl-auto') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Auto-offline</h3>
 							<div class={CARD}>
-								{@render row({
-									title: 'Keep new music offline automatically',
-									desc: 'New liked songs (and playlist adds, in the wider mode) are fetched in the background — no manual downloads. Turning this on also syncs everything already in your Liked Music right away; the walk skips what\'s on disk, so re-runs cost only what\'s missing.',
-									control: autoOfflinePicker,
-									tall: true
-								})}
+						{@render row({
+								title: 'Keep new music offline automatically',
+								desc: 'New liked songs (and playlist adds, in the wider mode) are fetched in the background — no manual downloads. Turning this on also syncs everything already in your Liked Music right away; the walk skips what\'s on disk, so re-runs cost only what\'s missing.',
+								control: autoOfflinePicker,
+								below: pendingAuto ? autoConfirm : undefined,
+								tall: true
+							})}
 							</div>
 					</section>
-				{:else if tab === 'data'}
+					{:else if tab === 'data'}
 						<section class="{GROUP} {groupVisible('dt-network') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Network</h3>
 							<div class={CARD}>
@@ -1126,19 +1283,22 @@
 								})}
 							</div>
 						</section>
+						<!-- Destructive rows sit at the bottom, behind a divider. -->
+						<div class="mb-7 border-t border-border/60" role="separator"></div>
 						<section class="{GROUP} {groupVisible('dt-storage') ? '' : 'hidden'}">
 							<h3 class={LABEL}>Storage</h3>
 							<div class={CARD}>
 								{@render row({
-									title: 'Cache',
-									desc: 'Clear cached stream URLs and downloaded audio bytes.',
-									control: clearButton
+									title: 'Cached files',
+									desc: 'Clear cached stream URLs. Downloads on disk are kept.',
+									control: clearButton,
+									below: confirmClear ? clearConfirm : undefined
 								})}
 							</div>
 						</section>
 					{:else if tab === 'about'}
 						<div
-							class="mb-7 rounded-xl border bg-gradient-to-br from-primary/8 to-transparent px-4 py-4 {groupVisible('ab-hero') ? '' : 'hidden'}"
+							class="mb-7 rounded-[var(--r-lg)] border bg-gradient-to-br from-primary/8 to-transparent px-4 py-4 {groupVisible('ab-hero') ? '' : 'hidden'}"
 						>
 							<div class="flex items-center gap-2">
 								<span class="font-heading text-lg font-bold">Limusic</span>
@@ -1171,6 +1331,57 @@
 								})}
 							</div>
 						</section>
+
+						<section class="{GROUP} {groupVisible('ab-diag') ? '' : 'hidden'}">
+							<h3 class={LABEL}>Diagnostics</h3>
+							<div class={CARD}>
+								<div class="px-4 py-3.5">
+									<details>
+										<summary class="cursor-pointer text-sm font-medium">
+											App health
+											<span class="ml-1 text-xs font-normal text-muted-foreground">
+												{lastStreamError.msg ? 'last stream failed' : 'no recent errors'}
+											</span>
+										</summary>
+										<dl class="mt-3 space-y-1.5 text-xs">
+											<div class="flex gap-2">
+												<dt class="w-28 shrink-0 text-muted-foreground">Last stream error</dt>
+												<dd class="min-w-0 flex-1 break-words">
+													{lastStreamError.msg
+														? `${lastStreamError.msg} (${new Date(lastStreamError.at).toLocaleString()})`
+														: 'none'}
+												</dd>
+											</div>
+											<div class="flex gap-2">
+												<dt class="w-28 shrink-0 text-muted-foreground">Disabled clients</dt>
+												<dd class="min-w-0 flex-1 break-words">
+													{settings.disabled_stream_clients || 'none (all enabled)'}
+												</dd>
+											</div>
+											<div class="flex gap-2">
+												<dt class="w-28 shrink-0 text-muted-foreground">Proxy</dt>
+												<dd class="min-w-0 flex-1 break-words">{settings.proxy || 'none'}</dd>
+											</div>
+											<div class="flex gap-2">
+												<dt class="w-28 shrink-0 text-muted-foreground">yt-dlp</dt>
+												<dd class="min-w-0 flex-1 break-words">
+													{ytdlp.enabled ? 'enabled' : 'disabled'} · {ytdlp.installed
+														? 'installed'
+														: 'not installed'}{ytdlp.last_error ? ` — ${ytdlp.last_error}` : ''}
+												</dd>
+											</div>
+										</dl>
+										<div class="mt-3">
+											<Button size="sm" variant="outline" onclick={copyReport}>Copy report</Button>
+										</div>
+									</details>
+								</div>
+							</div>
+						</section>
+
+						<footer class="mt-1 border-t border-border/60 px-1 pt-3 text-[11px] text-muted-foreground">
+							Limusic v{version || '?'} · Tauri {tauriVersion || '?'} · {webviewLabel}
+						</footer>
 					{/if}
 				</div>
 			</div>
@@ -1295,7 +1506,7 @@
 	<div class="flex gap-4">
 		<!-- QR needs a light surface to scan against the dark theme -->
 		<div
-			class="flex h-48 w-48 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white p-3 shadow-sm"
+			class="flex h-48 w-48 shrink-0 items-center justify-center overflow-hidden rounded-[var(--r-md)] border bg-white p-3 shadow-sm"
 		>
 			{#if qrSvg}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags — SVG generated by our own Rust command -->
@@ -1305,7 +1516,7 @@
 			{/if}
 		</div>
 		<div class="min-w-0 flex-1 space-y-2">
-			<div class="rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs break-all">
+			<div class="rounded-[var(--r-md)] bg-muted/60 px-3 py-2 font-mono text-xs break-all">
 				{lanUrl || 'Loading…'}
 			</div>
 			<div class="text-xs text-muted-foreground">
@@ -1317,7 +1528,7 @@
 			</div>
 		</div>
 	</div>
-	<div class="mt-3 rounded-lg border p-3">
+	<div class="mt-3 rounded-[var(--r-md)] border p-3">
 		<p class="text-xs font-semibold tracking-wide uppercase">OBS overlay</p>
 		<p class="mt-1 text-xs text-muted-foreground">
 			BrowserSource URL: now playing, progress, lyrics and queue over transparency.
@@ -1336,7 +1547,7 @@
 			<label class="flex items-center gap-1.5">
 				Layout
 				<select
-					class="cursor-pointer rounded-md border bg-transparent px-1.5 py-1"
+					class="cursor-pointer rounded-[var(--r-sm)] border bg-transparent px-1.5 py-1"
 					value={obsLayout}
 					onchange={(e) => (obsLayout = e.currentTarget.value as 'horizontal' | 'vertical')}
 				>
@@ -1347,7 +1558,7 @@
 			<label class="flex items-center gap-1.5">
 				Backdrop
 				<select
-					class="cursor-pointer rounded-md border bg-transparent px-1.5 py-1"
+					class="cursor-pointer rounded-[var(--r-sm)] border bg-transparent px-1.5 py-1"
 					value={obsTheme}
 					onchange={(e) => (obsTheme = e.currentTarget.value as 'transparent' | 'blur' | 'solid')}
 				>
@@ -1357,7 +1568,7 @@
 				</select>
 			</label>
 		</div>
-		<div class="mt-2 rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs break-all">
+		<div class="mt-2 rounded-[var(--r-md)] bg-muted/60 px-3 py-2 font-mono text-xs break-all">
 			{obsUrl || 'Loading…'}
 		</div>
 		<div class="mt-2 flex gap-2">
@@ -1421,7 +1632,7 @@
 		onclick={() => (pickerOpen = !pickerOpen)}
 		aria-label="Choose accent color"
 		aria-expanded={pickerOpen}
-		class="size-8 cursor-pointer rounded-lg ring-1 ring-black/10 transition-transform hover:scale-105 {pickerOpen ? 'ring-2 ring-primary/60' : ''}"
+		class="size-8 cursor-pointer rounded-[var(--r-md)] ring-1 ring-black/10 transition-transform hover:scale-105 {pickerOpen ? 'ring-2 ring-primary/60' : ''}"
 		style="background:{effective.accent}"
 	></button>
 {/snippet}
@@ -1516,7 +1727,7 @@
 			<button
 				type="button"
 				onclick={() => applyLayout(l.id)}
-				class="flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-2 transition-colors hover:bg-accent/50 {layout.id === l.id ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-card'}"
+				class="flex cursor-pointer flex-col items-center gap-1 rounded-[var(--r-md)] border p-2 transition-colors hover:bg-accent/50 {layout.id === l.id ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border bg-card'}"
 				aria-label="Select {l.label} layout"
 				aria-pressed={layout.id === l.id}
 			>
@@ -1636,7 +1847,7 @@
 {#snippet fontFileList()}
 	<div class="flex flex-col gap-1.5">
 		{#each custom.fontFiles as path (path)}
-			<div class="flex items-center gap-3 rounded-lg bg-secondary/60 py-1.5 pr-1.5 pl-3 text-sm">
+			<div class="flex items-center gap-3 rounded-[var(--r-md)] bg-secondary/60 py-1.5 pr-1.5 pl-3 text-sm">
 				<!-- The name is the identity; the path only earns a tooltip. A font called
 				     BigBlueTerm437NerdFontMono-Regular is wider than the modal. -->
 				<span
@@ -1678,6 +1889,35 @@
 	{@render segmented(BACKDROP_MODES, backdrop, (id) => setBackdrop(id as BackdropMode))}
 {/snippet}
 
+{#snippet washPicker()}
+	<div class="flex items-center gap-2.5">
+		<span class="text-xs text-muted-foreground">Wash strength</span>
+		{@render segmented(WASH_MODES, appearance.ambientIntensity, (id) =>
+			setAppearance({ ambientIntensity: id as 'subtle' | 'balanced' | 'vivid' }))}
+	</div>
+{/snippet}
+
+{#snippet canvasSwitch()}<Switch checked={canvasOn} onCheckedChange={setCanvas} />{/snippet}
+
+{#snippet canvasStatus()}
+	<p class="text-xs text-muted-foreground">
+		{canvasOn
+			? 'On — loops muted in Now Playing when a Canvas exists, artwork wash otherwise.'
+			: 'Off — Now Playing always shows artwork.'}
+	</p>
+{/snippet}
+
+{#snippet tabbedDetails()}
+	<details class="max-w-prose text-xs text-muted-foreground">
+		<summary class="cursor-pointer font-medium text-foreground/80">Details</summary>
+		<p class="mt-1 leading-relaxed">
+			On, the bar's queue/lyrics buttons switch the player view's tabs. Off, those buttons only
+			open the side panels, which stay open over the player view. Theater stays the enlarge path
+			either way.
+		</p>
+	</details>
+{/snippet}
+
 {#snippet packRefreshButton()}
 	<Button size="sm" variant="outline" onclick={refreshPacks} disabled={packLoading}>Refresh</Button>
 {/snippet}
@@ -1700,7 +1940,7 @@
 	{#if packIndex?.packs?.length}
 		<div class="mt-3 grid gap-2">
 			{#each packIndex.packs as p (p.id)}
-				<div class="flex items-center justify-between rounded-lg border px-3 py-2">
+				<div class="flex items-center justify-between rounded-[var(--r-md)] border px-3 py-2">
 					<div class="min-w-0">
 						<div class="text-sm font-medium">
 							{p.name}
@@ -1729,7 +1969,7 @@
 {#snippet packList()}
 	<div class="flex flex-col gap-1.5">
 		{#each artistPacks as ap (ap.id)}
-			<div class="flex items-center gap-3 rounded-lg bg-secondary/60 py-1.5 pr-1.5 pl-3">
+			<div class="flex items-center gap-3 rounded-[var(--r-md)] bg-secondary/60 py-1.5 pr-1.5 pl-3">
 				<div class="min-w-0 flex-1">
 					<div class="truncate text-sm font-medium">
 						{ap.name}
@@ -1749,13 +1989,13 @@
 
 <!-- Segmented, not three buttons: the options are one exclusive choice and should look like it. -->
 {#snippet segmented(options: { id: string; label: string }[], selected: string, onpick: (id: string) => void)}
-	<div class="flex rounded-lg bg-muted p-0.5">
+	<div class="flex rounded-[var(--r-md)] bg-muted p-0.5">
 		{#each options as q (q.id)}
 			<button
 				type="button"
 				onclick={() => onpick(q.id)}
 				aria-pressed={selected === q.id}
-				class="cursor-pointer rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors {selected === q.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+				class="cursor-pointer rounded-[var(--r-sm)] px-3.5 py-1.5 text-xs font-medium transition-colors {selected === q.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
 			>
 				{q.label}
 			</button>
@@ -1776,7 +2016,7 @@
 {/snippet}
 
 {#snippet autoOfflinePicker()}
-	{@render segmented(AUTO_OFFLINE_MODES, autoOffline, setAutoOffline)}
+	{@render segmented(AUTO_OFFLINE_MODES, pendingAuto ?? autoOffline, pickAutoOffline)}
 {/snippet}
 
 {#snippet crossfadeSlider()}
@@ -1801,6 +2041,7 @@
 		<Button
 			size="sm"
 			variant={crossfade.mode === 'standard' ? 'default' : 'outline'}
+			title="Constant-volume overlap between tracks"
 			onclick={() => {
 				crossfade.mode = 'standard';
 				api.setCrossfade(crossfade.secs, 'standard');
@@ -1811,6 +2052,7 @@
 		<Button
 			size="sm"
 			variant={crossfade.mode === 'smart' ? 'default' : 'outline'}
+			title="Beat-aware overlap — eases off when tempos clash"
 			onclick={() => {
 				crossfade.mode = 'smart';
 				api.setCrossfade(crossfade.secs, 'smart');
@@ -1867,7 +2109,7 @@
 	</p>
 	<div class="flex flex-col gap-2">
 		{#each clients as name (name)}
-			<div class="flex items-center justify-between rounded-lg bg-muted/60 py-1.5 pr-2 pl-3">
+			<div class="flex items-center justify-between rounded-[var(--r-md)] bg-muted/60 py-1.5 pr-2 pl-3">
 				<span class="font-mono text-xs">{name}</span>
 				<Switch checked={!disabled.has(name)} onCheckedChange={() => toggleClient(name)} />
 			</div>
@@ -1896,9 +2138,29 @@
 {/snippet}
 
 {#snippet clearButton()}
-	<Button variant="destructive" size="sm" onclick={doClearCaches} disabled={clearing}>
+	<Button variant="outline" size="sm" onclick={askClearCaches} disabled={clearing}>
 		{clearing ? 'Clearing…' : 'Clear caches'}
 	</Button>
+{/snippet}
+
+{#snippet clearConfirm()}
+	<div class="flex flex-wrap items-center gap-2 rounded-[var(--r-md)] border border-dashed px-3 py-2">
+		<span class="min-w-48 flex-1 text-xs text-muted-foreground">
+			Clear cached stream URLs? Kept on disk: {keptCount} track{keptCount === 1 ? '' : 's'} · {fmtKept(keptBytes)}.
+		</span>
+		<Button size="sm" variant="outline" onclick={confirmClearCaches}>Clear</Button>
+		<Button size="sm" variant="ghost" onclick={cancelClearCaches}>Keep</Button>
+	</div>
+{/snippet}
+
+{#snippet autoConfirm()}
+	<div class="flex flex-wrap items-center gap-2 rounded-[var(--r-md)] border border-dashed px-3 py-2">
+		<span class="min-w-48 flex-1 text-xs text-muted-foreground">
+			Turn on “{pendingAutoLabel}”? The first sync fetches {autoEstimate} in the background.
+		</span>
+		<Button size="sm" variant="outline" onclick={confirmAutoOffline}>Sync now</Button>
+		<Button size="sm" variant="ghost" onclick={cancelAutoOffline}>Cancel</Button>
+	</div>
 {/snippet}
 
 {#snippet updateButton()}
@@ -1920,3 +2182,12 @@
 		<AlertDescription>{updateResult?.message}</AlertDescription>
 	</Alert>
 {/snippet}
+
+<style>
+	.settings-row mark {
+		background: var(--status-warning-soft);
+		color: inherit;
+		border-radius: 2px;
+		padding-inline: 1px;
+	}
+</style>

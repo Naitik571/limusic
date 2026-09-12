@@ -16,6 +16,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import TrackRow from '$lib/components/TrackRow.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import * as api from '$lib/api';
 	import type { HistoryEntry } from '$lib/api';
@@ -133,17 +134,10 @@
 		{:else if error}
 			<ErrorState message={error} onRetry={() => location.reload()} />
 		{:else if !entries.length}
-			<div class="flex flex-col items-center gap-3 py-20 text-center">
-				<span
-					class="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground/50"
-				>
-					<HugeiconsIcon icon={MusicNote01Icon} class="h-7 w-7" />
-				</span>
-				<p class="max-w-sm text-sm text-muted-foreground">
-					Nothing here yet — plays land once they've passed the halfway point (or four minutes),
-					same rule On Repeat uses.
-				</p>
-			</div>
+			<EmptyState
+				icon={MusicNote01Icon}
+				line="Nothing here yet — plays land once they've passed the halfway point (or four minutes), same rule On Repeat uses."
+			/>
 		{:else}
 			{#each days as day (day.label)}
 				<section class="mb-2">

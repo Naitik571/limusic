@@ -97,8 +97,7 @@
 
 	// New-playlist dialog (mirrors the Library page).
 	let dialogOpen = $state(false);
-	let newTitle = $state('');
-	let creating = $state(false);
+	let newTitle = $state('');	let creating = $state(false);
 	async function createNew() {
 		const title = newTitle.trim();
 		if (!title || creating) return;
@@ -115,18 +114,18 @@
 		}
 	}
 
-	// Account lives in the titlebar now — see AccountMenu.svelte.
+	// Library overflow for the icon rail (interior #11): the playlist list needs labels, so
+	// below lg it lives behind this button instead of vanishing entirely.
+	let libraryOpen = $state(false);
 </script>
 
 <aside
 	class="relative flex h-full w-16 shrink-0 flex-col border-l-0 border-t-0 border-b-0 glass p-3 text-sidebar-foreground lg:w-60"
 >
-	<div class="flex items-center justify-center px-2 py-2 lg:justify-between">
-		<span class="hidden font-heading text-lg font-bold tracking-tight lg:block">Limusic</span>
-		<Button variant="ghost" size="icon-sm" onclick={toggleMode} aria-label="Toggle theme">
-			<HugeiconsIcon icon={Sun01Icon} class="h-4 w-4 dark:hidden" />
-			<HugeiconsIcon icon={Moon02Icon} class="hidden h-4 w-4 dark:block" />
-		</Button>
+	<!-- Wordmark only (interior #11): the theme toggle moved to the rail bottom stack, so this
+	     row is just the name. Hidden on the icon rail — an icon column has no room for a word. -->
+	<div class="hidden items-center justify-between px-2 py-2 lg:flex">
+		<span class="font-heading text-lg font-bold tracking-tight">Limusic</span>
 	</div>
 
 	<nav class="mt-2 flex flex-col gap-1">
@@ -172,6 +171,20 @@
 			/>
 			<span class="hidden lg:inline">Settings</span>
 		</button>
+		{#if auth.account?.signedIn}
+			<!-- Icon-rail Library overflow (interior #11): playlists live behind this below lg. -->
+			<button
+				onclick={() => (libraryOpen = true)}
+				title="Library"
+				aria-label="Open library"
+				class="group flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground lg:hidden"
+			>
+				<HugeiconsIcon
+					icon={LibraryIcon}
+					class="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110"
+				/>
+			</button>
+		{/if}
 	</nav>
 
 	<!-- Playlists (signed in). Hidden on the icon rail — needs labels; matches YTM's collapsed rail.
@@ -283,5 +296,79 @@
 			</Dialog.Content>
 		</Dialog.Root>
 	{/if}
+
+	<!-- Rail bottom icon stack (interior #11): the theme toggle lives here now, out of the
+	     wordmark row, with the same tooltip contract as every other rail icon. -->
+	<div class="mt-auto flex flex-col gap-1 border-t pt-2">
+		<button
+			onclick={toggleMode}
+			title="Toggle theme"
+			aria-label="Toggle theme"
+			class="group flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground lg:justify-start"
+		>
+			<HugeiconsIcon icon={Sun01Icon} strokeWidth={2} class="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110 dark:hidden" />
+			<HugeiconsIcon icon={Moon02Icon} strokeWidth={2} class="hidden h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110 dark:block" />
+			<span class="hidden lg:inline">Theme</span>
+		</button>
+	</div>
+
+	<!-- Icon-rail Library sheet (interior #11): the playlist list, for widths that hide it. -->
+	<Dialog.Root bind:open={libraryOpen}>
+		<Dialog.Content class="sm:max-w-md">
+			<Dialog.Header>
+				<Dialog.Title>Library</Dialog.Title>
+				<Dialog.Description>Everything you saved, when the sidebar is just icons.</Dialog.Description>
+			</Dialog.Header>
+			<div class="max-h-[60vh] min-h-0 overflow-y-auto">
+				{#each playlists as pl (pl.id)}
+					<a
+						href={playlistHref(pl)}
+						title={pl.title}
+						onclick={() => (libraryOpen = false)}
+						class="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-sidebar-accent/50"
+					>
+						<div
+							class="relative h-10 w-10 shrink-0 overflow-hidden bg-muted {pl.kind === 'artist'
+								? 'rounded-full'
+								: 'rounded-md'}"
+						>
+							{#if pl.thumbnail && pl.id !== ON_REPEAT_ID}
+								<img decoding="async"
+									src={thumb(pl.thumbnail, 96)}
+									alt=""
+									class="h-full w-full object-cover"
+									loading="lazy"
+								/>
+							{:else}
+								<div
+									class="flex h-full w-full items-center justify-center {pl.id === ON_REPEAT_ID
+										? 'bg-primary/10 text-primary'
+										: 'text-muted-foreground/50'}"
+								>
+									<HugeiconsIcon
+										icon={MusicNote01Icon}
+										altIcon={ListRestartIcon}
+										showAlt={pl.id === ON_REPEAT_ID}
+										strokeWidth={2}
+										class={pl.id === ON_REPEAT_ID ? 'h-5 w-5' : 'h-4 w-4'}
+									/>
+								</div>
+							{/if}
+						</div>
+						<div class="min-w-0 flex-1">
+							<div class="truncate text-[13px] font-medium">{pl.title}</div>
+							{#if pl.subtitle}
+								<div class="truncate text-xs text-muted-foreground">{rowSubtitle(pl.subtitle)}</div>
+							{/if}
+						</div>
+					</a>
+				{:else}
+					<p class="px-2 py-4 text-sm text-muted-foreground">
+						{library.loading ? 'Loading…' : 'Nothing saved yet.'}
+					</p>
+				{/each}
+			</div>
+		</Dialog.Content>
+	</Dialog.Root>
 
 </aside>

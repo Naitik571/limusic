@@ -1,6 +1,6 @@
 ﻿<script lang="ts">
 	import { fade, fly, scale } from 'svelte/transition';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { beforeNavigate } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -310,6 +310,26 @@
 		clearTimeout(volBadgeTimer);
 		volBadgeTimer = setTimeout(() => (volBadge = null), 900);
 	}
+
+	// Swipe hint (interior #10): one-time chip naming the artwork swipe, dismissed forever via
+	// localStorage. Tap=pause and wheel=volume stay exactly as they are — the chip only documents.
+	const SWIPE_HINT_KEY = 'limusic:np-swipe-hint';
+	let showSwipeHint = $state(false);
+	onMount(() => {
+		try {
+			showSwipeHint = !localStorage.getItem(SWIPE_HINT_KEY);
+		} catch {
+			showSwipeHint = true; // unreadable store — show it, dismissal just won't persist
+		}
+	});
+	function dismissSwipeHint() {
+		showSwipeHint = false;
+		try {
+			localStorage.setItem(SWIPE_HINT_KEY, '1');
+		} catch {
+			/* best-effort, never fatal */
+		}
+	}
 </script>
 
 <svelte:window
@@ -369,16 +389,16 @@
 		<!-- A div, not a button: it is the [data-ctx] host, so right-clicking anywhere on the
 		     artwork opens the track menu at the pointer (ctxHost on the hidden TrackMenu). -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -- pointer events implement the swipe pager -->
-		<div
-			class="relative w-full max-w-[var(--art)] touch-pan-y"
-			data-ctx
-			data-flight-target
-			bind:this={artEl}
-			onpointerdown={onArtPointerDown}
-			onpointermove={onArtPointerMove}
-			onpointerup={onArtPointerEnd}
-			onpointercancel={onArtPointerEnd}
-		>
+			<div
+				class="group/art relative w-full max-w-[var(--art)] touch-pan-y"
+				data-ctx
+				data-flight-target
+				bind:this={artEl}
+				onpointerdown={onArtPointerDown}
+				onpointermove={onArtPointerMove}
+				onpointerup={onArtPointerEnd}
+				onpointercancel={onArtPointerEnd}
+			>
 				{#if canvasUrl}
 					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
 					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
@@ -401,6 +421,7 @@
 							onclick={(e) => { e.stopPropagation(); if (swiped) return; toggle(); }}
 							onwheel={onMaxWheel}
 							aria-label={playback.paused ? 'Play' : 'Pause'}
+							title="Click to play/pause · swipe left/right for next/previous · scroll for volume"
 						></button>
 						<div class="pointer-events-none absolute bottom-2 left-2 rounded-full glass-strong px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">CANVAS</div>
 						{#if flash}
@@ -422,7 +443,7 @@
 					}}
 					onwheel={onMaxWheel}
 					aria-label={playback.paused ? 'Play' : 'Pause'}
-					title={playback.paused ? 'Play' : 'Pause'}
+					title="Click to play/pause · swipe left/right for next/previous · scroll for volume"
 				>
 					{#if flash}
 						<!-- No backdrop-blur: re-blurring the plate on every frame of the scale is what made
@@ -461,6 +482,46 @@
 						</div>
 					{/if}
 				</button>
+				{/if}
+				<!-- Hover prev/next affordance (interior #10): the swipe exists for touch, the mouse
+				     gets buttons that only appear over the artwork. A fired swipe swallows the click. -->
+				<button
+					type="button"
+					class="absolute left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
+					style="background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.prevTrack().catch(() => {}); }}
+					aria-label="Previous"
+					title="Previous — or swipe right on the artwork"
+				>
+					<HugeiconsIcon icon={PreviousIcon} strokeWidth={2} class="h-5 w-5" />
+				</button>
+				<button
+					type="button"
+					class="absolute right-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
+					style="background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.nextTrack().catch(() => {}); }}
+					aria-label="Next"
+					title="Next — or swipe left on the artwork"
+				>
+					<HugeiconsIcon icon={NextIcon} strokeWidth={2} class="h-5 w-5" />
+				</button>
+				{#if showSwipeHint}
+					<!-- One-time swipe hint (interior #10): dismisses forever, persisted above. -->
+					<div
+						class="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-3 pr-1.5 text-xs font-medium shadow-lg"
+						style="background:var(--surface-1);color:var(--text-2);border:1px solid var(--border);border-radius:var(--r-full)"
+						role="note"
+					>
+						Swipe artwork for prev / next
+						<button
+							type="button"
+							onclick={(e) => { e.stopPropagation(); dismissSwipeHint(); }}
+							class="cursor-pointer rounded-full p-0.5 transition-colors hover:text-foreground"
+							aria-label="Dismiss swipe hint"
+						>
+							<HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} class="h-4 w-4" />
+						</button>
+					</div>
 				{/if}
 				{#if volBadge !== null}
 					<span

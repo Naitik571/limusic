@@ -2,11 +2,16 @@
 	import { type VariantProps, tv } from "tailwind-variants";
 
 	export const alertVariants = tv({
-		base: "grid gap-0.5 rounded-lg border px-4 py-3 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2.5 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4 group/alert relative w-full",
+		base: "grid gap-0.5 rounded-[var(--r-lg)] border px-4 py-3 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2.5 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4 group/alert relative w-full",
 		variants: {
 			variant: {
 				default: "bg-card text-card-foreground",
 				destructive: "text-destructive bg-card *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
+				// Status variants (visual #3/#12): soft 12% wash + 30% line from the status tokens,
+				// so toasts/alerts follow light/dark/art-tint without hardcoded hues.
+				success: "bg-[var(--status-success-soft)] text-[var(--status-success)] border-[var(--status-success-line)] *:[svg]:text-current",
+				warning: "bg-[var(--status-warning-soft)] text-[var(--status-warning)] border-[var(--status-warning-line)] *:[svg]:text-current",
+				info: "bg-[var(--status-info-soft)] text-[var(--status-info)] border-[var(--status-info-line)] *:[svg]:text-current",
 			},
 		},
 		defaultVariants: {

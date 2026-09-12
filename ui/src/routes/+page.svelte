@@ -25,7 +25,8 @@
 		personal,
 		playback,
 		seedOnRepeatPick,
-		toast
+		toast,
+		ui
 	} from '$lib/player.svelte';
 	import {
 		arrangeSections,
@@ -317,7 +318,27 @@
 		if (home?.chips?.length) chips = home.chips.filter((c) => c.title !== 'Podcasts');
 	});
 
-	onMount(() => load(null));
+	// Onboarding gate (interior #1): a signed-out visitor with no choice yet gets the hero card,
+	// not a feed — no fetch, no skeletons until they pick. Account-known is required: `null` is
+	// "not loaded yet", not "signed out", so signed-in launches behave exactly as before.
+	const needOnboard = $derived(!!auth.account && !auth.account.signedIn && !ui.welcomed);
+
+	onMount(async () => {
+		// The account lands via getAccount just after boot; without it a signed-out visitor can't
+		// be told from a signed-in one whose state hasn't arrived. Bounded wait so a stuck invoke
+		// never holds the page hostage — worst case the feed loads as it always did.
+		const t0 = Date.now();
+		while (!auth.account && Date.now() - t0 < 1500) await new Promise((r) => setTimeout(r, 50));
+		if (needOnboard) loading = false; // held: no skeletons until the choice (see below)
+		else load(null);
+	});
+
+	// "Continue without sign-in" flips `welcomed` after mount: kick the held feed off then. The
+	// account-known guard keeps this from firing a second load on an ordinary boot.
+	$effect(() => {
+		if (!auth.account || needOnboard || home || loading || error) return;
+		load(null);
+	});
 
 	// On Repeat crosses its threshold while you listen, so re-check on every track change rather
 	// than once per visit: sitting on home through your fifth song should be enough to see the tile.
@@ -350,7 +371,7 @@
 				{/each}
 			</div>
 		</div>
-	{:else if loading}
+	{:else if loading && !needOnboard}
 		<!-- Hold the bar's height on a cold load: chips arrive with the feed, and popping them in
 		     afterwards shoves the whole page down under the cursor. -->
 		<div class="sticky top-0 z-20 border-b bg-background px-6 pt-2.5" aria-hidden="true">
@@ -391,6 +412,12 @@
 		     gap-10, not gap-8: with a heading, a row of cards and no rule between them, shelves any
 		     closer than this stop reading as separate sections. -->
 		<div class="content-in flex flex-col gap-10">
+			{#if needOnboard}
+				<!-- Held for the hero-card choice above: no sections, no skeletons, no error box. -->
+				<p class="py-10 text-center text-sm" style="color:var(--text-3)">
+					Pick an option above and your home feed fills in.
+				</p>
+			{:else}
 			{#each visible as block (block.id)}
 				{#if block.shelf}
 					<Shelf
@@ -458,6 +485,7 @@
 						{#if loadingMore}{@render shelfSkeletons(2)}{/if}
 					</div>
 				{/if}
+			{/if}
 			{/if}
 		</div>
 	</div>

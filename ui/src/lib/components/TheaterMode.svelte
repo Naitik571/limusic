@@ -269,7 +269,7 @@
 			: 'opacity-100'}"
 	>
 		<div class="min-w-0">
-			<p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+			<p class="text-[var(--text-caption)] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
 				{playback.queue.sourceName ? 'Playing from' : 'Now playing'}
 			</p>
 			{#if playback.queue.sourceName}
@@ -282,7 +282,7 @@
 			title="Exit theater (Esc)"
 			aria-label="Exit theater"
 		>
-			<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
+			<HugeiconsIcon strokeWidth={2} icon={Cancel01Icon} class="h-4 w-4" />
 		</button>
 	</header>
 
@@ -308,34 +308,34 @@
 								alt={playback.now?.title ? `${playback.now.title}${playback.now.artists ? ` by ${playback.now.artists}` : ''}` : t('player.now_playing')}
 								onerror={() => attempt++}
 								style={srcs[2] ? `background-image:url(${srcs[2]})` : undefined}
-								class="aspect-square w-full rounded-2xl bg-cover object-cover ring-1 ring-white/10"
+								class="aspect-square w-full rounded-[var(--r-2xl)] bg-cover object-cover ring-1 ring-[color-mix(in_srgb,var(--on-art)_10%,transparent)]"
 							/>
 						{:else}
 							<div
-								class="flex aspect-square w-full items-center justify-center rounded-2xl bg-muted text-muted-foreground/40 ring-1 ring-white/10"
+								class="flex aspect-square w-full items-center justify-center rounded-[var(--r-2xl)] bg-muted text-muted-foreground/40 ring-1 ring-[color-mix(in_srgb,var(--on-art)_10%,transparent)]"
 							>
-								<HugeiconsIcon icon={MusicNote01Icon} class="h-20 w-20" />
+								<HugeiconsIcon strokeWidth={2} icon={MusicNote01Icon} class="h-20 w-20" />
 							</div>
 						{/if}
 						<div
-							class="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/10"
+							class="pointer-events-none absolute inset-0 rounded-[var(--r-2xl)] ring-1 ring-inset ring-[color-mix(in_srgb,var(--on-art)_10%,transparent)]"
 						></div>
 					</div>
 				{/key}
 
 				<div
-					class="absolute left-3 top-3 z-10 flex items-center rounded-full bg-black/40 px-1.5 py-1 text-white"
+					class="absolute left-3 top-3 z-10 flex items-center rounded-[var(--r-full)] bg-[color-mix(in_srgb,var(--scrim)_40%,transparent)] px-1.5 py-1 text-[var(--on-art)]"
 					role="group"
 					aria-label="Volume"
 					onpointerenter={() => (volHover = true)}
 					onpointerleave={() => (volHover = false)}
 				>
 					<button
-						class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/75 transition-colors hover:text-white"
+						class="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-full)] text-[color-mix(in_srgb,var(--on-art)_75%,transparent)] transition-colors hover:text-[var(--on-art)]"
 						onclick={() => toggleMute()}
 						aria-label={playback.volume === 0 ? t('player.unmute') : t('player.mute')}
 					>
-						<HugeiconsIcon
+						<HugeiconsIcon strokeWidth={2}
 							icon={VolumeHighIcon}
 							altIcon={VolumeMute02Icon}
 							showAlt={playback.volume === 0}
@@ -362,7 +362,7 @@
 			<div class="mt-8 flex items-start gap-4">
 				<div class="min-w-0 flex-1">
 					<h1
-						class="truncate font-heading text-[1.75rem] font-bold leading-tight tracking-tight xl:text-4xl"
+						class="truncate font-heading text-[var(--text-display)] font-bold leading-tight tracking-tight xl:text-4xl"
 						title={playback.now?.title}
 					>
 						{playback.now?.title ?? 'Not playing'}
@@ -371,7 +371,7 @@
 						{playback.now?.artists ?? ''}
 					</p>
 					{#if album}
-						<p class="mt-0.5 truncate text-[13px] text-muted-foreground">{album}</p>
+						<p class="mt-0.5 truncate text-[var(--text-caption)] text-muted-foreground">{album}</p>
 					{/if}
 				</div>
 				<div class="flex shrink-0 items-center gap-1 pt-1.5">
@@ -384,7 +384,7 @@
 						aria-pressed={showLyrics}
 						title="Lyrics"
 					>
-						<HugeiconsIcon icon={Mic01Icon} class="h-[18px] w-[18px]" />
+						<HugeiconsIcon strokeWidth={2} icon={Mic01Icon} class="h-4 w-4" />
 					</button>
 					{#if playback.now && !local}
 						<button
@@ -397,9 +397,9 @@
 								class:animate-heart-pop={justLiked}
 								onanimationend={() => (justLiked = false)}
 							>
-								<HugeiconsIcon
+								<HugeiconsIcon strokeWidth={2}
 									icon={FavouriteIcon}
-									class="h-[18px] w-[18px] {playback.liked
+									class="h-4 w-4 {playback.liked
 										? 'fill-current text-primary'
 										: ''}"
 								/>
@@ -426,7 +426,7 @@
 					}}
 					aria-label={t('player.seek')}
 				/>
-				<div class="mt-2 flex justify-between text-xs font-medium tabular-nums text-muted-foreground">
+				<div class="timer mt-2 flex justify-between text-xs font-medium text-muted-foreground" data-timer>
 					<span>{fmt(shownPosition)}</span>
 					<span>{fmt(playback.duration)}</span>
 				</div>
@@ -441,25 +441,25 @@
 					aria-label={t('player.shuffle')}
 					aria-pressed={shuffleOn}
 				>
-					<HugeiconsIcon icon={ShuffleIcon} class="h-[18px] w-[18px]" />
+					<HugeiconsIcon strokeWidth={2} icon={ShuffleIcon} class="h-4 w-4" />
 				</button>
 				<button
 					onclick={() => api.prevTrack()}
 					class="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-foreground/90 transition-colors hover:bg-foreground/10 hover:text-foreground"
 					aria-label={t('player.previous')}
 				>
-					<HugeiconsIcon icon={PreviousIcon} class="h-6 w-6" />
+					<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} class="h-5 w-5" />
 				</button>
 				<button
 					onclick={() => api.togglePause()}
-					class="mx-1 flex h-[68px] w-[68px] cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform duration-150 hover:scale-[1.06] active:scale-95"
+					class="mx-1 flex h-16 w-16 cursor-pointer items-center justify-center rounded-[var(--r-full)] bg-primary text-primary-foreground transition-transform duration-150 hover:scale-[1.06] active:scale-95"
 					aria-label={playback.paused ? t('player.play') : t('player.pause')}
 				>
-					<HugeiconsIcon
+					<HugeiconsIcon strokeWidth={2}
 						icon={PauseIcon}
 						altIcon={PlayIcon}
 						showAlt={playback.paused}
-						class="h-7 w-7"
+						class="h-5 w-5"
 					/>
 				</button>
 				<button
@@ -467,7 +467,7 @@
 					class="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full text-foreground/90 transition-colors hover:bg-foreground/10 hover:text-foreground"
 					aria-label={t('player.next')}
 				>
-					<HugeiconsIcon icon={NextIcon} class="h-6 w-6" />
+					<HugeiconsIcon strokeWidth={2} icon={NextIcon} class="h-5 w-5" />
 				</button>
 				<button
 					onclick={toggleRepeat}
@@ -477,9 +477,9 @@
 					aria-label="Repeat"
 					aria-pressed={repeat !== 'off'}
 				>
-					<HugeiconsIcon
+					<HugeiconsIcon strokeWidth={2}
 						icon={repeat === 'one' ? RepeatOne01Icon : RepeatIcon}
-						class="h-[18px] w-[18px]"
+						class="h-4 w-4"
 					/>
 				</button>
 			</div>
@@ -508,10 +508,10 @@
 		--pct: 0%;
 		background: linear-gradient(
 			to right,
-			rgba(255, 255, 255, 0.85) 0%,
-			rgba(255, 255, 255, 0.85) var(--pct),
-			rgba(255, 255, 255, 0.25) var(--pct),
-			rgba(255, 255, 255, 0.25) 100%
+			color-mix(in srgb, var(--on-art) 85%, transparent) 0%,
+			color-mix(in srgb, var(--on-art) 85%, transparent) var(--pct),
+			color-mix(in srgb, var(--on-art) 25%, transparent) var(--pct),
+			color-mix(in srgb, var(--on-art) 25%, transparent) 100%
 		);
 	}
 	.theater-range {
@@ -520,8 +520,8 @@
 			to right,
 			var(--primary) 0%,
 			var(--primary) var(--pct),
-			rgba(255, 255, 255, 0.15) var(--pct),
-			rgba(255, 255, 255, 0.15) 100%
+			color-mix(in srgb, var(--on-art) 15%, transparent) var(--pct),
+			color-mix(in srgb, var(--on-art) 15%, transparent) 100%
 		);
 	}
 </style>

@@ -13,7 +13,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { hexToHsv, hsvToHex, isLight, lerpHue, type Hsv } from './color';
 import { artworkAccent } from './artcolor';
-import { solveVeil } from './veil';
+import { ART_TINT_MAX_SATURATION, solveVeil } from './veil';
 import { allowFontFile } from './api';
 
 export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin';
@@ -493,9 +493,14 @@ export function applyArtworkAccent(url: string | undefined | null): void {
 		// flashing black (toHex's '#000000' fallback is for reading tokens, never for fading).
 		if (my !== artReq || wanted !== url) return;
 		if (!hex) return;
-		artAccentHex = hex;
-		const hsv = hexToHsv(hex);
-		if (hsv) fadeTo(hsv);
+		const raw = hexToHsv(hex);
+		if (!raw) return;
+		// Cap art-tint chroma (visual #5): a neon cover must not drag surfaces with it. The capped
+		// hex is what both the crossfade and the ambient veil solver read, so they never disagree.
+		const capped: Hsv =
+			raw.s > ART_TINT_MAX_SATURATION ? { ...raw, s: ART_TINT_MAX_SATURATION } : raw;
+		artAccentHex = hsvToHex(capped);
+		fadeTo(capped);
 	});
 }
 

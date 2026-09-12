@@ -2,15 +2,19 @@
 import { flip } from 'svelte/animate';
 import { cubicOut } from 'svelte/easing';
 import { onDestroy } from 'svelte';
+import { goto } from '$app/navigation';
 import { HugeiconsIcon } from '@hugeicons/svelte';
-import { InfinityIcon } from '@hugeicons/core-free-icons';
+import { InfinityIcon, Queue01Icon } from '@hugeicons/core-free-icons';
 import TrackRow from '$lib/components/TrackRow.svelte';
 import RadioMoods from '$lib/components/RadioMoods.svelte';
+import EmptyState from '$lib/components/EmptyState.svelte';
 import * as api from '$lib/api';
+import { openItem } from '$lib/browse';
 import { queueBlocks, type QueueRow } from '$lib/queue';
 import { isSwipe, shouldRemove } from '$lib/swipe';
 import { burst } from '$lib/fx';
-import { playback, openAddToPlaylist, toast } from '$lib/player.svelte';
+import { personal, playback, openAddToPlaylist, toast } from '$lib/player.svelte';
+import { recentItems } from '$lib/personal';
 import { lt } from '$lib/lt.svelte';
 
 // Guests are add-only in a session — no removing or reordering (theirs or anyone's). The
@@ -245,13 +249,52 @@ const canReorder = $derived(lt.role !== 'guest');
 			lastPeekFp = fp;
 		});
 
-		function onQueueWheel(e: WheelEvent) {
-			if (e.deltaY >= 0) return; // only scrolling up reaches into the past
-			if (!scroller || scroller.scrollTop > 0) return; // only from the top of the list
-			const total = playback.queue.currentIndex;
-			if (total <= 0 || pastShown >= total) return;
-			pastShown = Math.min(pastShown + PAST_CHUNK, total);
+	function onQueueWheel(e: WheelEvent) {
+		if (e.deltaY >= 0) return; // only scrolling up reaches into the past
+		if (!scroller || scroller.scrollTop > 0) return; // only from the top of the list
+		const total = playback.queue.currentIndex;
+		if (total <= 0 || pastShown >= total) return;
+		pastShown = Math.min(pastShown + PAST_CHUNK, total);
+	}
+
+	// Visible previously-played control (interior #5): the wheel-up peek stays, but
+	// discoverability needs a button driving the same pastShown state. Toggles between
+	// hidden and one chunk; deeper history is still a wheel-up away.
+	function togglePast() {
+		const total = playback.queue.currentIndex;
+		if (total <= 0) return;
+		pastShown = pastShown > 0 ? 0 : Math.min(PAST_CHUNK, total);
+	}
+
+	// Empty-state "play something" (interior #5): the most recent listen. Songs play in
+	// place, anything else opens its page; with no history yet, head for search.
+	function playRecentPick() {
+		const [recent] = recentItems(personal, 1);
+		if (!recent) {
+			goto('/search');
+			return;
 		}
+		openItem(recent);
+	}
+
+	// Clear-queue undo (interior #19): snapshot the manual rows clearQueued drops, then offer
+	// them back for 6s. Undo re-adds ahead of the autoplay filler (addToQueue's contract),
+	// which is where "Next in queue" rows live. Failures toast; an empty clear stays quiet.
+	async function clearQueueUndoable() {
+		const cleared = playback.queue.items
+			.slice(playback.queue.currentIndex + 1)
+			.filter((t) => t.queued || t.queued_end);
+		try {
+			await api.clearQueued();
+		} catch (e) {
+			toast.error(String(e));
+			return;
+		}
+		if (!cleared.length) return;
+		toast.action(`Cleared ${cleared.length} track${cleared.length === 1 ? '' : 's'}`, 'Undo', () => {
+			api.addToQueue(cleared).catch((e) => toast.error(String(e)));
+		});
+	}
 
 	// Runs in the capture phase (before TrackRow's bubble handler), so a release that ended a
 	// drag doesn't also play the song.
@@ -360,9 +403,23 @@ const view = $derived(queueBlocks(playback.queue));
 			</button>
 		</div>
 	{/if}
-	{#if pastRows.length > 0}
-		<h3 class="px-2 pt-2 pb-1.5 text-sm font-semibold">Previously played</h3>
-		{@render rows(pastRows, true)}
+	{#if pastRows.length > 0 || playback.queue.currentIndex > 0}
+		<!-- Always visible while anything has played: the count says how deep the past goes, the
+		     button drives pastShown (same state the wheel-up peek feeds). -->
+		<div class="flex items-center justify-between gap-2 px-2 pt-2 pb-1.5">
+			<h3 class="text-sm font-semibold">Previously played ({playback.queue.currentIndex})</h3>
+			<button
+				class="shrink-0 cursor-pointer rounded-md px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+				style="border-radius:var(--r-sm);transition-duration:var(--dur-1);transition-timing-function:var(--ease-out)"
+				onclick={togglePast}
+				aria-expanded={pastShown > 0}
+			>
+				{pastShown > 0 ? 'Hide' : 'Show'}
+			</button>
+		</div>
+		{#if pastRows.length > 0}
+			{@render rows(pastRows, true)}
+		{/if}
 	{/if}
 	<RadioMoods moods={playback.queue.radioMoods} />
 	{#if view.now}
@@ -393,7 +450,7 @@ const view = $derived(queueBlocks(playback.queue));
 					{#if block.clearable && canRemove}
 						<button
 							class="shrink-0 cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-							onclick={() => api.clearQueued()}
+							onclick={() => clearQueueUndoable()}
 						>
 							Clear queue
 						</button>
@@ -403,6 +460,17 @@ const view = $derived(queueBlocks(playback.queue));
 			{@render rows(block.rows)}
 		{/each}
 	{:else}
-		<p class="p-4 text-sm text-muted-foreground">The queue is empty.</p>
+		<!-- One empty state (interior #5 + #14): icon, a way back in via the recent pick, and the
+		     pick itself named so it reads as a continuation, not a dead end. -->
+		{@const recentPick = recentItems(personal, 1)[0]}
+		<EmptyState
+			icon={Queue01Icon}
+			line="The queue is empty."
+			hint={recentPick
+				? `Pick up where you left off: ${recentPick.title}`
+				: 'Search for something to get the music going.'}
+			actionLabel={recentPick ? 'Play something' : 'Search music'}
+			onAction={playRecentPick}
+		/>
 	{/if}
 </div>

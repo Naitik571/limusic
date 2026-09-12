@@ -12,10 +12,12 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { DownloadedTrack } from '$lib/api';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import {
 		downloads,
 		downloadedIds,
 		loadDownloadedIds,
+		markDownloaded,
 		markNotDownloaded,
 		playSong,
 		startDownloadMonitor,
@@ -71,6 +73,9 @@
 		});
 	}
 	async function removeStored(t: DownloadedTrack) {
+		// Delete undo (interior #19): the file is already gone, but the catalogue row comes back
+		// for 6s — same toast.action contract as the queue's Clear. Re-download re-fetches bytes.
+		const idx = catalogue.findIndex((x) => x.video_id === t.video_id);
 		try {
 			await api.deleteDownload(t.video_id);
 		} catch (e) {
@@ -79,7 +84,14 @@
 		}
 		markNotDownloaded(t.video_id);
 		catalogue = catalogue.filter((x) => x.video_id !== t.video_id);
+		toast.action(`Removed ${t.title}`, 'Undo', () => {
+			catalogue = [...catalogue.slice(0, Math.max(0, idx)), t, ...catalogue.slice(Math.max(0, idx))];
+			markDownloaded(t.video_id);
+		});
 	}
+
+	// Footer summary (interior #6): what the list below actually holds, in bytes on disk.
+	const footerBytes = $derived(stored.reduce((n, t) => n + (t.size_bytes || 0), 0));
 </script>
 
 <div class="mx-auto w-full max-w-3xl px-4 py-6">
@@ -108,13 +120,11 @@
 		</div>
 	{:else}
 		{#if downloads.items.length === 0 && stored.length === 0}
-			<div class="flex flex-col items-center gap-3 py-16 text-center">
-				<HugeiconsIcon icon={Download01Icon} class="h-8 w-8 text-muted-foreground/50" />
-				<p class="text-sm text-muted-foreground">Nothing downloaded yet.</p>
-				<p class="max-w-xs text-xs text-muted-foreground/70">
-					Use the ⋯ menu on any track, album or playlist — or pin a playlist to keep it offline.
-				</p>
-			</div>
+			<EmptyState
+				icon={Download01Icon}
+				line="Nothing downloaded yet."
+				hint="Use the ⋯ menu on any track, album or playlist — or pin a playlist to keep it offline."
+			/>
 		{/if}
 		<div class="flex flex-col gap-1.5">
 			{#each downloads.items as it (it.id)}
@@ -131,7 +141,7 @@
 						<p class="truncate text-xs text-muted-foreground">{it.artists ?? ''}</p>
 						{#if it.state === 'downloading'}
 							<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-								<div class="h-full rounded-full bg-yellow-400 transition-[width] duration-200" style="width:{it.percent}%"></div>
+								<div class="h-full rounded-full bg-primary transition-[width] duration-200" style="width:{it.percent}%"></div>
 							</div>
 						{:else if it.state === 'error'}
 							<p class="mt-1 truncate text-xs text-red-500">{it.message ?? 'Failed'}</p>
@@ -191,5 +201,11 @@
 				</div>
 			{/each}
 		</div>
+		{#if stored.length > 0}
+			<!-- Footer summary (interior #6): the count + bytes the list above actually holds. -->
+			<p class="mt-4 border-t px-3 pt-3 text-xs tabular-nums" style="color:var(--text-3);border-color:var(--border)">
+				{stored.length} saved · {fmtSize(footerBytes)}
+			</p>
+		{/if}
 	{/if}
 </div>

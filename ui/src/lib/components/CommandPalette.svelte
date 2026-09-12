@@ -153,8 +153,11 @@
 
 	// --- Actions: app control from the palette ------------------------------------------------------------
 	// Static list — every mutation goes through the stores' own setters, so nothing here needs to
-	// be reactive. `layoutId` (layouts only) marks the active arrangement in the row.
-	type PaletteAction = { label: string; hint?: string; layoutId?: (typeof LAYOUTS)[number]['id']; run: () => void };
+	// be reactive. `layoutId` (layouts only) marks the active arrangement in the row. `group`
+	// (interior #12) buckets every row under an always-visible Jump to / Playback / System header.
+	type PaletteGroup = 'Jump to' | 'Playback' | 'System';
+	type PaletteAction = { label: string; hint?: string; layoutId?: (typeof LAYOUTS)[number]['id']; group: PaletteGroup; run: () => void };
+	const GROUPS: PaletteGroup[] = ['Jump to', 'Playback', 'System'];
 
 	const SETTINGS_TABS: [string, string][] = [
 		['general', 'General'],
@@ -166,43 +169,54 @@
 	];
 
 	const ACTIONS: PaletteAction[] = [
+		{ label: 'Go to Home', group: 'Jump to', run: () => goto('/') },
+		{ label: 'Go to Search', group: 'Jump to', run: () => goto('/search') },
+		{ label: 'Go to Library', group: 'Jump to', run: () => goto('/library') },
+		{ label: 'Go to History', group: 'Jump to', run: () => goto('/history') },
+		{ label: 'Go to Downloads', group: 'Jump to', run: () => goto('/downloads') },
+		{ label: 'Open mini player', hint: 'Floating widget', group: 'Playback', run: () => openMiniPlayer() },
+		{ label: 'Sleep timer: 15 min', group: 'Playback', run: () => setSleepTimer('minutes', 15) },
+		{ label: 'Sleep timer: 30 min', group: 'Playback', run: () => setSleepTimer('minutes', 30) },
+		{ label: 'Sleep timer: 60 min', group: 'Playback', run: () => setSleepTimer('minutes', 60) },
+		{ label: 'Sleep timer: End of song', group: 'Playback', run: () => setSleepTimer('end_of_song') },
+		{ label: 'Sleep timer: Off', group: 'Playback', run: () => setSleepTimer('off') },
 		...LAYOUTS.map((l): PaletteAction => ({
 			label: `Layout: ${l.label}`,
 			hint: l.description,
 			layoutId: l.id,
+			group: 'System',
 			run: () => applyLayout(l.id)
 		})),
 		{
 			label: 'Toggle ambient mode',
 			hint: 'Blurred artwork backdrop',
+			group: 'System',
 			run: () => setAppearance({ ambientMode: !appearance.ambientMode })
 		},
 		{
 			label: 'Toggle artwork accent',
 			hint: 'Recolor from the cover',
+			group: 'System',
 			run: () => setAppearance({ artworkAccent: !appearance.artworkAccent })
 		},
 		{
 			label: 'Toggle tabbed player',
 			hint: 'Queue/lyrics tabs in the player view',
+			group: 'System',
 			run: () => setAppearance({ tabbedPlayer: !appearance.tabbedPlayer })
 		},
 		...SETTINGS_TABS.map(([id, label]): PaletteAction => ({
 			label: `Settings: ${label}`,
 			hint: 'Open Settings',
+			group: 'System',
 			run: () => {
 				ui.settingsTab = id;
 				ui.settingsOpen = true;
 			}
 		})),
-		{ label: 'Open mini player', hint: 'Floating widget', run: () => openMiniPlayer() },
-		{ label: 'Sleep timer: 15 min', run: () => setSleepTimer('minutes', 15) },
-		{ label: 'Sleep timer: 30 min', run: () => setSleepTimer('minutes', 30) },
-		{ label: 'Sleep timer: 60 min', run: () => setSleepTimer('minutes', 60) },
-		{ label: 'Sleep timer: End of song', run: () => setSleepTimer('end_of_song') },
-		{ label: 'Sleep timer: Off', run: () => setSleepTimer('off') },
 		{
 			label: 'Check for updates',
+			group: 'System',
 			run: () => {
 				checkForUpdatesInteractive().then((r) =>
 					r.error ? toast.error(r.message) : toast.success(r.message)
@@ -211,18 +225,31 @@
 		}
 	];
 
+	// The eight rows an empty query opens on (interior #12): jumps, playback (mini player + sleep
+	// timer), and settings jumps — every group represented so all three headers always show.
+	const DEFAULT_LABELS = [
+		'Go to Search',
+		'Go to Library',
+		'Open mini player',
+		'Sleep timer: 30 min',
+		'Sleep timer: Off',
+		'Settings: Appearance',
+		'Settings: Playback',
+		'Check for updates'
+	];
+
 	function runAction(a: PaletteAction) {
 		ui.paletteOpen = false;
 		a.run();
 	}
 
 	const actionQuery = $derived(query.trim().toLowerCase());
-	// Substring match on the label; empty query shows a few quick actions. The results themselves
-	// are unfiltered here (shouldFilter={false}) — this list is ours alone.
+	// Substring match on the label; empty query shows the eight defaults above. The results
+	// themselves are unfiltered here (shouldFilter={false}) — this list is ours alone.
 	const visibleActions = $derived(
 		actionQuery
-			? ACTIONS.filter((a) => a.label.toLowerCase().includes(actionQuery)).slice(0, 6)
-			: ACTIONS.slice(0, 4)
+			? ACTIONS.filter((a) => a.label.toLowerCase().includes(actionQuery)).slice(0, 8)
+			: DEFAULT_LABELS.map((l) => ACTIONS.find((a) => a.label === l)!).filter(Boolean)
 	);
 </script>
 
@@ -247,25 +274,32 @@
 	<Command.Input bind:value={query} placeholder="Search songs, albums, artists, playlists…" />
 	<Command.List class="max-h-[22rem]">
 		{#if visibleActions.length}
-			<Command.Group heading="Actions">
-				{#each visibleActions as a (a.label)}
-					<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
-						<span class="truncate">{a.label}</span>
-						{#if a.layoutId === layout.id}
-							<span
-								class="rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-							>
-								Active
-							</span>
-						{/if}
-						{#if a.hint}
-							<span class="ml-auto shrink-0 truncate pl-4 text-xs text-muted-foreground">
-								{a.hint}
-							</span>
-						{/if}
-					</Command.Item>
-				{/each}
-			</Command.Group>
+			<!-- Grouped actions (interior #12): every group carries its header whenever it has rows,
+			     so Jump to / Playback / System read as sections, not one long list. -->
+			{#each GROUPS as g (g)}
+				{@const grows = visibleActions.filter((a) => a.group === g)}
+				{#if grows.length}
+					<Command.Group heading={g}>
+						{#each grows as a (a.label)}
+							<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
+								<span class="truncate">{a.label}</span>
+								{#if a.layoutId === layout.id}
+									<span
+										class="rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+									>
+										Active
+									</span>
+								{/if}
+								{#if a.hint}
+									<span class="ml-auto shrink-0 truncate pl-4 text-xs text-muted-foreground">
+										{a.hint}
+									</span>
+								{/if}
+							</Command.Item>
+						{/each}
+					</Command.Group>
+				{/if}
+			{/each}
 		{/if}
 
 		{#if loading}
@@ -342,6 +376,10 @@
 			</Command.Group>
 		{/if}
 	</Command.List>
+	<!-- Key hint (interior #12): Enter opens the full results until ↑↓ picks a row (see paletteKeys). -->
+	<p class="border-t px-3 py-2 text-[11px]" style="color:var(--text-3);border-color:var(--border)">
+		↑↓ to pick a row · Enter to open
+	</p>
 	<!-- No visible trigger: a palette row is too small for a hover-only ⋯, and the menu only ever
 	     opens from a right-click (see `openRowMenu`). Rendered here, outside the dialog, so the
 	     dialog's focus trap can't swallow the menu's clicks. 		Keyed per open for a fresh instance. -->

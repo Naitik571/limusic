@@ -8,6 +8,7 @@
 	import {
 		CheckmarkCircle02Icon,
 		AlertCircleIcon,
+		Alert02Icon,
 		InformationCircleIcon
 	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
@@ -47,7 +48,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ListenTogether from '$lib/components/ListenTogether.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { auth, initApp, np, playback, ui, bootStage, bootDone } from '$lib/player.svelte';
+	import { auth, initApp, np, playback, ui, bootStage, bootDone, dismissToast } from '$lib/player.svelte';
 	import TheaterMode from '$lib/components/TheaterMode.svelte';
 	import { win, initWin } from '$lib/win.svelte';
 	import { initZoom } from '$lib/zoom';
@@ -272,33 +273,54 @@
 		</div>
 	{/if}
 
-	{#if ui.toast}
-		{@const t = ui.toast}
-		<div
-			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
-			class="fixed bottom-40 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-xl glass-strong px-4 py-2 text-sm shadow-2xl"
-		>
-			<!-- Three branches instead of a ternary on `icon`: HugeiconsIcon freezes `icon` at mount, so a
-			     new toast replacing a visible one would keep the old glyph. -->
-			{#if t.kind === 'success'}
-				<HugeiconsIcon icon={CheckmarkCircle02Icon} class="h-4 w-4 shrink-0 text-primary" />
-			{:else if t.kind === 'error'}
-				<HugeiconsIcon icon={AlertCircleIcon} class="h-4 w-4 shrink-0 text-destructive" />
-			{:else}
-				<HugeiconsIcon
-					icon={InformationCircleIcon}
-					class="h-4 w-4 shrink-0 text-muted-foreground"
-				/>
-			{/if}
-			<span class="min-w-0 truncate">{t.msg}</span>
-			{#if t.action}
-				<button
-					class="ml-1 shrink-0 cursor-pointer rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-transform hover:scale-105"
-					onclick={t.action.run}
+	{#if ui.toasts.length}
+		<!-- Toast stack: newest-on-top, capped at 3 in player.svelte.ts. z-[200] sits above
+		     dialogs/menus (z-50) and the update banner (z-[100]). Variants use the shared
+		     --status-* tokens; icons are h-4 chrome (strokeWidth 2). -->
+		<div class="pointer-events-none fixed bottom-40 left-1/2 z-[200] flex -translate-x-1/2 flex-col items-center gap-2">
+			{#each ui.toasts as t (t.id)}
+				<div
+					transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
+					role="status"
+					class="pointer-events-auto flex max-w-[min(28rem,90vw)] items-center gap-2 rounded-[var(--r-md)] border px-4 py-2 text-sm shadow-2xl backdrop-blur-xl {t.kind === 'success'
+						? 'border-[var(--status-success-line)] bg-[var(--status-success-soft)] text-[var(--text-1)]'
+						: t.kind === 'error'
+							? 'border-[var(--status-danger-line)] bg-[var(--status-danger-soft)] text-[var(--text-1)]'
+							: t.kind === 'warning'
+								? 'border-[var(--status-warning-line)] bg-[var(--status-warning-soft)] text-[var(--text-1)]'
+								: 'border-[var(--status-info-line)] bg-[var(--status-info-soft)] text-[var(--text-1)]'}"
 				>
-					{t.action.label}
-				</button>
-			{/if}
+					<!-- Four branches instead of a ternary on `icon`: HugeiconsIcon freezes `icon` at mount, so a
+					     new toast replacing a visible one would keep the old glyph. -->
+					{#if t.kind === 'success'}
+						<HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} class="h-4 w-4 shrink-0 text-[var(--status-success)]" />
+					{:else if t.kind === 'error'}
+						<HugeiconsIcon icon={AlertCircleIcon} strokeWidth={2} class="h-4 w-4 shrink-0 text-[var(--status-danger)]" />
+					{:else if t.kind === 'warning'}
+						<HugeiconsIcon icon={Alert02Icon} strokeWidth={2} class="h-4 w-4 shrink-0 text-[var(--status-warning)]" />
+					{:else}
+						<HugeiconsIcon
+							icon={InformationCircleIcon}
+							strokeWidth={2}
+							class="h-4 w-4 shrink-0 text-[var(--status-info)]"
+						/>
+					{/if}
+					<span class="min-w-0 line-clamp-2 break-words" title={t.msg}>{t.msg}</span>
+					{#if t.action}
+						<button
+							class="ml-1 shrink-0 cursor-pointer rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-transform hover:scale-105"
+							onclick={t.action.run}
+						>
+							{t.action.label}
+						</button>
+					{/if}
+					<button
+						class="shrink-0 cursor-pointer rounded px-1 text-[var(--text-3)] hover:text-[var(--text-1)]"
+						aria-label="Dismiss notification"
+						onclick={() => dismissToast(t.id)}>✕</button
+					>
+				</div>
+			{/each}
 		</div>
 	{/if}
 {/if}

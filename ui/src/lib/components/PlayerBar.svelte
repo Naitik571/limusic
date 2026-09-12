@@ -186,11 +186,11 @@
 	<!-- Precise volume HUD: shows on any nudgeVolume/dragVolume, auto-hides after 1.5s -->
 	{#if volumeHud.visible}
 		<div
-			class="pointer-events-none fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl glass-strong px-4 py-2 shadow-xl"
+			class="pointer-events-none fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[var(--r-xl)] glass-strong px-4 py-2 shadow-[var(--elevation-3)]"
 			transition:fade={{ duration: 150 }}
 			aria-live="polite"
 		>
-			<HugeiconsIcon icon={volumeHud.value === 0 ? VolumeMute02Icon : VolumeHighIcon} class="h-4 w-4 text-primary" />
+			<HugeiconsIcon strokeWidth={2} icon={volumeHud.value === 0 ? VolumeMute02Icon : VolumeHighIcon} class="h-4 w-4 text-primary" />
 			<div class="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
 				<div class="h-full bg-primary transition-all" style="width:{volumeHud.value}%"></div>
 			</div>
@@ -211,7 +211,7 @@
 	<div class="flex min-w-0 flex-1 items-center gap-3" data-ctx>
 		<button
 			type="button"
-			class="group relative block shrink-0 cursor-pointer rounded-lg bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+			class="group relative block shrink-0 cursor-pointer rounded-[var(--r-lg)] bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 			onclick={(e) => {
 				e.stopPropagation();
 				api.togglePause();
@@ -225,20 +225,21 @@
 						src={thumb(playback.now.thumbnail, 120)}
 						alt={playback.now?.title ? `${playback.now.title}${playback.now.artists ? ` by ${playback.now.artists}` : ''}` : ''}
 						style="max-width:none"
-						class="h-12 w-12 rounded-lg object-cover"
+						class="h-12 w-12 rounded-[var(--r-lg)] object-cover"
 						in:fade={{ duration: 250 }}
 					/>
 				{:else}
 					<div
-						class="flex h-12 w-12 items-center justify-center rounded-lg bg-muted text-muted-foreground/50"
+						class="flex h-12 w-12 items-center justify-center rounded-[var(--r-lg)] bg-muted text-muted-foreground/50"
 					>
-						<HugeiconsIcon icon={MusicNote01Icon} class="h-5 w-5" />
+						<HugeiconsIcon strokeWidth={2} icon={MusicNote01Icon} class="h-5 w-5" />
 					</div>
 				{/if}
 			{/key}
 			{#if volBadge !== null}
 				<span
-					class="pointer-events-none absolute -top-2 -left-2 z-10 rounded-md bg-black/85 px-1.5 py-0.5 text-[11px] font-bold text-white shadow-lg tabular-nums"
+					class="timer pointer-events-none absolute -top-2 -left-2 z-10 rounded-[var(--r-md)] bg-[var(--scrim)] px-1.5 py-0.5 text-[var(--text-caption)] font-bold text-[var(--on-art)] shadow-[var(--elevation-2)]"
+					data-timer
 					transition:fade={{ duration: 150 }}
 					aria-hidden="true"
 				>
@@ -265,7 +266,7 @@
 						title="Playing similar music (Autoplay)"
 						in:fade={{ duration: 200 }}
 					>
-						<HugeiconsIcon icon={InfinityIcon} class="h-3.5 w-3.5" />
+						<HugeiconsIcon strokeWidth={2} icon={InfinityIcon} class="h-4 w-4" />
 					</span>
 				{/if}
 			</div>
@@ -288,7 +289,7 @@
 								<span class="heart-spark" style="--a:{i * 60}deg" aria-hidden="true"></span>
 							{/each}
 						{/if}
-						<HugeiconsIcon
+						<HugeiconsIcon strokeWidth={2}
 							icon={FavouriteIcon}
 							class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : 'text-muted-foreground'} {burst
 								? 'heart-pop'
@@ -312,7 +313,7 @@
 						}}
 						aria-label={t('player.add_to_playlist')}
 					>
-						<HugeiconsIcon icon={Add01Icon} class="h-4 w-4 text-muted-foreground" />
+						<HugeiconsIcon strokeWidth={2} icon={Add01Icon} class="h-4 w-4 text-muted-foreground" />
 					</Button>
 				{/if}
 				{#if currentSong}
@@ -336,13 +337,13 @@
 				aria-label={t('player.shuffle')}
 				aria-pressed={shuffleOn}
 			>
-				<HugeiconsIcon
+				<HugeiconsIcon strokeWidth={2}
 					icon={ShuffleIcon}
 					class="h-4 w-4 {shuffleOn ? 'text-primary' : 'text-muted-foreground'}"
 				/>
 			</Button>
 			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.prevTrack()} aria-label={t('player.previous')}>
-				<HugeiconsIcon icon={PreviousIcon} class="h-5 w-5" />
+				<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} class="h-5 w-5" />
 			</Button>
 			<Button
 				variant="default"
@@ -353,7 +354,7 @@
 			>
 				<!-- HugeiconsIcon only re-renders `altIcon`/`showAlt`, not `icon` (frozen at mount) â€”
 			     so toggle via showAlt, not a ternary on `icon`. -->
-			<HugeiconsIcon
+			<HugeiconsIcon strokeWidth={2}
 				icon={PauseIcon}
 				altIcon={PlayIcon}
 				showAlt={playback.paused}
@@ -361,7 +362,7 @@
 			/>
 			</Button>
 			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.nextTrack()} aria-label={t('player.next')}>
-				<HugeiconsIcon icon={NextIcon} class="h-5 w-5" />
+				<HugeiconsIcon strokeWidth={2} icon={NextIcon} class="h-5 w-5" />
 			</Button>
 			<Button
 				variant="ghost"
@@ -371,7 +372,7 @@
 				aria-pressed={repeat !== 'off'}
 			>
 				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
-				<HugeiconsIcon
+				<HugeiconsIcon strokeWidth={2}
 					icon={RepeatIcon}
 					altIcon={RepeatOne01Icon}
 					showAlt={repeat === 'one'}
@@ -380,7 +381,7 @@
 			</Button>
 		</div>
 		<div class="flex w-full max-w-md items-center gap-2 text-xs text-muted-foreground">
-			<span class="tabular-nums">{fmt(shownPosition)}</span>
+			<span class="timer" data-timer>{fmt(shownPosition)}</span>
 			<input
 				type="range"
 				class="range range-seek flex-1"
@@ -392,7 +393,7 @@
 				onchange={onSeekCommit}
 				aria-label={t('player.seek')}
 			/>
-			<span class="tabular-nums">{fmt(playback.duration)}</span>
+			<span class="timer" data-timer>{fmt(playback.duration)}</span>
 		</div>
 	</div>
 
@@ -408,7 +409,7 @@
 				aria-label={playback.volume === 0 ? t('player.unmute') : t('player.mute')}
 			>
 				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
-				<HugeiconsIcon
+				<HugeiconsIcon strokeWidth={2}
 					icon={VolumeHighIcon}
 					altIcon={VolumeMute02Icon}
 					showAlt={playback.volume === 0}
@@ -439,9 +440,9 @@
 				aria-label="Sleep timer"
 				aria-expanded={sleepMenuOpen}
 			>
-				<HugeiconsIcon icon={Moon01Icon} class="h-5 w-5" />
+				<HugeiconsIcon strokeWidth={2} icon={Moon01Icon} class="h-4 w-4" />
 				{#if sleepTimer.mode !== 'off'}
-					<span class="ml-0.5 text-[10px] font-medium tabular-nums">
+					<span class="timer ml-0.5 text-[var(--text-caption)] font-medium" data-timer>
 						{sleepTimer.mode === 'minutes' ? fmt(sleepTimer.remaining) : 'â™ª'}
 					</span>
 				{/if}
@@ -454,7 +455,7 @@
 					{@attach toBody}
 				></button>
 				<div
-					class="fixed z-50 min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+					class="fixed z-50 min-w-44 animate-in rounded-[var(--r-xl)] border-transparent glass-strong p-1 text-popover-foreground shadow-[var(--elevation-3)] duration-150 fade-in-0 zoom-in-95"
 					style={sleepAnchor.style}
 					{@attach toBody}
 					{@attach fitMenu(sleepAnchor)}
@@ -495,7 +496,7 @@
 				</div>
 			{/if}
 			<Button variant="ghost" size="icon-sm" onclick={openMiniPlayer} aria-label="Mini player">
-						<HugeiconsIcon icon={MinimizeScreenIcon} class="h-5 w-5" />
+						<HugeiconsIcon strokeWidth={2} icon={MinimizeScreenIcon} class="h-4 w-4" />
 					</Button>
 					<Button
 						variant={lyricsOpen ? 'secondary' : 'ghost'}
@@ -503,7 +504,7 @@
 						onclick={onToggleLyrics}
 						aria-label="Toggle lyrics"
 					>
-						<HugeiconsIcon icon={Mic01Icon} class="h-5 w-5" />
+						<HugeiconsIcon strokeWidth={2} icon={Mic01Icon} class="h-4 w-4" />
 					</Button>
 			<Button
 				variant={queueOpen ? 'secondary' : 'ghost'}
@@ -511,7 +512,7 @@
 				onclick={onToggleQueue}
 				aria-label="Toggle queue"
 			>
-				<HugeiconsIcon icon={Queue01Icon} class="h-5 w-5" />
+				<HugeiconsIcon strokeWidth={2} icon={Queue01Icon} class="h-4 w-4" />
 			</Button>
 			<!-- The keyboard (and discoverable) way in and out of the now-playing view; clicking the
 			     bar's empty space does the same thing. -->
@@ -523,11 +524,11 @@
 				aria-expanded={np.open}
 			>
 				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->
-				<HugeiconsIcon
+				<HugeiconsIcon strokeWidth={2}
 					icon={ArrowUp01Icon}
 					altIcon={ArrowDown01Icon}
 					showAlt={np.open}
-					class="h-5 w-5"
+					class="h-4 w-4"
 				/>
 			</Button>
 		</div>

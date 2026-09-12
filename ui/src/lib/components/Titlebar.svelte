@@ -5,7 +5,7 @@
 	// close â€” per the design, the scrobbler lives with the window controls but visually apart.
 	// Account (sign in/out) sits first in that cluster, in its own component.
 	import { onMount } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -21,7 +21,8 @@
 			Loading03Icon,
 			HotspotOfflineIcon,
 			UserGroup02Icon,
-			Link04Icon
+			Link04Icon,
+			MoreHorizontalIcon
 	} from '@hugeicons/core-free-icons';
 	import LastFmIcon from './LastFmIcon.svelte';
 	import DiscordIcon from './DiscordIcon.svelte';
@@ -32,19 +33,37 @@
 	import { lt } from '$lib/lt.svelte';
 	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 
-	let downloadsOpen = $state(false);
+	// Saved-catalogue footer for the downloads popover ("N saved · X MB"), mirroring the
+	// downloads page header. Refreshed whenever the popover opens.
+	let savedCount = $state(0);
+	let savedBytes = $state(0);
+	function fmtMB(bytes: number): string {
+		if (!bytes) return '0 MB';
+		const mb = bytes / (1024 * 1024);
+		return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+	}
 
 	// Opening the manager reconciles the catalogue with the disk: rows for files deleted
 	// outside the app get pruned, then badges refresh — cheap metadata stats.
-	async function toggleDownloads() {
-		downloadsOpen = !downloadsOpen;
-		if (!downloadsOpen) return;
+	async function toggleDownloads(e: MouseEvent) {
+		if (openKind === 'downloads') {
+			closePopover();
+			return;
+		}
+		openPopover('downloads', e);
 		try {
 			const pruned = await api.pruneMissingDownloads();
 			await loadDownloadedIds();
 			if (pruned > 0) toast.info(`Removed ${pruned} missing file${pruned === 1 ? '' : 's'} from downloads`);
 		} catch {
 			/* catalogue read failed — manager still opens with what it has */
+		}
+		try {
+			const r = await api.listDownloads();
+			savedCount = r.items.length;
+			savedBytes = r.total_bytes;
+		} catch {
+			/* footer stays at last known counts */
 		}
 	}
 
@@ -67,8 +86,27 @@
 	let connected = $state(false);
 	let username = $state<string | null>(null);
 	let connecting = $state(false);
-	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
+
+	// Single shared popover: the Last.fm menu, the downloads manager and the overflow menu
+	// are one container with three bodies, joined into the claimMenu/one-menu system so
+	// opening one closes the others (and any track menu elsewhere).
+	type PopoverKind = 'lastfm' | 'downloads' | 'overflow';
+	let openKind = $state<PopoverKind | null>(null);
+
+	// One menu at a time (see TrackMenu) — the account menu sits right next door.
+	const menuId = nextMenuId();
+	$effect(() => onOtherMenuClaimed(menuId, () => (openKind = null)));
+
+	function openPopover(kind: PopoverKind, e: MouseEvent) {
+		anchor = anchorMenu(e, { align: 'right' });
+		openKind = kind;
+		claimMenu(menuId);
+	}
+
+	function closePopover() {
+		openKind = null;
+	}
 
 	// Discord Rich Presence â€” a plain on/off toggle of the `discord_rpc` setting (the backend
 	// connects/clears the presence the moment it flips). Optimistic; reverted on failure.
@@ -117,7 +155,7 @@
 			return;
 		}
 		if (connected) {
-			openMenu(e);
+			openPopover('lastfm', e);
 			return;
 		}
 		connecting = true;
@@ -131,18 +169,25 @@
 	}
 
 	// One menu at a time (see TrackMenu) — the account menu sits right next door.
-	const menuId = nextMenuId();
-	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
-
-	function openMenu(e: MouseEvent) {
-		anchor = anchorMenu(e, { align: 'right' });
-		menuOpen = true;
-		claimMenu(menuId);
-	}
 
 	function disconnect() {
-		menuOpen = false;
+		openKind = null;
 		api.lastfmDisconnect().catch((e) => toast.error(String(e)));
+	}
+
+	function openOverflow(e: MouseEvent) {
+		if (openKind === 'overflow') closePopover();
+		else openPopover('overflow', e);
+	}
+
+	function overflowAction(fn: () => void) {
+		openKind = null;
+		fn();
+	}
+
+	function openDownloadsPage() {
+		openKind = null;
+		goto('/downloads');
 	}
 
 	const scrobblerTitle = $derived(
@@ -159,7 +204,7 @@
      Native frame: no drag region (the OS frame drags) and no window buttons. -->
 <header
 	data-tauri-drag-region={ui.nativeFrame ? undefined : ''}
-	class="relative z-50 flex h-9 shrink-0 select-none items-center justify-between glass-edge bg-transparent"
+	class="relative z-50 flex h-10 shrink-0 select-none items-center justify-between glass-edge bg-transparent"
 >
 	<span
 		class="pointer-events-none absolute inset-x-0 text-center text-xs font-medium tracking-wide text-muted-foreground"
@@ -173,7 +218,7 @@
 		<!-- Bigger and heavier than the icons on the right: these are navigation, and at their
 		     weight the arrow read as decoration and got missed. -->
 		<button
-			class="flex h-full w-9 items-center justify-center text-foreground/80 transition-colors hover:bg-accent/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+			class="flex h-full w-10 items-center justify-center text-foreground/80 transition-colors hover:bg-accent/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
 			onclick={() => history.back()}
 			disabled={depth === 0}
 			title="Back"
@@ -182,7 +227,7 @@
 			<HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2.5} class="h-5 w-5" />
 		</button>
 		<button
-			class="flex h-full w-9 items-center justify-center text-foreground/80 transition-colors hover:bg-accent/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+			class="flex h-full w-10 items-center justify-center text-foreground/80 transition-colors hover:bg-accent/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
 			onclick={() => history.forward()}
 			disabled={depth === deepest}
 			title="Forward"
@@ -198,32 +243,18 @@
 		<AccountMenu />
 		<div class="mx-1.5 h-4 w-px bg-border"></div>
 
-		<!-- Paste a YouTube Music link and go to it: the only way into a playlist that is shared by
-		     link and never appears in search or the library (#63). -->
+		<!-- Overflow: Open link, Listen Together and Mini player collapsed here so the bar
+		     stays a single row of 40px targets. -->
 		<button
-			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
-			onclick={() => (ui.linkOpen = true)}
-			title="Open link"
-			aria-label="Open link"
-		>
-			<HugeiconsIcon icon={Link04Icon} class="h-4 w-4" />
-		</button>
-
-		<!-- Opens the same modal as the home hero's button (one dialog, mounted in +layout). -->
-		<button
-			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {lt.role !==
-			'none'
-				? 'text-primary'
-				: ''}"
-			onclick={() => (ui.ltOpen = true)}
-			title="Listen Together"
-			aria-label="Listen Together"
+			class="flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+			onclick={openOverflow}
+			title="More"
+			aria-label="More"
+			aria-expanded={openKind === 'overflow'}
 		>
 			<span class="relative">
-				<HugeiconsIcon icon={UserGroup02Icon} class="h-4 w-4" />
+				<HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} class="h-4 w-4" />
 				{#if lt.role !== 'none'}
-					<!-- Discord's status dot with a ping behind it: two layers, because animate-ping
-					     scales and fades the element it's on, so a lone dot would blink out. -->
 					<span class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5">
 						<span class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75"
 						></span>
@@ -235,7 +266,7 @@
 		</button>
 
 		<button
-			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {discordOn
+			class="flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {discordOn
 				? 'text-foreground'
 				: ''}"
 			onclick={toggleDiscord}
@@ -254,7 +285,7 @@
 		</button>
 
 		<button
-			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {connected
+			class="flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {connected
 				? 'text-foreground'
 				: ''}"
 			onclick={onScrobblerClick}
@@ -284,105 +315,25 @@
      	     green once the batch finishes. -->
 		<div class="relative flex h-full items-center">
 			<button
-				class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+				class="flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
 				title={downloads.active > 0
 					? `Downloading ${downloads.active} track${downloads.active === 1 ? '' : 's'}â€¦`
 					: downloads.done > 0
 						? 'Downloads ready'
 						: 'Downloads'}
 				aria-label="Downloads"
-				onclick={toggleDownloads}
+				onclick={(e) => toggleDownloads(e)}
 			>
-				<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
+				<HugeiconsIcon icon={Download01Icon} strokeWidth={2} class="h-4 w-4" />
 				{#if downloads.active > 0}
 					<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-yellow-400 ring-2 ring-background"></span>
 				{:else if downloads.done > 0}
 					<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-background"></span>
 				{/if}
 			</button>
-			{#if downloadsOpen}
-				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-				<div
-					class="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
-					role="dialog"
-				>
-					<div class="flex items-center justify-between border-b border-border px-4 py-2.5">
-						<span class="text-sm font-semibold">Downloads</span>
-						<div class="flex items-center gap-3">
-							{#if downloads.active > 0}
-								<button class="text-xs text-muted-foreground hover:text-foreground" onclick={cancelAllDownloads}>Cancel all</button>
-							{/if}
-							<button class="text-xs text-muted-foreground hover:text-foreground" onclick={() => (downloadsOpen = false)}>Close</button>
-						</div>
-					</div>
-					{#if downloads.items.length === 0}
-						<p class="px-4 py-6 text-center text-sm text-muted-foreground">No active downloads.</p>
-					{:else}
-						<ul class="max-h-96 overflow-y-auto py-1">
-							{#each downloads.items as it (it.id)}
-								<li class="flex items-center gap-3 px-4 py-2">
-									{#if it.thumb}
-										<img decoding="async" src={it.thumb} alt="" class="h-9 w-9 flex-shrink-0 rounded object-cover" />
-									{:else}
-										<div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
-											<HugeiconsIcon icon={Download01Icon} class="h-4 w-4" />
-										</div>
-									{/if}
-									<div class="min-w-0 flex-1">
-										<p class="truncate text-sm font-medium">{it.title}</p>
-										<p class="truncate text-xs text-muted-foreground">{it.artists ?? ''}</p>
-										{#if it.state === 'downloading'}
-											<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-												<div class="h-full rounded-full bg-yellow-400 transition-[width] duration-200" style="width:{it.percent}%"></div>
-											</div>
-										{:else if it.state === 'done'}
-											<p class="mt-1 text-xs text-green-500">Done</p>
-										{:else}
-											<p class="mt-1 truncate text-xs text-red-500">{it.message ?? 'Failed'}</p>
-										{/if}
-									</div>
-								{#if it.state === 'downloading'}
-										<span class="text-xs tabular-nums text-muted-foreground">{it.percent}%</span>
-										<button
-											class="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent/10 hover:text-foreground"
-											onclick={() => cancelDownload(it.id)}
-											aria-label="Cancel download"
-											title="Cancel"
-										>
-											<HugeiconsIcon icon={Cancel01Icon} class="h-3.5 w-3.5" />
-										</button>
-								{:else if it.state === 'done'}
-										<HugeiconsIcon icon={Tick01Icon} class="h-4 w-4 text-green-500" />
-								{:else if it.state === 'cancelled'}
-									<p class="mt-1 text-xs text-muted-foreground">Cancelled</p>
-								{:else}
-									<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-red-500" />
-								{/if}
-								</li>
-						{/each}
-						</ul>
-						{#if downloads.errored > 0 || downloads.done > 0 || downloads.items.some((i) => i.state !== 'downloading')}
-							<button
-								class="w-full border-t border-border px-4 py-2 text-xs text-muted-foreground hover:text-foreground"
-								onclick={dismissDownloads}
-							>Clear finished</button>
-						{/if}
-					{/if}
-				</div>
-			{/if}
 		</div>
 
-		<!-- Mini player: hides the app to the tray and hands over to the floating widget (mini.rs).
-		     It sits with the integrations rather than the window controls because it swaps what
-		     you're using, not the size of this window. -->
-		<button
-			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
-			onclick={openMiniPlayer}
-			title="Mini player"
-			aria-label="Mini player"
-		>
-			<HugeiconsIcon icon={MinimizeScreenIcon} class="h-4 w-4" />
-		</button>
+		<!-- Mini player lives in the overflow menu now (kept working via overflowAction). -->
 
 		<div class="mx-1.5 h-4 w-px bg-border"></div>
 
@@ -392,51 +343,156 @@
 			onclick={() => win.minimize()}
 			aria-label="Minimize"
 		>
-			<HugeiconsIcon icon={MinusSignIcon} class="h-4 w-4" />
+			<HugeiconsIcon icon={MinusSignIcon} strokeWidth={2} class="h-4 w-4" />
 		</button>
 		<button
 			class="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
 			onclick={() => win.toggleMaximize()}
 			aria-label="Maximize"
 		>
-			<HugeiconsIcon icon={SquareIcon} class="h-3.5 w-3.5" />
+			<HugeiconsIcon icon={SquareIcon} strokeWidth={2} class="h-3.5 w-3.5" />
 		</button>
 		<button
 			class="flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:text-destructive"
 			onclick={() => win.close()}
 			aria-label="Close"
 		>
-			<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
+			<HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} class="h-4 w-4" />
 		</button>
 		{/if}
 	</div>
 </header>
 
-{#if menuOpen}
+{#if openKind}
 	<button
 		class="fixed inset-0 z-40 cursor-default"
-		onclick={() => (menuOpen = false)}
+		onclick={closePopover}
 		aria-label="Close menu"
 	></button>
+	<!-- Single shared popover container for every titlebar popup (Last.fm, downloads,
+	     overflow). One body renders at a time; all three join the claimMenu/one-menu system. -->
 	<div
 		class="fixed z-50 min-w-52 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style={anchor.style}
 		{@attach fitMenu(anchor)}
 	>
-	>
-		<div class="flex items-center gap-2.5 px-2 py-2">
-			<LastFmIcon class="h-4 w-4 shrink-0" />
-			<div class="min-w-0">
-				<div class="text-sm font-medium leading-tight">Last.fm</div>
-				<div class="truncate text-xs text-muted-foreground">Scrobbling as {username}</div>
+		{#if openKind === 'lastfm'}
+			<div class="flex items-center gap-2.5 px-2 py-2">
+				<LastFmIcon class="h-4 w-4 shrink-0" />
+				<div class="min-w-0">
+					<div class="text-sm font-medium leading-tight">Last.fm</div>
+					<div class="truncate text-xs text-muted-foreground">Scrobbling as {username}</div>
+				</div>
 			</div>
-		</div>
-		<div class="mx-1 my-1 h-px bg-border"></div>
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
-			onclick={disconnect}
-		>
-			<HugeiconsIcon icon={HotspotOfflineIcon} class="h-4 w-4" /> Disconnect
-		</button>
+			<div class="mx-1 my-1 h-px bg-border"></div>
+			<button
+				class="flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
+				onclick={disconnect}
+			>
+				<HugeiconsIcon icon={HotspotOfflineIcon} strokeWidth={2} class="h-4 w-4" /> Disconnect
+			</button>
+		{:else if openKind === 'downloads'}
+			<!-- Duplicate of downloads/+page.svelte live rows (intentional, no shared component):
+			     the popover mirrors the page's live rows + footer so both stay readable alone. -->
+			<div class="flex min-h-10 items-center justify-between px-2 py-2">
+				<span class="text-sm font-semibold">Downloads</span>
+				{#if downloads.active > 0}
+					<button class="cursor-pointer text-xs text-muted-foreground hover:text-foreground" onclick={cancelAllDownloads}>Cancel all</button>
+				{/if}
+			</div>
+			{#if downloads.items.length === 0}
+				<p class="px-2 pb-2 text-sm text-muted-foreground">No active downloads.</p>
+			{:else}
+				<ul class="max-h-96 overflow-y-auto py-1">
+					{#each downloads.items as it (it.id)}
+						<li class="flex items-center gap-3 rounded-md px-2 py-2">
+							{#if it.thumb}
+								<img decoding="async" src={it.thumb} alt="" class="h-9 w-9 flex-shrink-0 rounded object-cover" />
+							{:else}
+								<div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+									<HugeiconsIcon icon={Download01Icon} strokeWidth={2} class="h-4 w-4" />
+								</div>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<p class="truncate text-sm font-medium" title={it.title}>{it.title}</p>
+								<p class="truncate text-xs text-muted-foreground">{it.artists ?? ''}</p>
+								{#if it.state === 'downloading'}
+									<div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+										<div class="h-full rounded-full bg-yellow-400 transition-[width] duration-200" style="width:{it.percent}%"></div>
+									</div>
+								{:else if it.state === 'done'}
+									<p class="mt-1 text-xs text-green-500">Done</p>
+								{:else if it.state === 'cancelled'}
+									<p class="mt-1 text-xs text-muted-foreground">Cancelled</p>
+								{:else}
+									<p class="mt-1 truncate text-xs text-red-500">{it.message ?? 'Failed'}</p>
+								{/if}
+							</div>
+							{#if it.state === 'downloading'}
+								<span class="text-xs tabular-nums text-muted-foreground">{it.percent}%</span>
+								<button
+									class="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-accent/10 hover:text-foreground"
+									onclick={() => cancelDownload(it.id)}
+									aria-label="Cancel download"
+									title="Cancel"
+								>
+									<HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} class="h-3.5 w-3.5" />
+								</button>
+							{:else if it.state === 'done'}
+								<HugeiconsIcon icon={Tick01Icon} strokeWidth={2} class="h-4 w-4 text-green-500" />
+							{:else if it.state !== 'cancelled'}
+								<HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} class="h-4 w-4 text-red-500" />
+							{/if}
+						</li>
+					{/each}
+				</ul>
+				{#if downloads.errored > 0 || downloads.done > 0 || downloads.items.some((i) => i.state !== 'downloading')}
+					<button
+						class="flex min-h-10 w-full items-center justify-center text-xs text-muted-foreground hover:text-foreground"
+						onclick={dismissDownloads}
+					>Clear finished</button>
+				{/if}
+			{/if}
+			<div class="mx-1 my-1 h-px bg-border"></div>
+			<div class="flex min-h-10 items-center justify-between gap-3 px-2 py-1">
+				<span class="text-xs text-muted-foreground">{savedCount} saved · {fmtMB(savedBytes)}</span>
+				<button class="cursor-pointer text-xs font-medium text-primary hover:underline" onclick={openDownloadsPage}>Open downloads</button>
+			</div>
+		{:else if openKind === 'overflow'}
+			<!-- The collapsed link / Listen Together / mini-player entries. Same actions as the
+			     old standalone buttons, now one 40px-row menu. -->
+			<button
+				class="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={() => overflowAction(() => (ui.linkOpen = true))}
+			>
+				<HugeiconsIcon icon={Link04Icon} strokeWidth={2} class="h-4 w-4 shrink-0 text-muted-foreground" />
+				<span class="min-w-0 flex-1">Open link</span>
+			</button>
+			<button
+				class="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={() => overflowAction(() => (ui.ltOpen = true))}
+			>
+				<span class="relative shrink-0">
+					<HugeiconsIcon icon={UserGroup02Icon} strokeWidth={2} class="h-4 w-4 text-muted-foreground" />
+					{#if lt.role !== 'none'}
+						<span class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5">
+							<span class="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-75"></span>
+							<span class="absolute inset-0 rounded-full bg-emerald-500 ring-[1.5px] ring-background"></span>
+						</span>
+					{/if}
+				</span>
+				<span class="min-w-0 flex-1">Listen Together</span>
+				{#if lt.role !== 'none'}
+					<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"></span>
+				{/if}
+			</button>
+			<button
+				class="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
+				onclick={() => overflowAction(openMiniPlayer)}
+			>
+				<HugeiconsIcon icon={MinimizeScreenIcon} strokeWidth={2} class="h-4 w-4 shrink-0 text-muted-foreground" />
+				<span class="min-w-0 flex-1">Mini player</span>
+			</button>
+		{/if}
 	</div>
 {/if}

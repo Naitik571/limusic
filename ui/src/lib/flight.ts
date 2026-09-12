@@ -38,6 +38,8 @@ export function playFlight(targetSel: string): boolean {
 	const f = flight;
 	flight = null;
 	if (!f || Date.now() - f.at > MAX_AGE) return false;
+	if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+		return false;
 	const target = document.querySelector(targetSel);
 	if (!target) return false;
 	const to = target.getBoundingClientRect();
@@ -49,7 +51,7 @@ export function playFlight(targetSel: string): boolean {
 	img.style.cssText =
 		`position:fixed;z-index:95;pointer-events:none;object-fit:cover;max-width:none;` +
 		`left:${f.rect.left}px;top:${f.rect.top}px;width:${f.rect.width}px;height:${f.rect.height}px;` +
-		`border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.45);`;
+		`border-radius:var(--r-xl, 12px);box-shadow:var(--elevation-3);`;
 	document.body.appendChild(img);
 
 	const anim = img.animate(
@@ -59,14 +61,14 @@ export function playFlight(targetSel: string): boolean {
 				top: `${f.rect.top}px`,
 				width: `${f.rect.width}px`,
 				height: `${f.rect.height}px`,
-				borderRadius: '12px'
+				borderRadius: 'var(--r-xl, 12px)'
 			},
 			{
 				left: `${to.left}px`,
 				top: `${to.top}px`,
 				width: `${to.width}px`,
 				height: `${to.height}px`,
-				borderRadius: '24px'
+				borderRadius: 'var(--r-2xl, 24px)'
 			}
 		],
 		{ duration: 380, easing: 'cubic-bezier(0.32, 0.72, 0, 1)', fill: 'forwards' }

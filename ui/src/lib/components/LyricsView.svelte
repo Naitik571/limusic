@@ -622,40 +622,64 @@
 			</div>
 		{/if}
 </div>
-{#if lyrics && !loading && !compact && !sing}
-	<p class="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
-		<span class="truncate">
-			{lyrics.source.startsWith('Source:') ? lyrics.source : `Lyrics from ${lyrics.source}`}
+{#if true}
+	<!-- Footer row: always rendered — source left, controls right — so the row never jumps
+	     layout between tracks. Controls are disabled-with-tooltip when N/A; the pills stay
+	     in theater/mini too (cycle behavior unchanged). -->
+	{@const canTranslate = !!lyrics && !loading}
+	<div class="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
+		<span
+			class="min-w-0 flex-1 truncate"
+			title={loading ? 'Loading lyrics…' : lyrics ? lyrics.source : 'No lyrics for this track'}
+		>
+			{loading
+				? 'Loading lyrics…'
+				: lyrics
+					? lyrics.source.startsWith('Source:')
+						? lyrics.source
+						: `Lyrics from ${lyrics.source}`
+					: 'No lyrics for this track'}
 		</span>
+		<div class="flex shrink-0 items-center gap-1.5">
 		{#if hasKana}
 			<button
-				class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors {romanOn
+				class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40 {romanOn
 					? 'border-primary/60 text-primary'
 					: 'hover:border-foreground/20 hover:text-foreground'}"
 				onclick={toggleRoman}
-				disabled={romanBusy}
-				title="Show kana lyrics in romaji"
+				disabled={romanBusy || !lyrics}
+				title={lyrics ? 'Show kana lyrics in romaji' : 'Romaji needs lyrics first'}
 				aria-pressed={romanOn}
 			>
 				{romanBusy ? '…' : romanOn ? 'かな' : 'Romaji'}
 			</button>
+		{:else}
+			<button
+				class="shrink-0 cursor-not-allowed rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase opacity-40"
+				disabled
+				title="No kana in these lyrics"
+			>
+				Romaji
+			</button>
 		{/if}
 		<button
-			class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors {transMode !== 'off'
+			class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40 {transMode !== 'off'
 				? 'border-primary/60 text-primary'
 				: 'hover:border-foreground/20 hover:text-foreground'}"
 			onclick={cycleTrans}
-			disabled={transBusy}
-			title="Cycle translation: off → both → translated only"
+			disabled={transBusy || !canTranslate}
+			title={canTranslate ? 'Cycle translation: off → both → translated only' : 'Translation needs lyrics first'}
 			aria-pressed={transMode !== 'off'}
 		>
 			{transBusy ? '…' : transMode === 'off' ? 'Translate' : transMode === 'both' ? 'Both' : 'Translated'}
 		</button>
 		{#if transMode !== 'off'}
 			<select
-				class="shrink-0 cursor-pointer rounded-full border bg-transparent px-1.5 py-0.5 text-[11px]"
+				class="shrink-0 cursor-pointer rounded-full border bg-transparent px-1.5 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-40"
 				value={transLang || defaultTransLang()}
 				aria-label="Translation language"
+				disabled={!canTranslate}
+				title={canTranslate ? 'Translation language' : 'Translation needs lyrics first'}
 				onchange={(e) => {
 					transLang = e.currentTarget.value;
 					transSeg = null;
@@ -668,15 +692,17 @@
 				{/each}
 			</select>
 		{/if}
-		{#if lyrics.source === 'Custom file'}
+		{#if lyrics?.source === 'Custom file'}
 			<button
 				class="ml-auto shrink-0 cursor-pointer underline-offset-2 hover:underline"
 				onclick={removeAttachedLyrics}
+				title="Remove the attached lyrics file"
 			>
 				Remove
 			</button>
 		{/if}
-	</p>
+		</div>
+	</div>
 {/if}
 
 {#if sing}

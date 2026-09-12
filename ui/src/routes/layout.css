@@ -58,6 +58,60 @@
 	--chart-4: oklch(0.5 0.134 242.749);
 	--chart-5: oklch(0.443 0.11 240.79);
 	--radius: 0.875rem;
+	/* --- Visual-token batch C: shared scale (parallel batches reference these names) --- */
+	/* Ladder (visual #1): foreground opacity steps — use instead of ad-hoc /15../85 mixes. */
+	--text-1: color-mix(in srgb, var(--foreground) 89%, transparent);
+	--text-2: color-mix(in srgb, var(--foreground) 54%, transparent);
+	--text-3: color-mix(in srgb, var(--foreground) 37%, transparent);
+	--text-4: color-mix(in srgb, var(--foreground) 20%, transparent);
+	/* Surfaces (visual #1/#4): card/muted/popover aliases so chrome reads one scale. */
+	--surface-1: var(--card);
+	--surface-2: var(--muted);
+	--surface-3: var(--popover);
+	/* Light mode + art-tint (visual #4): fixed dark scrim + light on-art text for chips,
+	   badges and controls that sit over artwork in either mode. */
+	--scrim: oklch(0.08 0 0);
+	--on-art: oklch(0.985 0 0);
+	/* Status (visual #3): solid + 12% soft wash + 30% line. Danger follows --destructive. */
+	--status-success: oklch(0.65 0.18 145);
+	--status-success-soft: color-mix(in srgb, var(--status-success) 12%, transparent);
+	--status-success-line: color-mix(in srgb, var(--status-success) 30%, transparent);
+	--status-warning: oklch(0.75 0.15 75);
+	--status-warning-soft: color-mix(in srgb, var(--status-warning) 12%, transparent);
+	--status-warning-line: color-mix(in srgb, var(--status-warning) 30%, transparent);
+	--status-info: oklch(0.65 0.15 250);
+	--status-info-soft: color-mix(in srgb, var(--status-info) 12%, transparent);
+	--status-info-line: color-mix(in srgb, var(--status-info) 30%, transparent);
+	--status-danger: var(--destructive);
+	--status-danger-soft: color-mix(in srgb, var(--status-danger) 12%, transparent);
+	--status-danger-line: color-mix(in srgb, var(--status-danger) 30%, transparent);
+	/* Radii (visual #2): frozen scale — no other radius values in owned files. */
+	--r-xs: 3px;
+	--r-sm: 4px;
+	--r-md: 6px;
+	--r-lg: 8px;
+	--r-xl: 12px;
+	--r-2xl: 16px;
+	--r-full: 999px;
+	/* Motion (visual #8). */
+	--dur-1: 120ms;
+	--dur-2: 200ms;
+	--dur-3: 350ms;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	/* Elevation (visual #11): collapsed shadow scale. */
+	--elevation-1: 0 1px 2px rgb(0 0 0 / 0.08);
+	--elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.25), 0 2px 6px -2px rgb(0 0 0 / 0.2);
+	--elevation-3: 0 14px 44px -8px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.3);
+	--elevation-4: 0 24px 48px -12px rgb(0 0 0 / 0.5), inset 0 1px 0 0 var(--glass-highlight);
+	/* Type scale (visual #6). */
+	--text-display: 1.75rem;
+	--text-title: 0.95rem;
+	--text-body: 0.875rem;
+	--text-caption: 0.75rem;
+	/* Timers (visual #7): tabular mono for countdowns/clocks. */
+	--font-timer: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	/* Glass (visual #11): blur radius token so overlays route through one var. */
+	--glass-blur: 24px;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.145 0.008 var(--hue));
 	--sidebar-primary: oklch(0.586 0.253 17.585);
@@ -324,7 +378,7 @@ html.layout-grove .app-root > div.relative.z-20 {
 	border-radius: calc(var(--radius) * 1.6);
 	overflow: hidden;
 	border: 1px solid var(--border);
-	box-shadow: 0 14px 44px rgb(0 0 0 / 0.4);
+	box-shadow: var(--elevation-3);
 }
 @media (min-width: 64rem) {
 	html.layout-grove .app-root > div.relative.z-20 {
@@ -398,7 +452,7 @@ html.ambient-on aside.glass {
 }
 .ambient-drift {
 	animation: ambient-drift 30s ease-in-out infinite alternate;
-	transition: opacity 400ms ease;
+	transition: opacity var(--dur-3) ease;
 }
 @media (prefers-reduced-motion: reduce) {
 	.ambient-drift {
@@ -505,7 +559,7 @@ html.ambient-on aside.glass {
 @keyframes content-in {
 	from { opacity: 0; }
 }
-.content-in { animation: content-in 150ms ease-out; }
+.content-in { animation: content-in var(--dur-1) var(--ease-out); }
 
 /* The card grid behind Library, Local music, search results and "See all". Same reasoning as
    Shelf.svelte: WebKit keeps every card in style, layout and paint, and because it rasterizes in
@@ -554,7 +608,7 @@ html.ambient-on aside.glass {
 	35% { transform: scale(1.45); }
 	100% { transform: scale(1); }
 }
-.animate-heart-pop { animation: heart-pop 0.3s ease-out; }
+.animate-heart-pop { animation: heart-pop var(--dur-3) var(--ease-out); }
 
 /* Range inputs (seek + volume): filled progress driven by --pct, with a thumb that
    only appears on hover/focus. Every Tauri target is WebKit/Chromium, so the
@@ -568,7 +622,7 @@ input[type='range'].range {
 }
 input[type='range'].range::-webkit-slider-runnable-track {
 	height: 4px;
-	border-radius: 999px;
+	border-radius: var(--r-full);
 	background: linear-gradient(to right, var(--primary) var(--pct, 0%), var(--muted) var(--pct, 0%));
 }
 input[type='range'].range::-webkit-slider-thumb {
@@ -584,7 +638,7 @@ input[type='range'].range::-webkit-slider-thumb {
 }
 /* The mini player's seek bar sits on cover art, where --muted has nothing to contrast with. */
 input[type='range'].range.on-art::-webkit-slider-runnable-track {
-	background: linear-gradient(to right, var(--primary) var(--pct, 0%), rgb(255 255 255 / 0.35) var(--pct, 0%));
+	background: linear-gradient(to right, var(--primary) var(--pct, 0%), color-mix(in srgb, var(--on-art) 35%, transparent) var(--pct, 0%));
 }
 
 /* The seek bar paints the Aurora headline ramp (the same teal->violet->pink family as
@@ -599,12 +653,12 @@ input[type='range'].range.range-seek::-webkit-slider-runnable-track {
 		var(--muted);
 	background-size: var(--pct, 0%) 100%;
 }
-/* Same treatment over artwork (mini player): white remainder instead of muted. */
+/* Same treatment over artwork (mini player): on-art remainder instead of muted. */
 input[type='range'].range.range-seek.on-art::-webkit-slider-runnable-track {
 	background:
 		linear-gradient(90deg, var(--primary), oklch(0.68 0.19 285) 55%, oklch(0.65 0.17 335) 95%)
 			no-repeat,
-		rgb(255 255 255 / 0.35);
+		color-mix(in srgb, var(--on-art) 35%, transparent);
 	background-size: var(--pct, 0%) 100%;
 }
 input[type='range'].range:hover::-webkit-slider-thumb,
@@ -613,6 +667,14 @@ input[type='range'].range:focus-visible::-webkit-slider-thumb {
 }
 input[type='range'].range:active::-webkit-slider-thumb {
 	transform: scale(1.25);
+}
+
+/* Timers (visual #7): countdowns/clocks render in tabular mono. Components opt in with
+   class="timer" and/or [data-timer]; both selectors share one rule so either suffices. */
+[data-timer],
+.timer {
+	font-family: var(--font-timer);
+	font-variant-numeric: tabular-nums;
 }
 
 /* Dyslexia-friendly extras (see dys.ts): neutral by default, so untouched installs render
@@ -627,13 +689,13 @@ body {
    press squash (transform-only, never layout); sidebar links drift toward their label
    on hover. Both composite, both skipped under reduced motion by the global rule. */
 .pressable {
-	transition: transform 0.15s ease-out, background-color 0.15s, color 0.15s;
+	transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1), color var(--dur-1);
 }
 .pressable:active:not(:disabled) {
 	transform: scale(0.9);
 }
 aside.glass nav a {
-	transition: transform 0.18s ease-out, background-color 0.18s, color 0.18s;
+	transition: transform var(--dur-2) var(--ease-out), background-color var(--dur-2), color var(--dur-2);
 }
 aside.glass nav a:hover {
 	transform: translateX(2px);
@@ -660,7 +722,7 @@ aside.glass nav a:hover {
 }
 ::-webkit-scrollbar-thumb {
 	background: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
-	border-radius: 999px;
+	border-radius: var(--r-full);
 }
 ::-webkit-scrollbar-thumb:hover {
 	background: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
@@ -717,7 +779,7 @@ aside.glass nav a:hover {
 	}
 	/* Icon-button fill used across chrome (hover on glass). */
 	.glass-hover {
-		transition: background-color 0.15s ease, color 0.15s ease;
+		transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
 	}
 	.glass-hover:hover {
 		background: var(--glass-strong);
@@ -727,17 +789,17 @@ aside.glass nav a:hover {
 /* Card hover lift + glow (Aurora). Applied by MediaCard and friends. */
 .aurora-card {
 	border: 1px solid transparent;
-	transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+	transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out);
 }
 .aurora-card:hover {
 	transform: translateY(-2px);
-	box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.55), 0 0 0 1px var(--glass-border);
+	box-shadow: var(--elevation-3), 0 0 0 1px var(--glass-border);
 	border-color: color-mix(in srgb, var(--primary) 35%, var(--glass-border));
 }
 
 /* Range thumbs get a soft glow ring when they appear (dark surfaces especially). */
 input[type='range'].range::-webkit-slider-thumb {
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent), 0 2px 6px rgb(0 0 0 / 0.4);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent), var(--elevation-1);
 }
 
 /* Thinner, quieter scrollbars. */
@@ -753,10 +815,10 @@ input[type='range'].range::-webkit-slider-thumb {
 [data-slot='tooltip-content'],
 [data-slot='select-content'] {
 	background: var(--glass-strong);
-	-webkit-backdrop-filter: blur(32px) saturate(180%);
-	backdrop-filter: blur(32px) saturate(180%);
+	-webkit-backdrop-filter: blur(var(--glass-blur, 32px)) saturate(180%);
+	backdrop-filter: blur(var(--glass-blur, 32px)) saturate(180%);
 	border-color: var(--glass-border);
-	box-shadow: inset 0 1px 0 0 var(--glass-highlight), 0 24px 48px -12px rgb(0 0 0 / 0.5);
+	box-shadow: var(--elevation-4);
 }
 
 /* --- Like burst (TrackRow's heart) ---
@@ -774,7 +836,7 @@ input[type='range'].range::-webkit-slider-thumb {
 	}
 }
 .heart-pop {
-	animation: heart-pop 600ms ease-out;
+	animation: heart-pop 600ms var(--ease-out);
 	transform-origin: center;
 }
 .heart-spark {
@@ -784,7 +846,7 @@ input[type='range'].range::-webkit-slider-thumb {
 	width: 4px;
 	height: 4px;
 	margin: -2px;
-	border-radius: 9999px;
+	border-radius: var(--r-full);
 	background: var(--primary);
 	pointer-events: none;
 	animation: heart-spark-fly 600ms ease-out forwards;
@@ -796,7 +858,7 @@ body.gamepad-nav :focus-visible,
 body.gamepad-nav :focus {
 	outline: 2px solid var(--primary);
 	outline-offset: 2px;
-	border-radius: 6px;
+	border-radius: var(--r-md);
 }
 
 /* Lyrics font picker */

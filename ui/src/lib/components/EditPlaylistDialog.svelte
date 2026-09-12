@@ -134,7 +134,7 @@
 				<div class="flex shrink-0 flex-col items-center gap-1.5">
 					<button
 						type="button"
-						class="group relative h-32 w-32 cursor-pointer overflow-hidden rounded-xl border bg-muted"
+						class="group relative h-32 w-32 cursor-pointer overflow-hidden rounded-[var(--r-xl)] border bg-muted"
 						onclick={pickCover}
 						aria-label="Change cover art"
 					>
@@ -145,11 +145,11 @@
 						     two utilities of the same specificity are settled by stylesheet order, so
 						     the prompt could stay invisible on the playlist that most needs it. -->
 						<span
-							class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 text-xs font-medium text-white transition group-hover:opacity-100 group-focus-visible:opacity-100 {preview
+							class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-[color-mix(in_srgb,var(--scrim)_60%,transparent)] text-xs font-medium text-[var(--on-art)] transition group-hover:opacity-100 group-focus-visible:opacity-100 {preview
 								? 'opacity-0'
 								: 'opacity-100'}"
 						>
-							<HugeiconsIcon icon={ImageAdd02Icon} class="h-6 w-6" />
+							<HugeiconsIcon strokeWidth={2} icon={ImageAdd02Icon} class="h-6 w-6" />
 							Choose image
 						</span>
 					</button>
@@ -162,7 +162,7 @@
 							onclick={() => storeCover(null)}
 							disabled={removing}
 						>
-							<HugeiconsIcon icon={Delete02Icon} class="h-3.5 w-3.5" />
+							<HugeiconsIcon strokeWidth={2} icon={Delete02Icon} class="h-3.5 w-3.5" />
 							{removing ? 'Removing…' : 'Remove'}
 						</Button>
 					{/if}
@@ -174,11 +174,11 @@
 						placeholder="Description"
 						aria-label="Playlist description"
 						rows="4"
-						class="w-full flex-1 resize-none rounded-2xl border border-input bg-input/30 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+						class="w-full flex-1 resize-none rounded-[var(--r-2xl)] border border-input bg-input/30 px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
 					></textarea>
 				</div>
 			</div>
-			<div class="flex items-center justify-between gap-4 rounded-2xl border px-3 py-2.5">
+			<div class="flex items-center justify-between gap-4 rounded-[var(--r-2xl)] border px-3 py-2.5">
 				<div class="min-w-0">
 					<div class="text-sm font-medium">Public</div>
 					<p class="text-xs text-muted-foreground">

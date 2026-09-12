@@ -3,9 +3,13 @@
 	// eyebrow + label while the app boots ("Library / Restoring queue…"), checkmark + fade on
 	// completion. An 8s safety net hides it no matter what; pointer-events-none so a stuck
 	// node can never block input.
-	import { ui } from '$lib/player.svelte';
+	import { auth, ui } from '$lib/player.svelte';
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	// Onboarding (interior #1): while the signed-out hero card waits for a choice, the boot
+	// pill stands down — the card owns the visitor's attention, and a pill over it reads as
+	// a second thing to answer. Signed-in boots are untouched.
 
 	$effect(() => {
 		// Re-arm the safety net on every stage change: a progressing boot keeps its pill.
@@ -20,9 +24,11 @@
 			if (timer) clearTimeout(timer);
 		};
 	});
+
+	const onboardingHold = $derived(!!auth.account && !auth.account.signedIn && !ui.welcomed);
 </script>
 
-{#if ui.bootVeil}
+{#if ui.bootVeil && !onboardingHold}
 	<div
 		class="bp-boot-veil {ui.bootVeil.done ? 'complete' : ''}"
 		role="status"

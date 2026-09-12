@@ -6,7 +6,7 @@
 // (k-means, palette libraries) is a dependency and a frame budget for a result nobody can tell
 // apart at accent size.
 
-import { hexToHsv, hsvToHex } from './color.ts';
+import { contrastRatio, hexToHsv, hsvToHex } from './color.ts';
 
 const SIZE = 32;
 
@@ -48,7 +48,16 @@ export function pickAccent(data: Uint8ClampedArray): string | null {
 			.join('');
 	const hsv = hexToHsv(hex);
 	if (!hsv || hsv.s < 0.15) return null; // greyscale cover: leave the user's theme alone
-	return hsvToHex({ h: hsv.h, s: Math.min(0.85, Math.max(0.5, hsv.s)), v: Math.min(0.9, Math.max(0.62, hsv.v)) });
+	let accent = { h: hsv.h, s: Math.min(0.85, Math.max(0.5, hsv.s)), v: Math.min(0.9, Math.max(0.62, hsv.v)) };
+	// Clamp toward ≥4.5:1 against the light card (the stricter side for saturated mid tones) by
+	// darkening within the band. Best-effort: the floor stays at 0.62 so the accent never slides
+	// into near-black, and the foreground picker (bestForeground) covers whatever remains.
+	let out = hsvToHex(accent);
+	while ((contrastRatio(out, '#ffffff') ?? 99) < 4.5 && accent.v > 0.62) {
+		accent = { ...accent, v: Math.max(0.62, accent.v - 0.02) };
+		out = hsvToHex(accent);
+	}
+	return out;
 }
 
 /**

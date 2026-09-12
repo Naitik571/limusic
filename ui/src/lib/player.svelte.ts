@@ -449,6 +449,11 @@ function savePersonal() {
 	}
 }
 
+// Onboarding choice (interior #1): persisted so the home hero doesn't re-ask every launch.
+// The actual read happens after `ui` is declared (see below) — module scope runs top to bottom.
+// (helper + setter live with the ui state; key const stays here next to PERSONAL_KEY.)
+const WELCOMED_KEY = 'limusic:welcomed';
+
 /** Add to Shortcuts (evicting the tile gone longest unplayed when the grid is full). */
 export function addPick(item: BrowseItem) {
 	const added = pl.addPick(personal, item);
@@ -1085,6 +1090,7 @@ export const ui = $state({
 	// a true move, not a copy. Cleared on open so it never leaks between sessions.
 	moveFrom: '' as string,
 	toast: null as Toast | null,
+	toasts: [] as ToastItem[], // newest-on-top stack, capped at 3 (see show())
 	settingsOpen: false,
 	settingsTab: '' as string, // when set, the settings modal opens on this tab (consumed on open)
 	ltOpen: false, // the Listen Together modal
@@ -1097,6 +1103,10 @@ export const ui = $state({
 	channelIdentities: [] as AccountIdentity[],
 	// Boot veil: bottom-pill startup toast (BlazePod-style). Null = hidden.
 	bootVeil: null as { eyebrow: string; label: string; done: boolean } | null,
+	// Onboarding choice (interior #1): signed-out visitors pick "Sign in" or "Continue
+	// without sign-in" on the home hero card. Persisted so the hero doesn't re-ask every
+	// launch; sign-in itself is observed via `auth`, so this only gates the signed-out feed.
+	welcomed: false,
 	// Native OS frame instead of the custom titlebar (Settings → General → System).
 	nativeFrame: false
 });
@@ -1109,29 +1119,53 @@ export function openChannelPicker(required = false) {
 
 export type Toast = {
 	msg: string;
-	kind: 'info' | 'success' | 'error';
+	kind: 'info' | 'success' | 'error' | 'warning';
 	/** Optional call-to-action button (e.g. Play on a completed download). */
 	action?: { label: string; run: () => void };
 };
 
+export type ToastItem = Toast & { id: number };
+
+// Last stream/playback failure, for Settings → About → Diagnostics. Written by the
+// `playback-error` listener in `initApp`; read-only everywhere else, no backend changes.
+export const lastStreamError = $state<{ msg: string; at: number }>({ msg: '', at: 0 });
+
 // A counter, not the toast itself: $state proxies the stored object, so `ui.toast === t` is never
 // true and the toast would never clear. It also means a repeated message can't cut its own retry short.
 let seq = 0;
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
-function show(msg: string, kind: Toast['kind'], ms = 2500, action?: Toast['action']) {
-	const id = ++seq;
-	ui.toast = { msg, kind, action };
-	clearTimeout(toastTimer);
-	toastTimer = setTimeout(() => {
-		if (seq === id) ui.toast = null;
-	}, ms);
+const TOAST_MAX = 3;
+const TOAST_MS: Record<Toast['kind'], number> = {
+	info: 2500,
+	success: 2500,
+	warning: 4000,
+	error: 4000
+};
+
+function pruneToast(id: number) {
+	ui.toasts = ui.toasts.filter((t) => t.id !== id);
+	ui.toast = ui.toasts[0] ?? null;
 }
 
-/** Sonner-shaped. Bare `toast(msg)` is a neutral notice; .success/.error pick the icon. */
+function show(msg: string, kind: Toast['kind'], ms?: number, action?: Toast['action']) {
+	const id = ++seq;
+	const item: ToastItem = { id, msg, kind, action };
+	// Newest-on-top, capped so a burst of failures can't cover the player.
+	ui.toasts = [item, ...ui.toasts].slice(0, TOAST_MAX);
+	ui.toast = ui.toasts[0] ?? null;
+	const ttl = ms ?? TOAST_MS[kind];
+	setTimeout(() => pruneToast(id), ttl);
+}
+
+export function dismissToast(id: number) {
+	pruneToast(id);
+}
+
+/** Sonner-shaped. Bare `toast(msg)` is a neutral notice; .success/.error/.warning pick the icon. */
 export const toast = Object.assign((msg: string) => show(msg, 'info'), {
 	info: (msg: string) => show(msg, 'info'),
 	success: (msg: string) => show(msg, 'success'),
+	warning: (msg: string) => show(msg, 'warning'),
 	error: (msg: string) => show(msg, 'error'),
 	/** Notice with an action button (stays up longer so it can be clicked). */
 	action: (msg: string, label: string, run: () => void) =>
@@ -1142,12 +1176,34 @@ export const toast = Object.assign((msg: string) => show(msg, 'info'), {
 			{
 				label,
 				run: () => {
+					ui.toasts = [];
 					ui.toast = null;
 					run();
 				}
 			}
 		)
 });
+
+// Onboarding choice (interior #1): read once at module scope so the home hero can gate the
+// signed-out feed on the very first paint. Same best-effort localStorage contract as personal.
+if (browser) {
+	try {
+		ui.welcomed = localStorage.getItem(WELCOMED_KEY) === '1';
+	} catch {
+		// Unreadable store — the hero simply asks again.
+	}
+}
+
+/** Signed-out visitor chose "Continue without sign-in": remember it, feed may load. */
+export function dismissOnboarding() {
+	ui.welcomed = true;
+	if (!browser) return;
+	try {
+		localStorage.setItem(WELCOMED_KEY, '1');
+	} catch {
+		// Best-effort, never fatal.
+	}
+}
 
 export function openAddToPlaylist(song: SongItem) {
 	ui.addSongs = [song];
@@ -1253,7 +1309,11 @@ export function initApp(mini = false): () => void {
 			// moved past, and applying it would yank the thumb backwards mid-drag.
 			if (!volTimer) playback.volume = v;
 		}),
-		api.onPlaybackError((msg) => toast.error(msg)),
+		api.onPlaybackError((msg) => {
+			lastStreamError.msg = msg;
+			lastStreamError.at = Date.now();
+			toast.error(msg);
+		}),
 		api.onPlaybackNotice((msg) => toast(msg)), // auto-skipped an unplayable track
 		api.onCoverError((msg) => toast.error(msg)), // playlist artwork YouTube wouldn't take
 		api.onSleepTimerFired(() => {
@@ -1388,7 +1448,6 @@ export function initApp(mini = false): () => void {
 	const teardown = () => {
 		clearTimeout(gpNavTimer);
 		clearTimeout(gpRevealTimer);
-		clearTimeout(toastTimer);
 		subs.forEach((u) => u.then((f) => f()));
 	};
 	// Cold-start guard: initApp runs once per window, but the async seeds below race live

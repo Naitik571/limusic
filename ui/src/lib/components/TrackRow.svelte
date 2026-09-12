@@ -263,7 +263,7 @@
 			fadeNext={fadeNext ?? null}
 			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground focus-visible:opacity-100 {compact
 				? ''
-				: 'opacity-0 group-hover:opacity-100'}"
+				: 'opacity-40 hover:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100'}"
 		/>
 	</div>
 </div>

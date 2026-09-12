@@ -61,7 +61,7 @@
 		}}
 		aria-label="Previous"
 	>
-		<HugeiconsIcon icon={PreviousIcon} />
+		<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} />
 	</button>
 	<button
 		class="aqua-play ps-aqua"
@@ -71,7 +71,7 @@
 		}}
 		aria-label="Play or pause"
 	>
-		{#if paused}<HugeiconsIcon icon={PlayIcon} />{:else}<HugeiconsIcon icon={PauseIcon} />{/if}
+		{#if paused}<HugeiconsIcon strokeWidth={2} icon={PlayIcon} />{:else}<HugeiconsIcon strokeWidth={2} icon={PauseIcon} />{/if}
 	</button>
 	<button
 		class="mbtn"
@@ -81,6 +81,6 @@
 		}}
 		aria-label="Next"
 	>
-		<HugeiconsIcon icon={NextIcon} />
+		<HugeiconsIcon strokeWidth={2} icon={NextIcon} />
 	</button>
 </div>

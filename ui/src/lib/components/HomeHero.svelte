@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { UserMultiple02Icon } from '@hugeicons/core-free-icons';
+	import { UserMultiple02Icon, Login01Icon, PlayIcon } from '@hugeicons/core-free-icons';
 	import SearchSuggest from '$lib/components/SearchSuggest.svelte';
-	import { auth, playback, ui } from '$lib/player.svelte';
+	import * as api from '$lib/api';
+	import { auth, dismissOnboarding, playback, ui } from '$lib/player.svelte';
 	import { lt } from '$lib/lt.svelte';
 	import { thumb } from '$lib/thumb';
+
+	// Onboarding (interior #1): signed out and no choice yet — one hero card owns the
+	// header. Signed-in behaviour below is untouched.
+	const showOnboard = $derived(!auth.account?.signedIn && !ui.welcomed);
 
 	// Fixed at mount — a greeting that flips mid-session is uncanny.
 	const hour = new Date().getHours();
@@ -103,5 +108,37 @@
 				</form>
 			</div>
 		</div>
+		{#if showOnboard}
+			<!-- Signed-out onboarding: one card — what sign-in unlocks, sign in, or continue
+			     without. The feed below stays held until either choice (see +page.svelte). -->
+			<div
+				class="mx-auto mt-6 max-w-md border p-5 text-center"
+				style="background:var(--surface-1);border-color:var(--border);border-radius:var(--r-lg)"
+			>
+				<p class="text-sm font-semibold" style="color:var(--text-1)">Your music, everywhere you left it</p>
+				<p class="mt-1.5 text-sm" style="color:var(--text-2)">
+					Sign in to fill home with mixes and playlists built from what you listen to, and
+					sync your library across devices.
+				</p>
+				<div class="mt-4 flex flex-col items-center gap-2">
+					<button
+						onclick={() => api.loginWebview()}
+						class="flex w-full cursor-pointer items-center justify-center gap-2 px-4 py-2 text-sm font-semibold"
+						style="background:var(--primary);color:var(--primary-foreground);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					>
+						<HugeiconsIcon icon={Login01Icon} strokeWidth={2} class="h-4 w-4" />
+						Sign in with Google
+					</button>
+					<button
+						onclick={() => dismissOnboarding()}
+						class="flex cursor-pointer items-center justify-center gap-2 px-4 py-1.5 text-sm font-medium"
+						style="color:var(--text-2)"
+					>
+						<HugeiconsIcon icon={PlayIcon} strokeWidth={2} class="h-4 w-4" />
+						Continue without sign-in
+					</button>
+				</div>
+			</div>
+		{/if}
 	</div>
 </div>

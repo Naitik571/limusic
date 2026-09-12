@@ -62,9 +62,9 @@
 	// Every plain icon button. Fixed square boxes, flex-centred: left to inline layout, each glyph
 	// sits wherever its own baseline puts it and neighbours don't line up.
 	const artBtn =
-		'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-muted';
+		'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-md)] transition-colors hover:bg-muted';
 	const panelBtn =
-		'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted';
+		'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-full)] transition-colors hover:bg-muted';
 
 	// Volume: the slider is revealed by hovering the control, and stays out for as long as it is
 	// being dragged. Hover alone can't say the second part — the strip is 24px tall, so a pointer
@@ -104,7 +104,7 @@
      (the compositor can't round an undecorated window for us — same trick as the main window). -->
 <div
 	data-tauri-drag-region="deep"
-	class="group relative flex h-screen w-screen select-none overflow-hidden rounded-2xl border-transparent glass-strong text-foreground"
+	class="group relative flex h-screen w-screen select-none overflow-hidden rounded-[var(--r-2xl)] border-transparent glass-strong text-foreground"
 >
 	<!-- Cover art, masked into the card. It sits under the left half, so the pill reads as a
 	     snapped-off frame of what's playing. Keyed so a track change cross-fades. -->
@@ -123,19 +123,19 @@
 	     never draws an edge of its own. The art stays plainly visible under it. -->
 	<div
 		class="pointer-events-none absolute inset-y-0 left-0 w-[56%]"
-		style="background:linear-gradient(to right,rgb(0 0 0/0.72) 0%,rgb(0 0 0/0.58) 70%,rgb(0 0 0/0) 100%)"
+		style="background:linear-gradient(to right,color-mix(in srgb, var(--scrim) 72%, transparent) 0%,color-mix(in srgb, var(--scrim) 58%, transparent) 70%,transparent 100%)"
 	></div>
 
 	<!-- Back to the app. Hidden until the pointer is over the widget: it is not part of the design,
 	     it is the way out of it. The tray icon does the same thing. The command destroys this very
 	     window, so its reply lands nowhere — the rejection is swallowed rather than left dangling. -->
 	<button
-		class="absolute left-2 top-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-md text-white/60 opacity-0 transition hover:bg-white/15 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+		class="absolute left-2 top-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-[var(--r-md)] text-[color-mix(in_srgb,var(--on-art)_60%,transparent)] opacity-0 transition hover:bg-[color-mix(in_srgb,var(--on-art)_15%,transparent)] hover:text-[var(--on-art)] focus-visible:opacity-100 group-hover:opacity-100"
 		onclick={() => api.closeMini().catch(() => {})}
 		title="Back to Limusic"
 		aria-label="Back to Limusic"
 	>
-		<HugeiconsIcon icon={MaximizeScreenIcon} class="h-3.5 w-3.5" />
+		<HugeiconsIcon strokeWidth={2} icon={MaximizeScreenIcon} class="h-4 w-4" />
 	</button>
 
 	<!-- Left: what's playing, over the art. -->
@@ -176,7 +176,7 @@
 					aria-label={playback.volume === 0 ? 'Unmute' : 'Mute'}
 				>
 					<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount -->
-					<HugeiconsIcon
+					<HugeiconsIcon strokeWidth={2}
 						icon={VolumeHighIcon}
 						altIcon={VolumeMute02Icon}
 						showAlt={playback.volume === 0}
@@ -196,7 +196,7 @@
 						onanimationend={() => (justLiked = false)}
 					>
 						<!-- fill-current + text-primary is the same "liked" treatment the player bar uses. -->
-						<HugeiconsIcon
+						<HugeiconsIcon strokeWidth={2}
 							icon={FavouriteIcon}
 							class="h-4 w-4 {playback.liked ? 'fill-current text-primary' : ''}"
 						/>
@@ -205,16 +205,16 @@
 			{/if}
 		</div>
 
-		<div class="min-w-0 [text-shadow:0_1px_4px_rgb(0_0_0/0.7)]">
-			<div class="truncate font-heading text-[0.95rem] font-semibold leading-tight text-white">
+		<div class="min-w-0 [text-shadow:0_1px_4px_color-mix(in_srgb,var(--scrim)_70%,transparent)]">
+			<div class="truncate font-heading text-[var(--text-title)] font-semibold leading-tight text-[var(--on-art)]">
 				{now?.title ?? 'Nothing playing'}
 			</div>
-			<div class="truncate text-xs leading-snug text-white/75">{now?.artists ?? ''}</div>
+			<div class="truncate text-xs leading-snug text-[color-mix(in_srgb,var(--on-art)_75%,transparent)]">{now?.artists ?? ''}</div>
 		</div>
 
 		<div class="flex items-center gap-2">
 			<button class={artBtn} onclick={() => api.prevTrack()} aria-label="Previous">
-				<HugeiconsIcon icon={PreviousIcon} class="h-4 w-4" />
+				<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} class="h-4 w-4" />
 			</button>
 			<input
 				type="range"
@@ -228,7 +228,7 @@
 				aria-label="Seek"
 			/>
 			<button class={artBtn} onclick={() => api.nextTrack()} aria-label="Next">
-				<HugeiconsIcon icon={NextIcon} class="h-4 w-4" />
+				<HugeiconsIcon strokeWidth={2} icon={NextIcon} class="h-4 w-4" />
 			</button>
 		</div>
 	</div>
@@ -254,7 +254,7 @@
 		>
 			{#each upcoming as { item, index } (item.video_id + index)}
 				<button
-					class="flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-1.5 py-0.5 text-left transition-colors hover:bg-muted"
+					class="flex shrink-0 cursor-pointer items-center gap-2 rounded-[var(--r-md)] px-1.5 py-0.5 text-left transition-colors hover:bg-muted"
 					onclick={() => api.playIndex(index)}
 					title={item.title}
 				>
@@ -269,7 +269,7 @@
 						<div
 							class="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground/50"
 						>
-							<HugeiconsIcon icon={MusicNote01Icon} class="h-3 w-3" />
+							<HugeiconsIcon strokeWidth={2} icon={MusicNote01Icon} class="h-4 w-4" />
 						</div>
 					{/if}
 					<span class="truncate text-xs">{item.title}</span>
@@ -289,7 +289,7 @@
 				aria-label="Shuffle"
 				aria-pressed={shuffleOn}
 			>
-				<HugeiconsIcon icon={ShuffleIcon} class="h-4 w-4" />
+				<HugeiconsIcon strokeWidth={2} icon={ShuffleIcon} class="h-4 w-4" />
 			</button>
 			<button
 				class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/80"
@@ -298,7 +298,7 @@
 			>
 				<!-- HugeiconsIcon freezes `icon` at mount, so the swap has to go through
 				     altIcon/showAlt — a ternary on `icon` would never repaint. -->
-				<HugeiconsIcon
+				<HugeiconsIcon strokeWidth={2}
 					icon={PauseIcon}
 					altIcon={PlayIcon}
 					showAlt={playback.paused}
@@ -311,7 +311,7 @@
 				aria-label="Repeat: {repeat}"
 				aria-pressed={repeat !== 'off'}
 			>
-				<HugeiconsIcon
+				<HugeiconsIcon strokeWidth={2}
 					icon={RepeatIcon}
 					altIcon={RepeatOne01Icon}
 					showAlt={repeat === 'one'}
@@ -326,7 +326,7 @@
 				aria-label={tab === 'lyrics' ? 'Show queue' : 'Show lyrics'}
 				aria-pressed={tab === 'lyrics'}
 			>
-				<HugeiconsIcon icon={Mic01Icon} class="h-4 w-4" />
+				<HugeiconsIcon strokeWidth={2} icon={Mic01Icon} class="h-4 w-4" />
 			</button>
 		</div>
 	</div>

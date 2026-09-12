@@ -124,15 +124,15 @@
 		{:else if !inRoom}
 			<!-- Setup: join a friend (just a name + invite) or host your own. -->
 			<div class="flex flex-col gap-4 pt-1">
-				<div class="flex rounded-lg bg-muted p-1 text-sm">
+				<div class="flex rounded-[var(--r-lg)] bg-muted p-1 text-sm">
 					<button
-						class="flex-1 rounded-md py-1.5 font-medium transition-colors {mode === 'join'
+						class="flex-1 rounded-[var(--r-md)] py-1.5 font-medium transition-colors {mode === 'join'
 							? 'bg-background shadow-sm'
 							: 'text-muted-foreground'}"
 						onclick={() => (mode = 'join')}>Join</button
 					>
 					<button
-						class="flex-1 rounded-md py-1.5 font-medium transition-colors {mode === 'host'
+						class="flex-1 rounded-[var(--r-md)] py-1.5 font-medium transition-colors {mode === 'host'
 							? 'bg-background shadow-sm'
 							: 'text-muted-foreground'}"
 						onclick={() => (mode = 'host')}>Host</button
@@ -180,12 +180,12 @@
 						{isHost ? 'Hosting' : 'Listening'} · {lt.status}
 					</div>
 					<div
-						class="mt-2 select-all break-all rounded-md bg-background px-2 py-1.5 text-left font-mono text-[11px] leading-snug"
+						class="mt-2 select-all break-all rounded-[var(--r-md)] bg-background px-2 py-1.5 text-left font-mono text-[var(--text-caption)] leading-snug"
 					>
 						{invite}
 					</div>
 					<Button variant="outline" size="sm" class="mt-3 w-full" onclick={copyInvite}>
-						<HugeiconsIcon icon={Copy01Icon} class="h-4 w-4" />
+						<HugeiconsIcon strokeWidth={2} icon={Copy01Icon} class="h-4 w-4" />
 						Copy invite
 					</Button>
 				</div>
@@ -216,10 +216,10 @@
 								<div class="flex min-w-0 items-center gap-2">
 									<span class="min-w-0 flex-1 truncate text-sm">{p.username}</span>
 									<Button size="sm" onclick={() => api.ltApproveJoin(p.userId)}>
-										<HugeiconsIcon icon={Tick02Icon} class="h-4 w-4" />
+										<HugeiconsIcon strokeWidth={2} icon={Tick02Icon} class="h-4 w-4" />
 									</Button>
 									<Button size="sm" variant="outline" onclick={() => api.ltRejectJoin(p.userId)}>
-										<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
+										<HugeiconsIcon strokeWidth={2} icon={Cancel01Icon} class="h-4 w-4" />
 									</Button>
 								</div>
 							{/each}
@@ -234,8 +234,8 @@
 						{#each lt.users as u (u.user_id)}
 							<div class="flex min-w-0 items-center gap-2 rounded-md px-1 py-1">
 								<span
-									class="h-2 w-2 shrink-0 rounded-full {u.is_connected
-										? 'bg-green-500'
+									class="h-2 w-2 shrink-0 rounded-[var(--r-full)] {u.is_connected
+										? 'bg-[var(--status-success)]'
 										: 'bg-muted-foreground/40'}"
 									title={u.is_connected ? 'Connected' : 'Disconnected'}
 								></span>
@@ -243,7 +243,7 @@
 									{u.username}{u.user_id === lt.myId ? ' (you)' : ''}
 								</span>
 								{#if u.is_host}
-									<HugeiconsIcon icon={CrownIcon} class="h-4 w-4 shrink-0 text-yellow-500" />
+									<HugeiconsIcon strokeWidth={2} icon={CrownIcon} class="h-4 w-4 shrink-0 text-[var(--status-warning)]" />
 								{/if}
 								{#if isHost && u.user_id !== lt.myId}
 									<button
@@ -251,14 +251,14 @@
 										title="Make host"
 										onclick={() => api.ltTransferHost(u.user_id)}
 									>
-										<HugeiconsIcon icon={Exchange01Icon} class="h-4 w-4" />
+										<HugeiconsIcon strokeWidth={2} icon={Exchange01Icon} class="h-4 w-4" />
 									</button>
 									<button
 										class="shrink-0 text-muted-foreground hover:text-destructive"
 										title="Remove"
 										onclick={() => api.ltKick(u.user_id)}
 									>
-										<HugeiconsIcon icon={UserRemove01Icon} class="h-4 w-4" />
+										<HugeiconsIcon strokeWidth={2} icon={UserRemove01Icon} class="h-4 w-4" />
 									</button>
 								{/if}
 							</div>
@@ -280,10 +280,10 @@
 										</div>
 									</div>
 									<Button size="sm" onclick={() => api.ltApproveSuggestion(s.id)}>
-										<HugeiconsIcon icon={Tick02Icon} class="h-4 w-4" />
+										<HugeiconsIcon strokeWidth={2} icon={Tick02Icon} class="h-4 w-4" />
 									</Button>
 									<Button size="sm" variant="outline" onclick={() => api.ltRejectSuggestion(s.id)}>
-										<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
+										<HugeiconsIcon strokeWidth={2} icon={Cancel01Icon} class="h-4 w-4" />
 									</Button>
 								</div>
 							{/each}
@@ -295,13 +295,13 @@
 				<div class="flex items-center gap-2 border-t pt-3">
 					{#if !isHost}
 						<Button variant="outline" size="sm" onclick={() => api.ltRequestSync()}>
-							<HugeiconsIcon icon={RefreshIcon} class="h-4 w-4" />
+							<HugeiconsIcon strokeWidth={2} icon={RefreshIcon} class="h-4 w-4" />
 							Re-sync
 						</Button>
 					{/if}
 					<div class="flex-1"></div>
 					<Button variant="destructive" size="sm" onclick={leave}>
-						<HugeiconsIcon icon={Logout01Icon} class="h-4 w-4" />
+						<HugeiconsIcon strokeWidth={2} icon={Logout01Icon} class="h-4 w-4" />
 						Leave
 					</Button>
 				</div>

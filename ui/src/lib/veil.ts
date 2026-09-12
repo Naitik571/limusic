@@ -10,6 +10,9 @@ type Rgb = [number, number, number];
 const VEIL_MIN = 0.34;
 const VEIL_MAX = 0.82;
 const CONTRAST_TARGET = 4.5;
+/** Art-tint chroma cap (visual #5): saturated covers must not push surfaces past this HSV
+ * saturation — applied in theme.svelte.ts before the tint/veil path reads the colour. */
+export const ART_TINT_MAX_SATURATION = 0.6;
 
 let normCtx: CanvasRenderingContext2D | null | undefined;
 

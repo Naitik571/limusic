@@ -5,6 +5,7 @@
 /** Shared implementation: a glass chip carrying `char`, rising 48px and fading over 700ms. */
 function fly(char: string, x: number, y: number): void {
 	if (typeof document === 'undefined') return; // SSR guard
+	if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
 	const el = document.createElement('span');
 	el.textContent = char;
 	el.setAttribute('aria-hidden', 'true');
@@ -16,12 +17,12 @@ function fly(char: string, x: number, y: number): void {
 		'pointer-events:none',
 		'transform:translate(-50%,-50%)',
 		'padding:2px 8px',
-		'border-radius:9999px',
+		'border-radius:var(--r-full, 999px)',
 		'background:var(--glass-strong)',
 		'border:1px solid var(--glass-border)',
-		'box-shadow:inset 0 1px 0 0 var(--glass-highlight)',
-		'-webkit-backdrop-filter:blur(8px)',
-		'backdrop-filter:blur(8px)',
+		'box-shadow:var(--elevation-1)',
+		'-webkit-backdrop-filter:blur(var(--glass-blur, 8px))',
+		'backdrop-filter:blur(var(--glass-blur, 8px))',
 		'color:var(--primary)',
 		'font-weight:700',
 		'font-size:14px',
