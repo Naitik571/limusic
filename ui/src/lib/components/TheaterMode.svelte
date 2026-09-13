@@ -36,7 +36,7 @@
 	import { hexToHsv } from '$lib/color';
 	import { t } from '$lib/i18n.svelte';
 	import { appearance } from '$lib/theme.svelte';
-	import { thumb } from '$lib/thumb';
+	import { thumb, thumbHQ } from '$lib/thumb';
 	import LyricsView from './LyricsView.svelte';
 
 	const close = () => (ui.theaterOpen = false);
@@ -75,7 +75,13 @@
 		playback.now?.thumbnail;
 		attempt = 0;
 	});
-	const srcs = $derived([720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px)));
+	// Full-res first (1080 token / maxresdefault), then step down — same cascade as
+	// NowPlaying. Duplicates dropped so onerror can't land on the same URL twice.
+	const srcs = $derived(
+		[thumbHQ(playback.now?.thumbnail), ...[720, 400, 120].map((px) => thumb(playback.now?.thumbnail, px))].filter(
+			(u, i, a) => u && u !== a[i - 1]
+		) as string[]
+	);
 	const src = $derived(srcs[attempt]);
 
 	let accent = $state<string | null>(null);
