@@ -7,7 +7,17 @@ until a version and date are stamped on them.
 
 ## [Unreleased]
 
-- Default layout removed — Grove is now the classic balanced look and the fallback for stored `default` selections; layouts are Grove, Canopy and Poolside (Beta).
+## [0.7.4] - 2026-09-13
+
+- Signature themes — Midnight (default, true-black OLED), Aurora (artwork-follow showcase), Mono (grayscale), Canopy Light (finished light theme); Catppuccin kept, old hues preserved as custom accents. Wash intensity, follow strength, true-black toggle, Sharp/Soft geometry.
+- Layouts now Grove, Canopy, Poolside (Beta) — Default removed (migrates to Grove).
+- Premium feel — spring physics with overshoot, animated exits everywhere, content-ready splash, UI sounds with success/error chimes, settings microcopy.
+- Anti-jank — karaoke clock sleeps off-sync, scroll-glide cancels cleanly, playlist search cap fixed, library grids skip offscreen work.
+- Lyrics overhaul — real Unison client (TTML word timings), 4s bounds for Apple/Musixmatch/Kugou chains, Kugou blind fallback deleted, mask-wipe karaoke, Resume-autoscroll pill, trailing line, offset pill, translation toasts + ja/ko/zh, composer clock rebase, full lyrics i18n.
+- Kodama motion set — EQ playing indicator, splash, menu/toast transitions, staggered entrances, skip nudge, cover pop, particle disintegrate on remove, seek shimmer, pin shake, note float.
+- Interior UX — signed-out onboarding, toast stack, queue history button, unified downloads surfaces, titlebar menus, lyrics footer discipline, EmptyState everywhere, undo toasts, diagnostics + copy report.
+- Theater artwork full-res first (was capped at 720px).
+- README as product page (screenshots, curated features); history lives here now.
 
 ## [0.7.3] - 2026-09-12
 
