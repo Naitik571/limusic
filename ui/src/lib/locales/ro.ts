@@ -318,4 +318,21 @@ export const ro: DeepPartial<Translations> = {
 		},
 		title: 'Setări',
 	},
+	lyrics: {
+		instrumental: 'Instrumental',
+		instrumental_hint: 'Nu sunt cuvinte aici — bucură-te de muzică',
+		none_found: 'Nu s-au găsit versuri pentru această piesă.',
+		no_lyrics_short: 'Fără versuri pentru această piesă.',
+		loading: 'Se încarcă versurile…',
+		resume_autoscroll: 'Reia derularea automată',
+		romaji: 'Romaji',
+		translate: 'Tradu',
+		both: 'Ambele',
+		translated: 'Tradus',
+		compose: {
+			title: 'Sincronizează versurile',
+			start_over: 'Ia-o de la capăt',
+			saving: 'Se salvează…',
+		},
+	},
 };

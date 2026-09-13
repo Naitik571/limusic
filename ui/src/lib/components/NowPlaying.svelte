@@ -584,7 +584,7 @@
 		{/if}
 
 		{#if tabbed}
-			<div class="flex min-h-0 flex-col {big ? 'flex-1' : 'w-full md:w-[22rem] xl:w-[26rem]'}">
+			<div data-np-lyrics class="flex min-h-0 flex-col {big ? 'flex-1' : 'w-full md:w-[22rem] xl:w-[26rem]'}">
 				<Tabs.Root
 				value={np.tab}
 				onValueChange={(v) => (np.tab = v as typeof np.tab)}
@@ -651,6 +651,7 @@
 	     (Rust-cached) lyrics rather than fighting the panel instance for scroll position. -->
 	<div
 		transition:fade={{ duration: 180 }}
+		data-np-sing
 		class="fixed inset-x-0 bottom-0 z-[90] flex min-h-0 flex-col overflow-hidden bg-background"
 		style="top: 0"
 	>
@@ -781,3 +782,14 @@
 		</footer>
 	{/if}
 </div>
+
+<style>
+	/* Lyric-column scrim (tabbed column + sing takeover): the artwork wash sits behind the
+	   text, so the scroller carries its own contrast plate, which never scrolls away.
+	   No text-shadow. */
+	[data-np-lyrics] :global(.lyrics-scroller),
+	[data-np-sing] :global(.lyrics-scroller) {
+		background-color: color-mix(in srgb, var(--scrim) 38%, transparent);
+		border-radius: var(--r-lg);
+	}
+</style>

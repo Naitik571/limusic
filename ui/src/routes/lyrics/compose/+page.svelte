@@ -11,6 +11,7 @@
 	import * as api from '$lib/api';
 	import type { SongItem } from '$lib/api';
 	import { playback, playSong, toast } from '$lib/player.svelte';
+	import { t } from '$lib/i18n.svelte';
 
 	type Line = { text: string; ms: number | null };
 
@@ -26,19 +27,34 @@
 	let saving = $state(false);
 	let draftTimer: ReturnType<typeof setInterval> | null = null;
 
-	// Live clock (rAF-interpolated like LyricsView) for tap precision.
+	// Live clock (rAF-interpolated like LyricsView) for tap precision. Rebased from every
+	// position tick — never dead-reckoned — so seeks and pauses can't leave it drifting, plus a
+	// visibility resync for background-throttled tabs.
 	let nowMs = $state(0);
-	let raf = 0;
-	function tickClock() {
-		nowMs = playback.position * 1000;
-		const base = nowMs;
+	$effect(() => {
+		const pos = playback.position * 1000;
+		if (playback.paused) {
+			nowMs = pos;
+			return;
+		}
+		const base = pos;
 		const baseAt = performance.now();
-		cancelAnimationFrame(raf);
-		const tick = () => {
-			if (!playback.paused) nowMs = base + (performance.now() - baseAt);
-			raf = requestAnimationFrame(tick);
-		};
-		raf = requestAnimationFrame(tick);
+		nowMs = pos;
+		let id = requestAnimationFrame(function tick() {
+			nowMs = base + (performance.now() - baseAt);
+			id = requestAnimationFrame(tick);
+		});
+		return () => cancelAnimationFrame(id);
+	});
+	function resyncClock() {
+		if (document.visibilityState === 'visible') nowMs = playback.position * 1000;
+	}
+
+	// Exits back where the composer was opened from. history.back() strands the user on a blank
+	// view when there is no entry (deep link / fresh window), so fall back to the queue, then /.
+	function exitCompose() {
+		if (window.history.length > 1) history.back();
+		else goto('/queue').catch(() => goto('/'));
 	}
 
 	function fmt(ms: number | null): string {
@@ -74,7 +90,7 @@
 	function loadText() {
 		const parsed = parseInput(paste);
 		if (!parsed.length) {
-			toast.error('Nothing usable in that text');
+			toast.error(t('lyrics.compose.nothing_usable'));
 			return;
 		}
 		lines = parsed;
@@ -90,12 +106,12 @@
 				artists: track.artists
 			});
 			if (!l || !l.lines.length) {
-				toast.info('No fetched lyrics for this track');
+				toast.info(t('lyrics.compose.no_fetched'));
 				return;
 			}
 			lines = l.lines.map((x) => ({ text: x.text, ms: null }));
 			dirty = true;
-			toast.success('Loaded fetched text — tap each line to time it');
+			toast.success(t('lyrics.compose.loaded_fetched'));
 		} catch (e) {
 			toast.error(String(e));
 		}
@@ -142,7 +158,7 @@
 	async function save() {
 		if (!track || saving) return;
 		if (!lines.some((l) => l.text.trim() && l.ms !== null)) {
-			toast.error('Time at least one line first (TAP while it plays)');
+			toast.error(t('lyrics.compose.time_first'));
 			return;
 		}
 		saving = true;
@@ -154,8 +170,8 @@
 				/* quota */
 			}
 			await api.setPlaybackRate(1).catch(() => {});
-			toast.success('Lyrics saved for this track');
-			history.back();
+			toast.success(t('lyrics.compose.saved'));
+			exitCompose();
 		} catch (e) {
 			toast.error(String(e));
 		} finally {
@@ -174,8 +190,8 @@
 
 	onMount(() => {
 		if (!videoId) {
-			toast.error('No track to compose for');
-			history.back();
+			toast.error(t('lyrics.compose.no_track'));
+			exitCompose();
 			return;
 		}
 		const fromQueue = playback.queue.items.find((s) => s.video_id === videoId);
@@ -190,8 +206,8 @@
 					}
 				: null);
 		if (!track) {
-			toast.error('Track is no longer in the queue');
-			history.back();
+			toast.error(t('lyrics.compose.track_gone'));
+			exitCompose();
 			return;
 		}
 		// Restore an autosaved draft, if any.
@@ -204,8 +220,8 @@
 		} catch {
 			/* corrupt draft — start clean */
 		}
-		tickClock();
 		window.addEventListener('keydown', onKey);
+		document.addEventListener('visibilitychange', resyncClock);
 		draftTimer = setInterval(() => {
 			if (!dirty || !track) return;
 			try {
@@ -218,8 +234,8 @@
 	});
 
 	onDestroy(() => {
-		cancelAnimationFrame(raf);
 		window.removeEventListener('keydown', onKey);
+		document.removeEventListener('visibilitychange', resyncClock);
 		if (draftTimer) clearInterval(draftTimer);
 		// Never leak a slowed rate into normal listening.
 		void api.setPlaybackRate(1).catch(() => {});
@@ -229,17 +245,17 @@
 <div class="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-6">
 	<div class="flex items-center gap-3">
 		<div class="min-w-0 flex-1">
-			<h1 class="font-heading text-xl font-bold">Time the lyrics</h1>
+			<h1 class="font-heading text-xl font-bold">{t('lyrics.compose.title')}</h1>
 			<p class="truncate text-xs text-muted-foreground">
 				{track ? `${track.title} — ${track.artists}` : '…'}
 			</p>
 		</div>
 		<label class="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-			Speed
+			{t('lyrics.compose.speed')}
 			<select
 				class="cursor-pointer rounded-lg border bg-transparent px-2 py-1"
 				value={speed}
-				aria-label="Playback speed"
+				aria-label={t('lyrics.compose.speed_label')}
 				onchange={(e) => setSpeed(Number(e.currentTarget.value))}
 			>
 				{#each SPEEDS as s}
@@ -250,7 +266,7 @@
 		<button
 			class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground"
 			onclick={() => api.togglePause().catch(() => {})}
-			aria-label={playback.paused ? 'Play' : 'Pause'}
+			aria-label={playback.paused ? t('player.play') : t('player.pause')}
 		>
 			<HugeiconsIcon icon={playback.paused ? PlayIcon : PauseIcon} class="h-5 w-5" />
 		</button>
@@ -263,16 +279,18 @@
 				class="flex-1 cursor-pointer rounded-lg border border-primary/50 px-3 py-2.5 text-sm font-bold text-primary transition-transform active:scale-[0.98]"
 				onclick={() => playSong(track!)}
 			>
-				Play “{track.title}” to start timing
+				{t('lyrics.compose.play_to_start', { title: track.title })}
 			</button>
 		{:else}
 			<button
 				class="flex-1 cursor-pointer rounded-lg bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40"
 				disabled={nextUntimed < 0}
 				onclick={tap}
-				title="Stamp the next untimed line (Space)"
+				title={t('lyrics.compose.tap_hint')}
 			>
-				{nextUntimed < 0 ? 'All lines timed ✓' : `TAP — line ${nextUntimed + 1} of ${lines.length}`}
+				{nextUntimed < 0
+					? t('lyrics.compose.all_timed')
+					: t('lyrics.compose.tap', { current: nextUntimed + 1, total: lines.length })}
 			</button>
 		{/if}
 		<span class="text-xs tabular-nums text-muted-foreground">{timedCount}/{lines.length}</span>
@@ -283,7 +301,7 @@
 			<textarea
 				bind:value={paste}
 				rows={6}
-				placeholder="Paste LRC ([00:12.34] line) or plain lyrics, one line per row…"
+				placeholder={t('lyrics.compose.paste_placeholder')}
 				class="w-full rounded-xl border bg-transparent p-3 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
 			></textarea>
 			<div class="flex gap-2">
@@ -291,13 +309,13 @@
 					class="flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent/10"
 					onclick={loadText}
 				>
-					Load text
+					{t('lyrics.compose.load_text')}
 				</button>
 				<button
 					class="flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:bg-accent/10"
 					onclick={loadFetched}
 				>
-					Load fetched lyrics
+					{t('lyrics.compose.load_fetched')}
 				</button>
 			</div>
 		</div>
@@ -313,7 +331,7 @@
 						class="w-20 shrink-0 cursor-pointer rounded-md px-1 py-1 text-left text-xs tabular-nums {line.ms === null
 							? 'text-muted-foreground/50'
 							: 'text-primary'}"
-						title={line.ms === null ? 'Untimed — TAP stamps it' : 'Click to seek here'}
+						title={line.ms === null ? t('lyrics.compose.untimed_hint') : t('lyrics.compose.seek_hint')}
 						onclick={() => (line.ms === null ? restamp(i) : seekTo(line.ms))}
 					>
 						{fmt(line.ms)}
@@ -322,18 +340,18 @@
 						bind:value={line.text}
 						oninput={() => (dirty = true)}
 						class="min-w-0 flex-1 bg-transparent text-sm outline-none"
-						aria-label="Line {i + 1} text"
+						aria-label={t('lyrics.compose.line_text', { n: i + 1 })}
 					/>
 					<button
 						class="shrink-0 cursor-pointer rounded px-1 text-[11px] text-muted-foreground hover:text-foreground"
-						title="Nudge −0.5s"
+						title={t('lyrics.compose.nudge_down')}
 						onclick={() => nudge(i, -500)}
 					>
 						−0.5
 					</button>
 					<button
 						class="shrink-0 cursor-pointer rounded px-1 text-[11px] text-muted-foreground hover:text-foreground"
-						title="Nudge +0.5s"
+						title={t('lyrics.compose.nudge_up')}
 						onclick={() => nudge(i, 500)}
 					>
 						+0.5
@@ -341,7 +359,7 @@
 					<button
 						class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
 						onclick={() => removeLine(i)}
-						aria-label="Delete line {i + 1}"
+						aria-label={t('lyrics.compose.delete_line', { n: i + 1 })}
 					>
 						<HugeiconsIcon icon={Delete01Icon} class="h-3.5 w-3.5" />
 					</button>
@@ -356,7 +374,7 @@
 					lines = [];
 				}}
 			>
-				Start over
+				{t('lyrics.compose.start_over')}
 			</button>
 			<button
 				class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-bold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40"
@@ -364,7 +382,11 @@
 				onclick={save}
 			>
 				<HugeiconsIcon icon={CheckmarkCircle02Icon} class="h-4 w-4" />
-				{saving ? 'Saving…' : `Save ${timedCount} timed line${timedCount === 1 ? '' : 's'}`}
+				{saving
+					? t('lyrics.compose.saving')
+					: timedCount === 1
+						? t('lyrics.compose.save_one')
+						: t('lyrics.compose.save_many', { count: timedCount })}
 			</button>
 		</div>
 	{/if}

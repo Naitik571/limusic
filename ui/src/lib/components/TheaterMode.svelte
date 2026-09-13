@@ -193,33 +193,11 @@
 	let volDragging = $state(false);
 	const volOpen = $derived(volHover || volDragging);
 
-	// Wheel over the lyrics column scrolls it (the column hides its own scrollbar). A native
-	// non-passive listener: Svelte's `onwheel` can't take `{ passive: false }`, and an always-
-	// preventDefault wheel would trap page scroll. Gestures starting on sliders/buttons are
-	// ignored, and preventDefault only fires when the lyrics actually consume the scroll.
-	let theaterRoot: HTMLElement | undefined = $state();
-	$effect(() => {
-		const root = theaterRoot;
-		if (!root) return;
-		const onWheel = (e: WheelEvent) => {
-			const target = e.target as HTMLElement | null;
-			if (target?.closest?.('input, select, textarea, button, [role="button"], a')) return;
-			const host = root.querySelector('[data-theater-lyrics]') as HTMLElement | null;
-			const scroller =
-				(host?.querySelector('.lyrics-scroller') as HTMLElement | null) ?? host;
-			if (!scroller) return;
-			const delta = e.deltaY ?? 0;
-			if (!delta) return;
-			const canDown =
-				scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1;
-			const canUp = scroller.scrollTop > 0;
-			if ((delta > 0 && !canDown) || (delta < 0 && !canUp)) return;
-			e.preventDefault();
-			scroller.scrollBy({ top: delta > 0 ? 120 : -120, behavior: 'smooth' });
-		};
-		root.addEventListener('wheel', onWheel, { passive: false });
-		return () => root.removeEventListener('wheel', onWheel);
-	});
+	// Single scroll owner: LyricsView owns the lyrics column (its glideTo tween + the
+	// Resume-pill pause). A second wheel driver here double-drove every gesture — a smooth
+	// scrollBy fighting the tween while never tripping the pause — so there is deliberately
+	// no wheel forwarding. The column hides its own scrollbar but still scrolls natively.
+	// (Theater has no volume wheel binding; nothing else to preserve.)
 
 	let showLyrics = $state(true);
 
@@ -245,7 +223,6 @@
 
 <section
 	transition:fade={{ duration: 220 }}
-	bind:this={theaterRoot}
 	onpointermove={wake}
 	class="theater fixed inset-0 z-40 flex flex-col overflow-hidden bg-background text-foreground {idle
 		? 'cursor-none'
@@ -503,6 +480,12 @@
 	}
 	.theater :global(.lyrics-scroller::-webkit-scrollbar) {
 		display: none;
+	}
+	/* Lyric-column scrim: the wash + mesh sit behind the text, so the column carries its own
+	   contrast plate on the scroller itself (which never scrolls away). No text-shadow. */
+	.theater [data-theater-lyrics] :global(.lyrics-scroller) {
+		background-color: color-mix(in srgb, var(--scrim) 38%, transparent);
+		border-radius: var(--r-lg);
 	}
 	.range.on-art {
 		--pct: 0%;

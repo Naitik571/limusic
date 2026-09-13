@@ -10,6 +10,7 @@
 	import { open as pickFile } from '@tauri-apps/plugin-dialog';
 	import { playback, toast } from '$lib/player.svelte';
 	import { appearance, applyLyricsFont } from '$lib/theme.svelte';
+	import { t } from '$lib/i18n.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
 	// panel, or the now-playing view) decides how much there is. Toggling it must not remount this
@@ -35,24 +36,23 @@
 	let loading = $state(true);
 	let scroller: HTMLElement | undefined = $state();
 
-	/** Shift every cue by `delta` ms (the persisted per-song offset), clamped at 0. */
-	function shiftCues(l: api.Lyrics, delta: number) {
-		if (!delta) return;
-		for (const line of l.lines) {
-			if (line.time_ms !== undefined) line.time_ms = Math.max(0, line.time_ms + delta);
-			if (line.end_time_ms !== undefined) line.end_time_ms = Math.max(0, line.end_time_ms + delta);
-			if (line.words)
-				for (const w of line.words) {
-					w.start_ms = Math.max(0, w.start_ms + delta);
-					w.end_ms = Math.max(0, w.end_ms + delta);
-				}
-		}
-	}
+	// NOTE (Bug 1): the server already applies the persisted per-song offset to the cues
+	// it returns, so there is deliberately NO client-side shift here (a shiftCues pass used to
+	// double-shift every line). seekTo below uses the stored cue times verbatim; the offset
+	// pill (follow-up batch) will adjust display/seek in one place only.
 
 	// videoId of the fetch whose result is (or will be) shown — guards stale responses.
 	let requested = '';
+	// Monotonic fetch generation: incremented on every track/reload run so in-flight
+	// getLyrics/romanize/translate continuations from a previous videoId can be ignored even
+	// when the videoId string itself is slow to update. Checked alongside `requested`.
+	let fetchSeq = 0;
 	// Bumped after attaching/removing custom lyrics so the effect below refetches.
-	let reloadKey = 0;
+	// ($state: the effect tracks it — a plain let would make every bump a silent no-op.)
+	let reloadKey = $state(0);
+	// Set before an offset-pill-triggered refetch: the lines are identical, only the server-side
+	// cues shift, so romaji/translation caches stay valid and are kept instead of cleared.
+	let keepOverlays = false;
 	// Romaji view (kana→romaji via the `romanize_lyrics` command): one round-trip for the
 	// whole song — every word and line text joined by \n (romanization never touches
 	// newlines), mapped back positionally. Timings and the karaoke sweep are untouched.
@@ -60,6 +60,12 @@
 	let romanSeg = $state<string[] | null>(null);
 	let romanFor = '';
 	let romanBusy = $state(false);
+	// Per-line partial-transliteration flags, built alongside romanSeg: true when the line mixed
+	// converted kana with passthrough kanji (output still holds CJK although the input had kana).
+	// Pure-kanji lines (nothing converted) and fully converted lines stay unflagged.
+	let romanPartial = $state<boolean[]>([]);
+	const KANA_RE = /[\u3040-\u30ff]/;
+	const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 	function segList(l: api.Lyrics): { line: number; word: number }[] {
 		const out: { line: number; word: number }[] = [];
 		l.lines.forEach((ln, i) => {
@@ -83,22 +89,32 @@
 		}
 		romanBusy = true;
 		const id = requested;
+		const seq = fetchSeq;
 		try {
 			const l = lyrics;
 			const segs = segList(l);
-			const src = segs
-				.map((s) => (s.word >= 0 ? (l.lines[s.line].words?.[s.word].text ?? '') : l.lines[s.line].text))
-				.join('\n');
+			const origs = segs.map((s) =>
+				s.word >= 0 ? (l.lines[s.line].words?.[s.word].text ?? '') : l.lines[s.line].text
+			);
+			const src = origs.join('\n');
 			const out = await api.romanizeLyrics(src);
 			const parts = out.split('\n');
-			if (requested !== id || parts.length !== segs.length) return; // stale or reshaped
+			if (requested !== id || seq !== fetchSeq) return; // stale (track changed)
+			if (parts.length !== segs.length) {
+				toast.error(t('lyrics.romanize_mismatch'));
+				return;
+			}
 			romanSeg = parts;
 			romanFor = id;
+			romanPartial = l.lines.map(() => false);
+			parts.forEach((p, k) => {
+				if (KANA_RE.test(origs[k] ?? '') && CJK_RE.test(p)) romanPartial[segs[k].line] = true;
+			});
 			romanOn = true;
 		} catch {
-			toast.error('Romanization failed');
+			toast.error(t('lyrics.romanize_failed'));
 		} finally {
-			romanBusy = false;
+			if (requested === id && seq === fetchSeq) romanBusy = false;
 		}
 	}
 	/** Display text for a line or word segment (romaji when toggled, original otherwise). */
@@ -113,6 +129,9 @@
 	// renders under it (Both) or in its place (Translated). Cached per song + language.
 	const TRANS_LANGS = [
 		['en', 'English'],
+		['ja', '日本語'],
+		['ko', '한국어'],
+		['zh', '中文'],
 		['es', 'Español'],
 		['fr', 'Français'],
 		['de', 'Deutsch'],
@@ -146,29 +165,88 @@
 		}
 		transBusy = true;
 		const id = requested;
+		const seq = fetchSeq;
 		const lang = transLang;
 		try {
 			const src = lyrics.lines.map((l) => l.text).join('\n');
 			const out = await api.translateLyrics(src, lang);
 			const parts = out.split('\n');
-			if (requested !== id || parts.length !== lyrics.lines.length) return;
+			// Stale (track changed mid-flight) → drop silently. Reshaped (line count moved
+			// under us) → toast, never silent: the user asked for a translation and got none.
+			if (requested !== id || seq !== fetchSeq) return;
+			if (parts.length !== lyrics.lines.length) {
+				toast.error(t('lyrics.translate_mismatch'));
+				return;
+			}
 			transSeg = parts;
 			transFor = key;
 			transMode = mode;
 		} catch {
-			toast.error('Translation failed');
+			toast.error(t('lyrics.translate_failed'));
 		} finally {
-			transBusy = false;
+			if (requested === id && seq === fetchSeq) transBusy = false;
 		}
 	}
 	function cycleTrans() {
 		void setTransMode(transMode === 'off' ? 'both' : transMode === 'both' ? 'only' : 'off');
 	}
-	/** Translated line text, or null when translation is off/empty for this line. */
+	/**
+	 * Translated line text, or null when translation is off/empty/identical for this line.
+	 * Identical lines are suppressed so Both mode never renders the same string twice and
+	 * Only mode falls back to the original instead of a redundant copy.
+	 */
 	function transText(i: number): string | null {
 		if (transMode === 'off' || !transSeg) return null;
 		const t = transSeg[i]?.trim();
-		return t ? t : null;
+		if (!t) return null;
+		if (lyrics?.lines[i]?.text?.trim() === t) return null;
+		return t;
+	}
+
+	// Per-song timing offset pill (footer −/value/+). The server owns shifting: it applies the
+	// persisted offset to the cues it returns, so this only reads the setting (getLyricOffset on
+	// track load) and writes it (setLyricOffset, debounced ~300ms), then refetches so the shifted
+	// cues reflect. Deliberately NO client-side cue math — see the Bug 1 note above.
+	let lyricOffsetMs = $state(0);
+	let offsetFor = '';
+	let offsetTimer: ReturnType<typeof setTimeout> | null = null;
+	onDestroy(() => {
+		if (offsetTimer) clearTimeout(offsetTimer);
+	});
+	/** 0 → "±0ms", |v|<1000 → "+300ms"/"−300ms", else "+1.2s". */
+	function fmtOffset(ms: number): string {
+		if (ms === 0) return '±0ms';
+		const sign = ms > 0 ? '+' : '−';
+		const a = Math.abs(ms);
+		return a >= 1000 ? `${sign}${(a / 1000).toFixed(1)}s` : `${sign}${a}ms`;
+	}
+	function scheduleOffsetWrite() {
+		const vid = offsetFor || playback.now?.videoId;
+		if (!vid) return;
+		if (offsetTimer) clearTimeout(offsetTimer);
+		offsetTimer = setTimeout(() => {
+			const v = lyricOffsetMs;
+			api
+				.setLyricOffset(vid, v)
+				.then(() => {
+					// Same lines, shifted cues: keep romaji/translation and force the fetch
+					// effect past its same-track early return so the new cues load.
+					keepOverlays = true;
+					requested = '';
+					reloadKey++;
+				})
+				.catch((e) => toast.error(String(e)));
+		}, 300);
+	}
+	function nudgeOffset(d: number) {
+		// Mirror the server-side ±5000ms clamp so the pill never displays an unpersistable value.
+		lyricOffsetMs = Math.max(-5000, Math.min(5000, lyricOffsetMs + d));
+		scheduleOffsetWrite();
+	}
+	function resetOffset() {
+		if (lyricOffsetMs === 0) return;
+		lyricOffsetMs = 0;
+		scheduleOffsetWrite();
 	}
 
 	// Segment positions (`line:word` → index into romanSeg), built once per lyrics instead of
@@ -195,15 +273,35 @@
 			romanOn = false;
 			romanSeg = null;
 			romanFor = '';
+			romanPartial = [];
 			transMode = 'off';
 			transSeg = null;
 			transFor = '';
+			offsetFor = '';
+			lyricOffsetMs = 0;
 			return;
 		}
 		if (now.videoId === requested) return;
 		const id = (requested = now.videoId);
+		const seq = ++fetchSeq; // invalidates every in-flight continuation from the old track
 		loading = true;
 		lyrics = null;
+		romanBusy = false;
+		transBusy = false;
+		// Persisted per-song offset for the pill (display/adjust only — the server already
+		// applied it to the cues below). Skipped when this run is an offset-triggered refetch
+		// of the same song: the pill already holds the just-written value.
+		if (offsetFor !== id) {
+			lyricOffsetMs = 0;
+			api
+				.getLyricOffset(id)
+				.then((v) => {
+					if (requested !== id || seq !== fetchSeq) return;
+					lyricOffsetMs = v ?? 0;
+					offsetFor = id;
+				})
+				.catch(() => {});
+		}
 		// Album isn't in now-playing, but the queue item usually has it — better LRCLIB matching.
 		const album = playback.queue.items[playback.queue.currentIndex]?.album;
 		api.getLyrics({
@@ -216,27 +314,30 @@
 			duration: durationSecs(now.duration)
 		})
 			.then((l) => {
-				if (requested !== id) return;
+				// Abort-on-track-change: a newer run already claimed `requested`/`fetchSeq`.
+				if (requested !== id || seq !== fetchSeq) return;
 				lyrics = l;
 				loading = false;
 				hasScrolled = false; // first positioning on a new track is an instant jump
-				romanOn = false; // new song, new script — romaji starts off
-				romanSeg = null;
-				romanFor = '';
-				transMode = 'off'; // same for translation
-				transSeg = null;
-				transFor = '';
-				// Kodama per-song offset: apply the persisted shift to this song's cues on load.
-				api.getLyricOffset(id)
-					.then((o) => {
-						if (requested !== id || !lyrics || !o) return;
-						shiftCues(lyrics, o);
-						lyrics = { ...lyrics };
-					})
-					.catch(() => {});
+				autoPaused = false; // a new track always resumes autoscroll
+				// An offset-pill refetch carries the same lines with shifted cues, so the romaji
+				// and translation caches (positional over those lines) stay valid and are kept.
+				if (!keepOverlays) {
+					romanOn = false; // new song, new script — romaji starts off
+					romanSeg = null;
+					romanFor = '';
+					romanPartial = [];
+					transMode = 'off'; // same for translation
+					transSeg = null;
+					transFor = '';
+				}
+				keepOverlays = false;
+				// NOTE (Bug 1): no client-side offset shift — the server already returns cues
+				// shifted by the persisted per-song offset. (The follow-up offset pill will
+				// read api.getLyricOffset for display/adjustment only.)
 			})
 			.catch(() => {
-				if (requested !== id) return;
+				if (requested !== id || seq !== fetchSeq) return;
 				loading = false;
 				lyrics = null;
 				// Same reset as the success path: a failed fetch must not leave romaji or a
@@ -244,9 +345,11 @@
 				romanOn = false;
 				romanSeg = null;
 				romanFor = '';
+				romanPartial = [];
 				transMode = 'off';
 				transSeg = null;
 				transFor = '';
+				keepOverlays = false;
 			});
 	});
 
@@ -280,13 +383,46 @@
 		return i;
 	});
 
-	// Auto-scroll pauses while the user is scrolling (wheel/touch/scrollbar), resumes after 3s.
-	// Tracked via input events, not `scroll`, so our own smooth scrolls don't trip it.
-	let userScrollUntil = 0;
+	// Trailer: the line just before the active one while its end cue hasn't passed (line ends
+	// often overlap the next start). Rendered sung but never zoomed — only the active line
+	// owns the scale.
+	const trailerIndex = $derived.by(() => {
+		if (!lyrics || activeIndex <= 0) return -1;
+		const prev = activeIndex - 1;
+		const end = lineEndMs(lyrics.lines[prev], lyrics.lines, prev);
+		return end !== undefined && end > posMs ? prev : -1;
+	});
+
+	/** End cue for trailer detection: explicit end, else last word end, else next line start. */
+	function lineEndMs(
+		line: api.LyricLine | undefined,
+		lines: api.LyricLine[],
+		i: number
+	): number | undefined {
+		if (!line) return undefined;
+		if (line.end_time_ms !== undefined) return line.end_time_ms;
+		const words = line.words;
+		if (words?.length) return words[words.length - 1].end_ms;
+		for (let j = i + 1; j < lines.length; j++) {
+			if (lines[j].time_ms !== undefined) return lines[j].time_ms;
+		}
+		return undefined;
+	}
+
+	// Auto-scroll pauses the moment the user takes the wheel/touch/scrollbar and stays
+	// paused until the Resume pill is tapped (no timed auto-resume: a slow reader must never
+	// have the view yanked away). Tracked via input events, not `scroll`, so our own tweens
+	// never trip it. Jumps (track change / seek) clear the pause and snap; sequential line
+	// advances glide while unpaused.
+	let autoPaused = $state(false);
 	let hasScrolled = false;
 	function onUserScroll() {
-		userScrollUntil = Date.now() + 3000;
+		autoPaused = true;
 		cancelScrollTween();
+	}
+	function resumeAuto() {
+		autoPaused = false;
+		hasScrolled = true; // resume glides from here; the next advance is sequential, not a jump
 	}
 	let wasMode: string | undefined;
 
@@ -333,9 +469,9 @@
 		if (mode !== wasMode) {
 			wasMode = mode;
 			hasScrolled = false;
-			userScrollUntil = 0;
+			autoPaused = false;
 		}
-		if (i < 0 || !scroller || Date.now() < userScrollUntil) return;
+		if (i < 0 || !scroller || autoPaused) return;
 		const line = scroller.querySelector(`[data-line="${i}"]`);
 		if (!line) return;
 		// Centre the active line in the scroller's viewport (matches block:'center').
@@ -360,11 +496,13 @@
 		hasScrolled = true;
 	});
 
+	/** Seek to a stored cue verbatim — no offset math (server already shifted the cues). */
 	function seekTo(line: api.LyricLine) {
 		if (line.time_ms === undefined) return;
 		const secs = line.time_ms / 1000;
 		playback.position = secs; // optimistic — the mpv tick confirms
-		userScrollUntil = 0; // jump the view along with the seek
+		autoPaused = false; // a seek is a jump: clear the pause so the view follows it
+		hasScrolled = false; // …and snap to it: the scroll effect jumps until positioned once
 		api.seek(secs);
 	}
 
@@ -377,7 +515,7 @@
 		try {
 			picked = await pickFile({
 				multiple: false,
-				title: `Lyrics for ${now.title}`,
+				title: t('lyrics.attach_title', { title: now.title }),
 				filters: [{ name: 'Lyrics', extensions: ['lrc', 'txt'] }]
 			});
 		} catch (e) {
@@ -389,7 +527,7 @@
 		try {
 			const text = await api.readLyricsFile(path);
 			await api.setCustomLyrics(now.videoId, text);
-			toast.success('Lyrics attached to this song');
+			toast.success(t('lyrics.attached_ok'));
 			reloadKey++; // refetch through the normal path
 		} catch (e) {
 			toast.error(String(e));
@@ -401,7 +539,7 @@
 		if (!now) return;
 		try {
 			await api.deleteCustomLyrics(now.videoId);
-			toast.success('Attached lyrics removed');
+			toast.success(t('lyrics.detached_ok'));
 			reloadKey++;
 		} catch (e) {
 			toast.error(String(e));
@@ -411,9 +549,6 @@
 	// mpv's position arrives ~4x a second. Run a local clock forward from each one so the karaoke
 	// sweep moves every frame instead of stepping four times a second.
 	let interpolatedPosSecs = $state(playback.position);
-	// Aurora primary, sampled once per frame (not per word): getComputedStyle forces a style
-	// recalc, and the karaoke sweep calls sung() for every visible word on every frame.
-	let sungPrimary: [number, number, number] = [0.585, 0.233, 15.458];
 
 	$effect(() => {
 		const pos = playback.position;
@@ -427,7 +562,6 @@
 		const base = pos;
 		const baseAt = performance.now();
 		interpolatedPosSecs = pos;
-		sungPrimary = readPrimary();
 		let frameId = requestAnimationFrame(function tick() {
 			interpolatedPosSecs = base + (performance.now() - baseAt) / 1000;
 			frameId = requestAnimationFrame(tick);
@@ -445,33 +579,72 @@
 		return (currentMs - word.start_ms) / dur;
 	}
 
-	// The Aurora headline ramp from .text-gradient — the exact colours line-mode karaoke shows,
-	// sampled at t so the word sweep and the line gradient read as one continuous system.
-	// Primary comes from the per-frame cache (see sungPrimary), never a per-word style read.
-	function sung(t: number): string {
-		const stops: [number, number, number][] = [sungPrimary, [0.68, 0.19, 285], [0.65, 0.17, 335]];
-		const x = Math.min(1, Math.max(0, t)) * (stops.length - 1);
-		const i = Math.min(stops.length - 2, Math.floor(x));
-		const f = x - i;
-		const a = stops[i];
-		const b = stops[i + 1];
-		return `oklch(${(a[0] + (b[0] - a[0]) * f).toFixed(3)} ${(a[1] + (b[1] - a[1]) * f).toFixed(3)} ${(a[2] + (b[2] - a[2]) * f).toFixed(1)})`;
-	}
-	function parseOkLCH(v: string): [number, number, number] {
-		const m = v.match(/oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
-		return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0.585, 0.233, 15.458];
-	}
-	function readPrimary(): [number, number, number] {
-		try {
-			const cs = getComputedStyle(document.documentElement);
-			return parseOkLCH(cs.getPropertyValue('--primary').trim());
-		} catch {
-			return [0.585, 0.233, 15.458];
-		}
-	}
-
 </script>
 
+{#snippet breathe()}
+	<!-- Single empty-cue treatment, shared by the synced and unsynced branches. -->
+	<span class="inline-flex items-center gap-1.5 py-2" aria-hidden="true">
+		{#each [0, 1, 2] as d (d)}
+			<span
+				class="h-1.5 w-1.5 rounded-full bg-primary/70"
+				style="animation: karaoke-breathe 1.6s ease-in-out infinite; animation-delay: {d * 0.25}s"
+			></span>
+		{/each}
+	</span>
+{/snippet}
+
+{#snippet lineBody(line: api.LyricLine, i: number, isActive: boolean, isPast: boolean, isTrailer: boolean)}
+	{#if transMode === 'only' && transText(i)}
+		<span>{transText(i)}</span>
+	{:else}
+		{#if line.words && line.words.length > 0}
+			<!-- Word karaoke: dim baseline everywhere; the CURRENT word only gets a bright
+			     overlay wiped per-frame via clip-path. Sung/trailer words are a static primary,
+			     past words a static dim — no per-frame work, no word-level transitions. -->
+			<span class="inline-flex flex-wrap items-baseline {isActive ? 'drop-shadow-[0_2px_12px_color-mix(in_srgb,var(--primary)_40%,transparent)]' : ''}">
+				{#each line.words as word, wIdx (wIdx)}
+					{@const isWordEnd = word.text.endsWith(' ')}
+					{@const cleanText = word.text.trimEnd()}
+					{@const progress = isActive ? getWordProgress(word, posMs) : 0}
+					{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
+					{@const label = segText(i, wIdx, cleanText).trimEnd()}
+					{#if isActive && progress > 0 && progress < 1}
+						<span class="relative inline-block {isWordEnd ? 'mr-[0.26em]' : ''}">
+							<span class="lyric-unsung {romanOn ? 'lyric-romaji' : ''}">{label}</span>
+							<span
+								aria-hidden="true"
+								class="lyric-sung absolute inset-0 overflow-hidden whitespace-nowrap {romanOn ? 'lyric-romaji' : ''}"
+								style="clip-path: inset(0 {(100 - pct).toFixed(1)}% 0 0)"
+							>{label}</span>
+						</span>
+					{:else if (isActive && progress >= 1) || isTrailer}
+						<span class="lyric-sung inline-block {romanOn ? 'lyric-romaji' : ''} {isWordEnd ? 'mr-[0.26em]' : ''}">{label}</span>
+					{:else if isPast}
+						<span class="lyric-past inline-block {romanOn ? 'lyric-romaji' : ''} {isWordEnd ? 'mr-[0.26em]' : ''}">{label}</span>
+					{:else}
+						<span class="lyric-unsung inline-block {romanOn ? 'lyric-romaji' : ''} {isWordEnd ? 'mr-[0.26em]' : ''}">{label}</span>
+					{/if}
+				{/each}
+			</span>
+		{:else if !line.text?.trim()}
+			{@render breathe()}
+		{:else}
+			<span class="{romanOn ? 'lyric-romaji' : ''} {isTrailer ? 'lyric-sung' : isPast ? 'lyric-past' : isActive ? '' : 'lyric-unsung'}">{segText(i, -1, line.text)}</span>
+		{/if}
+		{#if romanOn && romanPartial[i]}
+			<!-- Partial transliteration: converted kana mixed with passthrough kanji. One subtle
+			     mark per line, details in the tooltip — no layout or color change. -->
+			<span class="roman-partial" title={t('lyrics.partial_romaji')}>※</span>
+		{/if}
+		{#if transMode === 'both' && transText(i)}
+			<span class="lyric-trans mt-1 block font-medium normal-case tracking-normal opacity-60">{transText(i)}</span>
+		{/if}
+	{/if}
+{/snippet}
+
+<!-- Autoscroll pause + Resume pill live on this wrapper (not the scroller): an absolute pill
+     inside the scroll container would scroll away with the lyrics. -->
+<div class="relative flex min-h-0 flex-1 flex-col">
 <!-- svelte-ignore a11y_no_static_element_interactions -- handlers only detect scroll intent -->
 <div
 	bind:this={scroller}
@@ -491,93 +664,61 @@
 			{/each}
 		</div>
 	{:else if lyrics?.instrumental}
-		<p class="py-8 text-center text-lg text-muted-foreground">Instrumental ♪</p>
+		<!-- Instrumental: a dedicated calm presentation — breathing dots + label, no seek
+		     buttons (fake or otherwise). No auto-switch behavior is changed elsewhere. -->
+		<div class="flex flex-col items-center gap-3 py-12 text-center">
+			{@render breathe()}
+			<p class="text-lg font-semibold text-[var(--text-2)]">{t('lyrics.instrumental')}</p>
+			<p class="text-xs text-[var(--text-4)]">{t('lyrics.instrumental_hint')}</p>
+		</div>
 	{:else if lyrics && lyrics.synced}
 		<!-- No top/bottom gap: lyrics start at the top like any list. Centering still applies
 		     mid-song; the first/last lines simply clamp to the edges. -->
 		<div class={expanded ? 'mx-auto max-w-3xl' : ''}>
 			{#each lyrics.lines as line, i (i)}
 				{@const isActive = i === activeIndex}
-				{@const isPast = i < activeIndex}
-				{@const nextT = lyrics.lines[i + 1]?.time_ms}
-				{@const wiping =
-					isActive && nextT !== undefined && nextT > posMs && nextT - posMs < 2000}
-				<button
-					data-line={i}
-					onclick={() => seekTo(line)}
-					class="block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,transform,opacity,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] {wiping
-						? 'opacity-50 saturate-50'
-						: ''}
-						{sing
-						? `py-4 ${isActive ? 'text-4xl md:text-6xl' : 'text-2xl md:text-3xl'}`
-						: expanded
-							? 'py-3 text-3xl'
-							: compact
-								? 'py-1 text-sm'
-								: 'py-2 text-xl'}
-						{isActive
-						? line.words?.length
-								? 'scale-[1.04]'
-								: 'text-gradient scale-[1.04] [filter:drop-shadow(0_2px_14px_color-mix(in_srgb,var(--primary)_30%,transparent))]'
+				{@const isTrailer = i === trailerIndex}
+				{@const isPast = i < activeIndex && !isTrailer}
+				<!-- One motion owner: the line owns scale/opacity/color. Words never transition
+				     or animate (only the current word's overlay clip-path updates per frame). -->
+				{@const sizeCls = sing
+					? `py-4 ${isActive ? 'text-4xl md:text-6xl' : isTrailer ? 'text-3xl md:text-4xl' : 'text-2xl md:text-3xl'}`
+					: expanded
+						? 'py-3 text-3xl'
+						: compact
+							? 'py-1 text-sm'
+							: 'py-2 text-xl'}
+				{@const stateCls = isActive
+					? line.words?.length
+						? 'scale-[1.04] text-[var(--text-1)]'
+						: 'text-gradient scale-[1.04] [filter:drop-shadow(0_2px_14px_color-mix(in_srgb,var(--primary)_30%,transparent))]'
+					: isTrailer
+						? 'text-[var(--text-1)]'
 						: isPast
-							? (expanded ? 'text-muted-foreground/15 blur-[1.5px] opacity-80 hover:blur-0 hover:text-muted-foreground/50 hover:blur-none transition-[filter]' : 'text-muted-foreground/40 hover:text-muted-foreground/75')
-							: (expanded ? 'text-muted-foreground/25 blur-[1px] opacity-90 hover:blur-0 hover:text-muted-foreground/60 transition-[filter] scale-[0.97]' : 'text-muted-foreground/70 hover:text-foreground/90')}"
-				>
-					{#if transMode === 'only' && transText(i)}
-						<span>{transText(i)}</span>
-					{:else}
-					{#if line.words && line.words.length > 0}
-						<!-- Word-by-word karaoke — the Aurora gradient sweeps across each word, with a gentle vertical float -->
-						{@const wordCount = Math.max(1, line.words.length)}
-						<span class="inline-flex flex-wrap items-baseline {isActive ? 'drop-shadow-[0_2px_12px_color-mix(in_srgb,var(--primary)_40%,transparent)] [animation:karaoke-float_3s_ease-in-out_infinite_alternate]' : ''}">
-							{#each line.words as word, wIdx (wIdx)}
-								{@const isWordEnd = word.text.endsWith(' ')}
-								{@const cleanText = word.text.trimEnd()}
-								{#if isActive}
-									{@const progress = getWordProgress(word, posMs)}
-									{@const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100)}
-									{@const isCurrentWord = progress > 0 && progress < 1}
-									<!-- Only the gradient stop moves per frame; the clip/fill are static, so they
-									     live in the class and aren't re-serialised 60 times a second. Both
-									     colours are theme tokens: the sung half was hardcoded white, which is
-									     invisible on every light theme. -->
-									<span
-										class="inline-block bg-clip-text text-transparent [-webkit-text-fill-color:transparent] transition-transform will-change-transform [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)] duration-200 {isWordEnd ? 'mr-[0.26em]' : ''} {isCurrentWord
-											? 'scale-[1.08] -translate-y-[3px]'
-											: progress >= 1
-												? 'scale-[1.03] -translate-y-[1px]'
-												: ''}"
-										style="background-image: linear-gradient(90deg, {sung(pct / 100)} {pct}%, color-mix(in srgb, {sung(pct / 100)} 22%, oklch(0.55 0.02 var(--hue)) {pct}%) {pct}%)"
-									>
-										{segText(i, wIdx, cleanText).trimEnd()}
-									</span>
-								{:else}
-									<span class="inline-block {isWordEnd ? 'mr-[0.26em]' : ''} {isPast
-										? (expanded ? 'text-muted-foreground/15' : 'text-muted-foreground/40')
-										: (expanded ? 'text-muted-foreground/25' : 'text-muted-foreground/70')}">
-										{segText(i, wIdx, cleanText).trimEnd()}
-									</span>
-								{/if}
-							{/each}
-						</span>
-					{:else if isActive && !line.text}
-						<!-- Instrumental break: three breathing dots instead of blank space. -->
-						<span class="inline-flex items-center gap-1.5 py-2" aria-hidden="true">
-							{#each [0, 1, 2] as d (d)}
-								<span
-									class="h-1.5 w-1.5 rounded-full bg-primary/70"
-									style="animation: karaoke-breathe 1.6s ease-in-out infinite; animation-delay: {d * 0.25}s"
-								></span>
-							{/each}
-						</span>
-					{:else}
-						<span>{segText(i, -1, line.text) || '♪'}</span>
-					{/if}
-					{#if transMode === 'both' && transText(i)}
-						<span class="mt-1 block text-[0.55em] font-medium normal-case tracking-normal opacity-60">{transText(i)}</span>
-					{/if}
-					{/if}
+							? 'text-[var(--text-1)] opacity-60 hover:opacity-100'
+							: expanded
+								? 'scale-[0.97] text-[var(--text-1)] opacity-90'
+								: 'text-[var(--text-1)]'}
+				{#if line.time_ms !== undefined}
+					<button
+						data-line={i}
+						onclick={() => seekTo(line)}
+						title={t('lyrics.seek_to_line')}
+						class="lyric-line block w-full origin-left cursor-pointer text-left font-heading font-bold leading-snug transition-[color,opacity,transform] {sizeCls} {stateCls}"
+						style="transition-duration:var(--dur-3);transition-timing-function:var(--ease-out)"
+					>
+						{@render lineBody(line, i, isActive, isPast, isTrailer)}
 					</button>
+				{:else}
+					<!-- Untimed line: not a button — no pointer cursor, no seek. -->
+					<div
+						data-line={i}
+						class="lyric-line block w-full origin-left text-left font-heading font-bold leading-snug transition-[color,opacity,transform] {sizeCls} {stateCls}"
+						style="transition-duration:var(--dur-3);transition-timing-function:var(--ease-out)"
+					>
+						{@render lineBody(line, i, false, false, false)}
+					</div>
+				{/if}
 			{/each}
 		</div>
 	{:else if lyrics}
@@ -589,58 +730,106 @@
 					: 'text-[15px]'}"
 		>
 			{#each lyrics.lines as line, i (i)}
-				{#if line.text}
+				{#if line.text?.trim()}
 					<div class={sing ? 'text-2xl md:text-3xl' : ''}>
-						<p>{transMode === 'only' ? (transText(i) ?? segText(i, -1, line.text)) : segText(i, -1, line.text)}</p>
+						<p class={romanOn ? 'lyric-romaji' : ''}>{transMode === 'only' ? (transText(i) ?? segText(i, -1, line.text)) : segText(i, -1, line.text)}{#if romanOn && transMode !== 'only' && romanPartial[i]}<span class="roman-partial" title={t('lyrics.partial_romaji')}>※</span>{/if}</p>
 						{#if transMode === 'both' && transText(i)}
-							<p class="mt-0.5 text-[0.7em] opacity-60">{transText(i)}</p>
+							<p class="lyric-trans mt-0.5 opacity-60">{transText(i)}</p>
 						{/if}
 					</div>
 				{:else}
-					<div class="h-4"></div>
+					<div class="py-1">{@render breathe()}</div>
 				{/if}
 			{/each}
 			</div>
 		{:else}
 			<div class="flex flex-col items-center gap-3 py-8 text-center">
-				<p class="text-sm text-muted-foreground">No lyrics found for this track.</p>
+				<p class="text-sm text-muted-foreground">{t('lyrics.none_found')}</p>
 				{#if playback.now && !api.isLocalId(playback.now.videoId)}
 					<button
 						class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-muted hover:text-foreground"
 						onclick={attachLyricsFile}
-						title="Import a .lrc file for this song"
+						title={t('lyrics.import_lrc_title')}
 					>
-						<HugeiconsIcon icon={Attachment01Icon} class="h-3.5 w-3.5" /> Import .lrc
+						<HugeiconsIcon icon={Attachment01Icon} class="h-3.5 w-3.5" /> {t('lyrics.import_lrc')}
 					</button>
 					<a
 						class="text-xs font-medium text-primary hover:underline"
 						href={`/lyrics/compose?videoId=${encodeURIComponent(playback.now.videoId)}`}
 					>
-						or time it yourself →
+						{t('lyrics.time_yourself')}
 					</a>
 				{/if}
 			</div>
 		{/if}
 </div>
-{#if true}
-	<!-- Footer row: always rendered — source left, controls right — so the row never jumps
-	     layout between tracks. Controls are disabled-with-tooltip when N/A; the pills stay
-	     in theater/mini too (cycle behavior unchanged). -->
+	{#if autoPaused && lyrics?.synced && !loading}
+		<!-- Resume-autoscroll pill: a manual wheel/touch pauses autoscroll until tapped (no
+		     timed auto-resume). Jumps (track change/seek) clear the pause on their own. -->
+		<button
+			onclick={resumeAuto}
+			class="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 cursor-pointer rounded-[var(--r-full)] px-3 py-1.5 text-xs font-semibold shadow-lg transition-transform hover:scale-105 active:scale-95"
+			style="background:var(--surface-1);color:var(--text-1);border:1px solid var(--border);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+		>
+			{t('lyrics.resume_autoscroll')}
+		</button>
+	{/if}
+</div>
+{#if !sing}
+	<!-- Footer row: suppressed in sing mode. Source left, controls right; compact/mini shows
+	     the source only. Controls stay disabled-with-tooltip when N/A. -->
 	{@const canTranslate = !!lyrics && !loading}
 	<div class="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
 		<span
 			class="min-w-0 flex-1 truncate"
-			title={loading ? 'Loading lyrics…' : lyrics ? lyrics.source : 'No lyrics for this track'}
+			title={loading ? t('lyrics.loading') : lyrics ? lyrics.source : t('lyrics.no_lyrics_short')}
 		>
 			{loading
-				? 'Loading lyrics…'
+				? t('lyrics.loading')
 				: lyrics
 					? lyrics.source.startsWith('Source:')
 						? lyrics.source
-						: `Lyrics from ${lyrics.source}`
-					: 'No lyrics for this track'}
+						: t('lyrics.from_source', { source: lyrics.source })
+					: t('lyrics.no_lyrics_short')}
 		</span>
+		{#if !compact}
 		<div class="flex shrink-0 items-center gap-1.5">
+		{#if playback.now}
+			<!-- Timing offset: −/+ nudge ±100ms per tap, value click resets to 0. Display updates
+			     immediately; the write is debounced and the shifted cues refetch from the server. -->
+			<div
+				class="flex shrink-0 items-center gap-0.5 rounded-full border px-1 py-0.5 tabular-nums"
+				title={t('lyrics.offset_title')}
+			>
+				<button
+					class="cursor-pointer rounded-full px-1.5 font-semibold transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+					onclick={() => nudgeOffset(-100)}
+					disabled={loading || !playback.now}
+					title={t('lyrics.offset_down')}
+					aria-label={t('lyrics.offset_down')}
+				>
+					−
+				</button>
+				<button
+					class="min-w-14 cursor-pointer text-center font-semibold transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+					onclick={resetOffset}
+					disabled={loading || !playback.now}
+					title={t('lyrics.offset_reset')}
+					aria-label={t('lyrics.offset_reset')}
+				>
+					{fmtOffset(lyricOffsetMs)}
+				</button>
+				<button
+					class="cursor-pointer rounded-full px-1.5 font-semibold transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+					onclick={() => nudgeOffset(100)}
+					disabled={loading || !playback.now}
+					title={t('lyrics.offset_up')}
+					aria-label={t('lyrics.offset_up')}
+				>
+					+
+				</button>
+			</div>
+		{/if}
 		{#if hasKana}
 			<button
 				class="shrink-0 cursor-pointer rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40 {romanOn
@@ -648,18 +837,18 @@
 					: 'hover:border-foreground/20 hover:text-foreground'}"
 				onclick={toggleRoman}
 				disabled={romanBusy || !lyrics}
-				title={lyrics ? 'Show kana lyrics in romaji' : 'Romaji needs lyrics first'}
+				title={lyrics ? t('lyrics.romaji_show') : t('lyrics.romaji_needs_lyrics')}
 				aria-pressed={romanOn}
 			>
-				{romanBusy ? '…' : romanOn ? 'かな' : 'Romaji'}
+				{romanBusy ? '…' : romanOn ? 'かな' : t('lyrics.romaji')}
 			</button>
 		{:else}
 			<button
 				class="shrink-0 cursor-not-allowed rounded-full border px-2 py-0.5 font-semibold tracking-wide uppercase opacity-40"
 				disabled
-				title="No kana in these lyrics"
+				title={t('lyrics.romaji_no_kana')}
 			>
-				Romaji
+				{t('lyrics.romaji')}
 			</button>
 		{/if}
 		<button
@@ -668,18 +857,18 @@
 				: 'hover:border-foreground/20 hover:text-foreground'}"
 			onclick={cycleTrans}
 			disabled={transBusy || !canTranslate}
-			title={canTranslate ? 'Cycle translation: off → both → translated only' : 'Translation needs lyrics first'}
+			title={canTranslate ? t('lyrics.translate_cycle') : t('lyrics.translate_needs_lyrics')}
 			aria-pressed={transMode !== 'off'}
 		>
-			{transBusy ? '…' : transMode === 'off' ? 'Translate' : transMode === 'both' ? 'Both' : 'Translated'}
+			{transBusy ? '…' : transMode === 'off' ? t('lyrics.translate') : transMode === 'both' ? t('lyrics.both') : t('lyrics.translated')}
 		</button>
 		{#if transMode !== 'off'}
 			<select
 				class="shrink-0 cursor-pointer rounded-full border bg-transparent px-1.5 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-40"
 				value={transLang || defaultTransLang()}
-				aria-label="Translation language"
+				aria-label={t('lyrics.translate_lang')}
 				disabled={!canTranslate}
-				title={canTranslate ? 'Translation language' : 'Translation needs lyrics first'}
+				title={canTranslate ? t('lyrics.translate_lang') : t('lyrics.translate_needs_lyrics')}
 				onchange={(e) => {
 					transLang = e.currentTarget.value;
 					transSeg = null;
@@ -696,12 +885,13 @@
 			<button
 				class="ml-auto shrink-0 cursor-pointer underline-offset-2 hover:underline"
 				onclick={removeAttachedLyrics}
-				title="Remove the attached lyrics file"
+				title={t('lyrics.remove_attached_title')}
 			>
-				Remove
+				{t('common.remove')}
 			</button>
 		{/if}
 		</div>
+		{/if}
 	</div>
 {/if}
 
@@ -714,8 +904,35 @@
 	0%, 100% { opacity: 0.35; transform: translateY(0); }
 	50% { opacity: 1; transform: translateY(-2px); }
 }
-@keyframes karaoke-float {
-	from { transform: translateY(-2.5px); }
-	to { transform: translateY(2.5px); }
+/* Karaoke + translation type, all on concrete tokens (never var(--hue) without a fallback,
+   which left the unsung half unpainted on themes without it). Translation and romaji sizes
+   are independent vars so each can be tuned without moving the other. */
+.lyrics-scroller {
+	--lyric-trans-size: 0.62em;
+	--lyric-romaji-size: 0.96em;
+}
+.lyric-trans {
+	font-size: var(--lyric-trans-size);
+}
+.lyric-romaji {
+	font-size: var(--lyric-romaji-size);
+}
+.lyric-sung {
+	color: var(--primary);
+}
+.lyric-unsung {
+	color: color-mix(in srgb, var(--primary) 26%, var(--text-3));
+}
+.lyric-past {
+	color: var(--text-4);
+}
+.lyric-line {
+	border-radius: var(--r-md);
+}
+/* Partial-transliteration mark: one faint reference glyph per mixed line, nothing else. */
+.roman-partial {
+	opacity: 0.35;
+	font-size: 0.72em;
+	margin-inline-start: 0.35em;
 }
 </style>

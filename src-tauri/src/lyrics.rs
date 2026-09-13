@@ -33,6 +33,12 @@ const MISS_TTL_SECS: i64 = 120;
 // serial 15–20 s default-client timeout per hop.
 const PROVIDER_TIMEOUT: Duration = Duration::from_millis(2500);
 
+// Longer deadline for chained (multi-call) providers: Apple (search + lyrics), Musixmatch
+// (macro + richsync) and Kugou (search + download) each need 2+ sequential hops, so one
+// 2.5 s slot made them lose by timeout rather than absence. Still under FETCH_BUDGET, so
+// the whole wave keeps its ~5 s envelope.
+const CHAIN_TIMEOUT: Duration = Duration::from_millis(4000);
+
 // Whole-lookup budget: `next()`, the concurrent wave, and any YTM follow-up together.
 const FETCH_BUDGET: Duration = Duration::from_secs(5);
 
@@ -218,7 +224,11 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
     //      10 Megalobiz   — scraped LRC
     //      11 Genius      — plain-text scrape, loosest matching, last
     let mut slots: Vec<(u8, &'static str, BoxFuture<'_, Result<Option<Lyrics>, ()>>)> = Vec::new();
-    slots.push((0, "Apple Music", Box::pin(bounded(apple_get(state, req)))));
+    slots.push((
+        0,
+        "Apple Music",
+        Box::pin(bounded_chain(apple_get(state, req))),
+    ));
     if state.db.get_setting("lyrics_boidu").as_deref() != Some("false") {
         slots.push((1, "Boidu", Box::pin(bounded(boidu_get(req)))));
     }
@@ -241,10 +251,14 @@ async fn fetch(state: &AppState, mut req: LyricsRequest) -> (Option<Lyrics>, boo
         })),
     ));
     slots.push((4, "NetEase", Box::pin(bounded(fetch_netease(req)))));
-    slots.push((5, "Kugou", Box::pin(bounded(fetch_kugou(req)))));
+    slots.push((5, "Kugou", Box::pin(bounded_chain(fetch_kugou(req)))));
     slots.push((6, "Unison", Box::pin(bounded(fetch_unison(req)))));
     slots.push((7, "QRC", Box::pin(bounded(fetch_qrc(req)))));
-    slots.push((8, "Musixmatch", Box::pin(bounded(fetch_musixmatch(req)))));
+    slots.push((
+        8,
+        "Musixmatch",
+        Box::pin(bounded_chain(fetch_musixmatch(req))),
+    ));
     slots.push((9, "SimpMusic", Box::pin(bounded(fetch_simp_music(req)))));
     slots.push((10, "Megalobiz", Box::pin(bounded(megalobiz(req)))));
     slots.push((11, "Genius", Box::pin(bounded(genius(req)))));
@@ -423,6 +437,18 @@ async fn bounded(
     fut: impl std::future::Future<Output = Result<Option<Lyrics>, reqwest::Error>>,
 ) -> Result<Option<Lyrics>, ()> {
     match tokio::time::timeout(PROVIDER_TIMEOUT, fut).await {
+        Ok(res) => res.map_err(|_| ()),
+        Err(_) => Err(()),
+    }
+}
+
+// Same as `bounded` but for chained providers whose sequential hops can't fit one 2.5 s
+// slot (Apple, Musixmatch, Kugou). FETCH_BUDGET accounting is untouched: 4 s < 5 s, so a
+// slow chain still settles inside the wave envelope and `definitive`/YTM logic is unchanged.
+async fn bounded_chain(
+    fut: impl std::future::Future<Output = Result<Option<Lyrics>, reqwest::Error>>,
+) -> Result<Option<Lyrics>, ()> {
+    match tokio::time::timeout(CHAIN_TIMEOUT, fut).await {
         Ok(res) => res.map_err(|_| ()),
         Err(_) => Err(()),
     }
@@ -1512,17 +1538,9 @@ async fn kugou_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error
             best = Some((sc, id.to_string(), ak.to_string()));
         }
     }
-    let (id, ak) = match best {
-        Some((_, id, ak)) => (id, ak),
-        None => {
-            let top = &cands[0];
-            let ak = top.get("accesskey").and_then(|v| v.as_str()).unwrap_or("");
-            let id = top.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if ak.is_empty() || id.is_empty() {
-                return Ok(None);
-            }
-            (id.to_string(), ak.to_string())
-        }
+    let Some((_, id, ak)) = best else {
+        tracing::debug!("kugou: no candidate passes overlap, skipping");
+        return Ok(None);
     };
     let raw: serde_json::Value = match web_http()
         .get("http://lyrics.kugou.com/download")
@@ -2245,56 +2263,54 @@ pub async fn fetchSimpMusic(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwe
     fetch_simp_music(req).await
 }
 
-// --- Unison (Kodama community vote/report + aggregated lyrics) -------------------------------
-// Unison is Kodama's community lyrics backend. In Limusic it is queried as a normal HTTP
-// provider (with vote/report side-effects persisted locally). When the remote is unreachable we
-// degrade to the next provider — lyrics remain best-effort.
+// --- Unison (community lyrics backend at https://unison.boidu.dev) ----------------------------
+// Keyless reads. Exact video lookup first (`GET /lyrics?v=<videoId>` returns the top-ranked
+// version; the synced text is in `data.lyrics`, its shape in `data.format`), then a metadata
+// fallback (`GET /lyrics/search?song=&artist=[&album][&duration]`). Every `/lyrics` response
+// is wrapped as `{ success, data }`; a miss is a 404. Both shapes are parsed defensively —
+// the payload may be a TTML string (preferred: carries word timings), an LRC string, plain
+// lines, or a `lines[]` array — into the same LyricLine word structures the QRC/Musixmatch
+// parsers build. Any failure is graceful `None`; the slot keeps its 2.5 s bound.
 
-const UNISON_ROOT: &str = "https://unison.limusic.example";
+const UNISON_ROOT: &str = "https://unison.boidu.dev";
 
-async fn unison_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
-    // Try community endpoint; a 404 / network error is treated as "no Unison lyrics".
-    let q = format!("{} {}", req.title, req.artists);
-    let resp: serde_json::Value = match web_http()
-        .get(format!("{UNISON_ROOT}/api/lyrics"))
-        .query(&[
-            ("q", q.as_str()),
-            ("duration", &req.duration.unwrap_or(0.0).to_string()),
-        ])
-        .timeout(Duration::from_secs(6))
-        .send()
-        .await
-    {
-        Ok(r) => match r.json().await {
-            Ok(j) => j,
-            Err(e) => {
-                tracing::debug!(error=%e, "unison json parse");
-                return Ok(None);
+// Unwrap Unison's `{ success, data }` envelope when present; otherwise the value itself.
+fn unison_data<'a>(v: &'a serde_json::Value) -> &'a serde_json::Value {
+    v.get("data").unwrap_or(v)
+}
+
+// Pull a lyric payload string out of one Unison entry, preferring word-timed TTML.
+// Accepts a bare string or a JSON array (serialised for the JSON-array parse branch).
+fn unison_entry_text(entry: &serde_json::Value) -> Option<String> {
+    for key in [
+        "ttml",
+        "lyrics",
+        "syncedLyrics",
+        "lrc",
+        "plainLyrics",
+        "text",
+    ] {
+        let Some(v) = entry.get(key) else { continue };
+        if let Some(s) = v.as_str() {
+            if !s.trim().is_empty() {
+                return Some(s.to_string());
             }
-        },
-        Err(e) => {
-            tracing::debug!(error=%e, "unison request failed");
-            return Ok(None);
-        }
-    };
-    let val = resp;
-    // Expected shape: { syncedLyrics: "..." } or { ttml: "..." } or { lines: [...] } or plain.
-    let text = val
-        .get("syncedLyrics")
-        .or_else(|| val.get("ttml"))
-        .or_else(|| val.get("lyrics"))
-        .or_else(|| val.get("lrc"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    if !text.trim().is_empty() {
-        let lines = parse_lrc_or_ttml(&text);
-        if let Some(l) = from_parsed("Unison", lines) {
-            return Ok(Some(l));
+        } else if v.is_array() || v.is_object() {
+            if let Ok(s) = serde_json::to_string(v) {
+                if !s.trim().is_empty() {
+                    return Some(s);
+                }
+            }
         }
     }
-    if let Some(lines) = val.get("lines").and_then(|v| v.as_array()) {
-        let parsed: Vec<LyricLine> = lines
+    None
+}
+
+// One Unison entry (exact or search hit) → Lyrics, or None when it carries nothing usable.
+fn unison_entry_to_lyrics(entry: &serde_json::Value) -> Option<Lyrics> {
+    // Back-compat `lines[]` shape: objects with text + time + optional words[].
+    if let Some(arr) = entry.get("lines").and_then(|v| v.as_array()) {
+        let parsed: Vec<LyricLine> = arr
             .iter()
             .filter_map(|l| {
                 let t = l
@@ -2305,25 +2321,160 @@ async fn unison_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Erro
                 let time = l
                     .get("time_ms")
                     .or_else(|| l.get("startMs"))
-                    .and_then(|v| v.as_u64());
-                if t.is_empty() && time.is_none() {
+                    .or_else(|| l.get("startTime"))
+                    .or_else(|| l.get("start"))
+                    .and_then(parse_time_val);
+                let mut words = Vec::new();
+                if let Some(ws) = l.get("words").and_then(|v| v.as_array()) {
+                    for w in ws {
+                        let wt = w
+                            .get("text")
+                            .or_else(|| w.get("word"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if wt.trim().is_empty() {
+                            continue;
+                        }
+                        let wb = w
+                            .get("startTime")
+                            .or_else(|| w.get("start"))
+                            .and_then(parse_time_val)
+                            .or(time);
+                        let we = w
+                            .get("endTime")
+                            .or_else(|| w.get("end"))
+                            .and_then(parse_time_val)
+                            .or_else(|| wb.map(|b| b + 500));
+                        if let (Some(b), Some(e)) = (wb, we) {
+                            words.push(LyricWord {
+                                text: wt.to_string(),
+                                start_ms: b,
+                                end_ms: e,
+                            });
+                        }
+                    }
+                }
+                if t.is_empty() && time.is_none() && words.is_empty() {
                     None
                 } else {
                     Some(LyricLine {
                         time_ms: time,
                         end_time_ms: None,
-                        text: t,
-                        words: None,
+                        text: if t.is_empty() {
+                            words
+                                .iter()
+                                .map(|w| w.text.as_str())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        } else {
+                            t
+                        },
+                        words: if words.is_empty() { None } else { Some(words) },
                         translation: None,
                     })
                 }
             })
             .collect();
         if let Some(l) = from_parsed("Unison", parsed) {
+            return Some(l);
+        }
+    }
+    let text = unison_entry_text(entry)?;
+    // TTML/LRC/JSON-array first (word timings ride along via parse_ttml_aaml), then the
+    // KRC/YRC word pass like QRC does, then plain text as a last resort.
+    let lines = parse_lrc_or_ttml(&text);
+    if let Some(l) = from_parsed("Unison", lines) {
+        return Some(l);
+    }
+    let kw = parse_krc_words(&text);
+    if let Some(l) = from_parsed("Unison", kw) {
+        return Some(l);
+    }
+    plain_from_text(Some(&text), "Unison")
+}
+
+async fn unison_get(req: &LyricsRequest) -> Result<Option<Lyrics>, reqwest::Error> {
+    // 1. Exact video lookup: the single best version for this cut. 404 = no entry → search.
+    if !req.video_id.trim().is_empty() {
+        match web_http()
+            .get(format!("{UNISON_ROOT}/lyrics"))
+            .query(&[("v", req.video_id.as_str())])
+            .send()
+            .await
+        {
+            Ok(r) => {
+                if r.status() != reqwest::StatusCode::NOT_FOUND {
+                    match r.json::<serde_json::Value>().await {
+                        Ok(json) => {
+                            if let Some(l) = unison_entry_to_lyrics(unison_data(&json)) {
+                                return Ok(Some(l));
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(error=%e, "unison json parse");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!(error=%e, "unison request failed");
+            }
+        }
+    }
+    // 2. Metadata search fallback (matched case-insensitively server-side; album/duration
+    //    narrow recordings of the same title). Accepts a single best-match object or a
+    //    score-sorted array — first entry with usable lyrics wins.
+    let mut q: Vec<(&str, String)> =
+        vec![("song", req.title.clone()), ("artist", req.artists.clone())];
+    if let Some(album) = &req.album {
+        if !album.trim().is_empty() {
+            q.push(("album", album.clone()));
+        }
+    }
+    if let Some(d) = req.duration.filter(|d| *d > 0.0) {
+        q.push(("duration", format!("{}", d.round() as i64)));
+    }
+    let json: serde_json::Value = match web_http()
+        .get(format!("{UNISON_ROOT}/lyrics/search"))
+        .query(&q)
+        .send()
+        .await
+    {
+        Ok(r) => {
+            if r.status() == reqwest::StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
+            match r.json().await {
+                Ok(j) => j,
+                Err(e) => {
+                    tracing::debug!(error=%e, "unison search json parse");
+                    return Ok(None);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::debug!(error=%e, "unison search request failed");
+            return Ok(None);
+        }
+    };
+    let data = unison_data(&json);
+    // Score-sorted hits: exact-identifier > metadata-similarity > content matches.
+    let candidates: Vec<&serde_json::Value> = if let Some(arr) = data.as_array() {
+        arr.iter().collect()
+    } else if let Some(arr) = data
+        .get("results")
+        .or_else(|| data.get("items"))
+        .and_then(|v| v.as_array())
+    {
+        arr.iter().collect()
+    } else {
+        vec![data]
+    };
+    for entry in candidates {
+        if let Some(l) = unison_entry_to_lyrics(entry) {
             return Ok(Some(l));
         }
     }
-    // Fallback: treat unison as LRCLIB proxy when community has no hit — keeps word-level chain warm.
     Ok(None)
 }
 
