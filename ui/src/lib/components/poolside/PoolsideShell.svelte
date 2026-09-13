@@ -813,7 +813,7 @@
 				</div>
 				<div class="ps-setrow ps-setrow--exit">
 					<span>EXIT BETA</span>
-					<button class="ps-setbtn ps-setbtn--exit" onclick={() => { applyLayout('default'); toast.info('Exited Poolside — back to Default layout'); }} aria-label="Exit Poolside beta">
+					<button class="ps-setbtn ps-setbtn--exit" onclick={() => { applyLayout('grove'); toast.info('Exited Poolside — back to Grove layout'); }} aria-label="Exit Poolside beta">
 						EXIT
 					</button>
 				</div>

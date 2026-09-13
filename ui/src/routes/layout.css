@@ -85,13 +85,18 @@
 	--status-danger: var(--destructive);
 	--status-danger-soft: color-mix(in srgb, var(--status-danger) 12%, transparent);
 	--status-danger-line: color-mix(in srgb, var(--status-danger) 30%, transparent);
-	/* Radii (visual #2): frozen scale — no other radius values in owned files. */
-	--r-xs: 3px;
-	--r-sm: 4px;
-	--r-md: 6px;
-	--r-lg: 8px;
-	--r-xl: 12px;
-	--r-2xl: 16px;
+	/* Radii (visual #2): frozen scale — no other radius values in owned files.
+	   Scaled by --geo (geometry switch: soft 1x, sharp ~0.55x). */
+	--geo: 1;
+	/* Wash intensity 0–1 (theme.svelte.ts custom.wash): how far --accent bleeds into surfaces.
+	   Dark/light tokens color-mix toward the accent by it; 0 is neutral, 1 is fully tinted. */
+	--wash: 0.3;
+	--r-xs: calc(3px * var(--geo, 1));
+	--r-sm: calc(4px * var(--geo, 1));
+	--r-md: calc(6px * var(--geo, 1));
+	--r-lg: calc(8px * var(--geo, 1));
+	--r-xl: calc(12px * var(--geo, 1));
+	--r-2xl: calc(16px * var(--geo, 1));
 	--r-full: 999px;
 	/* Motion (visual #8). */
 	--dur-1: 120ms;
@@ -137,17 +142,20 @@
 }
 
 .dark {
-	--background: oklch(0.128 0.006 var(--hue));
+	/* Surface tint: every surface carries accent chroma (art-directed, not neutral gray) —
+	   2% base + wash-scaled bleed toward --accent (custom.wash -> --wash 0–1). --accent here
+	   resolves to the inline preset/custom value when one is set, else the default below. */
+	--background: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 8%), oklch(0.128 0.006 var(--hue)));
 	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.18 0.008 var(--hue));
+	--card: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 8%), oklch(0.18 0.008 var(--hue)));
 	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.18 0.008 var(--hue));
+	--popover: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 8%), oklch(0.18 0.008 var(--hue)));
 	--popover-foreground: oklch(0.985 0 0);
 	--primary: oklch(0.628 0.228 14.349);
 	--primary-foreground: oklch(0.969 0.015 12.422);
-	--secondary: oklch(0.274 0.006 var(--hue));
+	--secondary: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 6%), oklch(0.274 0.006 var(--hue)));
 	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.263 0.024 var(--hue));
+	--muted: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 6%), oklch(0.263 0.024 var(--hue)));
 	--muted-foreground: oklch(0.711 0.019 var(--hue));
 	--accent: oklch(0.628 0.228 14.349);
 	--accent-foreground: oklch(0.969 0.015 12.422);
@@ -167,11 +175,11 @@
 	--chart-3: oklch(0.588 0.158 241.966);
 	--chart-4: oklch(0.5 0.134 242.749);
 	--chart-5: oklch(0.443 0.11 240.79);
-	--sidebar: oklch(0.16 0.007 var(--hue));
+	--sidebar: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 8%), oklch(0.16 0.007 var(--hue)));
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.645 0.246 16.439);
 	--sidebar-primary-foreground: oklch(0.969 0.015 12.422);
-	--sidebar-accent: oklch(0.263 0.024 var(--hue));
+	--sidebar-accent: color-mix(in oklch, var(--accent) calc(2% + var(--wash, 0.3) * 6%), oklch(0.263 0.024 var(--hue)));
 	--sidebar-accent-foreground: oklch(0.985 0 0);
 	--sidebar-border: oklch(1 0 0 / 10%);
 	--sidebar-ring: oklch(0.542 0.034 var(--hue));
@@ -266,6 +274,202 @@
 	--sidebar-ring: oklch(0.7871 0.1187 304.7693);
 }
 
+/* --- Signature themes: midnight / aurora / mono / canopy-light ---
+   Accent-kind themes (midnight, aurora, mono) layer their accent via inline vars (theme.svelte.ts)
+   and use these hooks only for surfaces — mirroring the `.theme-catppuccin` palette-class pattern.
+   Canopy Light is a full palette (light + dark) like catppuccin. */
+
+.theme-midnight {
+	--hue: 297;
+}
+.dark.theme-midnight {
+	--background: color-mix(in oklch, var(--accent) calc(3% + var(--wash, 0.3) * 8%), oklch(0.09 0.008 297));
+	--card: color-mix(in oklch, var(--accent) calc(3% + var(--wash, 0.3) * 8%), oklch(0.13 0.012 297));
+	--popover: color-mix(in oklch, var(--accent) calc(3% + var(--wash, 0.3) * 8%), oklch(0.13 0.012 297));
+	--secondary: color-mix(in oklch, var(--accent) calc(3% + var(--wash, 0.3) * 6%), oklch(0.19 0.012 297));
+	--muted: color-mix(in oklch, var(--accent) calc(3% + var(--wash, 0.3) * 6%), oklch(0.20 0.018 297));
+	--muted-foreground: oklch(0.72 0.03 297);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 14%);
+	--sidebar: #000;
+	--sidebar-accent: color-mix(in oklch, var(--accent) calc(3% + var(--wash, 0.3) * 6%), oklch(0.16 0.012 297));
+	--glass: oklch(1 0 0 / calc(0.04 * var(--glass-alpha, 1)));
+	--glass-strong: oklch(1 0 0 / calc(0.075 * var(--glass-alpha, 1)));
+}
+
+.theme-aurora {
+	--hue: 320;
+}
+.dark.theme-aurora {
+	--background: color-mix(in oklch, var(--accent) calc(4% + var(--wash, 0.3) * 12%), oklch(0.11 0.015 320));
+	--card: color-mix(in oklch, var(--accent) calc(4% + var(--wash, 0.3) * 12%), oklch(0.16 0.02 320));
+	--popover: color-mix(in oklch, var(--accent) calc(4% + var(--wash, 0.3) * 12%), oklch(0.16 0.02 320));
+	--secondary: color-mix(in oklch, var(--accent) calc(4% + var(--wash, 0.3) * 10%), oklch(0.22 0.02 320));
+	--muted: color-mix(in oklch, var(--accent) calc(4% + var(--wash, 0.3) * 10%), oklch(0.23 0.028 320));
+	--muted-foreground: oklch(0.73 0.04 320);
+	--border: oklch(1 0 0 / 11%);
+	--input: oklch(1 0 0 / 15%);
+	--sidebar: color-mix(in oklch, var(--accent) 6%, oklch(0.12 0.014 320));
+	--sidebar-accent: color-mix(in oklch, var(--accent) 10%, oklch(0.23 0.028 320));
+}
+/* Aurora art-tint aggressive: same --art-h mechanic, higher chroma so the cover drags surfaces
+   visibly. Outranks the base art-tint rules below (0,3,1 > 0,2,1); still scaled by Follow. */
+html.theme-aurora.art-tint:not(.dark) {
+	--background: oklch(0.975 0.028 var(--art-h));
+	--card: oklch(0.99 0.022 var(--art-h));
+	--popover: oklch(0.99 0.022 var(--art-h));
+	--secondary: oklch(0.925 0.05 var(--art-h));
+	--muted: oklch(0.925 0.048 var(--art-h));
+	--muted-foreground: oklch(0.50 0.075 var(--art-h));
+	--border: oklch(0.88 0.05 var(--art-h));
+	--input: oklch(0.88 0.05 var(--art-h));
+	--sidebar: oklch(0.95 0.04 var(--art-h));
+	--sidebar-accent: oklch(0.915 0.055 var(--art-h));
+}
+html.theme-aurora.art-tint.dark {
+	--background: oklch(0.15 0.045 var(--art-h));
+	--card: oklch(0.21 0.06 var(--art-h));
+	--popover: oklch(0.21 0.06 var(--art-h));
+	--secondary: oklch(0.27 0.062 var(--art-h));
+	--muted: oklch(0.26 0.064 var(--art-h));
+	--muted-foreground: oklch(0.73 0.06 var(--art-h));
+	--border: oklch(0.34 0.06 var(--art-h));
+	--input: oklch(0.38 0.06 var(--art-h));
+	--sidebar: oklch(0.175 0.05 var(--art-h));
+	--sidebar-accent: oklch(0.26 0.064 var(--art-h));
+}
+
+.theme-mono {
+	--hue: 0;
+	--wash: 0;
+}
+.dark.theme-mono {
+	--background: oklch(0.12 0 0);
+	--card: oklch(0.17 0 0);
+	--popover: oklch(0.17 0 0);
+	--secondary: oklch(0.24 0 0);
+	--muted: oklch(0.25 0 0);
+	--muted-foreground: oklch(0.70 0 0);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 14%);
+	--ring: oklch(0.70 0 0);
+	--sidebar: oklch(0.14 0 0);
+	--sidebar-accent: oklch(0.25 0 0);
+	--sidebar-border: oklch(1 0 0 / 10%);
+}
+.theme-mono:not(.dark) {
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.20 0 0);
+	--card: oklch(0.99 0 0);
+	--muted: oklch(0.96 0 0);
+	--border: oklch(0.90 0 0);
+	--sidebar: oklch(0.98 0 0);
+}
+
+/* Canopy Light: finished warm-paper light theme — ink text, one deep accent, full light token
+   ladder (surfaces, thumbs, elevation readable on light). Dark variant is warm charcoal so the
+   palette never strands dark-mode users. */
+.theme-canopy-light {
+	--background: oklch(0.970 0.012 85);
+	--foreground: oklch(0.225 0.025 60);
+	--card: oklch(0.992 0.006 85);
+	--card-foreground: oklch(0.225 0.025 60);
+	--popover: oklch(0.985 0.009 85);
+	--popover-foreground: oklch(0.225 0.025 60);
+	--primary: oklch(0.48 0.16 55);
+	--primary-foreground: oklch(0.99 0.005 85);
+	--secondary: oklch(0.935 0.018 80);
+	--secondary-foreground: oklch(0.28 0.03 60);
+	--muted: oklch(0.925 0.02 80);
+	--muted-foreground: oklch(0.48 0.04 65);
+	--accent: oklch(0.48 0.16 55);
+	--accent-foreground: oklch(0.99 0.005 85);
+	--destructive: oklch(0.55 0.20 25);
+	--border: oklch(0.865 0.025 80);
+	--input: oklch(0.865 0.025 80);
+	--ring: oklch(0.48 0.16 55);
+	--glass: oklch(1 0 0 / calc(0.55 * var(--glass-alpha, 1)));
+	--glass-strong: oklch(1 0 0 / calc(0.72 * var(--glass-alpha, 1)));
+	--glass-border: oklch(0.45 0.03 70 / 0.18);
+	--glass-highlight: oklch(1 0 0 / 0.7);
+	--chart-1: oklch(0.48 0.16 55);
+	--chart-2: oklch(0.55 0.12 120);
+	--chart-3: oklch(0.55 0.12 250);
+	--chart-4: oklch(0.60 0.14 20);
+	--chart-5: oklch(0.50 0.10 300);
+	--sidebar: oklch(0.945 0.016 82);
+	--sidebar-foreground: oklch(0.225 0.025 60);
+	--sidebar-primary: oklch(0.48 0.16 55);
+	--sidebar-primary-foreground: oklch(0.99 0.005 85);
+	--sidebar-accent: oklch(0.905 0.024 78);
+	--sidebar-accent-foreground: oklch(0.28 0.03 60);
+	--sidebar-border: oklch(0.865 0.025 80);
+	--sidebar-ring: oklch(0.48 0.16 55);
+	--radius: 0.6rem;
+	--font-sans: 'Inter Variable', sans-serif;
+	--font-heading: 'Inter Variable', sans-serif;
+	--shadow-2xs: 0 1px 2px 0 rgb(90 60 20 / 0.08);
+	--shadow-xs: 0 1px 2px 0 rgb(90 60 20 / 0.10);
+	--shadow-sm: 0 1px 3px 0 rgb(90 60 20 / 0.14), 0 1px 2px -1px rgb(90 60 20 / 0.12);
+	--shadow-md: 0 4px 8px -2px rgb(90 60 20 / 0.16), 0 2px 4px -2px rgb(90 60 20 / 0.12);
+	--shadow-lg: 0 10px 18px -4px rgb(90 60 20 / 0.18), 0 4px 6px -4px rgb(90 60 20 / 0.12);
+	--shadow-xl: 0 20px 36px -10px rgb(90 60 20 / 0.22), 0 8px 16px -8px rgb(90 60 20 / 0.14);
+	--shadow-2xl: 0 28px 56px -12px rgb(90 60 20 / 0.28), 0 12px 24px -8px rgb(90 60 20 / 0.16);
+}
+.dark.theme-canopy-light {
+	--background: oklch(0.195 0.015 65);
+	--foreground: oklch(0.94 0.015 80);
+	--card: oklch(0.235 0.018 65);
+	--card-foreground: oklch(0.94 0.015 80);
+	--popover: oklch(0.235 0.018 65);
+	--popover-foreground: oklch(0.94 0.015 80);
+	--primary: oklch(0.75 0.13 65);
+	--primary-foreground: oklch(0.22 0.02 60);
+	--secondary: oklch(0.30 0.02 65);
+	--secondary-foreground: oklch(0.94 0.015 80);
+	--muted: oklch(0.29 0.022 65);
+	--muted-foreground: oklch(0.72 0.03 70);
+	--accent: oklch(0.75 0.13 65);
+	--accent-foreground: oklch(0.22 0.02 60);
+	--border: oklch(0.34 0.022 65);
+	--input: oklch(0.34 0.022 65);
+	--ring: oklch(0.75 0.13 65);
+	--sidebar: oklch(0.175 0.014 65);
+	--sidebar-foreground: oklch(0.94 0.015 80);
+	--sidebar-primary: oklch(0.75 0.13 65);
+	--sidebar-primary-foreground: oklch(0.22 0.02 60);
+	--sidebar-accent: oklch(0.29 0.022 65);
+	--sidebar-accent-foreground: oklch(0.94 0.015 80);
+	--sidebar-border: oklch(0.34 0.022 65);
+	--sidebar-ring: oklch(0.75 0.13 65);
+}
+
+/* True-black toggle: pure #000 backgrounds, elevation via borders (saves OLED power).
+   Outranks `.dark.theme-x` (0,2,1 > 0,2,0) so it wins over any preset when on. */
+html.true-black.dark {
+	--background: #000;
+	--card: #000;
+	--popover: #050505;
+	--secondary: oklch(0.16 0.005 var(--hue));
+	--muted: oklch(0.16 0.005 var(--hue));
+	--sidebar: #000;
+	--sidebar-accent: oklch(0.16 0.005 var(--hue));
+	--border: oklch(1 0 0 / 14%);
+	--input: oklch(1 0 0 / 16%);
+	--sidebar-border: oklch(1 0 0 / 14%);
+	--glass: oklch(0 0 0 / calc(0.55 * var(--glass-alpha, 1)));
+	--glass-strong: oklch(0 0 0 / calc(0.72 * var(--glass-alpha, 1)));
+	--glass-border: oklch(1 0 0 / 0.14);
+}
+
+/* Geometry switch: radius scale multiplier. Sharp ~0.55x, soft 1x (default). */
+html.geo-sharp {
+	--geo: 0.55;
+}
+html.geo-soft {
+	--geo: 1;
+}
+
 /* --- Artwork tint ---
    "Adapt colors to artwork" (Themes tab). `theme.svelte.ts` puts the playing cover's hue in
    --art-h and toggles .art-tint on <html>; every surface below is derived from that one number, so
@@ -322,19 +526,14 @@ html.art-tint.dark {
 	--sidebar-ring: oklch(0.55 0.06 var(--art-h));
 }
 
-/* --- Orchard layouts (Grove / Canopy + extra) ---
+/* --- Orchard layouts (Grove / Canopy / Poolside) ---
    Toggled via `layout-${id}` on <html> by theme.svelte.ts. Uses the CSS variables already
-   defined above so every palette + tint still works. The four layouts all keep the Pixel/
-   Arcade/Synthwave vibe: sharp when pixel, glowing when arcade, neon when synthwave — just
-   rearranged.
-   - Grove: roomy labelled sidebar + a rounded card-like main feed.
+   defined above so every palette + tint still works.
+   - Grove: roomy labelled sidebar + a rounded card-like main feed. The classic balanced look,
+     and the stock flex row (sidebar | main) + floating panels need no overrides, so Grove
+     carries no base rule of its own — only its card/island styling below.
    - Canopy: top nav + immersive full-bleed player.
-   - Compact: narrow 900px centered focus.
-   - Wide: collapsed sidebar + 1400px content. */
-
-html.layout-default {
-	/* no overrides — the stock flex row (sidebar | main) + floating panels */
-}
+   - Poolside: full-app reskin, scoped to its own shell (see poolside.css). */
 
 html.layout-grove .app-root > div.relative {
 	gap: 0.875rem;

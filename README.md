@@ -41,7 +41,7 @@ YouTube Music client, and grew from there.
 - **Karaoke lyrics from 8 sources** — LRCLIB, Boidu, Unison, QRC, NetEase, Musixmatch, Kugou, SimpMusic, with word-by-word sweep, translation, transliteration and a tap-along timing composer
 - **Offline downloads** — per-track, per-playlist (parallel, skips what's on disk, quarantines repeat failures), auto-offline for new likes, persistent offline badges, plays straight from disk
 - **Queue that keeps playing** — radio/automix continuation, drag-to-reorder, type-to-filter, clear-played, restored across restarts
-- **Layouts & themes** — Default, Grove, Canopy, Compact, Wide, plus a Poolside beta; accent presets (Rose/Blue/Lime/Purple/Teal/Catppuccin) that can follow the album art, font overrides, ambient mode and Canvas loops
+- **Layouts & themes** — Grove, Canopy, plus a Poolside beta; accent presets (Rose/Blue/Lime/Purple/Teal/Catppuccin) that can follow the album art, font overrides, ambient mode and Canvas loops
 - **Everywhere control** — Ctrl+K palette, rebindable shortcuts, full gamepad support (even tray-minimized), OS media keys, system tray, LAN remote from your phone, synced Listen Together rooms
 - **Connected** — Last.fm scrobbling, Discord Rich Presence, channel switcher for multi-channel accounts
 - **Self-updating** Windows builds + Ctrl/Cmd +/− zoom

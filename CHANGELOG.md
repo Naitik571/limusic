@@ -7,6 +7,8 @@ until a version and date are stamped on them.
 
 ## [Unreleased]
 
+- Default layout removed — Grove is now the classic balanced look and the fallback for stored `default` selections; layouts are Grove, Canopy and Poolside (Beta).
+
 ## [0.7.3] - 2026-09-12
 
 - Rebindable shortcuts — every keyboard shortcut remappable from Settings, with clash detection and Alt-modifier support.

@@ -30,6 +30,9 @@
 		THEMES,
 		FONTS,
 		LAYOUTS,
+		RETIRED_ACCENTS,
+		DEFAULT_WASH,
+		DEFAULT_FOLLOW_STRENGTH,
 		theme,
 		layout,
 		appearance,
@@ -52,6 +55,7 @@
 		LYRIC_FONTS,
 		type Custom,
 		type ThemeId,
+		type GeometryId,
 		type LayoutId
 	} from '$lib/theme.svelte';
 	import {
@@ -158,8 +162,13 @@
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token stored in the DB; HTTP listens on 0.0.0.0:32145.' },
 		// Appearance
-		{ tab: 'themes', group: 'thm-theme', text: 'Preset Accent colors tint the default look; palettes swap every color.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Preset Accent colors tint the default look; palettes swap every color. Midnight true-black OLED violet Aurora artwork-follow Mono grayscale Canopy Light warm paper Catppuccin pastel.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Accent color Buttons, highlights and the progress bar. Applies over any preset.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Retired hues One-click retired accents rose blue lime purple teal. Writes the custom accent override.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Wash intensity How far the accent bleeds into surfaces. Neutral to fully tinted.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Follow strength Artwork-follow chroma cap. Higher keeps more cover color.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'True black Pure black backgrounds. Elevation from borders, saves OLED power.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Geometry Corner sharpness. Sharp compact, Soft rounded.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Background tint Shades the greys: surfaces, borders and secondary text.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Roundness Corner radius of cards, buttons and artwork.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Reset customization Drop the color, roundness and font overrides. Keeps the preset.' },
@@ -1026,14 +1035,40 @@
 							<div class={CARD}>
 								{@render row({
 									title: 'Preset',
-									desc: 'Accent colors tint the default look; palettes swap every color.',
-									control: presetSelect
+									desc: 'Midnight is the true-black default; Aurora chases artwork, Mono is grayscale, Canopy Light is warm paper, Catppuccin is pastel.',
+									control: presetSelect,
+									below: presetDesc
 								})}
 								{@render row({
 									title: 'Accent color',
 									desc: 'Buttons, highlights and the progress bar. Applies over any preset.',
 									control: accentSwatch,
 									below: pickerOpen ? accentPicker : undefined
+								})}
+								{@render row({
+									title: 'Retired hues',
+									desc: 'One-click retired accents. Writes the custom accent override.',
+									below: retiredSwatches
+								})}
+								{@render row({
+									title: 'Wash intensity',
+									desc: 'How far the accent bleeds into surfaces. 0 is neutral, 100 is fully tinted.',
+									control: washSlider
+								})}
+								{@render row({
+									title: 'Follow strength',
+									desc: 'Artwork-follow chroma cap. Higher keeps more of the cover color in accents and surfaces.',
+									control: followSlider
+								})}
+								{@render row({
+									title: 'True black',
+									desc: 'Pure #000 backgrounds. Elevation comes from borders; saves OLED power.',
+									control: trueBlackSwitch
+								})}
+								{@render row({
+									title: 'Geometry',
+									desc: 'Corner sharpness. Sharp is compact, Soft is rounded.',
+									control: geometryPicker
 								})}
 								{@render row({
 									title: 'Background tint',
@@ -1050,7 +1085,7 @@
 							})}
 						{@render row({
 								title: 'Reset customization',
-								desc: 'Drop the color, roundness and font overrides. Keeps the preset.',
+								desc: 'Drop the color, wash, follow, geometry and font overrides. Keeps the preset.',
 								control: resetButton
 							})}
 							</div>
@@ -1633,14 +1668,19 @@
 		</Select.Trigger>
 		<Select.Content>
 			<Select.Group>
-				<Select.GroupHeading>Accent colors</Select.GroupHeading>
+				<Select.GroupHeading>Signature</Select.GroupHeading>
 				{#each ACCENT_THEMES as t (t.id)}
 					<Select.Item value={t.id} label={t.label}>
-						<span
-							class="size-4 shrink-0 rounded-full ring-1 ring-black/10"
-							style="background:{t.color}"
-						></span>
-						{t.label}
+						<span class="flex items-start gap-2">
+							<span
+								class="mt-0.5 size-4 shrink-0 rounded-full ring-1 ring-black/10"
+								style="background:{t.color}"
+							></span>
+							<span class="flex flex-col items-start">
+								<span>{t.label}</span>
+								<span class="text-xs text-muted-foreground">{t.description}</span>
+							</span>
+						</span>
 					</Select.Item>
 				{/each}
 			</Select.Group>
@@ -1648,16 +1688,91 @@
 				<Select.GroupHeading>Palettes</Select.GroupHeading>
 				{#each PALETTE_THEMES as t (t.id)}
 					<Select.Item value={t.id} label={t.label}>
-						<span
-							class="size-4 shrink-0 rounded-full ring-1 ring-black/10"
-							style="background:{t.color}"
-						></span>
-						{t.label}
+						<span class="flex items-start gap-2">
+							<span
+								class="mt-0.5 size-4 shrink-0 rounded-full ring-1 ring-black/10"
+								style="background:{t.color}"
+							></span>
+							<span class="flex flex-col items-start">
+								<span>{t.label}</span>
+								<span class="text-xs text-muted-foreground">{t.description}</span>
+							</span>
+						</span>
 					</Select.Item>
 				{/each}
 			</Select.Group>
 		</Select.Content>
 	</Select.Root>
+{/snippet}
+
+{#snippet presetDesc()}
+	<p class="text-xs text-muted-foreground">{currentTheme.description}</p>
+{/snippet}
+
+{#snippet retiredSwatches()}
+	<div class="flex flex-wrap items-center gap-2">
+		{#each RETIRED_ACCENTS as s (s.id)}
+			<button
+				type="button"
+				onclick={() => setCustom({ accent: s.hex })}
+				aria-label="Use {s.label} accent"
+				title={s.label}
+				class="size-7 cursor-pointer rounded-full ring-1 ring-black/15 transition-transform hover:scale-110 {custom.accent?.toLowerCase() === s.hex.toLowerCase() ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}"
+				style="background:{s.hex}"
+			></button>
+		{/each}
+		<span class="text-xs text-muted-foreground">Retired hues — one click writes the custom accent.</span>
+	</div>
+{/snippet}
+
+{#snippet washSlider()}
+	<div class="flex w-44 shrink-0 items-center gap-3">
+		<Slider
+			type="single"
+			aria-label="Wash intensity"
+			min={0}
+			max={100}
+			step={1}
+			value={custom.wash ?? DEFAULT_WASH}
+			onValueChange={(v) => setCustom({ wash: Array.isArray(v) ? v[0] : v })}
+		/>
+		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+			{custom.wash ?? DEFAULT_WASH}
+		</span>
+	</div>
+{/snippet}
+
+{#snippet followSlider()}
+	<div class="flex w-44 shrink-0 items-center gap-3">
+		<Slider
+			type="single"
+			aria-label="Follow strength"
+			min={0}
+			max={100}
+			step={1}
+			value={custom.followStrength ?? DEFAULT_FOLLOW_STRENGTH}
+			onValueChange={(v) => setCustom({ followStrength: Array.isArray(v) ? v[0] : v })}
+		/>
+		<span class="w-10 shrink-0 text-right font-mono text-xs text-muted-foreground">
+			{custom.followStrength ?? DEFAULT_FOLLOW_STRENGTH}%
+		</span>
+	</div>
+{/snippet}
+
+{#snippet trueBlackSwitch()}<Switch
+		checked={custom.trueBlack ?? false}
+		onCheckedChange={(on) => setCustom({ trueBlack: on })}
+	/>{/snippet}
+
+{#snippet geometryPicker()}
+	{@render segmented(
+		[
+			{ id: 'sharp', label: 'Sharp' },
+			{ id: 'soft', label: 'Soft' }
+		],
+		custom.geometry ?? 'soft',
+		(id) => setCustom({ geometry: id as GeometryId })
+	)}
 {/snippet}
 
 {#snippet accentSwatch()}
@@ -1766,17 +1881,13 @@
 				aria-pressed={layout.id === l.id}
 			>
 				<div class="flex h-10 w-full gap-0.5 overflow-hidden rounded border bg-background p-0.5">
-					{#if l.id === 'default'}
-						<div class="w-1/4 rounded-sm bg-sidebar"></div>
-						<div class="flex flex-1 flex-col gap-0.5">
-							<div class="flex-1 rounded-sm bg-muted"></div>
-							<div class="h-1.5 rounded-sm bg-primary/60"></div>
-						</div>
-					{:else if l.id === 'grove'}
-						<div class="w-[22%] rounded-sm bg-sidebar"></div>
+				{#if l.id === 'grove'}
+					<div class="w-1/4 rounded-sm bg-sidebar"></div>
+					<div class="flex flex-1 flex-col gap-0.5">
 						<div class="flex-1 rounded-sm bg-muted"></div>
-						<div class="w-[24%] rounded-sm bg-sidebar"></div>
-					{:else if l.id === 'canopy'}
+						<div class="h-1.5 rounded-sm bg-primary/60"></div>
+					</div>
+				{:else if l.id === 'canopy'}
 						<div class="flex w-full flex-col gap-0.5">
 							<div class="h-2 rounded-sm bg-sidebar"></div>
 							<div class="flex-1 rounded-sm bg-muted"></div>

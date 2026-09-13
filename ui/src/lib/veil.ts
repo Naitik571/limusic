@@ -10,9 +10,12 @@ type Rgb = [number, number, number];
 const VEIL_MIN = 0.34;
 const VEIL_MAX = 0.82;
 const CONTRAST_TARGET = 4.5;
-/** Art-tint chroma cap (visual #5): saturated covers must not push surfaces past this HSV
- * saturation — applied in theme.svelte.ts before the tint/veil path reads the colour. */
+/** Art-tint chroma cap default (Follow strength 60). The live cap is
+ *  `custom.followStrength` in theme.svelte.ts (`followCap()`); this constant stays as the
+ *  fallback/default so older imports keep working. */
 export const ART_TINT_MAX_SATURATION = 0.6;
+/** Default Follow strength slider value (0–100) mirroring the cap above. */
+export const DEFAULT_FOLLOW_CAP = 60;
 
 let normCtx: CanvasRenderingContext2D | null | undefined;
 

@@ -13,33 +13,48 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { hexToHsv, hsvToHex, isLight, lerpHue, type Hsv } from './color';
 import { artworkAccent } from './artcolor';
-import { ART_TINT_MAX_SATURATION, solveVeil } from './veil';
+import { solveVeil } from './veil';
 import { allowFontFile } from './api';
 
-export type ThemeId = 'rose' | 'blue' | 'lime' | 'purple' | 'teal' | 'catppuccin';
+export type ThemeId = 'midnight' | 'canopy-light' | 'aurora' | 'mono' | 'catppuccin';
 
-export type LayoutId = 'default' | 'grove' | 'canopy' | 'poolside';
+export type GeometryId = 'sharp' | 'soft';
+
+export type LayoutId = 'grove' | 'canopy' | 'poolside';
 
 export const LAYOUTS: { id: LayoutId; label: string; description: string }[] = [
-	{ id: 'default', label: 'Default', description: 'Balanced sidebar + feed - the classic Limusic look' },
-	{ id: 'grove', label: 'Grove', description: 'Rounded feed card + floating player island' },
+	{ id: 'grove', label: 'Grove', description: 'Balanced sidebar + feed - the classic Limusic look' },
 	{ id: 'canopy', label: 'Canopy', description: 'Transport in the top bar - no bottom bar at all' },
 	{ id: 'poolside', label: 'Poolside (Beta)', description: 'Y2K aqua-pool vinyl deck — full-app reskin' }
 ];
 
-// `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (lime,
-// teal) need a dark foreground; dark accents keep the light one. `color` is just the picker swatch.
+// `fg` (accent themes only) is the text/icon colour that sits ON the accent: light accents (mono)
+// need a dark foreground; dark accents keep the light one. `color` is just the picker swatch.
+// `description` is the one-liner the Settings preset picker shows under the name (layouts already
+// have them; themes had none). `className` (accent only) is an optional surface hook toggled on
+// <html> alongside the inline accent vars — how midnight/aurora/mono get their own surfaces while
+// staying accent-kind (see layout.css `.theme-midnight` etc, mirroring the catppuccin pattern).
 type Theme =
-	| { id: ThemeId; label: string; kind: 'accent'; color: string; fg: string }
-	| { id: ThemeId; label: string; kind: 'palette'; color: string };
+	| { id: ThemeId; label: string; description: string; kind: 'accent'; color: string; fg: string; className?: string }
+	| { id: ThemeId; label: string; description: string; kind: 'palette'; color: string };
 
 export const THEMES: Theme[] = [
-	{ id: 'rose', label: 'Rose', kind: 'accent', color: 'oklch(0.455 0.188 13.697)', fg: 'oklch(0.985 0 0)' },
-	{ id: 'blue', label: 'Blue', kind: 'accent', color: 'oklch(0.49 0.22 264)', fg: 'oklch(0.985 0 0)' },
-	{ id: 'lime', label: 'Lime', kind: 'accent', color: 'oklch(0.77 0.2 131)', fg: 'oklch(0.205 0 0)' },
-	{ id: 'purple', label: 'Purple', kind: 'accent', color: 'oklch(0.56 0.25 302)', fg: 'oklch(0.985 0 0)' },
-	{ id: 'teal', label: 'Teal', kind: 'accent', color: 'oklch(0.85 0.13 181)', fg: 'oklch(0.205 0 0)' },
-	{ id: 'catppuccin', label: 'Catppuccin', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' }
+	{ id: 'midnight', label: 'Midnight', description: 'True-black OLED + electric violet — the default', kind: 'accent', color: 'oklch(0.65 0.27 297)', fg: 'oklch(0.985 0 0)', className: 'theme-midnight' },
+	{ id: 'aurora', label: 'Aurora', description: 'Artwork-follow showcase — surfaces chase the cover', kind: 'accent', color: 'oklch(0.68 0.24 320)', fg: 'oklch(0.985 0 0)', className: 'theme-aurora' },
+	{ id: 'mono', label: 'Mono', description: 'Near-white accent, zero-chroma grayscale surfaces', kind: 'accent', color: 'oklch(0.93 0.005 0)', fg: 'oklch(0.205 0 0)', className: 'theme-mono' },
+	{ id: 'canopy-light', label: 'Canopy Light', description: 'Warm-paper light theme — ink text, deep accent', kind: 'palette', color: 'oklch(0.48 0.16 55)' },
+	{ id: 'catppuccin', label: 'Catppuccin', description: 'Pastel community palette — light + dark', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' }
+];
+
+/** Retired single-hue presets (rose/blue/lime/purple/teal). Kept as one-click swatches that write
+ *  the custom accent override — and as the migration source, so a stored retired id keeps its hue.
+ *  `oklch` is the original preset color (for migration via toHex); `hex` is the click target. */
+export const RETIRED_ACCENTS: { id: string; label: string; oklch: string; hex: string }[] = [
+	{ id: 'rose', label: 'Rose', oklch: 'oklch(0.455 0.188 13.697)', hex: '#f43f5e' },
+	{ id: 'blue', label: 'Blue', oklch: 'oklch(0.49 0.22 264)', hex: '#3b82f6' },
+	{ id: 'lime', label: 'Lime', oklch: 'oklch(0.77 0.2 131)', hex: '#a3e635' },
+	{ id: 'purple', label: 'Purple', oklch: 'oklch(0.56 0.25 302)', hex: '#a855f7' },
+	{ id: 'teal', label: 'Teal', oklch: 'oklch(0.85 0.13 181)', hex: '#2dd4bf' }
 ];
 
 /** Font stacks bundled with the app (imported in layout.css). "System" needs no download.
@@ -59,35 +74,57 @@ export type Custom = {
 	radius: number | null; // rem
 	fontSans: string | null; // a CSS font-family value
 	fontHeading: string | null;
+	// Premium color mechanics (appearance/custom layer, persisted):
+	//   wash 0–100 — how far the accent bleeds into surfaces (CSS var --wash).
+	//   followStrength 0–100 — artwork-follow chroma cap (replaces the fixed ART_TINT cap).
+	//   trueBlack — pure #000 backgrounds, elevation via borders (class `true-black`).
+	//   geometry — corner sharpness scale (classes geo-sharp/geo-soft, var --geo).
+	wash: number | null;
+	followStrength: number | null;
+	trueBlack: boolean | null;
+	geometry: GeometryId | null;
 	// Font files the user loaded from disk, by absolute path. Not an override — a small library that
 	// both font rows can then choose from, which is why `resetCustom` leaves it alone.
 	fontFiles: string[];
 };
+
+export const DEFAULT_WASH = 30;
+export const DEFAULT_FOLLOW_STRENGTH = 60;
+export const DEFAULT_GEOMETRY: GeometryId = 'soft';
 
 const KEY = 'primary-theme';
 const CUSTOM_KEY = 'custom-theme';
 const APPEARANCE_KEY = 'appearance';
 const LAYOUT_KEY = 'layout';
 const GLASS_KEY = 'glass-intensity';
-const PALETTE_CLASSES = THEMES.filter((t) => t.kind === 'palette').map((t) => `theme-${t.id}`);
+/** Every theme surface hook toggled on <html> (palette classes + accent-with-class hooks like
+ *  theme-midnight/theme-aurora/theme-mono). Removed together in apply() before the new one goes on. */
+const THEME_CLASSES = ['theme-midnight', 'theme-aurora', 'theme-mono', 'theme-canopy-light', 'theme-catppuccin'];
 const LAYOUT_CLASSES = LAYOUTS.map((l) => `layout-${l.id}`);
 const ACCENT_VARS = ['--primary', '--primary-foreground', '--accent', '--accent-foreground'];
 /** Set on <html> while the artwork tint is live; the surface rules in layout.css hang off it. */
 const TINT_CLASS = 'art-tint';
-const CUSTOM_VARS = ['--hue', '--radius', '--font-sans', '--font-heading'];
+/** True-black toggle hook: backgrounds to #000, elevation via borders (layout.css). */
+const TRUE_BLACK_CLASS = 'true-black';
+const GEO_CLASSES = ['geo-sharp', 'geo-soft'];
+const CUSTOM_VARS = ['--hue', '--radius', '--font-sans', '--font-heading', '--wash', '--geo'];
 // Same two neutrals the preset accent themes pick between.
 const ON_DARK = 'oklch(0.985 0 0)';
 const ON_LIGHT = 'oklch(0.205 0 0)';
 
 /** Reactive current selection, so the picker reflects it. */
-export const theme = $state<{ id: ThemeId }>({ id: 'rose' });
-export const layout = $state<{ id: LayoutId }>({ id: 'default' });
+export const theme = $state<{ id: ThemeId }>({ id: 'midnight' });
+export const layout = $state<{ id: LayoutId }>({ id: 'grove' });
 export const custom = $state<Custom>({
 	accent: null,
 	hue: null,
 	radius: null,
 	fontSans: null,
 	fontHeading: null,
+	wash: null,
+	followStrength: null,
+	trueBlack: null,
+	geometry: null,
 	fontFiles: []
 });
 
@@ -209,7 +246,11 @@ export const effective = $state({
 	radius: 0.45,
 	accent: '#000000',
 	fontSans: '',
-	fontHeading: ''
+	fontHeading: '',
+	wash: DEFAULT_WASH,
+	followStrength: DEFAULT_FOLLOW_STRENGTH,
+	geometry: DEFAULT_GEOMETRY as GeometryId,
+	trueBlack: false
 });
 
 /** oklch/rgb/anything CSS -> hex, via canvas's own normalization. '#000000' if it won't parse. */
@@ -235,6 +276,11 @@ export function readBack(): void {
 	effective.accent = toHex(g('--primary'));
 	effective.fontSans = g('--font-sans');
 	effective.fontHeading = g('--font-heading');
+	const washRaw = parseFloat(g('--wash'));
+	effective.wash = Number.isFinite(washRaw) ? Math.round(washRaw * 100) : (custom.wash ?? DEFAULT_WASH);
+	effective.followStrength = custom.followStrength ?? DEFAULT_FOLLOW_STRENGTH;
+	effective.geometry = custom.geometry ?? DEFAULT_GEOMETRY;
+	effective.trueBlack = custom.trueBlack ?? false;
 }
 
 /** Write the accent quartet as inline vars on <html>, foreground picked for legibility on it. */
@@ -251,13 +297,14 @@ function apply(): void {
 	const t = THEMES.find((x) => x.id === theme.id) ?? THEMES[0];
 	const root = document.documentElement;
 	[...ACCENT_VARS, ...CUSTOM_VARS, '--art-h', '--lyrics-font-family'].forEach((v) => root.style.removeProperty(v));
-	root.classList.remove(...PALETTE_CLASSES, TINT_CLASS, ...LYRIC_FONT_CLASSES);
+	root.classList.remove(...THEME_CLASSES, ...GEO_CLASSES, TRUE_BLACK_CLASS, TINT_CLASS, ...LYRIC_FONT_CLASSES);
 
 	if (t.kind === 'accent') {
 		root.style.setProperty('--primary', t.color);
 		root.style.setProperty('--primary-foreground', t.fg);
 		root.style.setProperty('--accent', t.color);
 		root.style.setProperty('--accent-foreground', t.fg);
+		if (t.className) root.classList.add(t.className);
 	} else {
 		root.classList.add(`theme-${t.id}`);
 	}
@@ -268,6 +315,17 @@ function apply(): void {
 	if (custom.radius !== null) root.style.setProperty('--radius', `${custom.radius}rem`);
 	if (custom.fontSans) root.style.setProperty('--font-sans', custom.fontSans);
 	if (custom.fontHeading) root.style.setProperty('--font-heading', custom.fontHeading);
+
+	// Wash intensity 0–100 -> --wash 0–1: how far the accent bleeds into surfaces
+	// (layout.css dark/light tokens color-mix toward --accent by it).
+	const wash = custom.wash ?? DEFAULT_WASH;
+	root.style.setProperty('--wash', (Math.min(100, Math.max(0, wash)) / 100).toFixed(2));
+	// Geometry Sharp/Soft -> --geo factor + hook class (layout.css scales --r-* by it).
+	const geo = custom.geometry ?? DEFAULT_GEOMETRY;
+	root.classList.add(geo === 'sharp' ? 'geo-sharp' : 'geo-soft');
+	root.style.setProperty('--geo', geo === 'sharp' ? '0.55' : '1');
+	// True-black OLED toggle.
+	if (custom.trueBlack) root.classList.add(TRUE_BLACK_CLASS);
 
 	readBack();
 	applyAmbient();
@@ -281,7 +339,7 @@ export function applyTheme(id: ThemeId): void {
 }
 
 export function applyLayout(id: LayoutId): void {
-	const valid = (LAYOUTS.some((l) => l.id === id) ? id : 'default') as LayoutId;
+	const valid = (LAYOUTS.some((l) => l.id === id) ? id : 'grove') as LayoutId;
 	layout.id = valid;
 	const root = document.documentElement;
 	root.classList.remove(...LAYOUT_CLASSES);
@@ -294,7 +352,7 @@ export function applyLayout(id: LayoutId): void {
 
 export function initLayout(): void {
 	const stored = localStorage.getItem(LAYOUT_KEY) as LayoutId | null;
-	const id = (stored && LAYOUTS.some((l) => l.id === stored) ? stored : 'default') as LayoutId;
+	const id = (stored && LAYOUTS.some((l) => l.id === stored) ? stored : 'grove') as LayoutId;
 	layout.id = id;
 	const root = document.documentElement;
 	root.classList.remove(...LAYOUT_CLASSES);
@@ -312,12 +370,20 @@ export function setCustom(patch: Partial<Custom>): void {
 
 /** Drops the overrides. Loaded font *files* stay: they're assets, not a setting. */
 export function resetCustom(): void {
-	setCustom({ accent: null, hue: null, radius: null, fontSans: null, fontHeading: null });
+	setCustom({ accent: null, hue: null, radius: null, fontSans: null, fontHeading: null, wash: null, followStrength: null, trueBlack: null, geometry: null });
 }
 
 /** True when nothing is overridden, so the UI can disable the reset. */
 export function isDefaultCustom(): boolean {
-	return !custom.accent && custom.hue === null && custom.radius === null && !custom.fontSans && !custom.fontHeading;
+	return !custom.accent && custom.hue === null && custom.radius === null && !custom.fontSans && !custom.fontHeading && custom.wash === null && custom.followStrength === null && custom.trueBlack === null && custom.geometry === null;
+}
+
+/** Follow-strength cap 0–1 for the artwork tint (slider 0–100, default ~60%).
+ *  Aurora gets +0.2 headroom (clamped): same slider, more aggressive surfaces. */
+export function followCap(): number {
+	const base = Math.min(100, Math.max(0, custom.followStrength ?? DEFAULT_FOLLOW_STRENGTH)) / 100;
+	if (theme.id === 'aurora') return Math.min(1, base + 0.2);
+	return base;
 }
 
 // --- Font files loaded from disk -------------------------------------------------------------
@@ -495,19 +561,21 @@ export function applyArtworkAccent(url: string | undefined | null): void {
 		if (!hex) return;
 		const raw = hexToHsv(hex);
 		if (!raw) return;
-		// Cap art-tint chroma (visual #5): a neon cover must not drag surfaces with it. The capped
+		// Follow-strength chroma cap: a neon cover must not drag surfaces with it. The capped
 		// hex is what both the crossfade and the ambient veil solver read, so they never disagree.
-		const capped: Hsv =
-			raw.s > ART_TINT_MAX_SATURATION ? { ...raw, s: ART_TINT_MAX_SATURATION } : raw;
+		// (Was a fixed ART_TINT_MAX_SATURATION 0.6; now the Follow slider, default ~60%.)
+		const cap = followCap();
+		const capped: Hsv = raw.s > cap ? { ...raw, s: cap } : raw;
 		artAccentHex = hsvToHex(capped);
 		fadeTo(capped);
 	});
 }
 
-/** Apply the stored theme + customization on startup (defaults to rose, no overrides). */
+/** Apply the stored theme + customization on startup (defaults to midnight, no overrides).
+ *  Migration: retired ids (rose/blue/lime/purple/teal) all map to midnight, preserving the user's
+ *  hue by writing the old preset color into the custom accent override (when untouched), so
+ *  nothing visually changes for them. Unknown ids fall through to midnight. Catppuccin stays. */
 export function initTheme(): void {
-	const stored = localStorage.getItem(KEY) as ThemeId | null;
-	theme.id = stored && THEMES.some((t) => t.id === stored) ? stored : 'rose';
 	try {
 		const saved = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '{}');
 		// Only keys we know about, only the shape we expect: a hand-edited or older localStorage
@@ -515,9 +583,11 @@ export function initTheme(): void {
 		for (const k of ['accent', 'fontSans', 'fontHeading'] as const) {
 			if (typeof saved?.[k] === 'string') custom[k] = saved[k];
 		}
-		for (const k of ['hue', 'radius'] as const) {
-			if (typeof saved?.[k] === 'number') custom[k] = saved[k];
+		for (const k of ['hue', 'radius', 'wash', 'followStrength'] as const) {
+			if (typeof saved?.[k] === 'number') (custom as any)[k] = saved[k];
 		}
+		if (typeof saved?.trueBlack === 'boolean') custom.trueBlack = saved.trueBlack;
+		if (saved?.geometry === 'sharp' || saved?.geometry === 'soft') custom.geometry = saved.geometry;
 		if (Array.isArray(saved?.fontFiles)) {
 			custom.fontFiles = saved.fontFiles.filter((p: unknown) => typeof p === 'string');
 		}
@@ -531,8 +601,47 @@ export function initTheme(): void {
 			if (custom.fontSans && !allowed.has(custom.fontSans)) custom.fontSans = null;
 			if (custom.fontHeading && !allowed.has(custom.fontHeading)) custom.fontHeading = null;
 		}
+		// Clamp the new mechanics into range; out-of-range hand-edits fall back to untouched.
+		if (typeof custom.wash === 'number' && !(custom.wash >= 0 && custom.wash <= 100)) custom.wash = null;
+		if (typeof custom.followStrength === 'number' && !(custom.followStrength >= 0 && custom.followStrength <= 100)) custom.followStrength = null;
 	} catch {
 		// unparseable — start clean
+	}
+	const stored = localStorage.getItem(KEY);
+	const retired = new Map(RETIRED_ACCENTS.map((r) => [r.id, r]));
+	if (stored && retired.has(stored)) {
+		theme.id = 'midnight';
+		// Preserve the hue: a user who never touched the custom accent keeps seeing it.
+		if (!custom.accent) {
+			const r = retired.get(stored)!;
+			let hex = r.hex;
+			try {
+				const converted = toHex(r.oklch);
+				if (converted && converted !== '#000000') hex = converted;
+			} catch {
+				// canvas unavailable — keep the static hex fallback
+			}
+			custom.accent = hex;
+			try {
+				localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom));
+			} catch {
+				// storage unavailable — theme still migrates for this session
+			}
+		}
+		try {
+			localStorage.setItem(KEY, theme.id);
+		} catch {
+			// ignore
+		}
+	} else {
+		theme.id = stored && THEMES.some((t) => t.id === stored) ? (stored as ThemeId) : 'midnight';
+		if (theme.id !== stored) {
+			try {
+				localStorage.setItem(KEY, theme.id);
+			} catch {
+				// ignore
+			}
+		}
 	}
 	try {
 		const saved = JSON.parse(localStorage.getItem(APPEARANCE_KEY) ?? '{}');
