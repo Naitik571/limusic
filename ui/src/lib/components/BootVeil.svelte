@@ -35,26 +35,38 @@
 	function markSignalReady() {
 		signalReady = true;
 	}
+	let domFallbackTimer: ReturnType<typeof setTimeout> | undefined;
 	onMount(() => {
 		let raf1 = 0;
 		let raf2 = 0;
 		if (browser) {
+			console.debug('[boot] veil mounted');
 			raf1 = requestAnimationFrame(() => {
 				raf2 = requestAnimationFrame(() => {
 					firstFrame = true;
+					console.debug('[boot] first frame painted');
 				});
 			});
 			window.addEventListener('limusic:content-ready', markSignalReady);
 			window.addEventListener('limusic:first-frame', markSignalReady);
 			readyTimer = setTimeout(() => {
 				splashExpired = true;
+				console.debug('[boot] splash expiry reached');
 			}, 4000);
+			// Non-reactive escape hatch: if Svelte reactivity ever wedges (timers alive
+			// but effects not re-running), remove the node directly. The CSS dead-man
+			// below covers even a fully wedged main thread (compositor-driven).
+			domFallbackTimer = setTimeout(() => {
+				document.querySelector('.bp-splash')?.remove();
+				console.debug('[boot] splash DOM fallback fired');
+			}, 6000);
 		}
 		return () => {
 			cancelAnimationFrame(raf1);
 			cancelAnimationFrame(raf2);
 			clearTimeout(readyTimer);
 			clearTimeout(splashClearTimer);
+			clearTimeout(domFallbackTimer);
 			if (browser) {
 				window.removeEventListener('limusic:content-ready', markSignalReady);
 				window.removeEventListener('limusic:first-frame', markSignalReady);
@@ -145,6 +157,16 @@
 		background: #000;
 		pointer-events: none;
 		transition: opacity 0.32s ease-out, transform 0.32s ease-out;
+		/* Dead-man switch: pure CSS, compositor-driven, so it fires even if the JS
+		   main thread is wedged (timers/effects dead). 8s after first paint the splash
+		   is gone no matter what — it can never mask the app again. */
+		animation: bp-splash-deadman 0.4s ease 8s forwards;
+	}
+	@keyframes bp-splash-deadman {
+		to {
+			opacity: 0;
+			visibility: hidden;
+		}
 	}
 	.bp-splash.leaving {
 		opacity: 0;
