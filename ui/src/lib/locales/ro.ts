@@ -230,6 +230,8 @@ export const ro: DeepPartial<Translations> = {
 			shortcuts_hint: 'Deschide tastatura de scurtături cu {key}',
 			stream_clients: 'Client de streaming',
 			stream_clients_hint: 'Dezactivează un client pentru a-l omite la procesarea fluxurilor. Este suprascris de variabila de mediu {var}.',
+			sounds: 'Sunete de interfață',
+			sounds_hint: 'Clicuri scurte și semnale pentru butoane și notificări.',
 			update_banner: 'Notificări de actualizare',
 			update_banner_hint: 'Arată un banner când o nouă versiune de Limusic este disponibilă.',
 		},

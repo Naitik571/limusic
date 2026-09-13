@@ -239,7 +239,9 @@ export const en = {
 			proxy_hint: 'Route all network requests through a custom proxy server.',
 			proxy_placeholder: 'http://host:port (blank = none)',
 			stream_clients: 'Stream clients',
-			stream_clients_hint: 'Turn a client off to skip it when resolving streams. Overridden by the {var} env var.'
+			stream_clients_hint: 'Turn a client off to skip it when resolving streams. Overridden by the {var} env var.',
+			sounds: 'Interface sounds',
+			sounds_hint: 'Short clicks and chimes for buttons and notifications.'
 		},
 		themes: {
 			accent_themes: 'Accent Themes',

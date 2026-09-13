@@ -227,11 +227,14 @@ const canReorder = $derived(lt.role !== 'guest');
 		// block, adjacent to "Now playing"; older ones stack towards the top.
 		const pastRows = $derived.by(() => {
 			const count = Math.min(pastShown, playback.queue.currentIndex);
-			const out: QueueRow[] = [];
-			for (let j = 0; j < count; j++) {
-				const idx = playback.queue.currentIndex - 1 - j;
-				out.push({ key: `past-${idx}`, item: playback.queue.items[idx], i: idx, n: idx + 1 });
-			}
+		const out: QueueRow[] = [];
+		for (let j = 0; j < count; j++) {
+			const idx = playback.queue.currentIndex - 1 - j;
+			// Key pins the absolute queue slot AND the track in it: the slot keeps Svelte from
+			// shuffling DOM as the window slides, the video_id keeps a swapped-in track from
+			// reusing the previous occupant's DOM (wrong art/title for a frame on skip-spam).
+			out.push({ key: `past-${idx}-${playback.queue.items[idx]?.video_id ?? 'x'}`, item: playback.queue.items[idx], i: idx, n: idx + 1 });
+		}
 			return out.toReversed(); // oldest first — new chunks grow above, none must ever move
 		});
 
@@ -250,8 +253,12 @@ const canReorder = $derived(lt.role !== 'guest');
 		});
 
 	function onQueueWheel(e: WheelEvent) {
+		if (e.ctrlKey || e.metaKey) return; // pinch-zoom, never a peek gesture
 		if (e.deltaY >= 0) return; // only scrolling up reaches into the past
 		if (!scroller || scroller.scrollTop > 0) return; // only from the top of the list
+		// Reactive granularity: the only write below is `pastShown`, which feeds `pastRows`
+		// alone. The upcoming `view` blocks keep their keys/objects, so a peek never forces
+		// a full-list re-render — Svelte reconciles the past window by key, the rest is untouched.
 		const total = playback.queue.currentIndex;
 		if (total <= 0 || pastShown >= total) return;
 		pastShown = Math.min(pastShown + PAST_CHUNK, total);
@@ -321,6 +328,9 @@ const canReorder = $derived(lt.role !== 'guest');
 	}
 
 // Blocks in play order, cut wherever the upcoming tracks change origin (`queue.ts`).
+// Keyed by video_id:occurrence (`queue.ts`) and past-slot+video_id above, so skip-spam
+// (currentIndex advances, whole queue object swaps) reconciles by key: only the moved rows
+// remount, every other TrackRow keeps its DOM and its per-row effects stay asleep.
 const view = $derived(queueBlocks(playback.queue));
 </script>
 

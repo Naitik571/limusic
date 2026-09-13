@@ -12,6 +12,17 @@ import type { Personal } from './personal';
 import { appearance, setAppearance } from './theme.svelte';
 import { bindingsFor, matchBinding, type ActionId } from './keys';
 import { spatialEnabled, spatialMove } from './spatial';
+import { playError, playSuccess } from './sound';
+
+// Fire-and-forget chimes (sound module guards enabled-state + failures). Dynamic
+// shape avoids growing the module graph on the hot toast path.
+function lazyChime(ok: boolean) {
+	try {
+		(ok ? playSuccess : playError)();
+	} catch {
+		/* never fatal */
+	}
+}
 
 export const playback = $state({
 	now: null as NowPlaying | null,
@@ -1164,9 +1175,15 @@ export function dismissToast(id: number) {
 /** Sonner-shaped. Bare `toast(msg)` is a neutral notice; .success/.error/.warning pick the icon. */
 export const toast = Object.assign((msg: string) => show(msg, 'info'), {
 	info: (msg: string) => show(msg, 'info'),
-	success: (msg: string) => show(msg, 'success'),
+	success: (msg: string) => {
+		show(msg, 'success');
+		lazyChime(true);
+	},
 	warning: (msg: string) => show(msg, 'warning'),
-	error: (msg: string) => show(msg, 'error'),
+	error: (msg: string) => {
+		show(msg, 'error');
+		lazyChime(false);
+	},
 	/** Notice with an action button (stays up longer so it can be clicked). */
 	action: (msg: string, label: string, run: () => void) =>
 		show(

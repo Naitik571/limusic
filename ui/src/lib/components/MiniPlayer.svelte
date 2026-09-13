@@ -23,7 +23,7 @@
 		VolumeHighIcon,
 		VolumeMute02Icon
 	} from '@hugeicons/core-free-icons';
-	import { fade } from 'svelte/transition';
+	import { fade, slide } from 'svelte/transition';
 	import * as api from '$lib/api';
 	import {
 		playback,
@@ -94,6 +94,15 @@
 		seekDrag = null;
 		api.seek(v);
 	}
+
+	// Svelte JS transitions (slide/fade) bypass the CSS reduced-motion kill-switch, so gate
+	// their durations here. Static per mount: a mid-session OS toggle takes effect on next mount.
+	const miniRM =
+		typeof window !== 'undefined' &&
+		(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
+	const miniSlideMs = miniRM ? 0 : 200;
+	const miniFadeInMs = miniRM ? 0 : 200;
+	const miniFadeOutMs = miniRM ? 0 : 150;
 </script>
 
 <!-- On the window, not the slider: a range drag that ends with the pointer somewhere else never
@@ -113,7 +122,8 @@
 			<img decoding="async"
 				src={thumb(now.thumbnail, 480)}
 				alt=""
-				in:fade={{ duration: 300 }}
+				in:fade={{ duration: miniRM ? 0 : 300 }}
+				out:fade={{ duration: miniRM ? 0 : 200 }}
 				class="pointer-events-none absolute inset-y-0 left-0 h-full w-[56%] object-cover"
 				style="mask-image:linear-gradient(to right,#000 0,#000 70%,transparent 100%);-webkit-mask-image:linear-gradient(to right,#000 0,#000 70%,transparent 100%)"
 			/>
@@ -239,19 +249,28 @@
 		     and dissolves into it: the queue should look like it continues, not like it ends at
 		     whatever happened to fit. Tuned by eye at 560x180. -->
 		{#if tab === 'lyrics'}
-			<!-- Faded top and bottom, unlike the queue: the active line is centred, so the lines
-			     running off both edges should dissolve the same way. -->
+		<!-- Expand/collapse animates height (outer slide) + opacity (inner fade) BOTH ways, so
+		     queue ↔ lyrics never snaps. Reduced motion collapses both to zero duration. -->
+		<div
+			transition:slide={{ duration: miniSlideMs }}
+			class="flex min-h-0 flex-1 flex-col overflow-hidden pl-2"
+		>
 			<div
-				class="flex min-h-0 flex-1 flex-col overflow-hidden pl-2"
+				in:fade={{ duration: miniFadeInMs }}
+				out:fade={{ duration: miniFadeOutMs }}
+				class="flex min-h-0 flex-1 flex-col overflow-hidden"
 				style="mask-image:linear-gradient(to bottom,transparent 0,#000 20%,#000 80%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 20%,#000 80%,transparent 100%)"
 			>
 				<LyricsView compact />
 			</div>
+		</div>
 		{:else}
 		<div
+			transition:slide={{ duration: miniSlideMs }}
 			class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden"
 			style="mask-image:linear-gradient(to bottom,#000 0,#000 78%,transparent 100%);-webkit-mask-image:linear-gradient(to bottom,#000 0,#000 78%,transparent 100%)"
 		>
+			<div in:fade={{ duration: miniFadeInMs }} out:fade={{ duration: miniFadeOutMs }} class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
 			{#each upcoming as { item, index } (item.video_id + index)}
 				<button
 					class="flex shrink-0 cursor-pointer items-center gap-2 rounded-[var(--r-md)] px-1.5 py-0.5 text-left transition-colors hover:bg-muted"
@@ -277,6 +296,7 @@
 			{:else}
 				<p class="px-1.5 py-0.5 text-xs text-muted-foreground">Nothing up next</p>
 			{/each}
+			</div>
 		</div>
 		{/if}
 

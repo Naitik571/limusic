@@ -87,7 +87,13 @@
 	{#if items.length}
 		<div class="card-grid content-in">
 			{#each items as item (item.kind + item.id)}
-				<MediaCard {item} />
+				<!-- Offscreen cards skip style/layout/paint: content-visibility auto with an
+				     intrinsic estimate (~square cover + two text lines) so the scrollbar stays
+				     stable before first paint. Per-item, so a 2k-item library never mounts its
+				     full cost at once. -->
+				<div style="content-visibility: auto; contain-intrinsic-size: auto 320px;">
+					<MediaCard {item} />
+				</div>
 			{/each}
 		</div>
 	{:else}

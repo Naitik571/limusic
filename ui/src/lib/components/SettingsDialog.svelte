@@ -24,6 +24,7 @@
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import { fadeOverrideCount, clearFadeMap } from '$lib/components/TrackMenu.svelte';
 	import { spatialEnabled, setSpatialEnabled } from '$lib/spatial';
+	import { setSoundsEnabled } from '$lib/sound';
 	import { loadDys, applyDys, type DysPrefs } from '$lib/dys';
 	import {
 		THEMES,
@@ -152,6 +153,7 @@
 		{ tab: 'general', group: 'gen-system', text: 'Start on login Launch Limusic automatically when you log in.' },
 		{ tab: 'general', group: 'gen-system', text: "System title bar Use the OS window frame instead of the app's chrome — native snap layouts and shadows. Applies instantly." },
 		{ tab: 'general', group: 'gen-system', text: 'Spatial focus Move keyboard focus with Alt+Arrow keys (nearest element in that direction).' },
+		{ tab: 'general', group: 'gen-system', text: 'UI sounds Short clicks and chimes for buttons and notifications.' },
 		{ tab: 'general', group: 'gen-system', text: 'Interface language The app language. English, Turkish and Romanian are bundled; more can be added as locale files.' },		{ tab: 'general', group: 'gen-lyrics', text: 'Prefer word-by-word karaoke Word-timed lyrics win over plain line-synced ones. Off keeps the fastest line-synced match instead.' },
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token stored in the DB; HTTP listens on 0.0.0.0:32145.' },
@@ -420,6 +422,7 @@
 		try {
 			const [s, c] = await Promise.all([api.getSettings(), api.getStreamClients()]);
 			settings = s;
+			setSoundsEnabled((s.sounds_enabled ?? 'true') !== 'false');
 			clients = c;
 			proxyInput = s.proxy ?? '';
 		} catch (e) {
@@ -658,6 +661,16 @@
 			settings.autostart = on ? 'false' : 'true'; // registration failed — revert the switch
 			toast.error(String(e));
 		}
+	}
+
+	// UI sounds (General → System): on unless explicitly turned off. Persists to the
+	// settings DB and flips the sound module (which also mirrors to localStorage so the
+	// first paint is correct before this dialog ever opens).
+	const soundsOn = $derived(settings.sounds_enabled !== 'false');
+	async function setSounds(on: boolean) {
+		settings.sounds_enabled = on ? 'true' : 'false';
+		setSoundsEnabled(on);
+		await api.setSetting('sounds_enabled', settings.sounds_enabled);
 	}
 
 	async function toggleClient(name: string) {
@@ -963,6 +976,11 @@
 								title: 'Spatial focus',
 								desc: 'Move keyboard focus with Alt+Arrow keys (nearest element in that direction).',
 								control: spatialSwitch
+								})}
+								{@render row({
+								title: 'UI sounds',
+								desc: 'Short clicks and chimes for buttons and notifications. On by default; stays subtle.',
+								control: soundsSwitch
 								})}
 								</div>
 								</section>
@@ -1411,7 +1429,8 @@
 {#snippet traySwitch()}<Switch checked={trayOn} onCheckedChange={setTray} />{/snippet}
 	{#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
 	{#snippet frameSwitch()}<Switch checked={frameOn} onCheckedChange={setFrame} />{/snippet}
-	{#snippet spatialSwitch()}<Switch checked={spatialNavOn} onCheckedChange={setSpatialNav} />{/snippet}
+ 	{#snippet spatialSwitch()}<Switch checked={spatialNavOn} onCheckedChange={setSpatialNav} />{/snippet}
+	{#snippet soundsSwitch()}<Switch checked={soundsOn} onCheckedChange={setSounds} />{/snippet}
 {#snippet languageSelect()}
 	<Select.Root
 		type="single"

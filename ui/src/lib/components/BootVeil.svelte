@@ -6,6 +6,7 @@
 	import { auth, ui } from '$lib/player.svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -17,6 +18,62 @@
 	);
 	// First paint only: once the veil clears it never comes back this session.
 	let splashed = $state(true);
+
+	// Splash readiness gate (premium motion): the splash exits when content is actually ready —
+	// first library/home data OR the first frame painted signal — never on a fixed timer.
+	// Sources (whichever lands first):
+	//   - ui.bootVeil.done (boot pipeline finished = data ready),
+	//   - firstFrame (double-rAF = first frame painted),
+	//   - explicit signals from other batches: `limusic:content-ready` / `limusic:first-frame`.
+	// Max-timeout fallback (~4s) forces readiness so a stuck signal can never hold the splash.
+	// Reduced motion skips the splash entirely (existing `splashed && !reducedMotion` gate).
+	let firstFrame = $state(false);
+	let signalReady = $state(false);
+	let splashExpired = $state(false);
+	let readyTimer: ReturnType<typeof setTimeout> | undefined;
+	let splashClearTimer: ReturnType<typeof setTimeout> | undefined;
+	function markSignalReady() {
+		signalReady = true;
+	}
+	onMount(() => {
+		let raf1 = 0;
+		let raf2 = 0;
+		if (browser) {
+			raf1 = requestAnimationFrame(() => {
+				raf2 = requestAnimationFrame(() => {
+					firstFrame = true;
+				});
+			});
+			window.addEventListener('limusic:content-ready', markSignalReady);
+			window.addEventListener('limusic:first-frame', markSignalReady);
+			readyTimer = setTimeout(() => {
+				splashExpired = true;
+			}, 4000);
+		}
+		return () => {
+			cancelAnimationFrame(raf1);
+			cancelAnimationFrame(raf2);
+			clearTimeout(readyTimer);
+			clearTimeout(splashClearTimer);
+			if (browser) {
+				window.removeEventListener('limusic:content-ready', markSignalReady);
+				window.removeEventListener('limusic:first-frame', markSignalReady);
+			}
+		};
+	});
+	// Ready = (boot data done AND first frame painted) OR an explicit ready signal OR expiry.
+	const splashReady = $derived(
+		splashExpired || signalReady || ((ui.bootVeil?.done ?? false) && firstFrame)
+	);
+	// Once ready, play the .leaving fade then drop the splash node so it never returns.
+	$effect(() => {
+		if (splashReady && splashed) {
+			clearTimeout(splashClearTimer);
+			splashClearTimer = setTimeout(() => {
+				splashed = false;
+			}, 350);
+		}
+	});
 
 	// Onboarding (interior #1): while the signed-out hero card waits for a choice, the boot
 	// pill stands down — the card owns the visitor's attention, and a pill over it reads as
@@ -41,10 +98,11 @@
 
 {#if ui.bootVeil && !onboardingHold}
 	{#if splashed && !reducedMotion}
-		<!-- Branded splash: black fullscreen, logo pulse, name rises via .stagger-in,
-		     scale-out exit once the boot is done. pointer-events-none so it never blocks. -->
+		<!-- Branded splash: black fullscreen, logo pulse, name rises via .stagger-in.
+		     Exits only on content readiness (splashReady: data + first frame, a ready signal,
+		     or the 4s fallback) — never on a fixed display timer. pointer-events-none always. -->
 		<div
-			class="bp-splash {ui.bootVeil.done ? 'leaving' : ''}"
+			class="bp-splash {splashReady ? 'leaving' : ''}"
 			role="status"
 			aria-live="polite"
 			aria-hidden="false"

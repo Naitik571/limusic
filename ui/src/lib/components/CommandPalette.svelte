@@ -265,7 +265,7 @@
 	loop
 	title="Search"
 	description="Search songs, albums, artists and playlists"
-	class="sm:max-w-xl"
+	class="palette-content sm:max-w-xl"
 	contentProps={{
 		'data-ctx': '',
 		onInteractOutside: (e: PointerEvent) => {
@@ -403,3 +403,21 @@
 		/>
 	{/key}
 {/if}
+
+<style>
+	/* Palette close: fade + slide down + settle scale, coordinated with the dialog open state
+	   (bits-ui holds the content through data-state="closed" before unmounting). Slightly
+	   longer than a menu pop so the list reads as sinking away, not blinking out. */
+	:global([data-slot='dialog-content'].palette-content[data-state='closed']) {
+		animation: paletteOut 180ms var(--ease-out) forwards;
+	}
+	@keyframes paletteOut {
+		from { opacity: 1; transform: translateY(0) scale(1); }
+		to { opacity: 0; transform: translateY(8px) scale(0.98); }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global([data-slot='dialog-content'].palette-content[data-state='closed']) {
+			animation: none;
+		}
+	}
+</style>

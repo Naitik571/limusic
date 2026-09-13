@@ -34,7 +34,7 @@
 			bind:ref
 			data-slot="dialog-content"
 			class={cn(
-				"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/5 grid max-w-[calc(100%-2rem)] gap-6 rounded-[var(--r-2xl)] p-6 text-sm ring-1 duration-100 sm:max-w-md pointer-events-auto relative w-full outline-none",
+				"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/5 grid max-w-[calc(100%-2rem)] gap-6 rounded-[var(--r-2xl)] p-6 text-sm ring-1 duration-150 sm:max-w-md pointer-events-auto relative w-full outline-none",
 				className
 			)}
 			{...restProps}
@@ -53,3 +53,17 @@
 		</DialogPrimitive.Content>
 	</div>
 </DialogPortal>
+
+<style>
+	/* Close plays the shared pop-out (fade + scale to .96, ~150ms) coordinated with the open
+	   state: bits-ui keeps the content mounted through the data-state="closed" animation
+	   before unmounting, mirroring the zoom-in/fade-in entrance. */
+	:global([data-slot='dialog-content'][data-state='closed']) {
+		animation: popOut 150ms var(--ease-out) forwards;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		:global([data-slot='dialog-content'][data-state='closed']) {
+			animation: none;
+		}
+	}
+</style>

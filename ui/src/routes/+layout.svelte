@@ -62,6 +62,14 @@
 	} from '$lib/updater.svelte';
 
 	let { children } = $props();
+	// Premium motion: Svelte JS transitions bypass the CSS reduced-motion kill-switch, so gate
+	// durations here (transitions only — toast store logic below is untouched).
+	const layoutRM =
+		browser && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
+	const pageFadeMs = layoutRM ? 0 : 140;
+	const barFlyMs = layoutRM ? 0 : 250;
+	const bannerFlyMs = layoutRM ? 0 : 220;
+	const toastFlyMs = layoutRM ? 0 : 220;
 	// Toast exit: .toast-out plays ~180ms before the item leaves. Manual dismissal
 	// delays the splice here (store untouched); store-side TTL removals are mirrored
 	// into `shown` with the same 180ms grace so they fade instead of vanishing.
@@ -217,7 +225,7 @@
 				     Inner key fades the page in on navigation (in-only: never blocks the swap). -->
 				{#key auth.epoch}
 					{#key page.url.pathname}
-						<div class="min-h-full" in:fade={{ duration: 140 }}>
+						<div class="min-h-full" in:fade={{ duration: pageFadeMs }}>
 							{@render children()}
 						</div>
 					{/key}
@@ -231,11 +239,11 @@
 		     the component-swap half of the Orchard mechanism: the preset removes the bar from the
 		     tree rather than hiding it with CSS. -->
 		{#if playback.now && layout.id !== 'canopy'}
-			<!-- Slides up from its own height on first play; leaves instantly (bar removal is rare).
-			     z-20 on the wrapper, not the bar: the intro's transform makes this a stacking context,
+			<!-- Slides up from its own height on first play; exits the same way (in + out) so bar
+			     removal never snaps. z-20 on the wrapper, not the bar: the intro's transform makes this a stacking context,
 			     so a z on the footer inside would be trapped under it. The now-playing view is z-20 and
 			     earlier in the DOM, which is what puts it behind the bar as it slides in and out. -->
-			<div class="relative z-20" in:fly={{ y: 64, duration: 250, easing: cubicOut }}>
+			<div class="relative z-20" in:fly={{ y: 64, duration: barFlyMs, easing: cubicOut }} out:fly={{ y: 64, duration: barFlyMs, easing: cubicOut }}>
 				<PlayerBar
 					onToggleQueue={() => (tabbed ? (np.tab = 'queue') : (queueOpen = !queueOpen))}
 					queueOpen={tabbed ? np.tab === 'queue' : queueOpen}
@@ -262,7 +270,7 @@
 	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. -->
 	{#if updateState.available}
 		<div
-			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
+			transition:fly={{ y: 16, duration: bannerFlyMs, easing: cubicOut }}
 			class="fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-3 rounded-xl glass-strong px-4 py-2 text-sm shadow-2xl"
 		>
 			<span>Update available — v{updateState.available.version}</span>
@@ -316,7 +324,7 @@
 		<div class="pointer-events-none fixed bottom-40 left-1/2 z-[200] flex -translate-x-1/2 flex-col items-center gap-2">
 			{#each shown as t (t.id)}
 				<div
-					transition:fly={{ y: 16, duration: 220, easing: cubicOut }}
+					transition:fly={{ y: 16, duration: toastFlyMs, easing: cubicOut }}
 					role="status"
 					class="{isExiting(t.id) ? 'toast-out' : ''} pointer-events-auto flex max-w-[min(28rem,90vw)] items-center gap-2 rounded-[var(--r-md)] border px-4 py-2 text-sm shadow-2xl backdrop-blur-xl {t.kind === 'success'
 						? 'border-[var(--status-success-line)] bg-[var(--status-success-soft)] text-[var(--text-1)]'

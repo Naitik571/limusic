@@ -17,6 +17,27 @@
 			true
 		);
 	}
+
+	// Highlight regex cache (module scope): the playlist type-anywhere filter passes the same
+	// query to every visible row, and each row used to compile its own RegExp per render —
+	// N rows × M keystrokes of identical compilation during skip-spam + typing. One entry
+	// per distinct query; cleared implicitly by key turnover (bounded: distinct queries typed).
+	const hlReCache = new Map<string, RegExp | null>();
+	function highlightRe(query: string): RegExp | null {
+		const q = query.trim();
+		if (!q) return null;
+		const hit = hlReCache.get(q);
+		if (hit !== undefined) return hit;
+		let re: RegExp | null = null;
+		try {
+			re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+		} catch {
+			re = null;
+		}
+		if (hlReCache.size > 50) hlReCache.clear();
+		hlReCache.set(q, re);
+		return re;
+	}
 </script>
 
 <script lang="ts">
@@ -81,18 +102,31 @@
 	} = $props();
 
 	function highlightParts(text: string, query: string): { text: string; match: boolean }[] {
-		const q = query.trim();
-		if (!q) return [{ text, match: false }];
-		const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const re = new RegExp(`(${esc})`, 'gi');
-		const parts = text.split(re);
-		const lower = q.toLowerCase();
+		const re = highlightRe(query);
+		if (!re) return [{ text, match: false }];
+		// Fresh splitter per call: a shared/global RegExp with /g carries lastIndex state and
+		// is not safe to reuse across rows. The compiled source is cached; split itself is cheap.
+		const splitter = new RegExp(re.source, 'gi');
+		const parts = text.split(splitter);
+		const lower = query.trim().toLowerCase();
 		return parts.map((p) => ({ text: p, match: p.toLowerCase() === lower }));
 	}
 
 	// In a session as guest, clicking a song adds it to the shared queue instead of playing it —
 	// reflect that in the hover icon + label so the row doesn't lie.
 	const guestAdd = $derived(lt.role === 'guest');
+
+	// Stable per-row identity for reactive granularity: the backend swaps the whole queue
+	// object on every event, so the `song` object identity churns even when this row's track
+	// didn't change. Deriving the primitive video_id first means effects below only re-run
+	// when THIS row's track (or its own burst/like/download state) changes — unrelated
+	// queue updates keep the same string and Svelte bails out instead of re-running per row.
+	const vid = $derived(song.video_id);
+	// Single subscription points (not 2–3 `isLiked(song)` / `.has()` calls scattered through
+	// the template): one derived each, so a global like/download change re-evaluates one
+	// boolean per row instead of re-running the lookup per call site.
+	const liked = $derived(isLiked(song));
+	const downloaded = $derived(downloadedIds.has(song.video_id));
 
 	// Like burst: a ~600ms class on the heart that runs the spark keyframes (layout.css). Only when
 	// the toggle turns liking ON — unliking stays quiet. The trigger is the shared `likeBursts`
@@ -104,7 +138,7 @@
 	let shownBurstAt = 0;
 
 	$effect(() => {
-		const at = likeBursts[song.video_id] ?? 0;
+		const at = likeBursts[vid] ?? 0;
 		if (at === 0 || at <= shownBurstAt || Date.now() - at > 1000) return;
 		shownBurstAt = at;
 		burst = true;
@@ -227,7 +261,7 @@
 	</div>
 
 	<div class="flex shrink-0 items-center {compact ? 'gap-0.5' : 'gap-2'}">
-		{#if downloadedIds.has(song.video_id) && !compact}
+		{#if downloaded && !compact}
 			<!-- Persistent, not hover-only: "saved for offline" is state the row has to keep showing. -->
 			<span class="shrink-0 text-primary" title="Downloaded — plays offline">
 				<HugeiconsIcon icon={DownloadSquare01Icon} class="h-4 w-4" />
@@ -240,8 +274,8 @@
 			<!-- Persistent, not hover-only: a filled heart is state the row has to keep showing. -->
 			<button
 				class="relative cursor-pointer rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground"
-				aria-label={isLiked(song) ? 'Remove from liked songs' : 'Save to liked songs'}
-				aria-pressed={isLiked(song)}
+				aria-label={liked ? 'Remove from liked songs' : 'Save to liked songs'}
+				aria-pressed={liked}
 				onclick={(e) => {
 					e.stopPropagation();
 					like();
@@ -255,7 +289,7 @@
 				{/if}
 				<HugeiconsIcon
 					icon={FavouriteIcon}
-					class="h-4 w-4 {isLiked(song) ? 'fill-current text-primary' : ''} {burst ? 'heart-pop' : ''}"
+					class="h-4 w-4 {liked ? 'fill-current text-primary' : ''} {burst ? 'heart-pop' : ''}"
 				/>
 			</button>
 		{/if}

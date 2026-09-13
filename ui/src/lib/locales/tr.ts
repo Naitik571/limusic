@@ -242,7 +242,9 @@ export const tr: Translations = {
 			proxy_placeholder: 'örn. http://127.0.0.1:7890',
 			stream_clients: 'Akış istemcileri',
 			stream_clients_hint:
-				'Bir istemciyi kapatarak akış çözümlemesinde atlanmasını sağlayın. {var} ortam değişkeni bu ayarı geçersiz kılar.'
+				'Bir istemciyi kapatarak akış çözümlemesinde atlanmasını sağlayın. {var} ortam değişkeni bu ayarı geçersiz kılar.',
+			sounds: 'Arayüz sesleri',
+			sounds_hint: 'Düğmeler ve bildirimler için kısa tıklama ve zil sesleri.'
 		},
 		themes: {
 			accent_themes: 'Vurgu Temaları',

@@ -95,6 +95,32 @@
 
 	let menuOpen = $state(false);
 	let anchor = $state(NO_ANCHOR);
+	// Animated exit: closing plays the reverse of ctx-pop (scale down + fade, ~120ms) before
+	// unmounting. hideMenu arms the closing pose; the timer below does the actual unmount.
+	// Reduced motion (or a claimed takeover by another menu) skips the grace and unmounts at once.
+	let menuClosing = $state(false);
+	let closeTimer: ReturnType<typeof setTimeout> | undefined;
+	function reducedMenuMotion(): boolean {
+		try {
+			return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+		} catch {
+			return false;
+		}
+	}
+	function hideMenu(reason: MenuCloseReason, instant = false) {
+		closeReason = reason;
+		clearTimeout(closeTimer);
+		if (instant || reducedMenuMotion()) {
+			menuClosing = false;
+			menuOpen = false;
+			return;
+		}
+		menuClosing = true;
+		closeTimer = setTimeout(() => {
+			menuOpen = false;
+			menuClosing = false;
+		}, 120);
+	}
 
 	// Per-pair crossfade editor (queue rows only — needs the track after this one). The map
 	// lives in module scope so every row's menu shares one load, not one fetch per open.
@@ -137,6 +163,8 @@
 	$effect(() => {
 		if (openAt && !externalOpened) {
 			externalOpened = true;
+			clearTimeout(closeTimer);
+			menuClosing = false;
 			anchor = {
 				style: NO_ANCHOR.style,
 				box: { left: openAt.x, right: openAt.x, top: openAt.y, bottom: openAt.y },
@@ -167,8 +195,7 @@
 	const menuId = nextMenuId();
 	$effect(() =>
 		onOtherMenuClaimed(menuId, () => {
-			closeReason = 'claimed';
-			menuOpen = false;
+			hideMenu('claimed', true);
 		})
 	);
 
@@ -176,6 +203,8 @@
 	function openMenu(e: MouseEvent) {
 		e.preventDefault(); // a right-click must not also raise WebKit's own menu
 		e.stopPropagation();
+		clearTimeout(closeTimer);
+		menuClosing = false;
 		anchor = anchorMenu(e, { align: 'right' });
 		menuOpen = true;
 		claimMenu(menuId);
@@ -186,8 +215,7 @@
 	// stay: they cost nothing and the trigger still needs them.
 	function run(e: MouseEvent, action?: () => void) {
 		e.stopPropagation();
-		closeReason = 'action';
-		menuOpen = false;
+		hideMenu('action');
 		action?.();
 	}
 	// Right-clicking off the menu dismisses it, same as a left click: the backdrop swallows the
@@ -195,8 +223,7 @@
 	function close(e: MouseEvent) {
 		e.preventDefault();
 		e.stopPropagation();
-		closeReason = 'dismiss';
-		menuOpen = false;
+		hideMenu('dismiss');
 	}
 
 	const liked = $derived(isLiked(song));
@@ -260,7 +287,7 @@
 		{@attach toBody}
 	></button>
 	<div
-		class="ctx-pop fixed z-[60] min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
+		class="ctx-pop {menuClosing ? 'ctx-pop-out' : ''} fixed z-[60] min-w-44 animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
 		style={anchor.style}
 		data-menu
 		{@attach toBody}

@@ -194,18 +194,45 @@
 				swiped = true;
 				clearTimeout(swipedTimer);
 				swipedTimer = setTimeout(() => (swiped = false), 400);
-				// Fly off in the swipe direction, then reset to centre instantly — the np view has
-				// already re-rendered around the new track by the time the flight lands.
+				// Committed swipe: fly off in the drag direction. The incoming track's art
+				// does NOT snap to centre when it lands — the track-change effect below
+				// cancels this flight mid-way and glides home FROM the measured pose
+				// (FLIP-style invert), while the new art crossfades underneath. If the
+				// backend never advances (failure), onfinish glides the same art back
+				// instead of snapping it from off-screen to centre.
 				const dir = dx < 0 ? -1 : 1;
 				const exitX = dir * Math.max(el.offsetWidth * 1.25, window.innerWidth / 2);
+				if (artAnim) {
+					artAnim.onfinish = null;
+					try { artAnim.cancel(); } catch { /* already finished */ }
+				}
+				el.style.willChange = 'transform, opacity';
 				artAnim = el.animate(
 					[
-						{ transform: el.style.transform, opacity: el.style.opacity },
-						{ transform: `translateX(${exitX}px) scale(0.96)`, opacity: 0 }
+						{ transform: el.style.transform, opacity: el.style.opacity || '1' },
+						{ transform: `translateX(${exitX}px) scale(0.96)`, opacity: '0' }
 					],
 					{ duration: 220, easing: SWIPE_EASE, fill: 'forwards' }
 				);
-				artAnim.onfinish = () => clearArtMotion();
+				const exitTransform = `translateX(${exitX}px) scale(0.96)`;
+				artAnim.onfinish = () => {
+					artAnim = undefined;
+					if (!artEl) return;
+					if (reducedArtMotion()) {
+						clearArtMotion();
+						return;
+					}
+					// No track change arrived: glide the same art back home.
+					const back = artEl.animate(
+						[
+							{ transform: exitTransform, opacity: '0' },
+							{ transform: 'translateX(0px) scale(1)', opacity: '1' }
+						],
+						{ duration: 280, easing: SWIPE_EASE, fill: 'forwards' }
+					);
+					artAnim = back;
+					back.onfinish = () => clearArtMotion();
+				};
 				(dx < 0 ? api.nextTrack() : api.prevTrack()).catch(() => {});
 			} else {
 				// Below threshold: spring home. fill:'forwards' + cleanup keeps the last frame
@@ -223,31 +250,61 @@
 		swipeEngaged = false;
 	}
 
-	// --- Track-change artwork animation ---------------------------------------------------------
-	// On videoId change the artwork wrapper remounts (coverKey) playing .cover-pop, or
-	// .skip-left/.skip-right when the queue index reveals prev/next direction.
-	// Falls back to .cover-pop when the direction is unknown. Tap/wheel/swipe below
-	// are untouched — this is a pure entrance on the image wrapper.
+	// --- Track-change artwork animation (interruptible) ----------------------------------------
+	// The hero crossfades between outgoing and incoming art instead of hard-swapping: at most
+	// ONE outgoing layer ever exists, so skip-spam (5 rapid nexts) replaces it rather than
+	// stacking an animation per skip and never snaps the container. The swipe pose lives on
+	// the OUTER artEl (above), so it glides uninterrupted while the inner art dissolves.
+	// On every track change the outer pose also glides home FROM its measured position
+	// (FLIP-style invert) instead of resetting to centre instantly.
+	function reducedArtMotion(): boolean {
+		try {
+			return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+		} catch {
+			return false;
+		}
+	}
+	/** Glide the artwork container home from wherever it currently is (drag pose or
+	 * mid-flight), then clean up. No-op when already at rest. */
+	function glideArtHome() {
+		const el = artEl;
+		if (!el) return;
+		const fromT = el.style.transform;
+		const fromO = el.style.opacity;
+		if (!artAnim && !fromT) return;
+		if (artAnim) {
+			artAnim.onfinish = null;
+			try { artAnim.cancel(); } catch { /* already finished */ }
+			artAnim = undefined;
+		}
+		if (reducedArtMotion()) {
+			clearArtMotion();
+			return;
+		}
+		const startT = fromT || 'translateX(0px) scale(1)';
+		const startO = fromO || '1';
+		el.style.transform = '';
+		el.style.opacity = '';
+		el.style.willChange = 'transform, opacity';
+		artAnim = el.animate(
+			[
+				{ transform: startT, opacity: startO },
+				{ transform: 'translateX(0px) scale(1)', opacity: '1' }
+			],
+			{ duration: 280, easing: SWIPE_EASE, fill: 'forwards' }
+		);
+		artAnim.onfinish = () => clearArtMotion();
+	}
 	let prevVideoId: string | null = null;
 	let prevIndex = -1;
 	let coverAnim = $state('cover-pop');
-	let coverKey = $state('');
-	$effect(() => {
-		const vid = playback.now?.videoId;
-		const idx = playback.queue.currentIndex;
-		if (vid && vid !== prevVideoId) {
-			if (prevVideoId !== null && prevIndex >= 0 && idx !== prevIndex) {
-				coverAnim = idx > prevIndex ? 'skip-right' : 'skip-left';
-			} else {
-				coverAnim = 'cover-pop';
-			}
-			coverKey = vid;
-		} else if (!vid) {
-			coverKey = '';
-		}
-		prevVideoId = vid ?? prevVideoId;
-		prevIndex = idx;
-	});
+	// Crossfade stack: a single outgoing src max, cleared ~380ms after the swap unless a
+	// newer swap replaces it first (epoch guard). artCurrent drives the incoming layer.
+	let artCurrent = $state<string | null>(null);
+	let artPrev = $state<string | null>(null);
+	let artEpoch = 0;
+	let artClearTimer: ReturnType<typeof setTimeout> | undefined;
+	onDestroy(() => clearTimeout(artClearTimer));
 
 	// Google's CDN doesn't serve every rewritten size for every image (see MediaCard), and at this
 	// size a broken-image glyph *is* the page. So step down until one loads: crisp, then the size
@@ -289,6 +346,46 @@
 	});
 	const heroSrc = $derived(itunesArt ?? src);
 	const imgFailed = () => attempt++;
+	// Direction + crossfade driver. Runs on the resolved hero (cascade or iTunes upgrade),
+	// not just videoId, so a late hi-res arrival dissolves in instead of snapping. Rapid
+	// advances only ever keep one outgoing layer: the previous current becomes outgoing,
+	// the timer is re-armed, and stale timers are ignored via the epoch guard.
+	$effect(() => {
+		const vid = playback.now?.videoId;
+		const idx = playback.queue.currentIndex;
+		const resolved = heroSrc;
+		if (vid && resolved) {
+			if (vid !== prevVideoId) {
+				if (prevVideoId !== null && prevIndex >= 0 && idx !== prevIndex) {
+					coverAnim = idx > prevIndex ? 'skip-right' : 'skip-left';
+				} else {
+					coverAnim = 'cover-pop';
+				}
+			}
+			if (resolved !== artCurrent) {
+				const epoch = ++artEpoch;
+				if (reducedArtMotion()) {
+					artPrev = null;
+					artCurrent = resolved;
+				} else {
+					if (artCurrent) {
+						artPrev = artCurrent;
+						clearTimeout(artClearTimer);
+						artClearTimer = setTimeout(() => {
+							if (epoch === artEpoch) artPrev = null;
+						}, 380);
+					}
+					artCurrent = resolved;
+				}
+				if (vid !== prevVideoId) glideArtHome();
+			}
+		} else if (!vid) {
+			artCurrent = null;
+			artPrev = null;
+		}
+		prevVideoId = vid ?? prevVideoId;
+		prevIndex = idx;
+	});
 	function handleHeroError() {
 		if (itunesArt) {
 			itunesArt = null; // fall back to the cascade; a failure there steps down via imgFailed
@@ -497,18 +594,31 @@
 							</div>
 						</div>
 					{/if}
-					{#if heroSrc && attempt < srcs.length}
-						{#key coverKey || heroSrc}
-							<div class={coverAnim}>
+					{#if artCurrent && attempt < srcs.length}
+						<!-- Interruptible crossfade: outgoing rests underneath dissolving out while the
+						     incoming layer mounts above and fades/scales in. One outgoing max — rapid
+						     skips replace it (epoch guard in the effect) instead of stacking. -->
+						<div class="relative aspect-square w-full">
+							{#if artPrev}
 								<img decoding="async"
-									src={heroSrc}
+									src={artPrev}
 									alt=""
-									onerror={handleHeroError}
-									in:fade={{ duration: 350 }}
-									class="aspect-square w-full rounded-3xl object-cover shadow-2xl"
+									aria-hidden="true"
+									class="art-outgoing pointer-events-none absolute inset-0 aspect-square w-full rounded-3xl object-cover shadow-2xl"
 								/>
-							</div>
-						{/key}
+							{/if}
+							{#key artCurrent}
+								<div class={coverAnim}>
+									<img decoding="async"
+										src={artCurrent}
+										alt=""
+										onerror={handleHeroError}
+										in:fade={{ duration: 350 }}
+										class="relative aspect-square w-full rounded-3xl object-cover shadow-2xl"
+									/>
+								</div>
+							{/key}
+						</div>
 					{:else}
 						<div
 							class="flex aspect-square w-full items-center justify-center rounded-2xl bg-muted text-muted-foreground/40"

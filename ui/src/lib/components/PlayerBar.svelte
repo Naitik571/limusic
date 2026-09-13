@@ -44,6 +44,7 @@
 	} from '$lib/player.svelte';
 	import { anchorMenu, claimMenu, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed, toBody } from '$lib/menu';
 	import { thumb } from '$lib/thumb';
+	import { playClick, soundsEnabled } from '$lib/sound';
 	import { t } from '$lib/i18n.svelte';
 	import { appearance, setAppearance } from '$lib/theme.svelte';
 	import ArtistLine from './ArtistLine.svelte';
@@ -82,6 +83,16 @@
 
 	function toggleLike() {
 		toggleNowPlayingLike();
+	}
+
+	// UI click blip for the transport buttons: guarded by the sounds-enabled flag,
+	// fire-and-forget (never awaits, never breaks the transport call).
+	function clickSound() {
+		try {
+			if (soundsEnabled()) playClick();
+		} catch {
+			/* never break transport for a blip */
+		}
 	}
 
 	const fmt = (secs: number) => {
@@ -347,14 +358,14 @@
 					class="h-4 w-4 {shuffleOn ? 'text-primary' : 'text-muted-foreground'}"
 				/>
 			</Button>
-			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.prevTrack()} aria-label={t('player.previous')}>
+			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => { clickSound(); api.prevTrack(); }} aria-label={t('player.previous')}>
 				<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} class="h-5 w-5" />
 			</Button>
 			<Button
 				variant="default"
 				size="icon"
 				class="rounded-full pressable"
-				onclick={() => api.togglePause()}
+				onclick={() => { clickSound(); api.togglePause(); }}
 				aria-label={playback.paused ? t('player.play') : t('player.pause')}
 			>
 				<!-- HugeiconsIcon only re-renders `altIcon`/`showAlt`, not `icon` (frozen at mount) â€”
@@ -366,7 +377,7 @@
 				class="h-5 w-5"
 			/>
 			</Button>
-			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => api.nextTrack()} aria-label={t('player.next')}>
+			<Button variant="ghost" size="icon-sm" class="pressable" onclick={() => { clickSound(); api.nextTrack(); }} aria-label={t('player.next')}>
 				<HugeiconsIcon strokeWidth={2} icon={NextIcon} class="h-5 w-5" />
 			</Button>
 			<Button
@@ -410,7 +421,7 @@
 				variant="ghost"
 				size="icon-sm"
 				class="text-muted-foreground"
-				onclick={toggleMute}
+				onclick={() => { clickSound(); toggleMute(); }}
 				aria-label={playback.volume === 0 ? t('player.unmute') : t('player.mute')}
 			>
 				<!-- icon swap via altIcon/showAlt â€” `icon` is frozen at mount (see play/pause above) -->

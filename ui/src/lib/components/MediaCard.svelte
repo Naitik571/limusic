@@ -1,3 +1,22 @@
+<script module lang="ts">
+	// Hover prewarm cache (module scope, shared by every card): warms the exact URL the card
+	// already displays — no larger variant, no extra bandwidth — so a click-through paints
+	// from cache. One `new Image()` per distinct URL, never a DOM write, so no layout thrash.
+	const prewarmed = new Set<string>();
+	function prewarm(src: string | undefined) {
+		if (!src || src.startsWith('data:') || prewarmed.has(src)) return;
+		if (prewarmed.size > 300) prewarmed.clear();
+		prewarmed.add(src);
+		try {
+			const im = new Image();
+			(im as HTMLImageElement & { decoding?: string }).decoding = 'async';
+			im.src = src;
+		} catch {
+			/* prewarm is best-effort only */
+		}
+	}
+</script>
+
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
@@ -50,8 +69,15 @@
 	}
 </script>
 
-<!-- data-ctx: right-clicking anywhere on the card opens the ⋯ menu below at the pointer. -->
-<div class="group relative flex w-full flex-col gap-2 aurora-card rounded-xl" data-ctx>
+<!-- data-ctx: right-clicking anywhere on the card opens the ⋯ menu below at the pointer.
+     content-visibility: offscreen cards in large library grids skip rendering; the estimate
+     (~square cover + title lines) keeps the scrollbar stable before first paint. -->
+<div
+	class="group relative flex w-full flex-col gap-2 aurora-card rounded-xl [content-visibility:auto] [contain-intrinsic-size:auto_320px]"
+	data-ctx
+	onpointerenter={() => prewarm(src)}
+	onfocusin={() => prewarm(src)}
+>
 	<!-- draggable: every card is a drag source for home's Shortcuts grid (the only drop target). -->
 	<div
 		class="flex flex-col text-left transition-colors hover:bg-accent/10 {compact
@@ -95,11 +121,16 @@
 					: 'rounded-lg'}"
 			>
 				{#if item.thumbnail && attempt < 2 && !onRepeat}
+					<!-- async decode + lazy: offscreen covers never block the main thread or the
+					     network on mount; the aspect-square wrapper above already reserves the
+					     box, so decode/arrival can't shift layout. Hover only prewarms via
+					     `prewarm` (no DOM writes, no size changes — transform scale only). -->
 					<img decoding="async"
 						{src}
 						alt=""
 						class="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
 						loading="lazy"
+						fetchpriority="low"
 						draggable="false"
 						onerror={imgFailed}
 					/>
@@ -116,11 +147,13 @@
 						</div>
 					{:else}
 						<!-- Generated cover: a missing/failed thumbnail lands on seeded artwork
-						     (palette + motif + initials) instead of a blank icon tile. -->
+						     (palette + motif + initials) instead of a blank icon tile. data: URI —
+						     excluded from prewarm, decoded async like the rest. -->
 						<img decoding="async"
 							src={fallbackArt(item.id, item.title)}
 							alt=""
 							class="h-full w-full object-cover"
+							loading="lazy"
 							draggable="false"
 						/>
 					{/if}

@@ -98,6 +98,7 @@
 	--dur-2: 200ms;
 	--dur-3: 350ms;
 	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-spring: cubic-bezier(0.3, 1.2, 0.4, 1);
 	/* Elevation (visual #11): collapsed shadow scale. */
 	--elevation-1: 0 1px 2px rgb(0 0 0 / 0.08);
 	--elevation-2: 0 4px 12px -2px rgb(0 0 0 / 0.25), 0 2px 6px -2px rgb(0 0 0 / 0.2);
@@ -909,8 +910,37 @@ body.gamepad-nav :focus {
 /* Context-menu pop + toast exit. */
 @keyframes ctxPop { from { opacity: 0; transform: scale(0.96) translateY(-2px); } to { opacity: 1; transform: none; } }
 .ctx-pop { animation: ctxPop var(--dur-2) var(--ease-out); }
+/* Menu close: the reverse of ctx-pop (scale down + fade, ~120ms). TrackMenu toggles
+   this during its close grace before unmounting; instant when reduced motion is on. */
+@keyframes ctxPopOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96) translateY(-2px); } }
+.ctx-pop-out { animation: ctxPopOut var(--dur-1) var(--ease-out) forwards; }
 @keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(16px) scale(0.96); } }
 .toast-out { animation: toastOut var(--dur-2) var(--ease-out) forwards; }
+
+/* Springy scale entrance (premium motion): scale .96 → 1 with a slight overshoot,
+   over var(--dur-2) on the shared spring curve. For dialogs/menus/cards. */
+@keyframes springIn {
+	0% { opacity: 0; transform: scale(0.96); }
+	60% { opacity: 1; transform: scale(1.015); }
+	100% { opacity: 1; transform: scale(1); }
+}
+.spring-in { animation: springIn var(--dur-2) var(--ease-spring); }
+
+/* Dialog/menu exit (premium motion): fade + scale down to .96. Drawers slide instead —
+   .pop-out-left/right translate off their edge while fading. Durations are set by the
+   component (~120–150ms); these only describe the curve so open/close stay symmetric. */
+@keyframes popOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.96); } }
+.pop-out { animation: popOut 150ms var(--ease-out) forwards; }
+@keyframes drawerOutLeft { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-24px); } }
+.pop-out-left { animation: drawerOutLeft 150ms var(--ease-out) forwards; }
+@keyframes drawerOutRight { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(24px); } }
+.pop-out-right { animation: drawerOutRight 150ms var(--ease-out) forwards; }
+
+/* Artwork crossfade (NowPlaying hero): the outgoing layer rests underneath and dissolves
+   while the incoming layer fades/scales in above it — rapid skips replace the single
+   outgoing layer instead of stacking one animation per skip. */
+@keyframes artOut { from { opacity: 1; } to { opacity: 0; } }
+.art-outgoing { animation: artOut 380ms var(--ease-out) forwards; }
 
 /* Staggered list entrance: per-item delay via --stagger-i (60ms steps). */
 @keyframes staggerIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -935,7 +965,13 @@ body.gamepad-nav :focus {
 @media (prefers-reduced-motion: reduce) {
 	.eq-indicator > span,
 	.ctx-pop,
+	.ctx-pop-out,
 	.toast-out,
+	.spring-in,
+	.pop-out,
+	.pop-out-left,
+	.pop-out-right,
+	.art-outgoing,
 	.stagger-in,
 	.cover-pop,
 	.skip-left,

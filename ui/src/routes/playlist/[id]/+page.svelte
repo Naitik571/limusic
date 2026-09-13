@@ -184,8 +184,8 @@
 	});
 
 	// Render cap: large playlists (5k rows) OOM/jank when every TrackRow mounts at once
-	// (upstream windowing was removed in the fork). Show 250 first, then grow on demand.
-	// Searching bypasses the cap — filtered results are already small.
+	// (upstream windowing was removed in the fork). Show 250 first, then grow on demand —
+	// WITH filters active too: a 5k playlist can still match 2k rows, which is the same jank.
 	let visibleLimit = $state(250);
 	$effect(() => {
 		// Reset cap when navigating playlists or typing a new search.
@@ -193,9 +193,9 @@
 		search;
 		visibleLimit = 250;
 	});
-	const visibleSearched = $derived(
-		searching ? searched : searched.slice(0, visibleLimit)
-	);
+	// The cap always applies; the search-walk keeps streaming pages in behind it and the
+	// Show-more button below grows it in both modes.
+	const visibleSearched = $derived(searched.slice(0, visibleLimit));
 
 	// A sort has to cover the whole playlist, not the pages scrolled so far, so pull the rest in
 	// before play/queue hand a short list to the queue. Stops on a failed page (`moreError`), on
@@ -1248,14 +1248,14 @@
 					{searching ? 'No songs match your search.' : 'This playlist is empty.'}
 				</p>
 			{/each}
-			{#if !searching && searched.length > visibleLimit}
+			{#if searched.length > visibleLimit}
 				<div class="p-3 text-center">
 					<Button
 						variant="outline"
 						size="sm"
 						onclick={() => (visibleLimit += 250)}
 					>
-						Show more ({searched.length - visibleLimit} remaining)
+						Show more ({searched.length - visibleLimit} remaining{searching ? ' of filtered' : ''})
 					</Button>
 				</div>
 			{/if}

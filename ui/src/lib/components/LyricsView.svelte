@@ -47,6 +47,11 @@
 	// getLyrics/romanize/translate continuations from a previous videoId can be ignored even
 	// when the videoId string itself is slow to update. Checked alongside `requested`.
 	let fetchSeq = 0;
+	// Artwork/accent decode generation: LyricsView performs no per-track canvas decode today
+	// (no accent/wash extraction here), but any future per-track artwork decode MUST snapshot
+	// this generation on entry and abort early when superseded — losers skip canvas work so
+	// skip-spam never stacks decodes. Bumped alongside fetchSeq on every track change.
+	let artSeq = 0;
 	// Bumped after attaching/removing custom lyrics so the effect below refetches.
 	// ($state: the effect tracks it — a plain let would make every bump a silent no-op.)
 	let reloadKey = $state(0);
@@ -99,7 +104,9 @@
 			const src = origs.join('\n');
 			const out = await api.romanizeLyrics(src);
 			const parts = out.split('\n');
-			if (requested !== id || seq !== fetchSeq) return; // stale (track changed)
+			// Abort-on-track-change: id/seq guards the track, identity guards a same-track
+			// refetch that replaced the lines object mid-flight.
+			if (requested !== id || seq !== fetchSeq || lyrics !== l) return; // stale (track changed)
 			if (parts.length !== segs.length) {
 				toast.error(t('lyrics.romanize_mismatch'));
 				return;
@@ -168,13 +175,16 @@
 		const seq = fetchSeq;
 		const lang = transLang;
 		try {
-			const src = lyrics.lines.map((l) => l.text).join('\n');
+			const l = lyrics;
+			if (!l) return;
+			const src = l.lines.map((ln) => ln.text).join('\n');
 			const out = await api.translateLyrics(src, lang);
 			const parts = out.split('\n');
 			// Stale (track changed mid-flight) → drop silently. Reshaped (line count moved
 			// under us) → toast, never silent: the user asked for a translation and got none.
-			if (requested !== id || seq !== fetchSeq) return;
-			if (parts.length !== lyrics.lines.length) {
+			// Identity check covers a same-track refetch that replaced the lines object.
+			if (requested !== id || seq !== fetchSeq || lyrics !== l) return;
+			if (parts.length !== l.lines.length) {
 				toast.error(t('lyrics.translate_mismatch'));
 				return;
 			}
@@ -284,6 +294,8 @@
 		if (now.videoId === requested) return;
 		const id = (requested = now.videoId);
 		const seq = ++fetchSeq; // invalidates every in-flight continuation from the old track
+		artSeq++; // same for any artwork/accent decode: losers abort early, skip canvas work
+		cancelScrollTween(); // a glide to the old song's line must not land on the new one
 		loading = true;
 		lyrics = null;
 		romanBusy = false;
@@ -471,7 +483,13 @@
 			hasScrolled = false;
 			autoPaused = false;
 		}
-		if (i < 0 || !scroller || autoPaused) return;
+		if (i < 0 || !scroller || autoPaused) {
+			// No active line (gap/intro/outro/unsynced): drop any stale glide so it can't
+			// land on a target from the previous line. Paused/user-held needs no cancel —
+			// onUserScroll already owns that — and cancelling here would fight the resume.
+			if (i < 0) cancelScrollTween();
+			return;
+		}
 		const line = scroller.querySelector(`[data-line="${i}"]`);
 		if (!line) return;
 		// Centre the active line in the scroller's viewport (matches block:'center').
@@ -552,7 +570,11 @@
 
 	$effect(() => {
 		const pos = playback.position;
-		if (playback.paused) {
+		// No per-frame clock unless a synced lyric actually needs it: unsynced/instrumental/
+		// empty/loading states hold the last mpv tick with zero rAF loops, so posMs stays
+		// still and no derived (activeIndex/trailer/each row) re-evaluates per frame.
+		const synced = lyrics?.synced;
+		if (playback.paused || !synced) {
 			interpolatedPosSecs = pos;
 			return;
 		}
