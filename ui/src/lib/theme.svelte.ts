@@ -351,7 +351,12 @@ export function applyLayout(id: LayoutId): void {
 }
 
 export function initLayout(): void {
-	const stored = localStorage.getItem(LAYOUT_KEY) as LayoutId | null;
+	let stored: LayoutId | null = null;
+	try {
+		stored = localStorage.getItem(LAYOUT_KEY) as LayoutId | null;
+	} catch {
+		// storage denied/unavailable — fall through to the default layout
+	}
 	const id = (stored && LAYOUTS.some((l) => l.id === stored) ? stored : 'grove') as LayoutId;
 	layout.id = id;
 	const root = document.documentElement;
@@ -607,7 +612,12 @@ export function initTheme(): void {
 	} catch {
 		// unparseable — start clean
 	}
-	const stored = localStorage.getItem(KEY);
+	let stored: string | null = null;
+	try {
+		stored = localStorage.getItem(KEY);
+	} catch {
+		// storage denied/unavailable — fall through to the default theme
+	}
 	const retired = new Map(RETIRED_ACCENTS.map((r) => [r.id, r]));
 	if (stored && retired.has(stored)) {
 		theme.id = 'midnight';

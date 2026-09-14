@@ -13,7 +13,7 @@
 	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import AmbientGlow from '$lib/components/AmbientGlow.svelte';
 	import { fly, fade } from 'svelte/transition';
@@ -85,25 +85,39 @@
 			exitingIds = exitingIds.filter((x) => x !== id);
 		}, 180);
 	}
+	// Mirror effect: tracks ui.toasts ONLY. All reads of the local mirror run
+	// untracked and writes happen solely on actual change — assigning `shown`
+	// unconditionally (even a same-content map) resubscribes the effect to itself
+	// and spins into Svelte's infinite_loop_guard, wedging layout reactivity.
 	$effect(() => {
 		const live = ui.toasts;
-		const liveIds = new Set(live.map((t) => t.id));
-		for (const t of live) {
-			if (!shown.some((s) => s.id === t.id) && !isExiting(t.id)) {
-				shown = [t, ...shown].slice(0, 4);
+		untrack(() => {
+			const liveIds = new Set(live.map((t) => t.id));
+			let next = shown;
+			let changed = false;
+			for (const t of live) {
+				if (!next.some((s) => s.id === t.id) && !exitingIds.includes(t.id)) {
+					next = [t, ...next].slice(0, 4);
+					changed = true;
+				}
 			}
-		}
-		shown = shown.map((s) => live.find((l) => l.id === s.id) ?? s);
-		for (const s of [...shown]) {
-			if (!liveIds.has(s.id) && !isExiting(s.id)) {
-				const id = s.id;
-				exitingIds = [...exitingIds, id];
-				setTimeout(() => {
-					shown = shown.filter((x) => x.id !== id);
-					exitingIds = exitingIds.filter((x) => x !== id);
-				}, 180);
+			const mapped = next.map((s) => live.find((l) => l.id === s.id) ?? s);
+			if (mapped.length !== next.length || mapped.some((s, i) => s !== next[i])) {
+				next = mapped;
+				changed = true;
 			}
-		}
+			for (const s of next) {
+				if (!liveIds.has(s.id) && !exitingIds.includes(s.id)) {
+					const id = s.id;
+					exitingIds = [...exitingIds, id];
+					setTimeout(() => {
+						shown = shown.filter((x) => x.id !== id);
+						exitingIds = exitingIds.filter((x) => x !== id);
+					}, 180);
+				}
+			}
+			if (changed) shown = next;
+		});
 	});
 	// Queue and lyrics toggle independently and both float over the page rather than docking into
 	// it — two docked columns squeezed the content down to an unusable strip. At lg+ they sit side

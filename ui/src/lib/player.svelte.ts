@@ -1522,6 +1522,11 @@ export function initApp(mini = false): () => void {
 	if (mini) return teardown;
 	api.getAccount()
 		.then((a) => {
+			// Cold-start seed must not clobber a fresher login: if auth-changed
+			// already delivered the real account while this was in flight, the
+			// stale snapshot would sign the UI back out. Same guard as getPlayback.
+			if (mySeq !== coldSeq) return;
+			if (auth.account?.signedIn && !a.signedIn) return;
 			auth.account = a;
 			if (a.signedIn && a.selectionRequired) {
 				openChannelPicker(true);
