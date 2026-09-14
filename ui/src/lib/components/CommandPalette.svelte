@@ -28,31 +28,6 @@
 	let items = $state<BrowseItem[]>([]);
 	let loading = $state(false);
 	let loadedFor = ''; // query `items` belongs to, so a stale response can't land
-	// Bound the rendered result list: every row pays for an image decode plus cmdk
-	// registration, so an uncapped `{#each}` over a large backend page freezes the main
-	// thread on open/keystroke and the frozen thread then can't process Escape/close.
-	// The full count stays visible via the label under the list.
-	const MAX_RESULTS = 50;
-	const displayItems = $derived(items.slice(0, MAX_RESULTS));
-	const hiddenCount = $derived(items.length - displayItems.length);
-	// Debounce for the remote preview: ~120ms feels instant while still collapsing a
-	// burst of keystrokes into one `search_all` call.
-	const SEARCH_DEBOUNCE_MS = 120;
-	// data-uri SVG placeholders are pure functions of (id, title) but cost a string
-	// build + encodeURIComponent each — cache per row so re-renders (keystrokes,
-	// stagger remounts) reuse them instead of rebuilding.
-	const artCache = new Map<string, string>();
-	function cachedArt(item: BrowseItem): string {
-		const key = `${item.id}::${item.title}`;
-		let hit = artCache.get(key);
-		if (!hit) {
-			hit = fallbackArt(item.id, item.title);
-			// Bounded: one entry per rendered row, cleared when the result set is replaced.
-			if (artCache.size > MAX_RESULTS * 2) artCache.clear();
-			artCache.set(key, hit);
-		}
-		return hit;
-	}
 	// Right-click menu for a result row. The dialog traps pointer events (focus trap +
 	// interact-outside), so a menu rendered inside it opens but never receives clicks.
 	// Instead the row stashes the search + item + pointer, closes the palette, and the menu
@@ -108,7 +83,7 @@
 		if (q === loadedFor) return;
 		items = [];
 		loading = true;
-		const timer = setTimeout(() => load(q), SEARCH_DEBOUNCE_MS);
+		const timer = setTimeout(() => load(q), 300);
 		return () => clearTimeout(timer);
 	});
 
@@ -121,17 +96,6 @@
 	let navTouched = false;
 	function paletteKeys(e: KeyboardEvent) {
 		if (!ui.paletteOpen) return;
-		// Escape must always close, synchronously and without awaiting anything: after
-		// arrowing, focus sits on a row (not the input) where the dialog's own Escape
-		// handling can lose to the focus trap — and a frozen main thread can't process
-		// close at all, which the row cap above prevents. Capture phase so cmdk's own
-		// listeners never swallow it first.
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			e.stopPropagation();
-			ui.paletteOpen = false;
-			return;
-		}
 		const t = e.target;
 		if (!(t instanceof HTMLInputElement)) return;
 		if (e.isComposing) return;
@@ -163,22 +127,13 @@
 		else pendingMenu = null;
 	});
 
-	let searchError = $state('');
 	async function load(q: string) {
 		loadedFor = q;
-		searchError = '';
 		try {
-			// Never spin forever: a hung backend must surface as an error, not skeletons.
-			const next = await Promise.race([
-				searchPreview(q),
-				new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
-			]);
+			const next = await searchPreview(q);
 			if (loadedFor === q) items = next;
 		} catch {
-			if (loadedFor === q) {
-				items = [];
-				searchError = 'Search timed out — check your connection and try again.';
-			}
+			if (loadedFor === q) items = [];
 		} finally {
 			if (loadedFor === q) loading = false;
 		}
@@ -198,11 +153,8 @@
 
 	// --- Actions: app control from the palette ------------------------------------------------------------
 	// Static list — every mutation goes through the stores' own setters, so nothing here needs to
-	// be reactive. `layoutId` (layouts only) marks the active arrangement in the row. `group`
-	// (interior #12) buckets every row under an always-visible Jump to / Playback / System header.
-	type PaletteGroup = 'Jump to' | 'Playback' | 'System';
-	type PaletteAction = { label: string; hint?: string; layoutId?: (typeof LAYOUTS)[number]['id']; group: PaletteGroup; run: () => void };
-	const GROUPS: PaletteGroup[] = ['Jump to', 'Playback', 'System'];
+	// be reactive. `layoutId` (layouts only) marks the active arrangement in the row.
+	type PaletteAction = { label: string; hint?: string; layoutId?: (typeof LAYOUTS)[number]['id']; run: () => void };
 
 	const SETTINGS_TABS: [string, string][] = [
 		['general', 'General'],
@@ -214,54 +166,43 @@
 	];
 
 	const ACTIONS: PaletteAction[] = [
-		{ label: 'Go to Home', group: 'Jump to', run: () => goto('/') },
-		{ label: 'Go to Search', group: 'Jump to', run: () => goto('/search') },
-		{ label: 'Go to Library', group: 'Jump to', run: () => goto('/library') },
-		{ label: 'Go to History', group: 'Jump to', run: () => goto('/history') },
-		{ label: 'Go to Downloads', group: 'Jump to', run: () => goto('/downloads') },
-		{ label: 'Open mini player', hint: 'Floating widget', group: 'Playback', run: () => openMiniPlayer() },
-		{ label: 'Sleep timer: 15 min', group: 'Playback', run: () => setSleepTimer('minutes', 15) },
-		{ label: 'Sleep timer: 30 min', group: 'Playback', run: () => setSleepTimer('minutes', 30) },
-		{ label: 'Sleep timer: 60 min', group: 'Playback', run: () => setSleepTimer('minutes', 60) },
-		{ label: 'Sleep timer: End of song', group: 'Playback', run: () => setSleepTimer('end_of_song') },
-		{ label: 'Sleep timer: Off', group: 'Playback', run: () => setSleepTimer('off') },
 		...LAYOUTS.map((l): PaletteAction => ({
 			label: `Layout: ${l.label}`,
 			hint: l.description,
 			layoutId: l.id,
-			group: 'System',
 			run: () => applyLayout(l.id)
 		})),
 		{
 			label: 'Toggle ambient mode',
 			hint: 'Blurred artwork backdrop',
-			group: 'System',
 			run: () => setAppearance({ ambientMode: !appearance.ambientMode })
 		},
 		{
 			label: 'Toggle artwork accent',
 			hint: 'Recolor from the cover',
-			group: 'System',
 			run: () => setAppearance({ artworkAccent: !appearance.artworkAccent })
 		},
 		{
 			label: 'Toggle tabbed player',
 			hint: 'Queue/lyrics tabs in the player view',
-			group: 'System',
 			run: () => setAppearance({ tabbedPlayer: !appearance.tabbedPlayer })
 		},
 		...SETTINGS_TABS.map(([id, label]): PaletteAction => ({
 			label: `Settings: ${label}`,
 			hint: 'Open Settings',
-			group: 'System',
 			run: () => {
 				ui.settingsTab = id;
 				ui.settingsOpen = true;
 			}
 		})),
+		{ label: 'Open mini player', hint: 'Floating widget', run: () => openMiniPlayer() },
+		{ label: 'Sleep timer: 15 min', run: () => setSleepTimer('minutes', 15) },
+		{ label: 'Sleep timer: 30 min', run: () => setSleepTimer('minutes', 30) },
+		{ label: 'Sleep timer: 60 min', run: () => setSleepTimer('minutes', 60) },
+		{ label: 'Sleep timer: End of song', run: () => setSleepTimer('end_of_song') },
+		{ label: 'Sleep timer: Off', run: () => setSleepTimer('off') },
 		{
 			label: 'Check for updates',
-			group: 'System',
 			run: () => {
 				checkForUpdatesInteractive().then((r) =>
 					r.error ? toast.error(r.message) : toast.success(r.message)
@@ -270,56 +211,29 @@
 		}
 	];
 
-	// The eight rows an empty query opens on (interior #12): jumps, playback (mini player + sleep
-	// timer), and settings jumps — every group represented so all three headers always show.
-	const DEFAULT_LABELS = [
-		'Go to Search',
-		'Go to Library',
-		'Open mini player',
-		'Sleep timer: 30 min',
-		'Sleep timer: Off',
-		'Settings: Appearance',
-		'Settings: Playback',
-		'Check for updates'
-	];
-
 	function runAction(a: PaletteAction) {
 		ui.paletteOpen = false;
 		a.run();
 	}
 
 	const actionQuery = $derived(query.trim().toLowerCase());
-	// The open path does no data work at all — the dialog shell (8 static action rows)
-	// renders first and results fill in async via `load()` after the debounce. Never build
-	// an index or filter a large list here: any synchronous per-open scan over library /
-	// playlist / settings rows freezes the whole app before first paint, and a frozen
-	// thread can't process the close that follows. Action filtering below is over ~25
-	// static labels (no debounce needed); the remote search is the only debounced path.
-	// (A previous {#key}-remount-per-open + stagger replay is deliberately gone: remounting
-	// rows on every open churned the underlying item registry and risked focus/selection
-	// desync. The dialog's own fade/zoom carries the entrance now.)
-	// Substring match on the label; empty query shows the eight defaults above. The results
-	// themselves are unfiltered here (shouldFilter={false}) — this list is ours alone.
+	// Substring match on the label; empty query shows a few quick actions. The results themselves
+	// are unfiltered here (shouldFilter={false}) — this list is ours alone.
 	const visibleActions = $derived(
 		actionQuery
-			? ACTIONS.filter((a) => a.label.toLowerCase().includes(actionQuery)).slice(0, 8)
-			: DEFAULT_LABELS.map((l) => ACTIONS.find((a) => a.label === l)!).filter(Boolean)
+			? ACTIONS.filter((a) => a.label.toLowerCase().includes(actionQuery)).slice(0, 6)
+			: ACTIONS.slice(0, 4)
 	);
 </script>
 
 	<Command.Dialog
 	bind:open={ui.paletteOpen}
-	onOpenChange={(o) => {
-		// Two-way sync: an outside-click close updates bits-ui internally; without
-		// this the store stays true and the next Ctrl+K toggles to a no-op false.
-		if (!o && ui.paletteOpen) ui.paletteOpen = false;
-	}}
 	shouldFilter={false}
 	vimBindings={false}
 	loop
 	title="Search"
 	description="Search songs, albums, artists and playlists"
-	class="palette-content sm:max-w-xl"
+	class="sm:max-w-xl"
 	contentProps={{
 		'data-ctx': '',
 		onInteractOutside: (e: PointerEvent) => {
@@ -333,33 +247,25 @@
 	<Command.Input bind:value={query} placeholder="Search songs, albums, artists, playlists…" />
 	<Command.List class="max-h-[22rem]">
 		{#if visibleActions.length}
-			<!-- Grouped actions (interior #12): every group carries its header whenever it has rows,
-			     so Jump to / Playback / System read as sections, not one long list. No
-			     keyed remount here: rows mount once with the dialog and stay registered. -->
-			{#each GROUPS as g (g)}
-				{@const grows = visibleActions.filter((a) => a.group === g)}
-				{#if grows.length}
-					<Command.Group heading={g}>
-						{#each grows as a (a.label)}
-							<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
-								<span class="truncate">{a.label}</span>
-								{#if a.layoutId === layout.id}
-									<span
-										class="rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-									>
-										Active
-									</span>
-								{/if}
-								{#if a.hint}
-									<span class="ml-auto shrink-0 truncate pl-4 text-xs text-muted-foreground">
-										{a.hint}
-									</span>
-								{/if}
-							</Command.Item>
-						{/each}
-					</Command.Group>
-				{/if}
-			{/each}
+			<Command.Group heading="Actions">
+				{#each visibleActions as a (a.label)}
+					<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
+						<span class="truncate">{a.label}</span>
+						{#if a.layoutId === layout.id}
+							<span
+								class="rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+							>
+								Active
+							</span>
+						{/if}
+						{#if a.hint}
+							<span class="ml-auto shrink-0 truncate pl-4 text-xs text-muted-foreground">
+								{a.hint}
+							</span>
+						{/if}
+					</Command.Item>
+				{/each}
+			</Command.Group>
 		{/if}
 
 		{#if loading}
@@ -374,11 +280,11 @@
 			{/each}
 		{:else if !items.length}
 			<div class="px-4 py-6 text-center text-sm text-muted-foreground">
-				{searchError || (query.trim().length < 2 ? 'Type to search.' : 'Nothing quick for that.')}
+				{query.trim().length < 2 ? 'Type to search.' : 'Nothing quick for that.'}
 			</div>
 		{:else}
 			<Command.Group heading="Results">
-				{#each displayItems as item (item.id)}
+				{#each items as item (item.id)}
 					<Command.Item
 						value={item.id}
 						onSelect={() => choose(item)}
@@ -389,7 +295,7 @@
 							<!-- 400, the same size the cards ask for: the CDN doesn't serve every rewritten
 							     size, that one is verified, and the row lands on an image the grid already
 							     fetched. -->
-							<img decoding="async" loading="lazy"
+							<img decoding="async"
 								src={thumb(item.thumbnail, 400)}
 								alt=""
 								class="h-10 w-10 shrink-0 object-cover {item.kind === 'artist'
@@ -404,8 +310,8 @@
 									<HugeiconsIcon icon={UserIcon} class="h-5 w-5" />
 								</div>
 							{:else}
-								<img decoding="async" loading="lazy"
-									src={cachedArt(item)}
+								<img decoding="async"
+									src={fallbackArt(item.id, item.title)}
 									alt=""
 									class="h-10 w-10 shrink-0 rounded-md object-cover"
 								/>
@@ -425,11 +331,6 @@
 					</Command.Item>
 				{/each}
 			</Command.Group>
-			{#if hiddenCount > 0}
-				<p class="px-4 py-1.5 text-center text-xs text-muted-foreground">
-					Showing {displayItems.length} of {items.length} — Enter for all results
-				</p>
-			{/if}
 		{/if}
 
 		{#if query.trim().length >= 2}
@@ -441,10 +342,6 @@
 			</Command.Group>
 		{/if}
 	</Command.List>
-	<!-- Key hint (interior #12): Enter opens the full results until ↑↓ picks a row (see paletteKeys). -->
-	<p class="border-t px-3 py-2 text-[11px]" style="color:var(--text-3);border-color:var(--border)">
-		↑↓ to pick a row · Enter to open
-	</p>
 	<!-- No visible trigger: a palette row is too small for a hover-only ⋯, and the menu only ever
 	     opens from a right-click (see `openRowMenu`). Rendered here, outside the dialog, so the
 	     dialog's focus trap can't swallow the menu's clicks. 		Keyed per open for a fresh instance. -->
@@ -459,21 +356,3 @@
 		/>
 	{/key}
 {/if}
-
-<style>
-	/* Palette close: fade + slide down + settle scale, coordinated with the dialog open state
-	   (bits-ui holds the content through data-state="closed" before unmounting). Slightly
-	   longer than a menu pop so the list reads as sinking away, not blinking out. */
-	:global([data-slot='dialog-content'].palette-content[data-state='closed']) {
-		animation: paletteOut 180ms var(--ease-out) forwards;
-	}
-	@keyframes paletteOut {
-		from { opacity: 1; transform: translateY(0) scale(1); }
-		to { opacity: 0; transform: translateY(8px) scale(0.98); }
-	}
-	@media (prefers-reduced-motion: reduce) {
-		:global([data-slot='dialog-content'].palette-content[data-state='closed']) {
-			animation: none;
-		}
-	}
-</style>
