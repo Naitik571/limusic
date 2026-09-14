@@ -487,11 +487,14 @@
 	.theater :global(.lyrics-scroller::-webkit-scrollbar) {
 		display: none;
 	}
-	/* Lyric-column scrim: the wash + mesh sit behind the text, so the column carries its own
-	   contrast plate on the scroller itself (which never scrolls away). No text-shadow. */
+	/* Lyric plate removed: the column used to carry a rounded ~38% scrim box behind
+	   the text, which read as an ugly card over the wash + mesh. Lyrics now sit
+	   directly over the wash with no container — readability comes from the existing
+	   bottom gradient + per-line contrast. The selector stays as a scrim anchor; it
+	   must not reintroduce a background or radius. */
 	.theater [data-theater-lyrics] :global(.lyrics-scroller) {
-		background-color: color-mix(in srgb, var(--scrim) 38%, transparent);
-		border-radius: var(--r-lg);
+		background-color: transparent;
+		border-radius: 0;
 	}
 	.range.on-art {
 		--pct: 0%;

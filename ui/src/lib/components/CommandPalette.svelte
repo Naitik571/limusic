@@ -28,6 +28,31 @@
 	let items = $state<BrowseItem[]>([]);
 	let loading = $state(false);
 	let loadedFor = ''; // query `items` belongs to, so a stale response can't land
+	// Bound the rendered result list: every row pays for an image decode plus cmdk
+	// registration, so an uncapped `{#each}` over a large backend page freezes the main
+	// thread on open/keystroke and the frozen thread then can't process Escape/close.
+	// The full count stays visible via the label under the list.
+	const MAX_RESULTS = 50;
+	const displayItems = $derived(items.slice(0, MAX_RESULTS));
+	const hiddenCount = $derived(items.length - displayItems.length);
+	// Debounce for the remote preview: ~120ms feels instant while still collapsing a
+	// burst of keystrokes into one `search_all` call.
+	const SEARCH_DEBOUNCE_MS = 120;
+	// data-uri SVG placeholders are pure functions of (id, title) but cost a string
+	// build + encodeURIComponent each — cache per row so re-renders (keystrokes,
+	// stagger remounts) reuse them instead of rebuilding.
+	const artCache = new Map<string, string>();
+	function cachedArt(item: BrowseItem): string {
+		const key = `${item.id}::${item.title}`;
+		let hit = artCache.get(key);
+		if (!hit) {
+			hit = fallbackArt(item.id, item.title);
+			// Bounded: one entry per rendered row, cleared when the result set is replaced.
+			if (artCache.size > MAX_RESULTS * 2) artCache.clear();
+			artCache.set(key, hit);
+		}
+		return hit;
+	}
 	// Right-click menu for a result row. The dialog traps pointer events (focus trap +
 	// interact-outside), so a menu rendered inside it opens but never receives clicks.
 	// Instead the row stashes the search + item + pointer, closes the palette, and the menu
@@ -83,7 +108,7 @@
 		if (q === loadedFor) return;
 		items = [];
 		loading = true;
-		const timer = setTimeout(() => load(q), 300);
+		const timer = setTimeout(() => load(q), SEARCH_DEBOUNCE_MS);
 		return () => clearTimeout(timer);
 	});
 
@@ -96,6 +121,17 @@
 	let navTouched = false;
 	function paletteKeys(e: KeyboardEvent) {
 		if (!ui.paletteOpen) return;
+		// Escape must always close, synchronously and without awaiting anything: after
+		// arrowing, focus sits on a row (not the input) where the dialog's own Escape
+		// handling can lose to the focus trap — and a frozen main thread can't process
+		// close at all, which the row cap above prevents. Capture phase so cmdk's own
+		// listeners never swallow it first.
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			e.stopPropagation();
+			ui.paletteOpen = false;
+			return;
+		}
 		const t = e.target;
 		if (!(t instanceof HTMLInputElement)) return;
 		if (e.isComposing) return;
@@ -245,6 +281,12 @@
 
 	const actionQuery = $derived(query.trim().toLowerCase());
 	// Open counter: keys the default-row stagger so it runs on open, not per keystroke.
+	// The open path does no data work at all — the dialog shell (8 static action rows)
+	// renders first and results fill in async via `load()` after the debounce. Never build
+	// an index or filter a large list here: any synchronous per-open scan over library /
+	// playlist / settings rows freezes the whole app before first paint, and a frozen
+	// thread can't process the close that follows. Action filtering below is over ~25
+	// static labels (no debounce needed); the remote search is the only debounced path.
 	let openCount = $state(0);
 	$effect(() => {
 		if (ui.paletteOpen) openCount += 1;
@@ -327,7 +369,7 @@
 			</div>
 		{:else}
 			<Command.Group heading="Results">
-				{#each items as item (item.id)}
+				{#each displayItems as item (item.id)}
 					<Command.Item
 						value={item.id}
 						onSelect={() => choose(item)}
@@ -338,7 +380,7 @@
 							<!-- 400, the same size the cards ask for: the CDN doesn't serve every rewritten
 							     size, that one is verified, and the row lands on an image the grid already
 							     fetched. -->
-							<img decoding="async"
+							<img decoding="async" loading="lazy"
 								src={thumb(item.thumbnail, 400)}
 								alt=""
 								class="h-10 w-10 shrink-0 object-cover {item.kind === 'artist'
@@ -353,8 +395,8 @@
 									<HugeiconsIcon icon={UserIcon} class="h-5 w-5" />
 								</div>
 							{:else}
-								<img decoding="async"
-									src={fallbackArt(item.id, item.title)}
+								<img decoding="async" loading="lazy"
+									src={cachedArt(item)}
 									alt=""
 									class="h-10 w-10 shrink-0 rounded-md object-cover"
 								/>
@@ -374,6 +416,11 @@
 					</Command.Item>
 				{/each}
 			</Command.Group>
+			{#if hiddenCount > 0}
+				<p class="px-4 py-1.5 text-center text-xs text-muted-foreground">
+					Showing {displayItems.length} of {items.length} — Enter for all results
+				</p>
+			{/if}
 		{/if}
 
 		{#if query.trim().length >= 2}

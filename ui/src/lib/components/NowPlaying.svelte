@@ -529,6 +529,10 @@
 					<span class="note-float absolute bottom-[12%] right-[8%] h-20 w-20 rounded-full bg-accent/20 blur-2xl" style="animation-delay:-4s"></span>
 					<span class="note-float absolute right-[18%] top-[4%] h-10 w-10 rounded-full bg-primary/15 blur-xl" style="animation-delay:-2.6s"></span>
 				</div>
+				<!-- Art square: the only in-flow child of the swipe host, so its height IS the
+				     artwork square. Prev/next anchor to THIS box (top:50% + translateY(-50%)),
+				     never to the outer host that also carries the hint chip / badges. -->
+				<div class="relative w-full" data-art-square>
 				{#if canvasUrl}
 					<!-- Spotify Canvas (#8): looping video, muted autoplay, palette gradient fallback -->
 					<div class="relative aspect-square w-full overflow-hidden rounded-3xl shadow-2xl glass">
@@ -628,12 +632,15 @@
 					{/if}
 				</button>
 				{/if}
-				<!-- Hover prev/next affordance (interior #10): the swipe exists for touch, the mouse
-				     gets buttons that only appear over the artwork. A fired swipe swallows the click. -->
+				<!-- Hover prev/next (interior #10): one shared vertical center line on the art
+				     square — identical size, symmetric offsets, explicit top:50% + translateY.
+				     Tap=pause (artwork button), wheel=volume and swipe gestures are untouched;
+				     visibility stays hover/focus-only via group-hover/art. -->
 				<button
 					type="button"
-					class="absolute left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
-					style="background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					class="absolute left-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
+					style="top:50%;transform:translateY(-50%);background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					onpointerdown={(e) => e.stopPropagation()}
 					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.prevTrack().catch(() => {}); }}
 					aria-label="Previous"
 					title="Previous — or swipe right on the artwork"
@@ -642,18 +649,22 @@
 				</button>
 				<button
 					type="button"
-					class="absolute right-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
-					style="background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					class="absolute right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
+					style="top:50%;transform:translateY(-50%);background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
+					onpointerdown={(e) => e.stopPropagation()}
 					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.nextTrack().catch(() => {}); }}
 					aria-label="Next"
 					title="Next — or swipe left on the artwork"
 				>
 					<HugeiconsIcon icon={NextIcon} strokeWidth={2} class="h-5 w-5" />
 				</button>
+				</div>
 				{#if showSwipeHint}
-					<!-- One-time swipe hint (interior #10): dismisses forever, persisted above. -->
+					<!-- One-time swipe hint (interior #10): own overlay layer above the square.
+					     pointer-events-none so it never shifts/covers the buttons or steals
+					     tap=pause; only the dismiss ✕ re-enables pointer events. -->
 					<div
-						class="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-3 pr-1.5 text-xs font-medium shadow-lg"
+						class="pointer-events-none absolute left-1/2 top-2 z-10 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-3 pr-1.5 text-xs font-medium shadow-lg"
 						style="background:var(--surface-1);color:var(--text-2);border:1px solid var(--border);border-radius:var(--r-full)"
 						role="note"
 					>
@@ -661,7 +672,7 @@
 						<button
 							type="button"
 							onclick={(e) => { e.stopPropagation(); dismissSwipeHint(); }}
-							class="cursor-pointer rounded-full p-0.5 transition-colors hover:text-foreground"
+							class="pointer-events-auto cursor-pointer rounded-full p-0.5 transition-colors hover:text-foreground"
 							aria-label="Dismiss swipe hint"
 						>
 							<HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} class="h-4 w-4" />
@@ -894,12 +905,14 @@
 </div>
 
 <style>
-	/* Lyric-column scrim (tabbed column + sing takeover): the artwork wash sits behind the
-	   text, so the scroller carries its own contrast plate, which never scrolls away.
-	   No text-shadow. */
+	/* Lyric plate removed: the column used to carry a rounded ~38% scrim box behind the
+	   text, which read as an ugly card over the artwork wash. Lyrics now sit directly
+	   over the wash with no container — readability comes from the existing bottom
+	   gradient + per-line contrast. Selectors stay as scrim anchors; they must not
+	   reintroduce a background or radius. */
 	[data-np-lyrics] :global(.lyrics-scroller),
 	[data-np-sing] :global(.lyrics-scroller) {
-		background-color: color-mix(in srgb, var(--scrim) 38%, transparent);
-		border-radius: var(--r-lg);
+		background-color: transparent;
+		border-radius: 0;
 	}
 </style>

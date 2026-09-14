@@ -6,11 +6,14 @@
 //                 as a `.theme-<id>` class in layout.css. Applied by toggling that class on <html>.
 //
 // On top of whichever preset is selected sits the *custom* layer (accent colour, background tint,
-// roundness, fonts). It's inline styles too, applied after the preset, so it wins over both kinds
-// and survives switching presets. Anything the user hasn't touched stays null and the preset shows
-// through — the customization is a set of overrides, not a rival theme to maintain.
+// roundness, fonts). It's inline styles too, applied after the preset, so it wins over both kinds.
+// Anything the user hasn't touched stays null and the preset shows through — the customization is
+// a set of overrides, not a rival theme to maintain. Choosing a preset rewrites the bundle
+// fields (accent, wash, follow strength, true-black, geometry) into this layer and sets the
+// dark/light mode, so the preset lands as a whole look; tweaks after that are ordinary overrides.
 
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { setMode } from 'mode-watcher';
 import { hexToHsv, hsvToHex, isLight, lerpHue, type Hsv } from './color';
 import { artworkAccent } from './artcolor';
 import { solveVeil } from './veil';
@@ -34,16 +37,30 @@ export const LAYOUTS: { id: LayoutId; label: string; description: string }[] = [
 // have them; themes had none). `className` (accent only) is an optional surface hook toggled on
 // <html> alongside the inline accent vars — how midnight/aurora/mono get their own surfaces while
 // staying accent-kind (see layout.css `.theme-midnight` etc, mirroring the catppuccin pattern).
+// A preset is a whole look, not just an accent: choosing one sets the dark/light mode plus a
+// bundle of custom-layer defaults (accent + wash + follow strength + true-black + geometry).
+// `accent` is oklch like the preset itself (converted to hex on write — custom.accent is hex);
+// null means the preset owns its accent per mode, so no override is written and a palette's own
+// light/dark primaries survive (canopy-light, catppuccin).
+export type PresetLook = {
+	accent: string | null;
+	mode: 'dark' | 'light';
+	wash: number;
+	followStrength: number;
+	trueBlack: boolean;
+	geometry: GeometryId;
+};
+
 type Theme =
-	| { id: ThemeId; label: string; description: string; kind: 'accent'; color: string; fg: string; className?: string }
-	| { id: ThemeId; label: string; description: string; kind: 'palette'; color: string };
+	| { id: ThemeId; label: string; description: string; look: PresetLook; kind: 'accent'; color: string; fg: string; className?: string }
+	| { id: ThemeId; label: string; description: string; look: PresetLook; kind: 'palette'; color: string };
 
 export const THEMES: Theme[] = [
-	{ id: 'midnight', label: 'Midnight', description: 'True-black OLED + electric violet — the default', kind: 'accent', color: 'oklch(0.65 0.27 297)', fg: 'oklch(0.985 0 0)', className: 'theme-midnight' },
-	{ id: 'aurora', label: 'Aurora', description: 'Artwork-follow showcase — surfaces chase the cover', kind: 'accent', color: 'oklch(0.68 0.24 320)', fg: 'oklch(0.985 0 0)', className: 'theme-aurora' },
-	{ id: 'mono', label: 'Mono', description: 'Near-white accent, zero-chroma grayscale surfaces', kind: 'accent', color: 'oklch(0.93 0.005 0)', fg: 'oklch(0.205 0 0)', className: 'theme-mono' },
-	{ id: 'canopy-light', label: 'Canopy Light', description: 'Warm-paper light theme — ink text, deep accent', kind: 'palette', color: 'oklch(0.48 0.16 55)' },
-	{ id: 'catppuccin', label: 'Catppuccin', description: 'Pastel community palette — light + dark', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)' }
+	{ id: 'midnight', label: 'Midnight', description: 'True-black OLED + electric violet — the default', kind: 'accent', color: 'oklch(0.65 0.27 297)', fg: 'oklch(0.985 0 0)', className: 'theme-midnight', look: { accent: 'oklch(0.65 0.27 297)', mode: 'dark', wash: 30, followStrength: 60, trueBlack: true, geometry: 'soft' } },
+	{ id: 'aurora', label: 'Aurora', description: 'Artwork-follow showcase — surfaces chase the cover', kind: 'accent', color: 'oklch(0.68 0.24 320)', fg: 'oklch(0.985 0 0)', className: 'theme-aurora', look: { accent: 'oklch(0.68 0.24 320)', mode: 'dark', wash: 55, followStrength: 80, trueBlack: false, geometry: 'soft' } },
+	{ id: 'mono', label: 'Mono', description: 'Near-white accent, zero-chroma grayscale surfaces', kind: 'accent', color: 'oklch(0.93 0.005 0)', fg: 'oklch(0.205 0 0)', className: 'theme-mono', look: { accent: 'oklch(0.93 0.005 0)', mode: 'dark', wash: 10, followStrength: 30, trueBlack: false, geometry: 'sharp' } },
+	{ id: 'canopy-light', label: 'Canopy Light', description: 'Warm-paper light theme — ink text, deep accent', kind: 'palette', color: 'oklch(0.48 0.16 55)', look: { accent: null, mode: 'light', wash: 25, followStrength: 60, trueBlack: false, geometry: 'soft' } },
+	{ id: 'catppuccin', label: 'Catppuccin', description: 'Pastel community palette — light + dark', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)', look: { accent: null, mode: 'dark', wash: 30, followStrength: 60, trueBlack: false, geometry: 'soft' } }
 ];
 
 /** Retired single-hue presets (rose/blue/lime/purple/teal). Kept as one-click swatches that write
@@ -332,10 +349,39 @@ function apply(): void {
 	applyLyricsFont();
 }
 
+/**
+ * Choosing a preset applies its whole look: the dark/light mode plus the bundle written into
+ * the custom layer (accent included for accent-kind; palette-kind writes null so the palette's
+ * own per-mode primaries show through). The wash/follow/true-black/geometry controls then sit
+ * where the look sits, and any tweak after is an ordinary custom override. Reset clears custom
+ * back to the pure preset — visually identical, because bundle == preset.
+ */
 export function applyTheme(id: ThemeId): void {
-	theme.id = THEMES.some((t) => t.id === id) ? id : THEMES[0].id;
+	const next = THEMES.find((t) => t.id === id) ?? THEMES[0];
+	theme.id = next.id;
+	const look = next.look;
+	// The bundle speaks oklch like the preset itself; custom.accent is hex. A '#000000' result
+	// means this engine can't parse oklch (canvas fallback) — store null so the preset's own
+	// inline vars show through instead of flashing black.
+	let accentHex: string | null = null;
+	if (look.accent) {
+		const hex = toHex(look.accent);
+		accentHex = hex === '#000000' ? null : hex;
+	}
+	custom.accent = accentHex;
+	custom.wash = look.wash;
+	custom.followStrength = look.followStrength;
+	custom.trueBlack = look.trueBlack;
+	custom.geometry = look.geometry;
+	// Same path as the sidebar toggle (mode-watcher's own storage key, `.dark` on <html>) —
+	// picking a preset persists the mode exactly like flipping it by hand.
+	setMode(look.mode);
 	apply();
+	persist();
 	localStorage.setItem(KEY, theme.id);
+	// ModeWatcher flips `.dark` in its own reaction, a tick after the state change, so re-read
+	// once it lands — palette primaries differ per mode and `effective` drives the swatches.
+	requestAnimationFrame(() => readBack());
 }
 
 export function applyLayout(id: LayoutId): void {
@@ -579,7 +625,9 @@ export function applyArtworkAccent(url: string | undefined | null): void {
 /** Apply the stored theme + customization on startup (defaults to midnight, no overrides).
  *  Migration: retired ids (rose/blue/lime/purple/teal) all map to midnight, preserving the user's
  *  hue by writing the old preset color into the custom accent override (when untouched), so
- *  nothing visually changes for them. Unknown ids fall through to midnight. Catppuccin stays. */
+ *  nothing visually changes for them. Unknown ids fall through to midnight. Catppuccin stays.
+ *  Upgrade guarantee: existing custom.* overrides are never rewritten here — preset bundles apply
+ *  only on explicit choice (applyTheme), so every upgrader keeps their current effective look. */
 export function initTheme(): void {
 	try {
 		const saved = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '{}');

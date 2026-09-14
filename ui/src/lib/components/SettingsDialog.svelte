@@ -65,7 +65,7 @@
 		openDownloadPage
 	} from '$lib/updater.svelte';
 	import { getVersion, getTauriVersion } from '@tauri-apps/api/app';
-	import { setLocale, currentLocale, LOCALES, type LocaleId } from '$lib/i18n.svelte';
+	import { setLocale, currentLocale, LOCALES, t, type LocaleId } from '$lib/i18n.svelte';
 
 	type TabId = 'general' | 'themes' | 'playback' | 'downloads' | 'data' | 'about';
 	const TABS: { id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[] = [
@@ -88,6 +88,15 @@
 	const ACCENT_THEMES = THEMES.filter((t) => t.kind === 'accent');
 	const PALETTE_THEMES = THEMES.filter((t) => t.kind === 'palette');
 	const currentTheme = $derived(THEMES.find((t) => t.id === theme.id) ?? THEMES[0]);
+
+	// One-line "what this preset sets" meta under each preset name (mode · accent · finish).
+	const PRESET_META_KEYS = {
+		midnight: 'settings.themes.preset_meta_midnight',
+		aurora: 'settings.themes.preset_meta_aurora',
+		mono: 'settings.themes.preset_meta_mono',
+		'canopy-light': 'settings.themes.preset_meta_canopy_light',
+		catppuccin: 'settings.themes.preset_meta_catppuccin'
+	} as const;
 
 	// --- Themes tab ---
 	type FontKey = 'fontSans' | 'fontHeading';
@@ -1669,16 +1678,17 @@
 		<Select.Content>
 			<Select.Group>
 				<Select.GroupHeading>Signature</Select.GroupHeading>
-				{#each ACCENT_THEMES as t (t.id)}
-					<Select.Item value={t.id} label={t.label}>
+				{#each ACCENT_THEMES as th (th.id)}
+					<Select.Item value={th.id} label={th.label}>
 						<span class="flex items-start gap-2">
 							<span
 								class="mt-0.5 size-4 shrink-0 rounded-full ring-1 ring-black/10"
-								style="background:{t.color}"
+								style="background:{th.color}"
 							></span>
 							<span class="flex flex-col items-start">
-								<span>{t.label}</span>
-								<span class="text-xs text-muted-foreground">{t.description}</span>
+								<span>{th.label}</span>
+								<span class="text-xs text-muted-foreground">{th.description}</span>
+								<span class="text-[11px] font-medium text-primary/80">{t(PRESET_META_KEYS[th.id])}</span>
 							</span>
 						</span>
 					</Select.Item>
@@ -1686,16 +1696,17 @@
 			</Select.Group>
 			<Select.Group>
 				<Select.GroupHeading>Palettes</Select.GroupHeading>
-				{#each PALETTE_THEMES as t (t.id)}
-					<Select.Item value={t.id} label={t.label}>
+				{#each PALETTE_THEMES as th (th.id)}
+					<Select.Item value={th.id} label={th.label}>
 						<span class="flex items-start gap-2">
 							<span
 								class="mt-0.5 size-4 shrink-0 rounded-full ring-1 ring-black/10"
-								style="background:{t.color}"
+								style="background:{th.color}"
 							></span>
 							<span class="flex flex-col items-start">
-								<span>{t.label}</span>
-								<span class="text-xs text-muted-foreground">{t.description}</span>
+								<span>{th.label}</span>
+								<span class="text-xs text-muted-foreground">{th.description}</span>
+								<span class="text-[11px] font-medium text-primary/80">{t(PRESET_META_KEYS[th.id])}</span>
 							</span>
 						</span>
 					</Select.Item>
@@ -1707,6 +1718,8 @@
 
 {#snippet presetDesc()}
 	<p class="text-xs text-muted-foreground">{currentTheme.description}</p>
+	<p class="mt-1 text-[11px] font-medium text-primary/80">{t(PRESET_META_KEYS[currentTheme.id])}</p>
+	<p class="mt-1 text-[11px] text-muted-foreground">{t('settings.themes.preset_applies_hint')}</p>
 {/snippet}
 
 {#snippet retiredSwatches()}
