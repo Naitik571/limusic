@@ -632,32 +632,8 @@
 					{/if}
 				</button>
 				{/if}
-				<!-- Hover prev/next (interior #10): one shared vertical center line on the art
-				     square — identical size, symmetric offsets, explicit top:50% + translateY.
-				     Tap=pause (artwork button), wheel=volume and swipe gestures are untouched;
-				     visibility stays hover/focus-only via group-hover/art. -->
-				<button
-					type="button"
-					class="absolute left-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
-					style="top:50%;transform:translateY(-50%);background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
-					onpointerdown={(e) => e.stopPropagation()}
-					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.prevTrack().catch(() => {}); }}
-					aria-label="Previous"
-					title="Previous — or swipe right on the artwork"
-				>
-					<HugeiconsIcon icon={PreviousIcon} strokeWidth={2} class="h-5 w-5 translate-x-[1px]" />
-				</button>
-			<button
-				type="button"
-				class="absolute right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
-					style="top:50%;transform:translateY(-50%);background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
-					onpointerdown={(e) => e.stopPropagation()}
-					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.nextTrack().catch(() => {}); }}
-					aria-label="Next"
-					title="Next — or swipe left on the artwork"
-				>
-					<HugeiconsIcon icon={NextIcon} strokeWidth={2} class="h-5 w-5 -translate-x-[1px]" />
-				</button>
+				<!-- Hover prev/next buttons removed: they anchored to a wider box than the
+				     artwork and sat unevenly. Swipe + transport controls cover prev/next. -->
 				</div>
 				{#if showSwipeHint}
 					<!-- One-time swipe hint (interior #10): own overlay layer above the square.
