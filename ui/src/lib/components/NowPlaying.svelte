@@ -645,18 +645,18 @@
 					aria-label="Previous"
 					title="Previous — or swipe right on the artwork"
 				>
-					<HugeiconsIcon icon={PreviousIcon} strokeWidth={2} class="h-5 w-5" />
+					<HugeiconsIcon icon={PreviousIcon} strokeWidth={2} class="h-5 w-5 translate-x-[1px]" />
 				</button>
-				<button
-					type="button"
-					class="absolute right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
+			<button
+				type="button"
+				class="absolute right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity focus-visible:opacity-100 group-hover/art:opacity-100"
 					style="top:50%;transform:translateY(-50%);background:var(--surface-1);color:var(--text-1);border-radius:var(--r-full);transition-duration:var(--dur-2);transition-timing-function:var(--ease-out)"
 					onpointerdown={(e) => e.stopPropagation()}
 					onclick={(e) => { e.stopPropagation(); if (swiped) return; api.nextTrack().catch(() => {}); }}
 					aria-label="Next"
 					title="Next — or swipe left on the artwork"
 				>
-					<HugeiconsIcon icon={NextIcon} strokeWidth={2} class="h-5 w-5" />
+					<HugeiconsIcon icon={NextIcon} strokeWidth={2} class="h-5 w-5 -translate-x-[1px]" />
 				</button>
 				</div>
 				{#if showSwipeHint}

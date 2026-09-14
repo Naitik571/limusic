@@ -163,13 +163,22 @@
 		else pendingMenu = null;
 	});
 
+	let searchError = $state('');
 	async function load(q: string) {
 		loadedFor = q;
+		searchError = '';
 		try {
-			const next = await searchPreview(q);
+			// Never spin forever: a hung backend must surface as an error, not skeletons.
+			const next = await Promise.race([
+				searchPreview(q),
+				new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+			]);
 			if (loadedFor === q) items = next;
 		} catch {
-			if (loadedFor === q) items = [];
+			if (loadedFor === q) {
+				items = [];
+				searchError = 'Search timed out — check your connection and try again.';
+			}
 		} finally {
 			if (loadedFor === q) loading = false;
 		}
@@ -280,17 +289,15 @@
 	}
 
 	const actionQuery = $derived(query.trim().toLowerCase());
-	// Open counter: keys the default-row stagger so it runs on open, not per keystroke.
 	// The open path does no data work at all — the dialog shell (8 static action rows)
 	// renders first and results fill in async via `load()` after the debounce. Never build
 	// an index or filter a large list here: any synchronous per-open scan over library /
 	// playlist / settings rows freezes the whole app before first paint, and a frozen
 	// thread can't process the close that follows. Action filtering below is over ~25
 	// static labels (no debounce needed); the remote search is the only debounced path.
-	let openCount = $state(0);
-	$effect(() => {
-		if (ui.paletteOpen) openCount += 1;
-	});
+	// (A previous {#key}-remount-per-open + stagger replay is deliberately gone: remounting
+	// rows on every open churned the underlying item registry and risked focus/selection
+	// desync. The dialog's own fade/zoom carries the entrance now.)
 	// Substring match on the label; empty query shows the eight defaults above. The results
 	// themselves are unfiltered here (shouldFilter={false}) — this list is ours alone.
 	const visibleActions = $derived(
@@ -302,6 +309,11 @@
 
 	<Command.Dialog
 	bind:open={ui.paletteOpen}
+	onOpenChange={(o) => {
+		// Two-way sync: an outside-click close updates bits-ui internally; without
+		// this the store stays true and the next Ctrl+K toggles to a no-op false.
+		if (!o && ui.paletteOpen) ui.paletteOpen = false;
+	}}
 	shouldFilter={false}
 	vimBindings={false}
 	loop
@@ -322,16 +334,14 @@
 	<Command.List class="max-h-[22rem]">
 		{#if visibleActions.length}
 			<!-- Grouped actions (interior #12): every group carries its header whenever it has rows,
-			     so Jump to / Playback / System read as sections, not one long list.
-			     Default rows stagger on open (keyed by openCount); filtered rows don't — so
-			     typing never replays the entrance. -->
-			{#key openCount}
+			     so Jump to / Playback / System read as sections, not one long list. No
+			     keyed remount here: rows mount once with the dialog and stay registered. -->
 			{#each GROUPS as g (g)}
 				{@const grows = visibleActions.filter((a) => a.group === g)}
 				{#if grows.length}
 					<Command.Group heading={g}>
-						{#each grows as a, ai (a.label)}
-							<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2 {actionQuery ? '' : 'stagger-in'}" style={actionQuery ? undefined : `--stagger-i:${ai % 8}`}>
+						{#each grows as a (a.label)}
+							<Command.Item value={`action:${a.label}`} onSelect={() => runAction(a)} class="gap-2">
 								<span class="truncate">{a.label}</span>
 								{#if a.layoutId === layout.id}
 									<span
@@ -350,7 +360,6 @@
 					</Command.Group>
 				{/if}
 			{/each}
-			{/key}
 		{/if}
 
 		{#if loading}
@@ -365,7 +374,7 @@
 			{/each}
 		{:else if !items.length}
 			<div class="px-4 py-6 text-center text-sm text-muted-foreground">
-				{query.trim().length < 2 ? 'Type to search.' : 'Nothing quick for that.'}
+				{searchError || (query.trim().length < 2 ? 'Type to search.' : 'Nothing quick for that.')}
 			</div>
 		{:else}
 			<Command.Group heading="Results">
