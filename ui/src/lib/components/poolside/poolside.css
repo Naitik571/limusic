@@ -21,7 +21,12 @@
 	--shadow-teal: 0 18px 44px rgba(8,60,70,.35);
 	--shadow-soft: 0 8px 32px rgba(0,40,50,.25);
 	--ease-spring: cubic-bezier(.22,1,.36,1);
-	--ease: cubic-bezier(.22,1,.36,1);
+	/* --ease aliases the app motion token so poolside eases with the shell;
+	   --spring is the real overshoot curve (bouncy entrances, row slide-ins).
+	   Shared durations are consumed at usage sites as var(--dur-1/2/3, <pool fallback>)
+	   — never redefined here (they inherit from the app root). */
+	--ease: var(--ease-out, cubic-bezier(.22,1,.36,1));
+	--spring: cubic-bezier(.34,1.56,.64,1);
 	--ease-grow: cubic-bezier(.16,1,.3,1);
 	--mono: 'JetBrains Mono', ui-monospace, monospace;
 	--display: 'Space Grotesk', sans-serif;
@@ -46,7 +51,7 @@
 	-webkit-font-smoothing: antialiased;
 }
 .ps-root button { font-family: inherit; border: 0; background: none; cursor: pointer; color: inherit; padding: 0; }
-.ps-root :focus-visible { outline: 2.5px solid #fff; outline-offset: 3px; border-radius: 8px; }
+.ps-root :focus-visible { outline: 2.5px solid var(--ps-ink, #fff); outline-offset: 3px; border-radius: var(--r-lg, 8px); }
 
 /* ============ 1. WATER — realistic swimming pool ============ */
 /* When the shell is playing a track, --ps-album-accent is set on .ps-root (e.g.
@@ -126,7 +131,7 @@
 	mix-blend-mode: screen;
 	opacity: .38;
 	animation: ps-causticA 42s linear infinite;
-	filter: blur(6px);
+	filter: blur(6px) url(#ps-turbulence);
 }
 .ps-rip.b {
 	background:
@@ -140,7 +145,7 @@
 	mix-blend-mode: screen;
 	opacity: .32;
 	animation: ps-causticB 54s linear infinite;
-	filter: blur(8px);
+	filter: blur(8px) url(#ps-turbulence);
 }
 .ps-rip.c {
 	background:
@@ -150,7 +155,7 @@
 	mix-blend-mode: soft-light;
 	opacity: .45;
 	animation: ps-causticC 60s linear infinite;
-	filter: url(#ps-turbulence);
+	filter: blur(3px) url(#ps-turbulence);
 }
 @keyframes ps-causticA {
 	from { transform: translate3d(0,0,0) rotate(0deg); }
@@ -212,12 +217,15 @@
 	z-index: 1;
 	animation: ps-shaft-sway 14s ease-in-out infinite alternate;
 }
-.ps-shaft:nth-child(2) { animation-duration: 18s; animation-delay: -3s; }
-.ps-shaft:nth-child(3) { animation-duration: 16s; animation-delay: -7s; }
-.ps-shaft:nth-child(4) { animation-duration: 20s; animation-delay: -11s; }
+/* Explicit shaft variants — geometry lives in --shaft-rot (set per shaft in
+   Water.svelte), consumed by the sway keyframes. No inline transforms. */
+.ps-shaft.s1 { --shaft-rot: 8deg; animation-duration: 14s; }
+.ps-shaft.s2 { --shaft-rot: -5deg; animation-duration: 18s; animation-delay: -3s; }
+.ps-shaft.s3 { --shaft-rot: 10deg; animation-duration: 16s; animation-delay: -7s; }
+.ps-shaft.s4 { --shaft-rot: -3deg; animation-duration: 20s; animation-delay: -11s; }
 @keyframes ps-shaft-sway {
-	0% { transform: var(--shaft-rot, rotate(8deg)) translateX(0); }
-	100% { transform: var(--shaft-rot, rotate(8deg)) translateX(2vw); }
+	0% { transform: rotate(var(--shaft-rot, 8deg)) translateX(0); }
+	100% { transform: rotate(var(--shaft-rot, 8deg)) translateX(2vw); }
 }
 
 /* waterline — the bright reflective band at the top of the pool. This is THE thing that sells
@@ -252,11 +260,10 @@
 	filter: blur(4px);
 }
 
-/* SVG turbulence — displacement filter for realistic caustic distortion */
+/* SVG turbulence — displacement filter for realistic caustic distortion.
+   Each .ps-rip layer already chains its own blur + url(#ps-turbulence) above,
+   so no blanket override here (it would clobber the per-layer blur). */
 .ps-turb-svg { position: absolute; width: 0; height: 0; pointer-events: none; }
-.ps-water > .ps-rip {
-	filter: url(#ps-turbulence);
-}
 
 /* floating light motes — tiny particles drifting through the water */
 .ps-mote {
@@ -280,6 +287,8 @@
 /* caustic disable — also hides shafts, glare, turbulence, and motes */
 .ps-root.no-caustics .ps-rip { opacity: 0; pointer-events: none; }
 .ps-root.no-caustics .ps-water::after { opacity: 0; }
+/* koi disable — the shell toggles .no-koi; Koi.svelte also skips its rAF work. */
+.ps-root.no-koi .ps-koi { display: none; }
 .ps-root.no-caustics .ps-shaft { opacity: 0 !important; }
 .ps-root.no-caustics .ps-glare { opacity: 0; }
 .ps-root.no-caustics .ps-mote { animation: none; opacity: 0; }
@@ -434,7 +443,7 @@
 	border-radius: 10px;
 	color: var(--ps-ink-faint);
 	border: 1px solid transparent;
-	transition: color 0.16s, background 0.16s, border-color 0.16s;
+	transition: color var(--dur-1, 0.16s), background var(--dur-1, 0.16s), border-color var(--dur-1, 0.16s);
 }
 .ps-water-theme-btn:hover {
 	color: var(--ps-ink);
@@ -451,10 +460,12 @@
 }
 
 /* ============ 2. VIEW SYSTEM — camera dolly ============ */
+/* Entrance motion is owned by the ps-view-tilt keyframe below; the transition covers
+   opacity only so it never fights the tilt transform. */
 .ps-view {
 	position: absolute; inset: 0; z-index: 5;
 	opacity: 0; transform: scale(1.07); pointer-events: none;
-	transition: opacity .55s var(--ease-spring), transform .55s var(--ease-spring);
+	transition: opacity .55s var(--ease-spring);
 	overflow: hidden;
 }
 .ps-view.on { opacity: 1; transform: scale(1); pointer-events: auto; }
@@ -720,7 +731,7 @@
 	position: absolute;
 	right: 8%; bottom: 8%;
 	padding: 5px 12px;
-	border-radius: 8px;
+	border-radius: var(--r-lg, 8px);
 	font-family: var(--mono);
 	font-size: 10px;
 	letter-spacing: .15em;
@@ -756,7 +767,7 @@
 	overflow: hidden;
 }
 .ps-sleeve .mouth {
-	position: absolute; left: 24%; top: 3%; bottom: 3%; width: 9%; border-radius: 12px;
+	position: absolute; left: 24%; top: 3%; bottom: 3%; width: 9%; border-radius: var(--r-xl, 12px);
 	background: linear-gradient(90deg, rgba(60,38,20,.5), transparent);
 }
 .ps-sticker { position: absolute; z-index: 3; filter: drop-shadow(0 3px 4px rgba(0,30,40,.3)); }
@@ -814,16 +825,6 @@
 .ps-track-caption .np-artist {
 	font-size: 10px; letter-spacing: .2em; text-transform: uppercase; opacity: .8;
 }
-.ps-queue-strip { display: flex; gap: 12px; }
-.ps-queue-strip button {
-	width: 60px; height: 60px; border-radius: 14px;
-	border: 1.5px solid rgba(255,255,255,.75);
-	box-shadow: var(--shadow-soft); cursor: pointer; overflow: hidden;
-	transition: transform .25s var(--ease-spring);
-	padding: 0;
-}
-.ps-queue-strip button:hover { transform: translateY(-5px) scale(1.06); }
-.ps-queue-strip img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ps-hint {
 	position: absolute; bottom: 18px; left: 22px;
 	font-size: 10px; letter-spacing: .28em; opacity: .7; text-transform: uppercase;
@@ -839,8 +840,8 @@
 
 /* ============ 5. LIBRARY ============ */
 .ps-tabs {
-	display: inline-flex; gap: 4px; padding: 5px; border-radius: 999px;
-	background: var(--glass, rgba(255,255,255,.32));
+	display: inline-flex; gap: 4px; padding: 5px; border-radius: var(--r-full, 999px);
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.32)));
 	backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
 	border: 1px solid rgba(255,255,255,.5); box-shadow: var(--shadow-soft);
 }
@@ -848,8 +849,8 @@
 	all: unset; cursor: pointer;
 	font-family: var(--mono); font-size: 10px; font-weight: 700;
 	letter-spacing: .22em; text-transform: uppercase; color: var(--ps-ink);
-	padding: 8px 16px; border-radius: 999px;
-	transition: all .25s var(--ease-spring);
+	padding: 8px 16px; border-radius: var(--r-full, 999px);
+	transition: all var(--dur-2, .25s) var(--ease-spring);
 	text-shadow: 0 1px 3px var(--ps-tsc);
 }
 .ps-tabs button:hover { background: rgba(255,255,255,.25); }
@@ -861,9 +862,9 @@
 .ps-search {
 	flex: 1; min-width: 180px; max-width: 340px; margin-left: auto;
 	display: flex; align-items: center; gap: 10px;
-	background: var(--glass, rgba(255,255,255,.32));
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.32)));
 	backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-	border: 1px solid rgba(255,255,255,.5); border-radius: 999px; padding: 9px 18px;
+	border: 1px solid rgba(255,255,255,.5); border-radius: var(--r-full, 999px); padding: 9px 18px;
 	box-shadow: var(--shadow-soft);
 }
 .ps-search input {
@@ -875,7 +876,7 @@
 .ps-songrow {
 	display: flex; align-items: center; gap: 16px;
 	padding: 12px 18px; margin-bottom: 10px; border-radius: 16px;
-	background: var(--glass, rgba(255,255,255,.32));
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.32)));
 	backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 	border: 1px solid rgba(255,255,255,.45); box-shadow: var(--shadow-soft);
 	font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
@@ -884,7 +885,7 @@
 .ps-songrow .st { font-size: 10px; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ps-songrow .sa { font-size: 9.5px; opacity: .72; letter-spacing: .08em; text-transform: uppercase; }
 .ps-songrow .sd { font-size: 10px; opacity: .65; text-align: right; margin-left: auto; }
-.ps-songrow:hover { background: var(--glass-strong, rgba(255,255,255,.5)); }
+.ps-songrow:hover { background: var(--glass-strong, var(--surface-2, rgba(255,255,255,.5))); }
 
 /* ============ 6. ALBUM DETAIL ============ */
 .ps-albumview {
@@ -915,8 +916,8 @@
 .ps-mini {
 	position: fixed; right: 22px; bottom: 22px; z-index: 20;
 	display: flex; align-items: center; gap: 14px;
-	padding: 12px 18px 12px 12px; border-radius: 999px;
-	background: var(--glass, rgba(255,255,255,.32));
+	padding: 12px 18px 12px 12px; border-radius: var(--r-full, 999px);
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.32)));
 	backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
 	border: 1px solid rgba(255,255,255,.55); box-shadow: var(--shadow-soft);
 }
@@ -934,39 +935,8 @@
 }
 .ps-mini .bar:hover .dot { transform: translate(-50%,-50%) scale(1.4); }
 
-/* ============ 8. EDGE BUTTONS ============ */
-.ps-edge { position: fixed; right: 22px; z-index: 20; display: flex; flex-direction: column; gap: 12px; }
-.ps-edge.bottom { bottom: 96px; }
-.ps-edge.mid { bottom: 96px; }
-.ps-edge-btn {
-	all: unset; cursor: pointer;
-	width: 40px; height: 40px; border-radius: 50%;
-	display: flex; align-items: center; justify-content: center;
-	color: #0E5A6A;
-	background: var(--glass, rgba(255,255,255,.32));
-	backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-	border: 1px solid rgba(255,255,255,.55); box-shadow: var(--shadow-soft);
-	transition: transform .2s var(--ease-spring), background .3s;
-}
-.ps-edge-btn:hover { transform: scale(1.1); background: var(--glass-strong, rgba(255,255,255,.5)); }
-
-/* ============ 9. SETTINGS POPOVER ============ */
-.ps-settings {
-	position: fixed; right: 82px; bottom: 96px; z-index: 32;
-	border-radius: 24px; padding: 28px 30px; width: 340px;
-	background: var(--glass-strong, rgba(255,255,255,.5));
-	backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
-	border: 1px solid rgba(255,255,255,.65);
-	box-shadow: var(--shadow-teal);
-	opacity: 0; pointer-events: none;
-	transition: all .3s var(--ease-spring);
-	transform: translateY(8px);
-}
-.ps-settings.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
-.ps-settings h3 {
-	font-family: var(--mono); font-size: 11px; font-weight: 700;
-	letter-spacing: .28em; text-transform: uppercase; margin-bottom: 18px;
-}
+/* ============ 9. SETTINGS POPOVER (legacy slot — the shell now renders
+   .ps-settings-panel; shared row/switch rules live below and serve both) ============ */
 .ps-setrow {
 	display: flex; align-items: center; justify-content: space-between;
 	padding: 12px 0;
@@ -986,7 +956,7 @@
 .ps-setrow + .ps-setrow { border-top: 1px solid rgba(255,255,255,.12); }
 /* toggle switch */
 .ps-sw {
-	position: relative; width: 42px; height: 23px; border-radius: 999px;
+	position: relative; width: 42px; height: 23px; border-radius: var(--r-full, 999px);
 	background: rgba(255,255,255,.25); transition: background .2s; flex: none;
 }
 .ps-sw::after {
@@ -997,29 +967,15 @@
 }
 .ps-sw.on { background: var(--accent); }
 .ps-sw.on::after { left: 22px; }
-/* exit button — NOT a toggle, sits on its own row */
-.ps-exit-btn {
-	all: unset; cursor: pointer;
-	padding: 8px 18px; border-radius: 999px;
-	font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
-	color: #fff;
-	background: var(--red); opacity: .85;
-	transition: opacity .2s, transform .2s var(--ease-spring);
-}
-.ps-exit-btn:hover { opacity: 1; transform: scale(1.05); }
-.ps-settings select {
+/* spin-speed select lives in .ps-settings-panel (re-scoped from the legacy popover). */
+.ps-settings-panel select {
 	font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
-	border-radius: 8px; border: 1px solid rgba(255,255,255,.4);
+	border-radius: var(--r-lg, 8px); border: 1px solid rgba(255,255,255,.4);
 	padding: 5px 8px; background: rgba(255,255,255,.25); color: var(--ps-ink);
 }
-.ps-settings select:focus {
+.ps-settings-panel select:focus {
 	border-color: var(--accent);
 	box-shadow: 0 0 0 2px rgba(79,195,232,.3);
-}
-.ps-settings .foot {
-	margin-top: 14px; padding-top: 10px;
-	border-top: 1px solid rgba(255,255,255,.12);
-	font-size: 7.5px; opacity: .72; letter-spacing: .1em; text-transform: uppercase;
 }
 
 /* ============ 10. OVERLAYS ============ */
@@ -1036,7 +992,9 @@
    dialog); the .ps-overlay .card style below was dead weight — a near-duplicate of .ps-card
    that the markup never targeted. If you ever switch the card class, restore it here. */
 
-/* lyrics overlay — slides up from the bottom with a subtle bounce, like surfacing */
+/* lyrics overlay — slides up from the bottom with a subtle bounce, like surfacing.
+   Has its own ps-lyrics-frame-in so the drawer's ps-lyrics-in stays the single
+   source for the slide-from-right entrance. */
 .ps-lyrics-frame {
 	position: fixed;
 	right: 3vw; top: 10vh; bottom: 12vh;
@@ -1047,9 +1005,9 @@
 	backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
 	border: 1px solid rgba(255,255,255,.3);
 	box-shadow: var(--shadow-teal);
-	animation: ps-lyrics-in .55s var(--ease-spring) both;
+	animation: ps-lyrics-frame-in .55s var(--ease-spring) both;
 }
-@keyframes ps-lyrics-in {
+@keyframes ps-lyrics-frame-in {
 	0%   { opacity: 0; transform: translateY(40px) scale(.95); }
 	100% { opacity: 1; transform: translateY(0) scale(1); }
 }
@@ -1076,7 +1034,7 @@
 .ps-mini .mbtn svg { width: 13px; height: 13px; }
 .ps-mini .aqua-play { all: unset; cursor: pointer; width: 44px; height: 44px; border-radius: 50%; position: relative; flex: none; background: linear-gradient(180deg, #8FDDF6, var(--accent) 55%, #2E9ECB); border: 1px solid rgba(255,255,255,.8); box-shadow: 0 5px 14px rgba(14,110,140,.5), inset 0 1px 0 rgba(255,255,255,.9); display: flex; align-items: center; justify-content: center; color: #fff; transition: transform .2s var(--ease-spring); }
 .ps-mini .aqua-play:hover { transform: scale(1.08); }
-.ps-mini .aqua-play::before { content: ''; position: absolute; left: 14%; right: 14%; top: 8%; height: 40%; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.05)); pointer-events: none; }
+.ps-mini .aqua-play::before { content: ''; position: absolute; left: 14%; right: 14%; top: 8%; height: 40%; border-radius: var(--r-full, 999px); background: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.05)); pointer-events: none; }
 
 /* NowView transport + seek */
 .ps-bottom { display: flex; flex-direction: column; align-items: center; gap: 16px; width: min(560px, 80vw); }
@@ -1088,7 +1046,7 @@
 .ps-seek::-moz-range-track { height: 2px; background: rgba(255,255,255,.75); border-radius: 2px; }
 .ps-seek::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
 .ps-transport { display: flex; align-items: center; gap: 22px; }
-.ps-tbtn { all: unset; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--ps-ink); background: rgba(255,255,255,.16); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.4); transition: transform .2s var(--ease-spring), background .2s; flex: none; }
+.ps-tbtn { all: unset; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--ps-ink); background: rgba(255,255,255,.16); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.4); transition: transform var(--dur-2, .2s) var(--ease-spring), background var(--dur-2, .2s); flex: none; }
 .ps-tbtn:hover { background: rgba(255,255,255,.3); transform: translateY(-2px); }
 .ps-tbtn.on { background: rgba(6,48,58,.85); box-shadow: 0 0 0 2px rgba(255,255,255,.5) inset; }
 .ps-tbtn svg { width: 17px; height: 17px; }
@@ -1100,17 +1058,14 @@
 .ps-lib { display: grid; grid-template-columns: minmax(280px, 34%) 1fr; gap: 36px; align-items: stretch; height: 100%; padding: 26px 30px; }
 .ps-lib-left { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
 .ps-lib-right { display: flex; flex-direction: column; gap: 18px; min-width: 0; border-radius: 26px; padding: 22px 24px; overflow: hidden; }
-.ps-logo { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 9px; align-self: flex-start; border-radius: 999px; padding: 9px 18px 9px 14px; background: linear-gradient(135deg, rgba(255,255,255,.75), rgba(255,255,255,.35)); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.6); box-shadow: var(--shadow-soft); }
-.ps-logo .word { font-family: var(--display); font-style: italic; font-size: 19px; letter-spacing: .02em; background: linear-gradient(180deg, #fff 8%, #D8EEF4 42%, #7FA6B2 55%, #F2FBFD 78%, #B9D8E0 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 1px rgba(255,255,255,.9)); }
-.ps-logo .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; background: var(--red); color: #fff; border-radius: 4px; padding: 2.5px 5px; transform: translateY(1px); }
 .ps-hero-cap { align-self: center; font-size: 10px; letter-spacing: .12em; color: var(--ps-ink); text-align: center; line-height: 1.9; text-shadow: 0 1px 5px var(--ps-tsc); }
 .ps-lib-top { display: flex; align-items: center; gap: 14px; }
-.ps-import { all: unset; cursor: pointer; position: relative; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #fff; padding: 11px 20px; border-radius: 999px; background: linear-gradient(180deg, #8FDDF6 0%, var(--accent) 48%, #2E9ECB 100%); border: 1px solid rgba(255,255,255,.75); box-shadow: 0 6px 18px rgba(14,110,140,.45), inset 0 1px 0 rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(10,80,110,.5); white-space: nowrap; overflow: hidden; transition: transform .2s var(--ease-spring); }
+.ps-import { all: unset; cursor: pointer; position: relative; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #fff; padding: 11px 20px; border-radius: var(--r-full, 999px); background: linear-gradient(180deg, #8FDDF6 0%, var(--accent) 48%, #2E9ECB 100%); border: 1px solid rgba(255,255,255,.75); box-shadow: 0 6px 18px rgba(14,110,140,.45), inset 0 1px 0 rgba(255,255,255,.9); text-shadow: 0 1px 2px rgba(10,80,110,.5); white-space: nowrap; overflow: hidden; transition: transform .2s var(--ease-spring); }
 .ps-import:hover { transform: translateY(-2px); }
-.ps-import::before { content: ''; position: absolute; left: 8%; right: 8%; top: 6%; height: 44%; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.05)); pointer-events: none; }
+.ps-import::before { content: ''; position: absolute; left: 8%; right: 8%; top: 6%; height: 44%; border-radius: var(--r-full, 999px); background: linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.05)); pointer-events: none; }
 .ps-panels { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 6px 18px 2px; scrollbar-width: thin; }
 .ps-panels::-webkit-scrollbar { width: 8px; }
-.ps-panels::-webkit-scrollbar-thumb { background: rgba(255,255,255,.55); border-radius: 8px; }
+.ps-panels::-webkit-scrollbar-thumb { background: rgba(255,255,255,.55); border-radius: var(--r-lg, 8px); }
 .ps-tile.feat { grid-column: span 2; grid-row: span 2; }
 .ps-tile .cov { position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1.5px solid rgba(255,255,255,.8); box-shadow: 0 3px 6px rgba(8,60,70,.28), 0 14px 30px rgba(8,60,70,.3); }
 .ps-tile .cov img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -1127,20 +1082,20 @@
 .ps-empty { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .65; padding: 30px 6px; text-align: center; }
 
 /* AlbumView */
-.ps-back { all: unset; cursor: pointer; position: absolute; left: 26px; top: 26px; width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--glass-strong, rgba(255,255,255,.5)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.6); box-shadow: var(--shadow-soft); color: #0E5A6A; transition: transform .25s var(--ease-spring); }
+.ps-back { all: unset; cursor: pointer; position: absolute; left: 26px; top: 26px; width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--glass-strong, var(--surface-2, rgba(255,255,255,.5))); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.6); box-shadow: var(--shadow-soft); color: #0E5A6A; transition: transform .25s var(--ease-spring); }
 .ps-back:hover { transform: scale(1.1); }
-.ps-fan-tip { position: fixed; padding: 8px 14px; border-radius: 12px; pointer-events: none; background: rgba(10,20,24,.78); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #fff; z-index: 10; white-space: nowrap; }
+.ps-fan-tip { position: fixed; padding: 8px 14px; border-radius: var(--r-xl, 12px); pointer-events: none; background: rgba(10,20,24,.78); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #fff; z-index: 10; white-space: nowrap; }
 .ps-fan-tip b { display: block; margin-bottom: 3px; color: #BFE9F2; }
 .ps-alb-meta { text-align: center; }
 .ps-alb-meta h3 { font-family: var(--display); font-size: 14px; letter-spacing: .1em; color: var(--ps-ink); text-shadow: 0 2px 8px var(--ps-tsc); }
 .ps-alb-meta p { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ps-ink-dim); margin-top: 6px; }
 .ps-alb-actions { display: flex; gap: 12px; justify-content: center; }
-.ps-ghost { all: unset; cursor: pointer; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--ps-ink); padding: 10px 18px; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.4); transition: background .18s; }
+.ps-ghost { all: unset; cursor: pointer; font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--ps-ink); padding: 10px 18px; border-radius: var(--r-full, 999px); border: 1.5px solid rgba(255,255,255,.4); transition: background .18s; }
 .ps-ghost:hover { background: rgba(255,255,255,.2); }
 .ps-alb-deck { position: relative; margin: 0 auto; }
 
 /* Custom CD cover overlay */
-.ps-card { position: relative; background: var(--glass-strong, rgba(255,255,255,.5)); backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); border: 1px solid rgba(255,255,255,.65); border-radius: 26px; box-shadow: var(--shadow-teal); padding: 34px 40px; text-align: center; max-width: 520px; transform: scale(1.06); transition: transform .4s var(--ease-spring); }
+.ps-card { position: relative; background: var(--glass-strong, var(--surface-2, rgba(255,255,255,.5))); backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); border: 1px solid rgba(255,255,255,.65); border-radius: 26px; box-shadow: var(--shadow-teal); padding: 34px 40px; text-align: center; max-width: 520px; transform: scale(1.06); transition: transform .4s var(--ease-spring); }
 .ps-overlay.open .ps-card { transform: scale(1); }
 .ps-card .serif-big { font-family: var(--serif); font-weight: 400; font-size: 30px; color: var(--ps-ink); text-shadow: 0 2px 12px var(--ps-tsc); margin-bottom: 8px; }
 .ps-card .sub { font-size: 10px; letter-spacing: .24em; text-transform: uppercase; opacity: .9; margin-bottom: 24px; }
@@ -1174,7 +1129,7 @@
 	overflow-y: auto;
 	border-radius: 24px 24px 0 0;
 	padding: 6px 14px 20px;
-	background: var(--glass-strong, rgba(255, 255, 255, 0.42));
+	background: var(--glass-strong, var(--surface-2, rgba(255, 255, 255, 0.42)));
 	backdrop-filter: blur(20px) saturate(1.3);
 	-webkit-backdrop-filter: blur(20px) saturate(1.3);
 	border: 1px solid rgba(255, 255, 255, 0.5);
@@ -1187,7 +1142,7 @@
 	to { opacity: 1; transform: translate(-50%, 0); }
 }
 .ps-sheet-handle {
-	width: 44px; height: 5px; border-radius: 999px;
+	width: 44px; height: 5px; border-radius: var(--r-full, 999px);
 	background: rgba(255, 255, 255, 0.4);
 	margin: 6px auto 2px;
 }
@@ -1235,11 +1190,9 @@
 .ps-root.reduce .ps-koi,
 .ps-root.reduce .ps-koi .body,
 .ps-root.reduce .ps-fcard .reflection,
-.ps-root.reduce .ps-logo .word,
 .ps-root.reduce .ps-hero-sleeve .ps-sleeve,
 .ps-root.reduce .ps-hero-sleeve > div[style],
 .ps-root.reduce .ps-empty,
-.ps-root.reduce .ps-nav-disc::after,
 .ps-root.reduce .ps-platter.spin {
 	animation: none !important;
 }
@@ -1251,7 +1204,7 @@
 .ps-root.reduce .ps-vinyl.playing .spin,
 .ps-root.reduce .ps-vinyl.playing .sheen-a,
 .ps-root.reduce .ps-vinyl.playing .sheen-b {
-	animation-duration: 12s !important;
+	animation: none !important;
 }
 .ps-root.reduce .ps-view.on { animation: none !important; }
 .ps-root.reduce .ps-day-label::after { animation: none !important; width: 36px; }
@@ -1274,9 +1227,7 @@
 	.ps-root .ps-koi,
 	.ps-root .ps-koi .body,
 	.ps-root .ps-fcard .reflection,
-	.ps-root .ps-logo .word,
-	.ps-root .ps-empty,
-	.ps-root .ps-nav-disc::after {
+	.ps-root .ps-empty {
 		animation: none !important;
 	}
 	.ps-root .ps-shaft { opacity: 0 !important; }
@@ -1287,7 +1238,7 @@
 	.ps-root .ps-vinyl.playing .spin,
 	.ps-root .ps-vinyl.playing .sheen-a,
 	.ps-root .ps-vinyl.playing .sheen-b {
-		animation-duration: 12s !important;
+		animation: none !important;
 	}
 	.ps-root .ps-view.on,
 	.ps-root .ps-day-label::after,
@@ -1509,7 +1460,7 @@
 	position: fixed; right: 18px; bottom: 96px; z-index: 30;
 	width: 340px;
 	border-radius: 24px; padding: 26px 28px;
-	background: var(--glass-strong, rgba(255,255,255,.42));
+	background: var(--glass-strong, var(--surface-2, rgba(255,255,255,.42)));
 	backdrop-filter: blur(20px) saturate(1.3);
 	-webkit-backdrop-filter: blur(20px) saturate(1.3);
 	border: 1px solid rgba(255,255,255,.5);
@@ -1543,7 +1494,7 @@
 .ps-drawer-close:hover { background: rgba(255,255,255,.32); }
 .ps-setbtn {
 	all: unset; cursor: pointer;
-	padding: 8px 18px; border-radius: 999px;
+	padding: 8px 18px; border-radius: var(--r-full, 999px);
 	font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
 	color: #fff;
 	background: var(--accent);
@@ -1610,14 +1561,14 @@
 	scrollbar-color: rgba(255,255,255,.3) transparent;
 }
 .ps-alb-tracks::-webkit-scrollbar { width: 6px; }
-.ps-alb-tracks::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); border-radius: 6px; }
+.ps-alb-tracks::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); border-radius: var(--r-md, 6px); }
 .ps-alb-tracks .ps-section-title { margin: 8px 0 14px; }
 .ps-alb-track {
 	display: grid;
 	grid-template-columns: 36px 1fr 1fr 48px;
 	align-items: center; gap: 16px;
-	padding: 10px 12px; border-radius: 12px;
-	background: var(--glass, rgba(255,255,255,.12));
+	padding: 10px 12px; border-radius: var(--r-xl, 12px);
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.12)));
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
 	border: 1px solid rgba(255,255,255,.18);
@@ -1663,13 +1614,6 @@
 	transform-style: preserve-3d;
 	position: relative;
 }
-.ps-fan-tip {
-	position: fixed; padding: 8px 14px; border-radius: 12px; pointer-events: none;
-	background: rgba(10,20,24,.78);
-	backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-	font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: #fff;
-	z-index: 10; white-space: nowrap;
-}
 
 /* NowView: real layout — turntable sits behind the deck, deck is one focused column,
    transport is below the caption, not floating on top of the disc. */
@@ -1712,7 +1656,7 @@
 }
 .ps-np .ps-speed-badge {
 	position: absolute; right: 8%; bottom: 8%;
-	padding: 5px 12px; border-radius: 8px;
+	padding: 5px 12px; border-radius: var(--r-lg, 8px);
 	font-family: var(--mono); font-size: 10px; letter-spacing: .15em;
 	color: var(--ps-ink-faint);
 	background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
@@ -1814,7 +1758,7 @@
 .ps-seek::-moz-range-track { height: 2px; background: rgba(255,255,255,.75); border-radius: 2px; }
 .ps-seek::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
 .ps-transport { display: flex; align-items: center; gap: 18px; }
-.ps-tbtn { all: unset; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--ps-ink); background: rgba(255,255,255,.16); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.4); transition: transform .2s var(--ease-spring), background .2s; flex: none; }
+.ps-tbtn { all: unset; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--ps-ink); background: rgba(255,255,255,.16); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.4); transition: transform var(--dur-2, .2s) var(--ease-spring), background var(--dur-2, .2s); flex: none; }
 .ps-tbtn:hover { background: rgba(255,255,255,.3); transform: translateY(-2px); }
 .ps-tbtn.on { background: rgba(6,48,58,.85); box-shadow: 0 0 0 2px rgba(255,255,255,.5) inset; }
 .ps-tbtn svg { width: 17px; height: 17px; }
@@ -1844,21 +1788,57 @@
 }
 .ps-hero-sleeve:hover .ps-hero-disc { transform: translateX(9%) rotate(8deg); left: -10%; }
 
-/* On narrow windows, collapse the sidebar to icons-only without hover-expand (touch UX) */
+/* On narrow windows, collapse the sidebar to icons-only without hover-expand (touch UX).
+   Labels stay in the a11y tree and return on first-tap expand (.sidebar-hover) or
+   keyboard focus — never display:none. */
 @media (hover: none) {
 	.ps-shell { grid-template-columns: 64px 1fr; }
-	.ps-root.sidebar-hover .ps-shell { grid-template-columns: 64px 1fr; }
-	.ps-sidebar-word, .ps-sidebar-badge, .ps-sidebar-label { display: none; }
-	.ps-sidebar-btn { padding: 10px; justify-content: center; }
+	.ps-root.sidebar-hover .ps-shell,
+	.ps-shell:has(.ps-sidebar:focus-within) { grid-template-columns: 200px 1fr; }
+	.ps-root.sidebar-hover .ps-sidebar-word,
+	.ps-root.sidebar-hover .ps-sidebar-badge,
+	.ps-root.sidebar-hover .ps-sidebar-label,
+	.ps-shell:has(.ps-sidebar:focus-within) .ps-sidebar-word,
+	.ps-shell:has(.ps-sidebar:focus-within) .ps-sidebar-badge,
+	.ps-shell:has(.ps-sidebar:focus-within) .ps-sidebar-label {
+		opacity: 1; transform: translateX(0);
+	}
+	.ps-root:not(.sidebar-hover) .ps-sidebar-btn:not(:focus-visible) { padding: 10px; justify-content: center; }
 }
 @media (max-width: 820px) {
 	.ps-shell { grid-template-columns: 56px 1fr; }
 	.ps-root.lyrics-open .ps-shell { grid-template-columns: 56px 1fr 0; }
-	.ps-lyrics-drawer { display: none; }
+	/* Lyrics become a bottom sheet on mobile (queue-sheet pattern), never display:none. */
+	.ps-lyrics-drawer {
+		position: fixed; left: 50%; right: auto; top: auto; bottom: 0;
+		transform: translateX(-50%);
+		width: min(560px, calc(100vw - 24px));
+		max-height: 62vh; min-height: 0; height: auto;
+		margin: 0;
+		border-radius: 24px 24px 0 0;
+		border: 1px solid rgba(255,255,255,.5);
+		border-bottom: none;
+		padding-bottom: 20px;
+		animation: ps-sheet-up .35s var(--ease-grow) both;
+		z-index: 41;
+	}
 	.ps-alb-hero { grid-template-columns: 1fr; gap: 16px; padding: 0 18px 18px; }
 	.ps-alb-cover { max-width: 180px; }
-	.ps-alb-track { grid-template-columns: 28px 1fr 40px; }
-	.ps-alb-track-artist { display: none; }
+	/* Artist collapses into a truncated sub-line under the title (single cell, ellipsis).
+	   A `title` tooltip needs the AlbumView/NowView markup owner — CSS keeps the full
+	   text in the a11y tree and truncates visually. */
+	.ps-alb-track { grid-template-columns: 28px 1fr 40px; grid-template-rows: auto auto; }
+	.ps-alb-track-artist {
+		display: block; grid-column: 2; grid-row: 2;
+		font-size: 9px; opacity: .65;
+		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	}
+	/* Now-playing caption: artist folds into the title line on narrow screens. */
+	.ps-track-caption .np-title { display: inline; }
+	.ps-track-caption .np-artist {
+		display: inline; margin-left: .6em;
+		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	}
 	.ps-bottom { width: 92vw; }
 	.ps-transport { gap: 12px; }
 	.ps-tbtn { width: 40px; height: 40px; }
@@ -1919,7 +1899,7 @@
 	scrollbar-color: rgba(255,255,255,.4) transparent;
 }
 .ps-scroll-area::-webkit-scrollbar { width: 6px; }
-.ps-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,.4); border-radius: 6px; }
+.ps-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,.4); border-radius: var(--r-md, 6px); }
 
 /* ============ 13. HOME VIEW ============ */
 .ps-home { padding: 26px 28px 60px; }
@@ -1946,10 +1926,10 @@
 	all: unset; cursor: pointer;
 	font-family: var(--mono); font-size: 10px; font-weight: 700;
 	letter-spacing: .18em; text-transform: uppercase;
-	padding: 8px 16px; border-radius: 999px;
+	padding: 8px 16px; border-radius: var(--r-full, 999px);
 	background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35);
 	color: var(--ps-ink);
-	transition: all .25s var(--ease-spring);
+	transition: all var(--dur-2, .25s) var(--ease-spring);
 }
 .ps-chip:hover { background: rgba(255,255,255,.3); transform: translateY(-1px); }
 .ps-chip.on { background: linear-gradient(180deg, #fff, #d9f2f8); color: #0E6A7A; box-shadow: 0 3px 10px rgba(8,60,70,.3); border-color: transparent; }
@@ -2011,9 +1991,9 @@
 .ps-search-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
 .ps-search-input-wrap {
 	flex: 1; display: flex; align-items: center; gap: 10px;
-	background: var(--glass, rgba(255,255,255,.32));
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.32)));
 	backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-	border: 1px solid rgba(255,255,255,.5); border-radius: 999px; padding: 10px 18px;
+	border: 1px solid rgba(255,255,255,.5); border-radius: var(--r-full, 999px); padding: 10px 18px;
 	box-shadow: var(--shadow-soft);
 }
 .ps-search-input-wrap input {
@@ -2028,18 +2008,18 @@
 	position: relative;
 	margin: -8px 0 16px;
 	border-radius: 20px; padding: 8px; max-height: 360px; overflow-y: auto;
-	background: var(--glass, rgba(255,255,255,.18));
+	background: var(--glass, var(--surface-1, rgba(255,255,255,.18)));
 	backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
 	border: 1px solid rgba(255,255,255,.4);
 	box-shadow: var(--shadow-soft);
 }
 .ps-suggestion-row {
 	all: unset; cursor: pointer; display: flex; align-items: center; gap: 12px;
-	padding: 10px 14px; border-radius: 12px; width: 100%;
+	padding: 10px 14px; border-radius: var(--r-xl, 12px); width: 100%;
 	transition: background .15s;
 }
 .ps-suggestion-row:hover { background: rgba(255,255,255,.2); }
-.ps-sug-thumb { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex: none; }
+.ps-sug-thumb { width: 36px; height: 36px; border-radius: var(--r-lg, 8px); object-fit: cover; flex: none; }
 .ps-sug-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; flex: 1; }
 .ps-sug-sub { font-size: 10px; opacity: .6; letter-spacing: .06em; text-transform: uppercase; }
 .ps-search-empty { text-align: center; padding: 80px 20px; opacity: .5; }
@@ -2066,19 +2046,19 @@
 }
 .ps-queue-badge {
 	font-family: var(--mono); font-size: 10px; font-weight: 700;
-	letter-spacing: .2em; padding: 4px 10px; border-radius: 6px;
+	letter-spacing: .2em; padding: 4px 10px; border-radius: var(--r-md, 6px);
 	background: var(--accent); color: #fff; flex: none;
 }
-.ps-queue-thumb { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; flex: none; }
+.ps-queue-thumb { width: 48px; height: 48px; border-radius: var(--r-xl, 12px); object-fit: cover; flex: none; }
 .ps-queue-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ps-queue-title { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ps-queue-artist { font-size: 8.5px; opacity: .7; letter-spacing: .06em; text-transform: uppercase; }
 .ps-queue-row { align-items: center; }
-.ps-queue-thumb-sm { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; flex: none; }
+.ps-queue-thumb-sm { width: 32px; height: 32px; border-radius: var(--r-lg, 8px); object-fit: cover; flex: none; }
 .ps-queue-actions { display: flex; gap: 4px; margin-left: auto; flex: none; }
 .ps-qbtn {
 	all: unset; cursor: pointer; width: 26px; height: 26px;
-	display: grid; place-items: center; border-radius: 6px;
+	display: grid; place-items: center; border-radius: var(--r-md, 6px);
 	color: var(--ps-ink-faint);
 	transition: background .15s, color .15s;
 }
@@ -2104,7 +2084,7 @@
 }
 .ps-anim-fade-up { animation: ps-fade-up .5s var(--ease-spring) both; }
 .ps-anim-fade-down { animation: ps-fade-down .4s var(--ease-spring) both; }
-.ps-anim-slide-in { animation: ps-slide-in .42s cubic-bezier(.34,1.56,.64,1) backwards; }
+.ps-anim-slide-in { animation: ps-slide-in .42s var(--spring, cubic-bezier(.34,1.56,.64,1)) backwards; }
 .ps-anim-scale-in { animation: ps-scale-in .4s var(--ease-spring) both; }
 
 /* loading dots */
@@ -2151,10 +2131,10 @@
 .ps-view.on .ps-section:nth-child(5) { animation-delay: .24s; }
 
 /* hover ripple on song rows */
-.ps-songrow { transition: background .18s, transform .2s var(--ease-spring); transform: rotate(var(--row-tilt, 0deg)); }
+.ps-songrow { transition: background var(--dur-2, .18s), transform var(--dur-2, .2s) var(--ease-spring); transform: rotate(var(--row-tilt, 0deg)); }
 .ps-songrow:nth-child(odd) { --row-tilt: -.35deg; }
 .ps-songrow:nth-child(even) { --row-tilt: .35deg; }
-.ps-songrow:hover { background: var(--glass-strong, rgba(255,255,255,.5)); transform: translateX(4px) rotate(var(--row-tilt, 0deg)); }
+.ps-songrow:hover { background: var(--glass-strong, var(--surface-2, rgba(255,255,255,.5))); transform: translateX(4px) rotate(var(--row-tilt, 0deg)); }
 .ps-songrow:active { transform: translateX(4px) rotate(var(--row-tilt, 0deg)) scale(0.99); }
 
 /* card hover glow */
@@ -2178,8 +2158,7 @@
 .ps-root.reduce .ps-anim-slide-in,
 .ps-root.reduce .ps-anim-scale-in,
 .ps-root.reduce .ps-tile,
-.ps-root.reduce .ps-songrow,
-.ps-root.reduce .ps-nav-disc {
+.ps-root.reduce .ps-songrow {
 	animation: none !important;
 	opacity: 1 !important;
 	transform: none !important;
@@ -2190,8 +2169,7 @@
 	.ps-root .ps-anim-slide-in,
 	.ps-root .ps-anim-scale-in,
 	.ps-root .ps-tile,
-	.ps-root .ps-songrow,
-	.ps-root .ps-nav-disc {
+	.ps-root .ps-songrow {
 		animation: none !important;
 		opacity: 1 !important;
 		transform: none !important;
@@ -2313,18 +2291,6 @@
 	100% { transform: translate(calc(-50% - 60px), calc(-50% - 40px)) scale(0); opacity: 0; }
 }
 
-/* Skeleton loader for in-flight data — a horizontal swim with a wavelike alpha pulse. */
-.ps-skeleton {
-	background: linear-gradient(90deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.22) 50%, rgba(255,255,255,.08) 100%);
-	background-size: 200% 100%;
-	animation: ps-skeleton 1.4s linear infinite;
-	border-radius: 8px;
-}
-@keyframes ps-skeleton {
-	0%   { background-position: 200% 0; }
-	100% { background-position: -200% 0; }
-}
-
 /* Bubble — a tiny circle that floats up from the play button and pops. Used by the
    aqua-play button in NowView (auto-spawned by the JS). */
 .ps-bubble {
@@ -2373,7 +2339,7 @@
 .ps-tab-track { position: relative; }
 .ps-tab-pill {
 	position: absolute; top: 4px; bottom: 4px; left: 0; width: 80px;
-	border-radius: 999px;
+	border-radius: var(--r-full, 999px);
 	background: linear-gradient(180deg, #ffffff, #d9f2f8);
 	box-shadow: 0 3px 10px rgba(8,60,70,.3), inset 0 1px 0 #fff;
 	transition: left .35s var(--ease-spring), width .35s var(--ease-spring);
@@ -2396,14 +2362,6 @@
 /* Tile hover splash — the aqua glow that pulses on hover (already a box-shadow in the
    rail-card; adding a subtle scale lift here) */
 .ps-tile:hover { transform: rotate(0) translateY(-8px) scale(1.06); }
-
-/* Logo chrome wordmark slow rotation — the conic-gradient mark gets a slow 12s rotation
-   for a subtle "wet chrome" feel. */
-.ps-logo .word { background-size: 200% 200%; animation: ps-chrome 8s ease-in-out infinite; }
-@keyframes ps-chrome {
-	0%, 100% { background-position: 0% 0%; }
-	50%      { background-position: 100% 100%; }
-}
 
 /* Sleeve peek — the hero library sleeve vinyl slides out a bit on mount */
 .ps-hero-sleeve .ps-sleeve {
@@ -2457,18 +2415,6 @@
 	50%      { transform: translate(-50%, -50%) scale(1.05) translateY(-1.5px); }
 }
 
-/* Orbits the now-playing disc thumbnail in the bottom nav */
-.ps-nav-disc::after {
-	content: ''; position: absolute; inset: -4px; border-radius: 50%;
-	border: 1.5px solid transparent;
-	border-top-color: rgba(140,225,240,.7);
-	animation: ps-orbit 2.2s linear infinite;
-	pointer-events: none;
-}
-@keyframes ps-orbit {
-	to { transform: rotate(360deg); }
-}
-
 /* Empty-state bob */
 .ps-empty { animation: ps-bob-empty 3.5s ease-in-out infinite; }
 @keyframes ps-bob-empty {
@@ -2496,12 +2442,38 @@
 }
 @keyframes ps-day-grow { to { width: 36px; } }
 
-/* Focus rings — aqua ring on any keyboard focus */
+/* Focus rings — ink keyed so light-water themes keep a visible ring */
 .ps-root :focus-visible {
-	outline: 2.5px solid #fff;
+	outline: 2.5px solid var(--ps-ink, #fff);
 	outline-offset: 3px;
-	border-radius: 8px;
+	border-radius: var(--r-lg, 8px);
 	box-shadow: 0 0 0 6px rgba(79,195,232,.3);
+}
+
+@media print {
+	/* The pool is pure atmosphere on paper — hide it, keep the page. */
+	.ps-root { display: none !important; }
+}
+
+@media (forced-colors: active) {
+	/* Drop the watercolor trickery: no blends, no translucency, solid readable ink. */
+	.ps-root .ps-water::before,
+	.ps-root .ps-water::after,
+	.ps-root .ps-rip,
+	.ps-root .ps-blob,
+	.ps-root .ps-shaft,
+	.ps-root .ps-glare,
+	.ps-root .ps-ambient-overlay {
+		mix-blend-mode: normal !important;
+		opacity: 1 !important;
+		filter: none !important;
+	}
+	.ps-root .ps-shaft,
+	.ps-root .ps-glare,
+	.ps-root .ps-mote,
+	.ps-root .ps-grain,
+	.ps-root .ps-ambient-grain { display: none !important; }
+	.ps-root :focus-visible { outline-color: Highlight; box-shadow: none; }
 }
 
 /* ============ 18. COVERFLOW + FAN VIEWS ============ */
@@ -2781,7 +2753,7 @@
 	backdrop-filter: blur(14px);
 	-webkit-backdrop-filter: blur(14px);
 	border: 1px solid rgba(255, 255, 255, 0.25);
-	border-radius: 999px;
+	border-radius: var(--r-full, 999px);
 	padding: 8px 14px;
 	display: flex;
 	flex-direction: column;
@@ -2821,7 +2793,6 @@
 @media (max-width: 820px) {
 	.ps-deck { flex-direction: column; gap: 0; }
 	.ps-deck-unit .ps-sleeve { width: min(58vmin, 340px); }
-	.ps-queue-strip { display: none; }
 	.ps-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 	.ps-tile.featured { grid-column: span 2; grid-row: span 1; }
 	.ps-fcard { width: 170px; }
@@ -2854,13 +2825,22 @@
 	opacity: .3; filter: saturate(1.15) brightness(1.02);
 }
 .ps-ambient--aqua .ps-ambient-overlay {
-	opacity: .1;
+	/* Stronger scrim than the video's own wash so the looping water sits back
+	   behind text (video prominence down, legibility up). */
+	opacity: .45;
 	background:
 		radial-gradient(120% 85% at 50% -12%, #d6f2fa8c, #d6f2fa00 55%),
 		linear-gradient(#e1f8fc6b 0%, #c6ecf447 45%, #d6f2fa66 100%);
 }
 .ps-ambient--verdant { background: linear-gradient(#eaf6e4 0%, #d8ecd1 55%, #c7e4c3 100%); }
 .ps-ambient--verdant .ps-ambient-video, .ps-ambient--verdant .ps-ambient-poster { opacity: 1; }
+.ps-ambient--verdant .ps-ambient-overlay {
+	/* Same scrim architecture as aqua, re-tinted for the green water. */
+	opacity: .4;
+	background:
+		radial-gradient(120% 85% at 50% -12%, #dcf3e2cc, #dcf3e200 55%),
+		linear-gradient(#e6f5e96b 0%, #d2e9cf47 45%, #dcf3e266 100%);
+}
 .ps-ambient--goldfish { background: linear-gradient(#2e1b1e 0%, #201014 55%, #150b0d 100%); }
 .ps-ambient--goldfish .ps-ambient-video, .ps-ambient--goldfish .ps-ambient-poster {
 	opacity: .88; filter: saturate(108%) contrast(104%);
@@ -2884,6 +2864,9 @@
 	to { transform: translate(0); }
 }
 .ps-root.reduce .ps-ambient-grain { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+	.ps-root .ps-ambient-grain { animation: none; }
+}
 
 /* History lifetime-listened readout. */
 .ps-history-listened {
@@ -2903,7 +2886,7 @@
 .ps-mood-chip {
 	all: unset; cursor: pointer;
 	font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-	padding: 6px 12px; border-radius: 999px;
+	padding: 6px 12px; border-radius: var(--r-full, 999px);
 	color: var(--ps-ink-dim);
 	background: rgba(255, 255, 255, 0.14);
 	border: 1px solid rgba(255, 255, 255, 0.25);
@@ -2934,7 +2917,7 @@
 	position: relative;
 	display: flex; align-items: center; gap: 16px;
 	width: 100%;
-	background: var(--glass, rgba(255, 255, 255, 0.32));
+	background: var(--glass, var(--surface-1, rgba(255, 255, 255, 0.32)));
 	border-radius: 16px;
 }
 
@@ -2961,7 +2944,7 @@
 	pointer-events: none;
 	background: rgba(6, 20, 24, 0.85);
 	border: 1px solid rgba(255, 255, 255, 0.3);
-	border-radius: 999px;
+	border-radius: var(--r-full, 999px);
 	padding: 6px 14px;
 	font-size: 13px;
 	font-weight: 700;
@@ -2987,7 +2970,7 @@
 	flex-direction: column;
 	align-items: center;
 	gap: 3px;
-	border-radius: 12px;
+	border-radius: var(--r-xl, 12px);
 	padding: 4px;
 }
 .ps-skin-opt span {
@@ -3002,22 +2985,37 @@
 
 /* ============ 21. LIQUID GLASS + THEME SWITCH ============ */
 /* The url(#ps-liquid-*) displacement wobbles what the backdrop blur samples, so the big
-   panels and the pill read as liquid glass. Reduce-motion keeps plain blur (the defs
-   stay mounted but unused). Each surface keeps its own blur/saturate — only the warp
-   is prepended. */
-.ps-root:not(.reduce) .ps-sing {
-	backdrop-filter: url(#ps-liquid-sheet) blur(26px) saturate(1.35);
-	-webkit-backdrop-filter: url(#ps-liquid-sheet) blur(26px) saturate(1.35);
+   panels and the pill read as liquid glass — but only where the engine accepts url()
+   inside backdrop-filter (Chromium). Everywhere else the plain-blur declarations above
+   stand on their own. Reduce-motion keeps plain blur (the defs stay mounted but unused).
+   Each surface keeps its own blur/saturate — only the warp is prepended. */
+@supports ((backdrop-filter: url(#ps-liquid-sheet)) or (-webkit-backdrop-filter: url(#ps-liquid-sheet))) {
+	.ps-root:not(.reduce) .ps-sing {
+		backdrop-filter: url(#ps-liquid-sheet) blur(26px) saturate(1.35);
+		-webkit-backdrop-filter: url(#ps-liquid-sheet) blur(26px) saturate(1.35);
+	}
+	.ps-root:not(.reduce) .ps-settings-panel,
+	.ps-root:not(.reduce) .ps-lyrics-drawer {
+		backdrop-filter: url(#ps-liquid-sheet) blur(22px) saturate(1.3);
+		-webkit-backdrop-filter: url(#ps-liquid-sheet) blur(22px) saturate(1.3);
+	}
+	.ps-root:not(.reduce) .ps-mini-pill,
+	.ps-root:not(.reduce) .ps-mini-pill-sheet {
+		backdrop-filter: url(#ps-liquid-bar) blur(24px) saturate(1.8);
+		-webkit-backdrop-filter: url(#ps-liquid-bar) blur(24px) saturate(1.8);
+	}
 }
-.ps-root:not(.reduce) .ps-settings-panel,
-.ps-root:not(.reduce) .ps-lyrics-drawer {
-	backdrop-filter: url(#ps-liquid-sheet) blur(22px) saturate(1.3);
-	-webkit-backdrop-filter: url(#ps-liquid-sheet) blur(22px) saturate(1.3);
-}
-.ps-root:not(.reduce) .ps-mini-pill,
-.ps-root:not(.reduce) .ps-mini-pill-sheet {
-	backdrop-filter: url(#ps-liquid-bar) blur(24px) saturate(1.8);
-	-webkit-backdrop-filter: url(#ps-liquid-bar) blur(24px) saturate(1.8);
+/* No backdrop-filter at all (old engines, print renderers): fall back to solid
+   app surfaces so text never floats on raw pool water. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.ps-root .ps-sing,
+	.ps-root .ps-settings-panel,
+	.ps-root .ps-lyrics-drawer,
+	.ps-root .ps-queue-sheet,
+	.ps-root .ps-card {
+		background: var(--surface-2, #0b3a44);
+		border-color: var(--glass-border, rgba(255,255,255,.25));
+	}
 }
 /* Water-theme switching crossfades color/border/text instead of snapping. Property-only
    (not the transition shorthand) so in-flight transform/opacity animations survive it. */
@@ -3027,6 +3025,29 @@
 	transition-timing-function: ease-out;
 }
 
+/* Preset interplay — the app toggles true-black / geo-sharp on <html>; poolside honors
+   them on its root backgrounds without surrendering the aqua identity (the water keeps
+   its gradient architecture, just deepened; signature 24-28px panel radii only tighten
+   under an explicit geo-sharp opt-in). */
+html.true-black .ps-root {
+	--pool-deep: #000;
+	--pool-mid: #062a33;
+	--pool-bright: #0e5a6a;
+	background: #000;
+}
+html.geo-sharp .ps-root .ps-card,
+html.geo-sharp .ps-root .ps-settings-panel,
+html.geo-sharp .ps-root .ps-lyrics-drawer,
+html.geo-sharp .ps-root .ps-queue-sheet {
+	border-radius: var(--r-lg, 12px);
+}
+
 /* Feel pass: transport press squash (both .ps-tbtn copies collapse onto this one rule). */
 .ps-tbtn:active:not(:disabled) { transform: scale(0.88); }
 .ps-root.reduce .ps-tbtn:active:not(:disabled) { transform: none; }
+
+/* === POOLSIDE SHELL+NAV AUDIT 9 (additive only — do not refactor the sheet above) ===
+   Inactive views leave the accessibility tree and paint: visibility:hidden keeps the
+   camera-dolly transition working (unlike display:none) while removing them from
+   sight and AT; the shell also sets inert + aria-hidden on the same nodes. */
+.ps-view:not(.on) { visibility: hidden; }

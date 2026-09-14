@@ -20,9 +20,25 @@
   are used.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Koi from './Koi.svelte';
 
 	let { accent = null }: { accent?: string | null } = $props();
+
+	// 2-fish cap on coarse pointers / small viewports: c + d stay beached.
+	let compact = $state(false);
+	onMount(() => {
+		const coarse = window.matchMedia('(hover: none)');
+		const narrow = window.matchMedia('(max-width: 820px)');
+		const update = () => (compact = coarse.matches || narrow.matches);
+		update();
+		coarse.addEventListener('change', update);
+		narrow.addEventListener('change', update);
+		return () => {
+			coarse.removeEventListener('change', update);
+			narrow.removeEventListener('change', update);
+		};
+	});
 </script>
 
 <div class="ps-water" aria-hidden="true" style={accent ? `--ps-album-accent: ${accent};` : ''}>
@@ -49,10 +65,11 @@
 	<div class="ps-blob blue"></div>
 	<div class="ps-blob sun-ray"></div>
 
-	<div class="ps-shaft" style="left:8vw;transform:rotate(8deg);width:22vw;opacity:.85"></div>
-	<div class="ps-shaft" style="left:36vw;transform:rotate(-5deg);width:18vw;opacity:.65"></div>
-	<div class="ps-shaft" style="left:62vw;transform:rotate(10deg);width:24vw;opacity:.75"></div>
-	<div class="ps-shaft" style="left:85vw;transform:rotate(-3deg);width:16vw;opacity:.55"></div>
+	<!-- Shaft rotation lives in --shaft-rot (consumed by ps-shaft-sway); no inline transform. -->
+	<div class="ps-shaft s1" style="left:8vw;width:22vw;opacity:.85;--shaft-rot:8deg"></div>
+	<div class="ps-shaft s2" style="left:36vw;width:18vw;opacity:.65;--shaft-rot:-5deg"></div>
+	<div class="ps-shaft s3" style="left:62vw;width:24vw;opacity:.75;--shaft-rot:10deg"></div>
+	<div class="ps-shaft s4" style="left:85vw;width:16vw;opacity:.55;--shaft-rot:-3deg"></div>
 
 	<div class="ps-waterline"></div>
 	<div class="ps-glare"></div>
@@ -62,8 +79,10 @@
 	     around at the edge of the pool. The sprite auto-orients via rAF inside Koi.svelte. -->
 	<div class="ps-koi a"><div class="body"><Koi color="#F4A078" size={80} /></div></div>
 	<div class="ps-koi b"><div class="body"><Koi color="#F8C9A4" size={64} /></div></div>
-	<div class="ps-koi c"><div class="body"><Koi color="#E07856" size={56} /></div></div>
-	<div class="ps-koi d"><div class="body"><Koi color="#FFD8B8" size={48} /></div></div>
+	{#if !compact}
+		<div class="ps-koi c"><div class="body"><Koi color="#E07856" size={56} /></div></div>
+		<div class="ps-koi d"><div class="body"><Koi color="#FFD8B8" size={48} /></div></div>
+	{/if}
 
 	<div class="ps-mote" style="left:15%;top:20%;animation-delay:0s;width:4px;height:4px"></div>
 	<div class="ps-mote" style="left:42%;top:55%;animation-delay:3s;width:3px;height:3px"></div>

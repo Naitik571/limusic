@@ -6,16 +6,24 @@
 	import * as api from '$lib/api';
 	import type { HistoryEntry } from '$lib/api';
 	import { playFrom, toast } from '$lib/player.svelte';
+	import ErrorState from '../ErrorState.svelte';
 
 	let entries = $state<HistoryEntry[]>([]);
 	let loading = $state(true);
+	let loadError = $state<string | null>(null);
 	let listenedSecs = $state(0);
+	// Audit 11: clear is two-step — first click arms, second confirms (auto-disarms).
+	let confirmClear = $state(false);
+	let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
-	onMount(async () => {
-		try { entries = await api.getHistory(200); } catch { /* ignore */ }
+	async function load() {
+		loading = true;
+		loadError = null;
+		try { entries = await api.getHistory(500); } catch (e) { loadError = String(e); }
 		try { listenedSecs = await api.listenSecondsTotal(); } catch { /* ignore */ }
 		loading = false;
-	});
+	}
+	onMount(load);
 
 	// "12 TRACKS · 3H 20M LISTENED" — hours only when nonzero.
 	const listenedLabel = $derived.by(() => {
@@ -41,15 +49,25 @@
 	function shuffleAll() {
 		const songs = entries.map((e) => e.song);
 		if (!songs.length) return;
-		playFrom({ kind: 'playlist', id: 'ps-history', title: 'History' }, songs, 0);
+		// Audit 11: pass the list in real order with shuffle=true — Rust shuffles.
+		playFrom({ kind: 'playlist', id: 'ps-history', title: 'History' }, songs, 0, undefined, true);
 		toast.info('Shuffling history…');
 	}
 	async function clearAll() {
+		if (!confirmClear) {
+			confirmClear = true;
+			if (confirmTimer) clearTimeout(confirmTimer);
+			confirmTimer = setTimeout(() => (confirmClear = false), 4000);
+			return;
+		}
+		if (confirmTimer) clearTimeout(confirmTimer);
+		confirmClear = false;
+		const backup = entries;
 		try {
 			await api.clearHistory();
 			entries = [];
-			toast.success('History cleared');
-		} catch { toast.error('Failed to clear history'); }
+			toast.action('History cleared', 'Undo', () => { entries = backup; });
+		} catch (e) { toast.error(String(e)); }
 	}
 	function playEntry(e: HistoryEntry, i: number) {
 		const songs = entries.map((x) => x.song);
@@ -69,14 +87,16 @@
 			<button class="ps-ghost" onclick={shuffleAll} disabled={!entries.length}>
 				<HugeiconsIcon icon={ShuffleIcon} /> Shuffle All
 			</button>
-			<button class="ps-ghost" onclick={clearAll} disabled={!entries.length} style="color:var(--red)">
-				<HugeiconsIcon icon={Delete02Icon} /> Clear
+			<button class="ps-ghost" onclick={clearAll} disabled={!entries.length} style="color:var(--red)" aria-live="polite">
+				<HugeiconsIcon icon={Delete02Icon} /> {confirmClear ? 'Confirm clear?' : 'Clear'}
 			</button>
 		</div>
 	</div>
 
 	{#if loading}
 		<div class="ps-loading-dots"><span></span><span></span><span></span></div>
+	{:else if loadError}
+		<ErrorState message={loadError} onRetry={load} />
 	{:else if grouped.length === 0}
 		<div class="ps-empty ps-anim-fade-up">No play history yet.</div>
 	{:else}
@@ -85,7 +105,7 @@
 				<h4 class="ps-day-label">{day}</h4>
 				<div class="ps-songlist">
 					{#each items as e, i (e.song.video_id + e.playedAt)}
-						<div class="ps-songrow ps-anim-slide-in" style="animation-delay:{i * 0.02}s" onclick={() => playEntry(e, entries.indexOf(e))} role="button" tabindex="0" onkeydown={(ev) => ev.key === 'Enter' && playEntry(e, entries.indexOf(e))}>
+						<div class="ps-songrow ps-anim-slide-in" style="animation-delay:{i * 0.02}s" onclick={() => playEntry(e, entries.indexOf(e))} role="button" tabindex="0" onkeydown={(ev) => (ev.key === 'Enter' || ev.key === ' ') && (ev.preventDefault(), playEntry(e, entries.indexOf(e)))}>
 							{#if e.song.thumbnail}
 								<img decoding="async" loading="lazy" src={e.song.thumbnail} alt="" style="width:32px;height:32px;border-radius:8px;object-fit:cover;flex:none" />
 							{/if}

@@ -386,6 +386,15 @@ export function applyTheme(id: ThemeId): void {
 
 export function applyLayout(id: LayoutId): void {
 	const valid = (LAYOUTS.some((l) => l.id === id) ? id : 'grove') as LayoutId;
+	// Remember where we came from when entering poolside so its exit restores it
+	// (never hardcoded). try/catch: storage may be denied.
+	try {
+		if (valid === 'poolside' && layout.id !== 'poolside') {
+			localStorage.setItem('ps-prev-layout', layout.id);
+		}
+	} catch {
+		/* exit falls back to grove */
+	}
 	layout.id = valid;
 	const root = document.documentElement;
 	root.classList.remove(...LAYOUT_CLASSES);

@@ -7,16 +7,34 @@
   but is purely decorative — no pointer events.
 -->
 <script lang="ts">
+	import { playback } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
+
 	let {
 		side = 'left',
 		size = 700,
 		art = '',
-		speed = 24 // seconds per full rotation
-	}: { side?: 'left' | 'right'; size?: number; art?: string; speed?: number } = $props();
+		speed = 24, // seconds per full rotation
+		playing = null
+	}: {
+		side?: 'left' | 'right';
+		size?: number;
+		art?: string;
+		speed?: number;
+		/** Force spin on/off. Null (default) derives from playback: !paused && !!now. */
+		playing?: boolean | null;
+	} = $props();
+
+	// Audit 27: spin only while actually playing. Null prop = auto from wall playback
+	// state so existing callers (shell) need no change.
+	const spinning = $derived(playing ?? (!playback.paused && !!playback.now));
+	// Audit 24: blurred edge label decodes a 400px variant, not the full-size art.
+	// Audit 16: css:* tokens resolve to '' (thumbnail fallback).
+	const sizedArt = $derived(art.startsWith('css:') ? undefined : thumb(art || null, 400));
 </script>
 
 <div
-	class="ps-edge-vinyl ps-edge-vinyl--{side}"
+	class="ps-edge-vinyl ps-edge-vinyl--{side} {spinning ? '' : 'is-paused'}"
 	style="width: {size}px; height: {size}px; --spin-dur: {speed}s;"
 	aria-hidden="true"
 >
@@ -54,9 +72,9 @@
 				{/each}
 				<!-- centre label with the (blurred) album art -->
 				<circle cx="100" cy="100" r="32" fill="#0a0a0a" />
-				{#if art}
+				{#if sizedArt}
 					<image
-						href={art}
+						href={sizedArt}
 						x="68"
 						y="68"
 						width="64"
@@ -103,6 +121,8 @@
 		transform-box: view-box;
 		animation: ps-edge-vinyl-spin var(--spin-dur, 24s) linear infinite;
 	}
+	/* Audit 27: freeze the decor disc when nothing is playing. */
+	.ps-edge-vinyl.is-paused .ps-edge-vinyl-spin { animation-play-state: paused; }
 	@keyframes ps-edge-vinyl-spin {
 		to {
 			transform: rotate(360deg);
@@ -111,4 +131,6 @@
 	@media (prefers-reduced-motion: reduce) {
 		.ps-edge-vinyl-spin { animation: none; }
 	}
+	/* Audit 27: in-app reduce toggle lives on .ps-root.reduce — honor it too. */
+	:global(.ps-root.reduce) .ps-edge-vinyl-spin { animation: none; }
 </style>

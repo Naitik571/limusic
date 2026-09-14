@@ -38,6 +38,8 @@
 	type Tab = 'albums' | 'songs' | 'artists' | 'folders' | 'singles';
 	let tab = $state<Tab>('albums');
 	let search = $state('');
+	// Audit 8: folder scoping — a tapped folder filters SONGS to that folder's files.
+	let folderFilter = $state<string | null>(null);
 	const tabs: { id: Tab; label: string }[] = $derived([
 		{ id: 'albums', label: 'Albums' },
 		{ id: 'songs', label: 'Songs' },
@@ -46,14 +48,36 @@
 		{ id: 'folders', label: 'Folders' }
 	]);
 
+	// Audit 8: a local song's video_id is `LOCAL:<absolute path>`, so a folder owns the
+	// songs whose path sits under it (separator-guarded, so `/Music2` never matches `/Music`).
+	function inFolder(s: SongItem, folder: string): boolean {
+		const prefix = `LOCAL:${folder}`;
+		if (!s.video_id.startsWith(prefix)) return false;
+		const next = s.video_id[prefix.length];
+		return next === '/' || next === '\\' || next === undefined;
+	}
+	const folderCounts = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const f of local.folders) counts.set(f, 0);
+		for (const s of local.songs) {
+			for (const f of local.folders) {
+				if (inFolder(s, f)) { counts.set(f, (counts.get(f) ?? 0) + 1); break; }
+			}
+		}
+		return counts;
+	});
 	const q = $derived(search.trim().toLowerCase());
 	const filteredAlbums = $derived(
 		albums.filter(
 			(a) => !q || a.title.toLowerCase().includes(q) || (a.subtitle ?? '').toLowerCase().includes(q)
 		)
 	);
+		const scopedSongs = $derived(
+			folderFilter ? songs.filter((s) => inFolder(s, folderFilter as string)) : songs
+		);
+		const activeIdx = $derived(Math.max(0, tabs.findIndex((t) => t.id === tab)));
 	const filteredSongs = $derived(
-		songs.filter(
+		scopedSongs.filter(
 			(s) =>
 				!q ||
 				s.title.toLowerCase().includes(q) ||
@@ -99,7 +123,7 @@
 				role="button"
 				tabindex="0"
 				onclick={() => openOrPlay(filteredAlbums[0])}
-				onkeydown={(e) => e.key === 'Enter' && openOrPlay(filteredAlbums[0])}
+				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openOrPlay(filteredAlbums[0]))}
 				title="Play {filteredAlbums[0].title}"
 			>
 				<div class="ps-sleeve">
@@ -175,16 +199,31 @@
 			</button>
 		</div>
 
-		<div class="ps-tabs ps-tab-track" role="tablist">
-			<div class="ps-tab-pill" style="left: {4 + tabs.findIndex(t => t.id === tab) * 84}px; width: 80px;"></div>
+		<div class="ps-tabs ps-tab-track" role="tablist" aria-label="Library sections">
+			<div class="ps-tab-pill" style="left: calc({activeIdx} * 100% / {tabs.length} + 4px); width: calc(100% / {tabs.length} - 8px);"></div>
 			{#each tabs as t (t.id)}
-				<button class:on={tab === t.id} onclick={() => (tab = t.id)} role="tab">{t.label}</button>
+				<button
+					id="ps-tab-{t.id}"
+					role="tab"
+					aria-selected={tab === t.id}
+					aria-controls="ps-panel-{t.id}"
+					tabindex={tab === t.id ? 0 : -1}
+					class:on={tab === t.id}
+					onclick={() => (tab = t.id)}
+					onkeydown={(e) => {
+						if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+						e.preventDefault();
+						const dir = e.key === 'ArrowRight' ? 1 : -1;
+						tab = tabs[(activeIdx + dir + tabs.length) % tabs.length].id;
+						document.getElementById(`ps-tab-${tab}`)?.focus();
+					}}
+				>{t.label}</button>
 			{/each}
 		</div>
 
 		<div class="ps-panels">
 			{#if tab === 'albums'}
-				<div class="ps-grid">
+				<div class="ps-grid" role="tabpanel" id="ps-panel-albums" aria-labelledby="ps-tab-albums" tabindex="0">
 					{#each filteredAlbums as a, i (a.id)}
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 						<div
@@ -192,7 +231,7 @@
 							onclick={() => openOrPlay(a)}
 							role="button"
 							tabindex="0"
-							onkeydown={(e) => e.key === 'Enter' && openOrPlay(a)}
+							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openOrPlay(a))}
 						>
 							<div class="cov">
 								{#if a.thumbnail}
@@ -221,13 +260,19 @@
 					</div>
 				{/if}
 			{:else if tab === 'songs'}
-				<div class="ps-songlist">
+				{#if folderFilter}
+					<div class="ps-filter-chip-row">
+						<span class="ps-filter-chip">{folderFilter.toUpperCase()} · {filteredSongs.length} SONGS</span>
+						<button class="ps-ghost" onclick={() => (folderFilter = null)} aria-label="Clear folder filter">✕</button>
+					</div>
+				{/if}
+				<div class="ps-songlist" role="tabpanel" id="ps-panel-songs" aria-labelledby="ps-tab-songs" tabindex="0">
 					{#each filteredSongs as s, i (s.video_id + i)}
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 						<div
 							class="ps-songrow"
 							onclick={() => playSongRow(s, i, filteredSongs)}
-							onkeydown={(e) => e.key === 'Enter' && playSongRow(s, i, filteredSongs)}
+							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), playSongRow(s, i, filteredSongs))}
 							role="button"
 							tabindex="0"
 						>
@@ -249,6 +294,7 @@
 					</div>
 				{/if}
 			{:else if tab === 'artists'}
+				<div role="tabpanel" id="ps-panel-artists" aria-labelledby="ps-tab-artists" tabindex="0">
 				{#each artistGroups as [artist, songsOf] (artist)}
 					<div class="ps-artistgroup">
 						<h4>{artist} · {songsOf.length} tracks</h4>
@@ -258,7 +304,7 @@
 								<div
 									class="ps-songrow"
 									onclick={() => playSongRow(s, i, songsOf)}
-									onkeydown={(e) => e.key === 'Enter' && playSongRow(s, i, songsOf)}
+									onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), playSongRow(s, i, songsOf))}
 									role="button"
 									tabindex="0"
 								>
@@ -273,14 +319,15 @@
 				{:else}
 						<div class="ps-empty">No artists yet.</div>
 					{/each}
+				</div>
 				{:else if tab === 'singles'}
-					<div class="ps-songlist">
+					<div class="ps-songlist" role="tabpanel" id="ps-panel-singles" aria-labelledby="ps-tab-singles" tabindex="0">
 						{#each filteredSingles as s, i (s.video_id + i)}
 							<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 							<div
 								class="ps-songrow"
 								onclick={() => playSongRow(s, i, filteredSingles)}
-								onkeydown={(e) => e.key === 'Enter' && playSongRow(s, i, filteredSingles)}
+								onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), playSongRow(s, i, filteredSingles))}
 								role="button"
 								tabindex="0"
 							>
@@ -294,22 +341,25 @@
 						{/each}
 					</div>
 				{:else}
+				<div role="tabpanel" id="ps-panel-folders" aria-labelledby="ps-tab-folders" tabindex="0">
 				{#each local.folders as folder (folder)}
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 					<div
-						class="ps-folderrow"
-						onclick={() => (tab = 'songs')}
-						onkeydown={(e) => e.key === 'Enter' && (tab = 'songs')}
+						class="ps-folderrow {folderFilter === folder ? 'sel' : ''}"
+						onclick={() => { folderFilter = folderFilter === folder ? null : folder; tab = 'songs'; }}
+						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), (folderFilter = folderFilter === folder ? null : folder, tab = 'songs'))}
 						role="button"
 						tabindex="0"
+						aria-pressed={folderFilter === folder}
 					>
 						<HugeiconsIcon icon={Folder01Icon} />
 						<span class="fn">{folder.toUpperCase()}</span>
-						<span class="fc">{local.songs.length} local songs</span>
+						<span class="fc">{folderCounts.get(folder) ?? 0} local songs</span>
 					</div>
 				{:else}
 					<div class="ps-empty">No folders yet — use IMPORT MUSIC above.</div>
 				{/each}
+				</div>
 			{/if}
 		</div>
 	</div>

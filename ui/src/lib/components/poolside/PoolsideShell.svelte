@@ -47,7 +47,8 @@
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
 	import { auth, local, np, playback, playFrom, ui, toast } from '$lib/player.svelte';
-	import { applyLayout } from '$lib/theme.svelte';
+	import { applyLayout, type LayoutId } from '$lib/theme.svelte';
+	import { focusFirst, trapTab } from './motion';
 	import Water from './Water.svelte';
 	import AmbientBg from './AmbientBg.svelte';
 	import LiquidGlass from './LiquidGlass.svelte';
@@ -63,7 +64,6 @@
 	import CoverFlowCarousel from './CoverFlowCarousel.svelte';
 	import EdgeVinyl from './EdgeVinyl.svelte';
 	import FeatureCallout from './FeatureCallout.svelte';
-	import MiniPlayer from './MiniPlayer.svelte';
 	import MiniPlayerPill from './MiniPlayerPill.svelte';
 	import StackedFanView from './StackedFanView.svelte';
 	import AlbumStackView from './AlbumStackView.svelte';
@@ -81,6 +81,22 @@
 		| 'album';
 	let view = $state<View>('home');
 	let album = $state<BrowseItem | null>(null);
+	// Audit 1: where the queue sheet returns to (the view open when it was invoked).
+	let queueReturn = $state<View>('home');
+	// Audit 3: where the album view returns to (the view open when openAlbum ran).
+	let albumReturn = $state<View>('library');
+	// Audit 10: layout active before poolside, for EXIT. A stored pre-poolside id wins;
+	// 'grove' is only the fallback when nothing was ever recorded.
+	let prevLayout = $state<LayoutId>('grove');
+	// Audit 14: invokers + overlay roots for focus-first-on-open / focus-return-on-close.
+	let queueInvoker = $state<HTMLElement | null>(null);
+	let settingsInvoker = $state<HTMLElement | null>(null);
+	let singInvoker = $state<HTMLElement | null>(null);
+	let ccInvoker = $state<HTMLElement | null>(null);
+	let queueSheet = $state<HTMLDivElement>();
+	let settingsPanel = $state<HTMLDivElement>();
+	let singRoot = $state<HTMLDivElement>();
+	let ccRoot = $state<HTMLDivElement>();
 	let dusk = $state(localStorage.getItem('ps-dusk') === 'true');
 	let lyricsOpen = $state(false);
 	// Fullscreen lyrics takeover — poolside's own sing mode. Esc or the ✕ exits.
@@ -128,7 +144,7 @@
 		const dt = Math.max(1, performance.now() - sheetLastT);
 		const vel = (e.clientY - sheetLastY) / dt; // px/ms of the final flick
 		sheetDragY = 0;
-		if (dy > 120 || vel > 0.6) go('home');
+		if (dy > 120 || vel > 0.6) closeQueue();
 	}
 	// Intro-fly ghost: viewport center → sidebar mark, once per session (see onMount).
 	let shellRoot = $state<HTMLDivElement>();
@@ -169,6 +185,12 @@
 			const raw = localStorage.getItem(SEEN_KEY);
 			if (raw) seenSet = new Set(JSON.parse(raw));
 		} catch { /* quota */ }
+		// Custom covers are the single source of truth in ps-covers (written by
+		// saveCovers on every change); without this load they vanish on restart.
+		try {
+			const saved = localStorage.getItem('ps-covers');
+			if (saved) covers = { ...JSON.parse(saved) };
+		} catch { /* corrupt — start empty rather than crash */ }
 	});
 
 	// poolside visual prefs
@@ -263,7 +285,10 @@
 	const songs = $derived([...likedSongs, ...local.songs]);
 
 	function artFor(item: BrowseItem): string {
-		return covers[item.id] ?? item.thumbnail ?? '';
+		const saved = covers[item.id];
+		// css:* ids are style presets, not URLs — never let one reach src/url().
+		if (saved) return saved.startsWith('css:') ? (item.thumbnail ?? '') : saved;
+		return item.thumbnail ?? '';
 	}
 	function saveCovers() {
 		try { localStorage.setItem('ps-covers', JSON.stringify(covers)); } catch { /* quota */ }
@@ -276,6 +301,20 @@
 		if (v !== 'now' && lyricsOpen) lyricsOpen = false;
 	}
 
+	// Audit 1: the queue is a sheet over the current view, not a page — opening it
+	// remembers the caller, dismissing restores it (never a hardcoded 'home').
+	function openQueue() {
+		if (view === 'queue') return;
+		queueInvoker = document.activeElement as HTMLElement | null;
+		queueReturn = view;
+		go('queue');
+	}
+	function closeQueue() {
+		go(queueReturn);
+		queueInvoker?.focus?.({ preventScroll: true });
+		queueInvoker = null;
+	}
+
 	$effect(() => {
 		if (auth.account?.signedIn && !albumsLoaded) {
 			albumsLoaded = true;
@@ -283,10 +322,50 @@
 			api.getPlaylist(api.LIKED_MUSIC_ID).then((p) => (likedSongs = p.items)).catch(() => {});
 		}
 	});
+	// Audit 4: sign-out resync — drop the per-account library cache so the next
+	// sign-in refetches instead of showing the previous account's albums/likes.
+	$effect(() => {
+		if (!auth.account?.signedIn) {
+			ytmAlbums = [];
+			likedSongs = [];
+			albumsLoaded = false;
+		}
+	});
+	// Audit 14: focus the first control when an overlay opens; return focus to the
+	// invoker when it closes. Esc stays with the window cascade below — untouched.
+	$effect(() => {
+		if (view === 'queue' && queueSheet) focusFirst(queueSheet);
+	});
+	$effect(() => {
+		if (settingsOpen && settingsPanel) focusFirst(settingsPanel);
+		if (!settingsOpen && settingsInvoker) {
+			settingsInvoker.focus?.({ preventScroll: true });
+			settingsInvoker = null;
+		}
+	});
+	$effect(() => {
+		if (sing && singRoot) focusFirst(singRoot);
+		if (!sing && singInvoker) {
+			singInvoker.focus?.({ preventScroll: true });
+			singInvoker = null;
+		}
+	});
+	$effect(() => {
+		if (ccOpen && ccRoot) focusFirst(ccRoot);
+		if (!ccOpen && ccInvoker) {
+			ccInvoker.focus?.({ preventScroll: true });
+			ccInvoker = null;
+		}
+	});
 
 	function openAlbum(item: BrowseItem) {
+		// Audit 3: remember the caller so Back restores it (search/home/library…).
+		if (view !== 'album') albumReturn = view;
 		album = item;
 		go('album');
+	}
+	function closeAlbum() {
+		go(albumReturn);
 	}
 	function playAlbum(item: BrowseItem) {
 		if (item.id.startsWith('LOCALALBUM:')) {
@@ -297,9 +376,18 @@
 			go('now');
 			return;
 		}
-		api.getAlbum(item.id).then((alb) => {
-			if (!alb.items.length) { toast.error('This album has no playable tracks'); return; }
-			playFrom(item, alb.items, 0, alb.playlistId ?? undefined, undefined, alb.continuation);
+		// Audit 7: albums fetch via getAlbum, playlists via getPlaylist — both paths.
+		if (item.kind === 'album') {
+			api.getAlbum(item.id).then((alb) => {
+				if (!alb.items.length) { toast.error('This album has no playable tracks'); return; }
+				playFrom(item, alb.items, 0, alb.playlistId ?? undefined, undefined, alb.continuation);
+				go('now');
+			}).catch((e) => toast.error(String(e)));
+			return;
+		}
+		api.getPlaylist(item.id).then((pl) => {
+			if (!pl.items.length) { toast.error('This playlist has no playable tracks'); return; }
+			playFrom(item, pl.items, 0, undefined, undefined, pl.continuation);
 			go('now');
 		}).catch((e) => toast.error(String(e)));
 	}
@@ -314,6 +402,7 @@
 	function openCustomCover() {
 		ccAlbum = album ?? mergedAlbums[0] ?? null;
 		if (!ccAlbum) { toast.error('Open an album first'); return; }
+		ccInvoker = document.activeElement as HTMLElement | null;
 		ccOpen = true;
 	}
 	function onCcFile(e: Event) {
@@ -342,6 +431,14 @@
 		const next = { ...covers }; delete next[ccAlbum.id]; covers = next; saveCovers(); toast.success('Reset to printed art');
 	}
 
+	function toggleSettings(from: HTMLElement | null) {
+		if (!settingsOpen) settingsInvoker = from ?? document.activeElement as HTMLElement | null;
+		settingsOpen = !settingsOpen;
+	}
+	function openSing(from: HTMLElement | null) {
+		singInvoker = from ?? document.activeElement as HTMLElement | null;
+		sing = true;
+	}
 	function toggleDusk() { dusk = !dusk; localStorage.setItem('ps-dusk', String(dusk)); }
 	function setSpin(v: string) { spin = v; localStorage.setItem('ps-spin', v); }
 	// Water themes (BlazePod-style): five waters keyed by exact-icon buttons — sun (clear day),
@@ -417,6 +514,11 @@
 	}
 
 	onMount(() => {
+		// Audit 10: pick up the pre-poolside layout id recorded before entering.
+		try {
+			const raw = localStorage.getItem('ps-prev-layout');
+			if (raw === 'grove' || raw === 'canopy') prevLayout = raw;
+		} catch { /* fallback stands */ }
 		import('$lib/player.svelte').then((m) => m.scanLocal().catch(() => {}));
 		// Wire the NowView's "Lyrics" hint to actually open the lyrics drawer.
 		const onOpenLyrics = () => {
@@ -430,7 +532,7 @@
 			if (e.key !== 'Escape') return;
 			if (ccOpen) ccOpen = false;
 			else if (settingsOpen) settingsOpen = false;
-			else if (view === 'queue') go('home');
+			else if (view === 'queue') closeQueue();
 			else if (view === 'library-coverflow' || view === 'library-fan' || view === 'library-stack')
 				go('library');
 			else if (sing) sing = false;
@@ -515,6 +617,8 @@
 			aria-label="Main navigation"
 			onmouseenter={() => (sidebarHover = true)}
 			onmouseleave={() => (sidebarHover = false)}
+			onfocusin={() => (sidebarHover = true)}
+			onfocusout={() => (sidebarHover = false)}
 			role="navigation"
 		>
 			<button class="ps-sidebar-logo" onclick={() => go('home')} title="Limusic · Poolside Vinyl" aria-label="Limusic · Poolside Vinyl — go home">
@@ -527,7 +631,7 @@
 				{#each navItems as item (item.id)}
 					<button
 						class="ps-sidebar-btn {view === item.id ? 'on' : ''}"
-						onclick={() => go(item.id)}
+						onclick={() => (item.id === 'queue' ? openQueue() : go(item.id))}
 						aria-label={item.label}
 						aria-current={view === item.id ? 'page' : undefined}
 						title={item.label}
@@ -556,7 +660,7 @@
 				</button>
 				<button
 					class="ps-sidebar-btn"
-					onclick={(e) => { e.stopPropagation(); settingsOpen = !settingsOpen; }}
+					onclick={(e) => { e.stopPropagation(); toggleSettings(e.currentTarget as HTMLElement); }}
 					aria-label="Pool settings"
 					title="Pool settings"
 				>
@@ -571,17 +675,17 @@
 		     ============================================================ -->
 		<main class="ps-main">
 			<div class="ps-views">
-				<div class="ps-view" class:on={view === 'home'}>
+				<div class="ps-view" class:on={view === 'home'} inert={view === 'home' ? undefined : true} aria-hidden={view === 'home' ? undefined : 'true'}>
 					<div class="ps-scroll-area">
 						<HomeView onOpenAlbum={openAlbum} />
 					</div>
 				</div>
-				<div class="ps-view" class:on={view === 'search'}>
+				<div class="ps-view" class:on={view === 'search'} inert={view === 'search' ? undefined : true} aria-hidden={view === 'search' ? undefined : 'true'}>
 					<div class="ps-scroll-area">
 						<SearchView onOpenAlbum={openAlbum} />
 					</div>
 				</div>
-				<div class="ps-view" class:on={view === 'library'}>
+				<div class="ps-view" class:on={view === 'library'} inert={view === 'library' ? undefined : true} aria-hidden={view === 'library' ? undefined : 'true'}>
 					<div class="ps-scroll-area">
 						<LibraryView
 							albums={mergedAlbums}
@@ -597,7 +701,7 @@
 						/>
 					</div>
 				</div>
-				<div class="ps-view" class:on={view === 'library-coverflow'}>
+				<div class="ps-view" class:on={view === 'library-coverflow'} inert={view === 'library-coverflow' ? undefined : true} aria-hidden={view === 'library-coverflow' ? undefined : 'true'}>
 					<CoverFlowCarousel
 						albums={mergedAlbums}
 						{artFor}
@@ -606,7 +710,7 @@
 						onBack={() => go('library')}
 					/>
 				</div>
-				<div class="ps-view" class:on={view === 'library-fan'}>
+				<div class="ps-view" class:on={view === 'library-fan'} inert={view === 'library-fan' ? undefined : true} aria-hidden={view === 'library-fan' ? undefined : 'true'}>
 					<StackedFanView
 						albums={mergedAlbums}
 						{artFor}
@@ -615,7 +719,7 @@
 						onBack={() => go('library')}
 					/>
 				</div>
-				<div class="ps-view" class:on={view === 'library-stack'}>
+				<div class="ps-view" class:on={view === 'library-stack'} inert={view === 'library-stack' ? undefined : true} aria-hidden={view === 'library-stack' ? undefined : 'true'}>
 					<AlbumStackView
 						albums={mergedAlbums}
 						{artFor}
@@ -624,23 +728,23 @@
 						onBack={() => go('library')}
 					/>
 				</div>
-				<div class="ps-view" class:on={view === 'history'}>
+				<div class="ps-view" class:on={view === 'history'} inert={view === 'history' ? undefined : true} aria-hidden={view === 'history' ? undefined : 'true'}>
 					<div class="ps-scroll-area">
 						<HistoryView />
 					</div>
 				</div>
 				<!-- Queue lives in a bottom sheet (below), not as a page: the nav item opens it
 				     over whatever is playing. -->
-				<div class="ps-view" class:on={view === 'now'}>
+				<div class="ps-view" class:on={view === 'now'} inert={view === 'now' ? undefined : true} aria-hidden={view === 'now' ? undefined : 'true'}>
 					<NowView onOpenLibrary={() => go('library')} discSkin={vinylSkins.deck} />
 				</div>
-				<div class="ps-view" class:on={view === 'album'}>
+				<div class="ps-view" class:on={view === 'album'} inert={view === 'album' ? undefined : true} aria-hidden={view === 'album' ? undefined : 'true'}>
 					{#if album}
 						<AlbumView
 							albums={mergedAlbums}
 							{album}
 							{artFor}
-							onBack={() => go('library')}
+							onBack={closeAlbum}
 							onSelect={(a) => (album = a)}
 							onPlayAlbum={playAlbum}
 							onOpenCustom={openCustomCover}
@@ -649,13 +753,6 @@
 				</div>
 			</div>
 
-			<!-- Mini player sits at the bottom of the main column, not floating in a
-			     corner. It auto-hides on the Now view to avoid double-decking. -->
-			{#if view !== 'now'}
-				<div class="ps-mini-wrap">
-					<MiniPlayer onOpenNow={() => go('now')} />
-				</div>
-			{/if}
 		</main>
 
 		<!-- ============================================================
@@ -670,7 +767,7 @@
 						<button
 							class="ps-drawer-close"
 							style="right: 52px"
-							onclick={() => (sing = true)}
+							onclick={(e) => openSing(e.currentTarget as HTMLElement)}
 							aria-label="Fullscreen lyrics"
 							title="Fullscreen lyrics"
 						>⤢</button>
@@ -683,6 +780,7 @@
 				     cascade then fell through to the next layer, closing two things per press). -->
 				{#if sing && playback.now}
 					<div
+						bind:this={singRoot}
 						class="ps-sing ps-glass"
 						role="dialog"
 						aria-label="Fullscreen lyrics"
@@ -702,12 +800,14 @@
 		     (BlazePod-style): drag-handle chrome, backdrop dismisses home, X too.
 		     ============================================================ -->
 		{#if view === 'queue'}
-			<button class="ps-sheet-backdrop" onclick={() => go('home')} aria-label="Close queue"></button>
+			<button class="ps-sheet-backdrop" onclick={closeQueue} aria-label="Close queue"></button>
 			<div
+				bind:this={queueSheet}
 				class="ps-queue-sheet"
 				role="dialog"
 				aria-modal="true"
 				aria-label="Queue"
+				onkeydown={(e) => { trapTab(queueSheet, e); }}
 				style={sheetDragging && sheetDragY > 0 ? `transform: translateY(${sheetDragY}px); transition: none;` : ''}
 			>
 				<div
@@ -719,7 +819,7 @@
 					onpointerup={onSheetHandleUp}
 					onpointercancel={() => { sheetDragging = false; sheetDragY = 0; }}
 				></div>
-				<button class="ps-sheet-close" onclick={() => go('home')} aria-label="Close queue">✕</button>
+				<button class="ps-sheet-close" onclick={closeQueue} aria-label="Close queue">✕</button>
 				<QueueView />
 			</div>
 		{/if}
@@ -729,11 +829,19 @@
 		     can theoretically be open but they're in different columns.
 		     ============================================================ -->
 		{#if settingsOpen}
-			<div class="ps-settings-panel ps-glass" role="dialog" aria-label="Pool settings" aria-modal="false">
+			<div bind:this={settingsPanel} class="ps-settings-panel ps-glass" role="dialog" aria-label="Pool settings" aria-modal="false">
 				<header class="ps-settings-head">
 					<h3>POOL SETTINGS</h3>
 					<button class="ps-drawer-close" onclick={() => (settingsOpen = false)} aria-label="Close settings">✕</button>
 				</header>
+				<div class="ps-setrow">
+					<span>DUSK</span>
+					<button class="ps-sw {dusk ? 'on' : ''}" role="switch" aria-checked={dusk} onclick={toggleDusk} aria-label="Toggle dusk mode"></button>
+				</div>
+				<div class="ps-setrow">
+					<span>KOI</span>
+					<button class="ps-sw {koi ? 'on' : ''}" role="switch" aria-checked={koi} onclick={() => setPref('koi', !koi)} aria-label="Toggle koi"></button>
+				</div>
 				<div class="ps-setrow">
 					<span>CAUSTICS</span>
 					<button class="ps-sw {caustics ? 'on' : ''}" role="switch" aria-checked={caustics} onclick={() => setPref('caustics', !caustics)} aria-label="Toggle caustics"></button>
@@ -807,13 +915,13 @@
 				</div>
 				<div class="ps-setrow">
 					<span>APP SETTINGS</span>
-					<button class="ps-setbtn" onclick={() => { ui.settingsOpen = true; settingsOpen = false; }} aria-label="Open full settings">
+					<button class="ps-setbtn" onclick={() => { ui.settingsTab = 'themes'; ui.settingsOpen = true; settingsOpen = false; }} aria-label="Open full settings">
 						OPEN
 					</button>
 				</div>
 				<div class="ps-setrow ps-setrow--exit">
 					<span>EXIT BETA</span>
-					<button class="ps-setbtn ps-setbtn--exit" onclick={() => { applyLayout('grove'); toast.info('Exited Poolside — back to Grove layout'); }} aria-label="Exit Poolside beta">
+					<button class="ps-setbtn ps-setbtn--exit" onclick={() => { const next = prevLayout === 'poolside' ? 'grove' : prevLayout; applyLayout(next); toast.info('Exited Poolside'); }} aria-label="Exit Poolside beta">
 						EXIT
 					</button>
 				</div>
@@ -828,7 +936,7 @@
 	{#if ccOpen && ccAlbum}
 		{@const ca = ccAlbum}
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-		<div class="ps-overlay open" role="dialog" aria-modal="true" aria-label="Add custom CD covers" tabindex="-1"
+		<div bind:this={ccRoot} class="ps-overlay open" role="dialog" aria-modal="true" aria-label="Add custom CD covers" tabindex="-1"
 			onclick={(e) => { if (e.target === e.currentTarget) ccOpen = false; }}
 			transition:fade={{ duration: 200 }}
 		>
@@ -871,11 +979,11 @@
 				</div>
 
 				<!-- ============================================================
-				MINI PLAYER PILL — floating transport chip fixed to the bottom-center.
-				Always visible (even on the Now view) so the user has transport controls
-				anywhere in the app, but doesn't sit on top of the Now deck's own transport.
-				Hides on the coverflow view so the user can see the covers unobstructed. -->
-				{#if playback.now && view !== 'library-coverflow' && view !== 'library-fan' && view !== 'library-stack'}
+				MINI PLAYER PILL — the one floating mini-transport, fixed bottom-center.
+				Hidden on Now (the deck has its own transport) and on the fullscreen
+				coverflow/fan/stack views so covers stay unobstructed. The old bottom-bar
+				MiniPlayer was dropped so two transports never stack. -->
+				{#if playback.now && view !== 'now' && view !== 'library-coverflow' && view !== 'library-fan' && view !== 'library-stack'}
 					<MiniPlayerPill onOpenNow={() => go('now')} accent={albumAccent} />
 				{/if}
 

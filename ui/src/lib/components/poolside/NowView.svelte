@@ -9,9 +9,10 @@
 	} from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import {
-		playback, commitVolume, dragVolume,
+		playback, commitVolume, dragVolume, toggleMute,
 		cycleRepeat, toggleNowPlayingLike, toast
 	} from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 	import Vinyl from './Vinyl.svelte';
 
 	let {
@@ -31,13 +32,36 @@
 	const pos = $derived(Math.min(playback.position, playback.duration || playback.position));
 	const dur = $derived(playback.duration || 0);
 
+	// Shared h:mm:ss formatter (same contract as PlayerBar): hours appear only past 1h.
 	function fmt(s: number): string {
-		if (!s || Number.isNaN(s)) return '0:00';
-		const t = Math.max(0, Math.floor(s));
-		return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+		if (!s || s < 0 || Number.isNaN(s)) return '0:00';
+		const t = Math.floor(s);
+		const h = Math.floor(t / 3600);
+		const m = Math.floor((t % 3600) / 60);
+		const sec = t % 60;
+		const mm = h ? String(m).padStart(2, '0') : `${m}`;
+		return `${h ? `${h}:` : ''}${mm}:${String(sec).padStart(2, '0')}`;
 	}
-	function seek(e: Event) {
-		api.seek(Number((e.currentTarget as HTMLInputElement).value)).catch(() => {});
+	// Audit 22: seekDrag/shownPosition ported from PlayerBar — while dragging, hold a
+	// local value so incoming position ticks can't yank the thumb back under the
+	// pointer. Live seeks are throttled (~150ms); the exact value lands on release.
+	let seekDrag = $state<number | null>(null);
+	const shownPosition = $derived(seekDrag ?? pos);
+	let lastSliderSeekAt = 0;
+	function onSeekInput(e: Event) {
+		const v = Number((e.currentTarget as HTMLInputElement).value);
+		seekDrag = v;
+		const now = performance.now();
+		if (now - lastSliderSeekAt > 150) {
+			lastSliderSeekAt = now;
+			api.seek(v).catch(() => {});
+		}
+	}
+	function onSeekCommit(e: Event) {
+		const v = Number((e.currentTarget as HTMLInputElement).value);
+		playback.position = v;
+		seekDrag = null;
+		api.seek(v).catch(() => {});
 	}
 	function playIndex(i: number) {
 		api.playIndex(i).catch((e) => toast.error(String(e)));
@@ -75,10 +99,14 @@
 	let justSnapped = $state(false);
 	let snapTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// The disc is considered "ejected" (visually slid off, label says "Drop a disc back")
-	// whenever playback is paused AND there's a track loaded. This means the
-	// "ejected" state and the actual pause state can never get out of sync.
-	const ejected = $derived(!!cur && paused);
+	// Audit 21: the eject gesture owns its own state, separate from `paused`. A disc
+	// is "ejected" only when the user physically dragged it off the platter (or it
+	// started that way) — an external pause (transport button, sleep timer, error)
+	// leaves ejectedGesture false, so a later nudge can never resume what the user
+	// didn't eject. Tonearm: -15° resting/paused, -8° lifted-ejected.
+	let ejectedGesture = $state(false);
+	// Visual eject: mid-drag past the threshold, or resting in the ejected pose.
+	const ejected = $derived(!!cur && (ejectedGesture || dragPastEject));
 
 	function onDiscPointerDown(e: PointerEvent) {
 		if (!cur) return;
@@ -150,12 +178,18 @@
 		if (distance > EJECT_PX && dragStartState && !dragStartState.paused) {
 			// user dragged the disc off the platter while it was playing
 			await api.togglePause().catch(() => {});
+			ejectedGesture = true;
 			toast.info('Disc removed — drop it back to resume');
 			ejectJustHappened = true;
-		} else if (ejected && withinSnapRadius) {
-			// user dragged a paused disc back to center -> resume
+		} else if (ejectedGesture && withinSnapRadius) {
+			// user dragged an ejected disc back to center -> resume. Gated on the
+			// gesture flag (not `paused`), so nudging a disc that was paused
+			// externally never resumes it.
 			await api.togglePause().catch(() => {});
+			ejectedGesture = false;
 			triggerSnap();
+		} else if (!ejectedGesture) {
+			// dragged but never ejected (or paused externally): leave pause state alone.
 		}
 		// snap back to spindle visually
 		dragX = 0;
@@ -182,12 +216,20 @@
 	}
 	function onDiscDoubleClick() {
 		// explicit "drop the disc back" gesture, even without a drag — useful for the
-		// small quick tap that doesn't register as a drag.
-		if (ejected) {
+		// small quick tap that doesn't register as a drag. Gesture-gated: an
+		// externally-paused disc ignores it (audit 21).
+		if (ejectedGesture) {
 			api.togglePause().catch(() => {});
+			ejectedGesture = false;
 			triggerSnap();
 		}
 	}
+
+	// A new track drops a fresh disc onto the platter — clear any stale eject pose.
+	$effect(() => {
+		cur?.videoId;
+		ejectedGesture = false;
+	});
 
 	// Tonearm angle: -15° (rest) -> -28° (cue-down, track start) and then drifts toward
 	// -34° (track end, near the center). Real tonearms don't really do this, but it
@@ -262,7 +304,7 @@
 			{#if nextItem}
 				<div class="ps-deck-unit ps-deck-unit--next" aria-hidden="true">
 					<div class="ps-sleeve"><div class="mouth"></div></div>
-					<Vinyl src={nextItem.thumbnail ?? ''} playing={false} style="width:100%" title="Up next" />
+					<Vinyl src={thumb(nextItem.thumbnail ?? null, 540) ?? ''} playing={false} style="width:100%" title="Up next" />
 					<div class="ps-eject-hint">UP NEXT</div>
 				</div>
 			{/if}
@@ -291,8 +333,8 @@
 				">
 					{#key cur?.videoId ?? 'none'}
 						<Vinyl
-							src={cur?.thumbnail ?? ''}
-							playing={!paused && !isDragging}
+							src={thumb(cur?.thumbnail ?? null, 720) ?? ''}
+							playing={!paused && !!cur && !isDragging}
 							style="width:100%"
 							flightTarget
 							title="Drag to eject · Spin in a circle to seek · Double-click to drop back"
@@ -323,8 +365,8 @@
 	<!-- seek + transport, all in one clean column -->
 	<div class="ps-bottom">
 		<div class="ps-seek-row">
-			<span>{fmt(pos)}</span>
-			<input class="ps-seek" type="range" min="0" max={Math.max(1, Math.floor(dur))} value={Math.floor(pos)} oninput={seek} aria-label="Seek" />
+			<span>{fmt(shownPosition)}</span>
+			<input class="ps-seek" type="range" min="0" max={Math.max(0.1, dur)} step="0.1" value={shownPosition} oninput={onSeekInput} onchange={onSeekCommit} aria-label="Seek" />
 			<span>{fmt(dur)}</span>
 		</div>
 		<div class="ps-transport">
@@ -347,7 +389,7 @@
 				<HugeiconsIcon icon={FavouriteIcon} />
 			</button>
 			<div class="hidden items-center gap-2 md:flex">
-				<button class="ps-tbtn" onclick={() => commitVolume(playback.volume === 0 ? 100 : 0)} title="Mute" aria-label="Mute">
+				<button class="ps-tbtn" onclick={() => toggleMute()} title="Mute" aria-label="Mute">
 					<HugeiconsIcon icon={playback.volume === 0 ? VolumeMute02Icon : VolumeHighIcon} />
 				</button>
 				<input type="range" min="0" max="100" value={playback.volume}

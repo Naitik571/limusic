@@ -51,9 +51,35 @@
 
 	// Auto skin: sample the cover once per URL (sampleDominant caches). Token-guarded —
 	// a track change mid-sample must not paint the old color on the new disc.
+	// Audit 16/24: `css:*` custom-cover tokens and empty strings never reach url() —
+	// they resolve to '' so the thumbnail fallback / pressed-disc gradient shows.
+	// An <img> probe marks unloadable URLs failed so a broken src falls back too.
+	const rawSrc = $derived(src.startsWith('css:') ? '' : src);
+	let artOk = $state(true);
+	$effect(() => {
+		const u = rawSrc;
+		if (!u) {
+			artOk = true;
+			return;
+		}
+		let live = true;
+		artOk = true;
+		const im = new Image();
+		im.onload = () => {
+			if (live) artOk = true;
+		};
+		im.onerror = () => {
+			if (live) artOk = false;
+		};
+		im.src = u;
+		return () => {
+			live = false;
+		};
+	});
+	const effSrc = $derived(artOk ? rawSrc : '');
 	let autoBase = $state<string | null>(null);
 	$effect(() => {
-		const want = skin === 'auto' ? src : '';
+		const want = skin === 'auto' ? effSrc : '';
 		if (!want) {
 			autoBase = null;
 			return;
@@ -135,7 +161,7 @@
 <div
 	bind:this={root}
 	class="ps-vinyl skin-{effectiveSkin} {playing ? 'playing' : ''}"
-	style="--art:url('{src}');{autoBase ? `--auto:${autoBase};` : ''}{style}{size ? ` width:${size}px; height:${size}px;` : ''}"
+	style="{effSrc ? `--art:url('${effSrc}');` : ''}{autoBase ? `--auto:${autoBase};` : ''}{style}{size ? ` width:${size}px; height:${size}px;` : ''}"
 	{title}
 	{onclick}
 	role={onclick ? 'button' : undefined}

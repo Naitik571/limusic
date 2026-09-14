@@ -182,3 +182,44 @@ export function spawnRipple(
 	// 650ms matches the CSS keyframe duration
 	setTimeout(() => r.remove(), 700);
 }
+
+/**
+ * Focus the first keyboard-focusable control inside a freshly-opened overlay
+ * (queue sheet, settings panel, sing takeover, cover picker). No-op when the
+ * container is missing or has no focusable child. Call from a `$effect` that
+ * runs when the overlay's open flag flips true.
+ */
+export function focusFirst(container: HTMLElement | undefined | null): void {
+	if (!container || typeof document === 'undefined') return;
+	const target = container.querySelector<HTMLElement>(
+		'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+	);
+	target?.focus({ preventScroll: true });
+}
+
+/**
+ * Trap Tab inside a modal container: Tab on the last control wraps to the
+ * first, Shift+Tab on the first wraps to the last. Returns true when the event
+ * was a Tab press handled here, false for anything else (Esc stays with the
+ * shell's window-level cascade — never claim it here).
+ */
+export function trapTab(container: HTMLElement | undefined | null, e: KeyboardEvent): boolean {
+	if (!container || e.key !== 'Tab') return false;
+	const items = [...container.querySelectorAll<HTMLElement>(
+		'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+	)].filter((el) => el.offsetParent !== null || el === document.activeElement);
+	if (!items.length) return false;
+	const first = items[0];
+	const last = items[items.length - 1];
+	if (e.shiftKey && document.activeElement === first) {
+		e.preventDefault();
+		last.focus();
+		return true;
+	}
+	if (!e.shiftKey && document.activeElement === last) {
+		e.preventDefault();
+		first.focus();
+		return true;
+	}
+	return e.key === 'Tab';
+}

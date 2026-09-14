@@ -21,9 +21,10 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { PlayIcon, PauseIcon, StarIcon } from '@hugeicons/core-free-icons';
 	import { Spring } from 'svelte/motion';
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import type { BrowseItem } from '$lib/api';
 	import { playback, toast } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 	import MiniPlayerPill from './MiniPlayerPill.svelte';
 
 	let {
@@ -54,46 +55,33 @@
 	const DEPTH_FALLOFF = 5; // covers within this distance of centre are "in focus"
 	const ARC_RADIUS = 600; // px, for the 3D perspective
 
-	// We expose a single shared Spring target (`scrollIndex`) that the cover array
-	// reads. Auto-scroll ticks it forward every AUTO_MS when the user hasn't touched
-	// the carousel. Click/drag pauses auto-scroll, releases it after IDLE_MS of silence.
+	// Audit 16: css:* custom-cover tokens resolve to '' (thumbnail fallback).
+	function realArt(a: BrowseItem): string {
+		const u = artFor(a);
+		return u.startsWith('css:') ? '' : (thumb(u || null, 540) ?? '');
+	}
+
+	// Audit 18: autoplay idleness derives from the wall clock (Date.now() -
+	// lastTouch) inside a single rAF loop. No reactive $effect, no pausedAuto flag —
+	// lastTouch is a plain timestamp, not state, so input never retriggers effects.
 	const scrollIndex = new Spring(0, { stiffness: 60, damping: 18 });
-	let pausedAuto = $state(false);
 	let lastTouch = Date.now();
+	let lastAdvance = Date.now();
 	const IDLE_MS = 4500;
 	const AUTO_MS = 1800;
-	let lastTick = Date.now();
 
 	function bumpTouch() {
 		lastTouch = Date.now();
-		pausedAuto = true;
 	}
 
-	$effect(() => {
-		// Track-driven: also keep scrolling if a new album joins the library.
-		// We untrack() the wall-clock so this effect only re-runs when the user
-		// interacts (click/drag) or the album list changes meaningfully.
-		untrack(() => {
-			// subscribe to lastTouch so the effect re-runs on user input
-			void lastTouch;
-			const now = Date.now();
-			const dt = now - lastTick;
-			lastTick = now;
-			if (pausedAuto || albums.length === 0) return;
-			if (now - lastTouch < IDLE_MS) return;
-			// one tick per AUTO_MS
-			if (dt < AUTO_MS) return;
-			const i = Math.round(scrollIndex.current);
-			scrollIndex.target = (i + 1) % Math.max(1, albums.length);
-		});
-	});
-
-	// rAF loop for the auto-scroll timer (the Spring does the actual easing).
+	// Single rAF loop drives autoplay: advance one step per AUTO_MS once the user
+	// has been quiet for IDLE_MS (wall-clock, not reactive state).
 	let raf = 0;
 	onMount(() => {
 		const tick = () => {
-			if (!pausedAuto && Date.now() - lastTouch > IDLE_MS) {
-				// nudge the target so the spring smoothly advances
+			const now = Date.now();
+			if (albums.length > 0 && now - lastTouch > IDLE_MS && now - lastAdvance > AUTO_MS) {
+				lastAdvance = now;
 				const i = Math.round(scrollIndex.current);
 				const n = Math.max(1, albums.length);
 				scrollIndex.target = (i + 1) % n;
@@ -104,13 +92,77 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	function clickAt(i: number) {
+	// Audit 19: pointer-drag + wheel ported from AlbumView. A press that doesn't
+	// move is a click (focus / open); a real drag scrubs the arc and owns the gesture.
+	let dragging = $state(false);
+	let dragStartX = 0;
+	let dragStartScroll = 0;
+	let moved = $state(false);
+	const clampIdx = (v: number) => Math.max(0, Math.min(Math.max(0, albums.length - 1), v));
+	function onStageDown(e: PointerEvent) {
+		// Play buttons handle their own presses — don't start a drag off them.
+		if ((e.target as HTMLElement).closest('button')) return;
+		dragging = true;
+		moved = false;
+		dragStartX = e.clientX;
+		dragStartScroll = scrollIndex.target;
 		bumpTouch();
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function onStageMove(e: PointerEvent) {
+		if (!dragging) return;
+		const dx = e.clientX - dragStartX;
+		if (Math.abs(dx) > 6) moved = true;
+		scrollIndex.target = clampIdx(dragStartScroll - dx / 140);
+		if (moved) bumpTouch();
+	}
+	function onStageUp() {
+		if (!dragging) return;
+		dragging = false;
+		scrollIndex.target = clampIdx(Math.round(scrollIndex.current));
+	}
+	function onStageWheel(e: WheelEvent) {
+		e.preventDefault();
+		scrollIndex.target = clampIdx(scrollIndex.target + (e.deltaY + e.deltaX) * 0.0022);
+		bumpTouch();
+	}
+
+	function clickAt(i: number) {
+		// A drag owns the gesture — clicks after movement are scrub releases, not taps.
+		if (moved) return;
+		bumpTouch();
+		const focused = Math.round(scrollIndex.current);
+		if (i === focused) {
+			// Tapping the focused cover opens the album (Enter does the same).
+			onOpenAlbum(albums[i]);
+			return;
+		}
 		scrollIndex.target = i;
 		// resume auto-scroll after a longer pause (so single-click is a deliberate pause)
 		setTimeout(() => {
 			lastTouch = Date.now() - IDLE_MS + 1500; // 1.5s of "still" before resume
 		}, 200);
+	}
+
+	function onCardKey(e: KeyboardEvent, i: number) {
+		// Audit 19: Enter opens the album; arrows move focus; Space plays.
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			onOpenAlbum(albums[i]);
+		} else if (e.key === ' ') {
+			e.preventDefault();
+			onPlayAlbum(albums[i]);
+		} else if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			const n = clampIdx(i - 1);
+			scrollIndex.target = n;
+			bumpTouch();
+		} else if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			const n = clampIdx(i + 1);
+			scrollIndex.target = n;
+			bumpTouch();
+		}
 	}
 
 	function playAt(i: number, e: MouseEvent) {
@@ -123,7 +175,7 @@
 
 	function togglePause() {
 		if (!playback.now) return;
-		import('$lib/api').then((api) => api.togglePause().catch(() => {}));
+		import('$lib/api').then((api) => api.togglePause().catch((err) => toast.error(String(err))));
 	}
 
 	function openNow() {
@@ -144,8 +196,17 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions: pointerleave only hides the
-     cursor caption (no interaction semantics); the cards themselves are role=button. -->
-<div class="ps-cf-stage {cursor ? 'has-cursor' : ''}" onpointerleave={dropCursor}>
+     cursor caption (no interaction semantics); the cards themselves are role=button.
+     Drag + wheel scrub the arc (AlbumView pattern); a press without movement is a tap. -->
+<div
+	class="ps-cf-stage {cursor ? 'has-cursor' : ''} {dragging ? 'is-dragging' : ''}"
+	onpointerleave={dropCursor}
+	onpointerdown={onStageDown}
+	onpointermove={onStageMove}
+	onpointerup={onStageUp}
+	onpointercancel={onStageUp}
+	onwheel={onStageWheel}
+>
 	<!-- back button in the top-left -->
 	<button class="ps-cf-back" onclick={back} aria-label="Back">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="22">
@@ -186,16 +247,16 @@
 					role="button"
 					tabindex="0"
 					onclick={() => clickAt(i)}
-					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), clickAt(i))}
+					onkeydown={(e) => onCardKey(e, i)}
 					onpointermove={(e) => trackCursor(e, a)}
-					title={`${a.title} — ${a.subtitle ?? ''}`}
+					title={`${a.title} — ${a.subtitle ?? ''} (Enter opens, Space plays)`}
 				>
 					<div class="ps-cf-card-frame">
 						<div class="ps-cf-card-sleeve">
 							<div class="ps-cf-card-mouth"></div>
 						</div>
 						<div class="ps-cf-card-disc">
-							<div class="ps-cf-card-art" style="background-image: url('{artFor(a)}');"></div>
+							<div class="ps-cf-card-art" style={realArt(a) ? `background-image: url('${realArt(a)}');` : ''}></div>
 						</div>
 					</div>
 					<button class="ps-cf-card-play" onclick={(e) => playAt(i, e)} aria-label={`Play ${a.title}`} title="Play album">
@@ -239,7 +300,10 @@
 		position: absolute;
 		inset: 0;
 		overflow: hidden;
+		touch-action: pan-y;
 	}
+	.ps-cf-stage.is-dragging { cursor: grabbing; }
+	.ps-cf-stage.is-dragging .ps-cf-card { cursor: grabbing; }
 	.ps-cf-back {
 		all: unset;
 		cursor: pointer;

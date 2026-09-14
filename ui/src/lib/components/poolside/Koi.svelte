@@ -17,47 +17,96 @@
   always faces its direction of travel. On direction reversal (the path flips
   scaleX), the angle smoothly tracks the new heading instead of staying pinned.
 -->
+<script lang="ts" module>
+	import { rafLoop, reducedMotion } from './motion';
+
+	type KoiFish = {
+		el: HTMLElement;
+		visible: boolean;
+		angle: number;
+		target: number;
+		lastX: number;
+		seeded: boolean;
+	};
+
+	const fishes = new Set<KoiFish>();
+	let koiUid = 0;
+	let koiLoopOn = false;
+	let koiObserver: IntersectionObserver | null = null;
+
+	function koiHidden(el: HTMLElement): boolean {
+		// no-koi pref (shell toggles .no-koi on .ps-root) — skip the measuring work.
+		return !!el.closest('.ps-root.no-koi');
+	}
+
+	function ensureKoiLoop(): void {
+		if (koiLoopOn || typeof window === 'undefined') return;
+		koiLoopOn = true;
+		// ONE shared rAF for every fish on the page.
+		rafLoop((_t, dt) => {
+			// Early return before any getBoundingClientRect when motion is off.
+			if (reducedMotion() || dt <= 0 || dt >= 0.1) return;
+			for (const f of fishes) {
+				if (!f.visible || koiHidden(f.el)) continue;
+				const r = f.el.getBoundingClientRect();
+				const x = r.left + r.width / 2;
+				if (f.seeded) {
+					const vx = (x - f.lastX) / dt; // px/s
+					// Path keyframes shuttle the fish between off-screen edges; the
+					// sign of vx tells us which way it's actually heading.
+					if (Math.abs(vx) > 5) f.target = vx > 0 ? 0 : 180;
+					const k = 1 - Math.exp(-6 * dt);
+					f.angle += (f.target - f.angle) * k;
+					f.el.style.setProperty('--ps-koi-angle', `${Math.round(f.angle)}deg`);
+				}
+				f.lastX = x;
+				f.seeded = true;
+			}
+		});
+	}
+
+	function ensureKoiObserver(): IntersectionObserver | null {
+		if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return null;
+		if (!koiObserver) {
+			koiObserver = new IntersectionObserver(
+				(list) => {
+					for (const e of list) {
+						for (const f of fishes) {
+							if (f.el === e.target) f.visible = e.isIntersecting;
+						}
+					}
+				},
+				{ threshold: 0 }
+			);
+		}
+		return koiObserver;
+	}
+</script>
+
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { reducedMotion, rafLoop } from './motion';
 
 	let { color = '#F4A078', size = 60 }: { color?: string; size?: number } = $props();
 
+	// Unique gradient IDs per instance so N fish never share defs.
+	const uid = `k${++koiUid}`;
+	const bodyId = `koi-body-${uid}`;
+	const finId = `koi-fin-${uid}`;
+	const bellyId = `koi-belly-${uid}`;
+
 	let root = $state<HTMLDivElement>();
-	let lastX = 0;
-	let lastT = 0;
-	let angle = 0; // current heading in radians, smoothed
-	let targetAngle = 0;
 
 	onMount(() => {
-		// Read the wrapper's current screen position on each frame, derive the velocity
-		// vector, and update the heading angle so the fish faces its actual motion.
-		const stop = rafLoop((_t, dt) => {
-			if (!root) return;
-			const r = root.getBoundingClientRect();
-			const x = r.left + r.width / 2;
-			const t = performance.now();
-			if (lastT > 0 && dt > 0 && dt < 0.1) {
-				const vx = (x - lastX) / dt; // px/s
-				// Path keyframes move the fish between -15vw and 115vw and back. When the
-				// path is going right, vx > 0. When it's going left (after the 50% turn),
-				// vx < 0. The 90° / 270° rotation we apply below handles both directions.
-				if (Math.abs(vx) > 5 && !reducedMotion()) {
-					// Smooth toward the new heading. The fish rotates in CSS space: 0deg = facing
-					// right (the default SVG pose), 180deg = facing left. So:
-					targetAngle = vx > 0 ? 0 : 180;
-				}
-				// Exponential ease toward target (fast but not snappy)
-				const k = 1 - Math.exp(-6 * dt);
-				angle += (targetAngle - angle) * k;
-				// Convert degrees to radians for CSS rotate (and round to integer deg)
-				const deg = Math.round(angle);
-				root.style.setProperty('--ps-koi-angle', `${deg}deg`);
-			}
-			lastX = x;
-			lastT = t;
-		});
-		return stop;
+		if (!root) return;
+		ensureKoiLoop();
+		const fish: KoiFish = { el: root, visible: true, angle: 0, target: 0, lastX: 0, seeded: false };
+		fishes.add(fish);
+		const io = ensureKoiObserver();
+		io?.observe(root);
+		return () => {
+			fishes.delete(fish);
+			io?.unobserve(root!);
+		};
 	});
 </script>
 
@@ -68,16 +117,16 @@
 >
 	<svg viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 		<defs>
-			<radialGradient id="koi-body" cx="55%" cy="40%" r="65%">
+			<radialGradient id={bodyId} cx="55%" cy="40%" r="65%">
 				<stop offset="0%" stop-color="#fff" stop-opacity=".9" />
 				<stop offset="35%" stop-color={color} stop-opacity=".95" />
 				<stop offset="100%" stop-color="#5e1d0e" stop-opacity=".95" />
 			</radialGradient>
-			<linearGradient id="koi-fin" x1="0" y1="0" x2="1" y2="0">
+			<linearGradient id={finId} x1="0" y1="0" x2="1" y2="0">
 				<stop offset="0%" stop-color="#fff" stop-opacity=".55" />
 				<stop offset="100%" stop-color={color} stop-opacity=".35" />
 			</linearGradient>
-			<radialGradient id="koi-belly" cx="50%" cy="80%" r="60%">
+			<radialGradient id={bellyId} cx="50%" cy="80%" r="60%">
 				<stop offset="0%" stop-color="#fff" stop-opacity=".55" />
 				<stop offset="100%" stop-color="#fff" stop-opacity="0" />
 			</radialGradient>
@@ -88,7 +137,7 @@
 			<!-- caudal fin (tail) with proper fluke shape — two lobes, like a real koi tail -->
 			<path
 				d="M 8 30 Q 0 12 14 22 Q 0 32 8 50 Q 4 38 14 42 Q 18 38 18 30 Q 18 22 14 18 Q 4 22 8 30 Z"
-				fill="url(#koi-fin)"
+				fill={`url(#${finId})`}
 				stroke={color}
 				stroke-opacity=".25"
 				stroke-width="0.5"
@@ -99,7 +148,7 @@
 		<g class="ps-koi-pectoral">
 			<path
 				d="M 60 32 Q 70 38 78 34 Q 70 30 62 28 Q 58 30 60 32 Z"
-				fill="url(#koi-fin)"
+				fill={`url(#${finId})`}
 				opacity=".75"
 			/>
 		</g>
@@ -114,22 +163,22 @@
 			   Q 14 36 22 42
 			   Q 38 50 60 46
 			   Q 78 42 80 30 Z"
-			fill="url(#koi-body)"
+			fill={`url(#${bodyId})`}
 		/>
 
 		<!-- Belly highlight -->
-		<ellipse cx="50" cy="42" rx="22" ry="6" fill="url(#koi-belly)" />
+		<ellipse cx="50" cy="42" rx="22" ry="6" fill={`url(#${bellyId})`} />
 
 		<!-- Dorsal fin (top) -->
 		<path
 			d="M 36 14 Q 48 6 60 14 Q 56 18 50 18 Q 44 18 36 14 Z"
-			fill="url(#koi-fin)"
+			fill={`url(#${finId})`}
 			opacity=".7"
 		/>
 		<!-- Ventral fin (bottom) -->
 		<path
 			d="M 36 46 Q 48 54 60 46 Q 56 42 50 42 Q 44 42 36 46 Z"
-			fill="url(#koi-fin)"
+			fill={`url(#${finId})`}
 			opacity=".55"
 		/>
 

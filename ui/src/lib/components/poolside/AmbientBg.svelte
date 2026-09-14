@@ -5,7 +5,8 @@
 
   Mirrors their behavior: muted loop playsinline, lazy src (assigned on first activation,
   never fetched for themes you don't visit), a still poster underneath for first paint,
-  theme overlays for text legibility, and poster-only when `still` (reduce-motion).
+   theme overlays for text legibility, and poster-only when frozen (reduce toggle or
+   OS reduced-motion).
 -->
 <script lang="ts">
 	import aquaMp4 from '$lib/assets/ambient/aqua.mp4';
@@ -14,6 +15,7 @@
 	import aquaJpg from '$lib/assets/ambient/aqua.jpg';
 	import verdantJpg from '$lib/assets/ambient/verdant.jpg';
 	import goldfishJpg from '$lib/assets/ambient/goldfish.jpg';
+	import { reducedMotion } from './motion';
 
 	let {
 		theme,
@@ -23,13 +25,16 @@
 	const VID = { aqua: aquaMp4, verdant: verdantMp4, goldfish: goldfishMp4 };
 	const POSTER = { aqua: aquaJpg, verdant: verdantJpg, goldfish: goldfishJpg };
 
+	// still = in-app reduce toggle OR the OS media query — poster-only either way.
+	const frozen = $derived(still || reducedMotion());
+
 	let video = $state<HTMLVideoElement | undefined>();
 
 	$effect(() => {
 		const v = video;
 		const want = VID[theme];
 		if (!v) return;
-		if (still) {
+		if (frozen) {
 			v.pause();
 			v.removeAttribute('src');
 			v.load();
@@ -47,14 +52,15 @@
 
 <div class="ps-ambient ps-ambient--{theme}" aria-hidden="true">
 	<img class="ps-ambient-poster" src={POSTER[theme]} alt="" draggable="false" decoding="async" />
-	{#if !still}
+	{#if !frozen}
 		<video
 			bind:this={video}
 			class="ps-ambient-video"
 			muted
 			loop
 			playsinline
-			preload="auto"
+			preload="metadata"
+			poster={POSTER[theme]}
 			tabindex="-1"
 			disablepictureinpicture
 			controlslist="nodownload noremoteplayback nofullscreen noplaybackrate"

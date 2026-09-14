@@ -5,6 +5,9 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import { PlayIcon } from '@hugeicons/core-free-icons';
+	import { thumb } from '$lib/thumb';
 	import type { BrowseItem } from '$lib/api';
 
 	let { albums, artFor, onOpenAlbum, onPlayAlbum, onBack }: {
@@ -19,6 +22,13 @@
 		onBack?.();
 	}
 
+	// Audit 16: css:* custom-cover tokens resolve to '' (thumbnail fallback) —
+	// only real URLs/data-URLs reach background-image.
+	function realArt(a: BrowseItem): string {
+		const u = artFor(a);
+		return u.startsWith('css:') ? '' : u;
+	}
+
 	let hovered = $state<{ title: string; subtitle?: string; x: number; y: number } | null>(null);
 
 	function onCardHover(e: MouseEvent, a: BrowseItem) {
@@ -27,7 +37,11 @@
 	function onCardLeave() {
 		hovered = null;
 	}
-	function playAt(a: BrowseItem) {
+	function openAt(a: BrowseItem) {
+		onOpenAlbum(a);
+	}
+	function playAt(a: BrowseItem, e: MouseEvent) {
+		e.stopPropagation();
 		onPlayAlbum(a);
 	}
 </script>
@@ -51,21 +65,31 @@
 			{@const scale = 1 - depth * 0.04}
 			{@const opacity = 1 - depth * 0.08}
 			{@const rotate = -6 + depth * 1.8}
-			{@const tx = 12 + depth * 18}
-			{@const ty = -8 - depth * 14}
+			{@const tx = 12 + depth * 34}
+			{@const ty = -8 - depth * 44}
+			{@const art = thumb(realArt(a) || null, 540) ?? ''}
 			<div
 				class="ps-fan-card"
 				style="transform: translate({tx}px, {ty}px) rotate({rotate}deg) scale({Math.max(0.7, scale)}); opacity: {Math.max(0.4, opacity)}; z-index: {1000 - depth};"
 				onmouseenter={(e) => onCardHover(e, a)}
 				onmouseleave={onCardLeave}
-				onclick={() => playAt(a)}
+				onclick={() => openAt(a)}
 				role="button"
 				tabindex="0"
-				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), playAt(a))}
-				title={`${a.title} — ${a.subtitle ?? ''}`}
+				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openAt(a))}
+				title={`${a.title} — ${a.subtitle ?? ''} (open album)`}
 			>
 				<div class="ps-fan-card-sleeve">
-					<div class="ps-fan-card-art" style="background-image: url('{artFor(a)}');"></div>
+					<div class="ps-fan-card-art" style={art ? `background-image: url('${art}');` : ''}></div>
+					<button
+						class="ps-fan-card-play"
+						onclick={(e) => playAt(a, e)}
+						onkeydown={(e) => e.stopPropagation()}
+						aria-label={`Play ${a.title}`}
+						title="Play album"
+					>
+						<HugeiconsIcon icon={PlayIcon} />
+					</button>
 				</div>
 				<div class="ps-fan-card-meta">
 					<span class="ps-fan-card-title">{a.title}</span>
@@ -208,6 +232,31 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	/* Audit 17: dedicated per-card play affordance (mirrors AlbumStack/CoverFlow). */
+	.ps-fan-card-play {
+		all: unset;
+		cursor: pointer;
+		position: absolute;
+		right: 10px;
+		bottom: 10px;
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		background: linear-gradient(180deg, #8fdef6, var(--accent) 55%, #2e9ecb);
+		color: #111;
+		box-shadow: 0 4px 14px rgba(14, 110, 140, 0.5);
+		opacity: 0;
+		transform: scale(0.85);
+		transition: opacity 0.2s, transform 0.2s;
+	}
+	.ps-fan-card:hover .ps-fan-card-play,
+	.ps-fan-card:focus-within .ps-fan-card-play {
+		opacity: 1;
+		transform: scale(1);
+	}
+	.ps-fan-card-play svg { width: 16px; height: 16px; }
 	.ps-fan-tooltip {
 		position: fixed;
 		z-index: 9999;

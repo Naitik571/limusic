@@ -1,8 +1,10 @@
 <!--
-  Liquid-glass SVG filters (BlazePod technique): a fractal-noise displacement wobbles the
-  edge of whatever the backdrop blur samples, so glass sheets read as liquid instead of
-  frosted. `sheet` (scale 16) for large panels, `bar` (scale 8) for the pill. Zero-size,
-  mounted once in the shell; surfaces opt in via CSS. Skipped under reduce-motion.
+   Liquid-glass SVG filters (BlazePod technique): a fractal-noise displacement wobbles the
+   edge of whatever the backdrop blur samples, so glass sheets read as liquid instead of
+   frosted. `sheet` (scale 8) for large panels, `bar` (scale 8) for the pill. Zero-size,
+   mounted once in the shell; surfaces opt in via CSS inside an @supports gate for
+   url() backdrop-filter (plain blur + solid-surface fallback elsewhere).
+   Skipped under reduce-motion.
 -->
 <svg class="ps-liquid-defs" width="0" height="0" aria-hidden="true" focusable="false">
 	<defs>
@@ -21,7 +23,7 @@
 				seed="7"
 				result="warp"
 			/>
-			<feDisplacementMap in="SourceGraphic" in2="warp" scale="16" xChannelSelector="R" yChannelSelector="G" />
+			<feDisplacementMap in="SourceGraphic" in2="warp" scale="8" xChannelSelector="R" yChannelSelector="G" />
 		</filter>
 		<filter
 			id="ps-liquid-bar"

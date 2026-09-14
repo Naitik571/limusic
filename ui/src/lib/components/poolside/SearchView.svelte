@@ -1,9 +1,10 @@
 <script lang="ts">
 	// Poolside Search — YouTube search with autocomplete, categorized results.
+	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { Search01Icon, PlayIcon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
-	import { searchPreview } from '$lib/browse';
+	import { asSong, hrefFor, searchPreview } from '$lib/browse';
 	import type { BrowseItem, SongItem } from '$lib/api';
 	import { playback, playFrom, toast } from '$lib/player.svelte';
 
@@ -56,8 +57,17 @@
 	}
 
 	function playSong(s: BrowseItem, i: number) {
-		const song: SongItem = { video_id: s.id, title: s.title, artists: s.subtitle ?? '', thumbnail: s.thumbnail };
-		playFrom({ kind: 'playlist', id: 'ps-search', title: 'Search' }, [song], 0);
+		// Audit 5: play the whole song result list from the tapped index, mapped via
+		// asSong so duration/is_upload/artist links survive into the queue.
+		const list: SongItem[] = results.songs.map(asSong);
+		if (!list.length) return;
+		playFrom({ kind: 'playlist', id: 'ps-search', title: 'Search' }, list, i);
+	}
+
+	function openNonSong(item: BrowseItem) {
+		// Audit 6: artists go to their own page; only albums/playlists use the poolside album view.
+		if (item.kind === 'artist') goto(hrefFor(item));
+		else onOpenAlbum(item);
 	}
 </script>
 
@@ -105,7 +115,7 @@
 				<h3 class="ps-section-title">SONGS</h3>
 				<div class="ps-songlist">
 					{#each results.songs as s, i (s.id + i)}
-						<div class="ps-songrow ps-anim-slide-in" style="animation-delay:{i * 0.03}s" onclick={() => playSong(s, i)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && playSong(s, i)}>
+						<div class="ps-songrow ps-anim-slide-in" style="animation-delay:{i * 0.03}s" onclick={() => playSong(s, i)} role="button" tabindex="0" onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), playSong(s, i))}>
 							<span class="n">{String(i + 1).padStart(2, '0')}</span>
 							<span class="st">{s.title.toUpperCase()}</span>
 							<span class="sa">{s.subtitle ?? ''}</span>
@@ -121,7 +131,7 @@
 				<h3 class="ps-section-title">ALBUMS</h3>
 				<div class="ps-rail">
 					{#each results.albums as a (a.id)}
-						<button class="ps-rail-card" onclick={() => onOpenAlbum(a)}>
+						<button class="ps-rail-card" onclick={() => openNonSong(a)}>
 							{#if a.thumbnail}<img decoding="async" loading="lazy" src={a.thumbnail} alt={a.title} />{:else}<div class="ps-rail-placeholder"></div>{/if}
 							<span class="ps-rail-label">{a.title}</span>
 							<span class="ps-rail-sub">{a.subtitle ?? ''}</span>
@@ -137,7 +147,7 @@
 				<h3 class="ps-section-title">ARTISTS</h3>
 				<div class="ps-rail ps-rail-artists">
 					{#each results.artists as a (a.id)}
-						<button class="ps-rail-card ps-rail-artist" onclick={() => onOpenAlbum(a)}>
+						<button class="ps-rail-card ps-rail-artist" onclick={() => openNonSong(a)}>
 							{#if a.thumbnail}<img decoding="async" loading="lazy" src={a.thumbnail} alt={a.title} class="ps-artist-circle" />{:else}<div class="ps-rail-placeholder ps-artist-circle"></div>{/if}
 							<span class="ps-rail-label">{a.title}</span>
 						</button>
@@ -152,7 +162,7 @@
 				<h3 class="ps-section-title">PLAYLISTS</h3>
 				<div class="ps-rail">
 					{#each results.playlists as p (p.id)}
-						<button class="ps-rail-card" onclick={() => onOpenAlbum(p)}>
+						<button class="ps-rail-card" onclick={() => openNonSong(p)}>
 							{#if p.thumbnail}<img decoding="async" loading="lazy" src={p.thumbnail} alt={p.title} />{:else}<div class="ps-rail-placeholder"></div>{/if}
 							<span class="ps-rail-label">{p.title}</span>
 							<span class="ps-rail-sub">{p.subtitle ?? ''}</span>

@@ -1,10 +1,12 @@
 <script lang="ts">
 	// Poolside Home — hero banner, mood chips, recent rail, recommendation feed.
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { PlayIcon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem, HomeChip } from '$lib/api';
+	import { asSong, hrefFor } from '$lib/browse';
 	import { playback, playFrom, personal, toast } from '$lib/player.svelte';
 
 	let {
@@ -61,7 +63,10 @@
 
 	function playShelfItem(item: BrowseItem) {
 		if (item.kind === 'song') {
-			playFrom(item, [{ video_id: item.id, title: item.title, artists: item.subtitle ?? '', thumbnail: item.thumbnail }], 0);
+			playFrom(item, [asSong(item)], 0);
+		} else if (item.kind === 'artist') {
+			// Artists have their own page — only albums/playlists open the poolside album view.
+			goto(hrefFor(item));
 		} else {
 			onOpenAlbum(item);
 		}

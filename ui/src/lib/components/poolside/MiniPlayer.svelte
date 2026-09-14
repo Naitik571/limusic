@@ -3,7 +3,8 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { PlayIcon, PauseIcon, PreviousIcon, NextIcon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
-	import { playback } from '$lib/player.svelte';
+	import { playback, toast } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 	import Vinyl from './Vinyl.svelte';
 
 	let { onOpenNow }: { onOpenNow: () => void } = $props();
@@ -18,7 +19,17 @@
 		if (!dur) return;
 		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-		api.seek(ratio * dur).catch(() => {});
+		api.seek(ratio * dur).catch((err) => toast.error(String(err)));
+	}
+	function seekBy(delta: number) {
+		api.seek(Math.min(dur, Math.max(0, pos + delta))).catch((err) => toast.error(String(err)));
+	}
+	function onBarKey(e: KeyboardEvent) {
+		if (e.key === 'ArrowLeft') { e.preventDefault(); seekBy(-5); }
+		else if (e.key === 'ArrowRight') { e.preventDefault(); seekBy(5); }
+		else if (e.key === 'Home') { e.preventDefault(); api.seek(0).catch((err) => toast.error(String(err))); }
+		else if (e.key === 'End') { e.preventDefault(); api.seek(dur).catch((err) => toast.error(String(err))); }
+		else if (e.key === 'Enter') { e.preventDefault(); onOpenNow(); }
 	}
 </script>
 
@@ -34,7 +45,7 @@
 	title="Open now playing"
 >
 	<div class="w-[46px] flex-none">
-		<Vinyl src={cur?.thumbnail ?? ''} playing={!paused} style="width:100%" />
+		<Vinyl src={thumb(cur?.thumbnail ?? null, 64) ?? ''} playing={!paused && !!cur} style="width:100%" />
 	</div>
 	<div class="meta">
 		<div class="mt">{cur ? cur.title.toUpperCase() : 'NOTHING PLAYING'}</div>
@@ -48,7 +59,7 @@
 			aria-valuemin={0}
 			aria-valuemax={Math.round(dur)}
 			onclick={seek}
-			onkeydown={(e) => e.key === 'Enter' && seek(e as unknown as MouseEvent)}
+			onkeydown={onBarKey}
 		>
 			<div class="track"><div class="fill" style="width:{pct}%"></div><div class="dot" style="left:{pct}%"></div></div>
 		</div>
@@ -57,7 +68,7 @@
 		class="mbtn"
 		onclick={(e) => {
 			e.stopPropagation();
-			api.prevTrack().catch(() => {});
+			api.prevTrack().catch((err) => toast.error(String(err)));
 		}}
 		aria-label="Previous"
 	>
@@ -67,7 +78,7 @@
 		class="aqua-play ps-aqua"
 		onclick={(e) => {
 			e.stopPropagation();
-			api.togglePause().catch(() => {});
+			api.togglePause().catch((err) => toast.error(String(err)));
 		}}
 		aria-label="Play or pause"
 	>
@@ -77,7 +88,7 @@
 		class="mbtn"
 		onclick={(e) => {
 			e.stopPropagation();
-			api.nextTrack().catch(() => {});
+			api.nextTrack().catch((err) => toast.error(String(err)));
 		}}
 		aria-label="Next"
 	>

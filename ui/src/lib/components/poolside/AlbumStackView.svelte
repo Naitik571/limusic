@@ -11,6 +11,7 @@
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { PlayIcon } from '@hugeicons/core-free-icons';
 	import type { BrowseItem } from '$lib/api';
+	import { thumb } from '$lib/thumb';
 	import MiniPlayerPill from './MiniPlayerPill.svelte';
 
 	let {
@@ -29,6 +30,14 @@
 
 	function back() {
 		onBack?.();
+	}
+
+	// Audit 16/24: css:* tokens resolve to '' (thumbnail fallback); cards decode a
+	// 540px variant matched to their ~300px slot.
+	function cardArt(a: BrowseItem): string {
+		const u = artFor(a);
+		if (u.startsWith('css:')) return '';
+		return thumb(u || null, 540) ?? '';
 	}
 
 	// Rotation order: order[0] is the top card. Advance sends it to the back.
@@ -145,7 +154,7 @@
 						if (depth === 0 && lastDragDist < 6) onOpenAlbum(a);
 					}}
 				>
-					<img decoding="async" src={artFor(a)} alt="" draggable="false" />
+					<img decoding="async" src={cardArt(a)} alt="" draggable="false" />
 					{#if depth === 0}
 						<div class="ps-stack-frame">
 							<span class="ps-stack-title">{a.title}</span>

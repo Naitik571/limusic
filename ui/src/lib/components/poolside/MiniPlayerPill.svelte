@@ -46,8 +46,9 @@
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { onMount } from 'svelte';
-	import { PlayIcon, PauseIcon, PreviousIcon, NextIcon, FavouriteIcon, ShuffleIcon, RepeatIcon, ArrowUp01Icon } from '@hugeicons/core-free-icons';
-	import { playback, dragVolume, commitVolume, toggleNowPlayingLike, cycleRepeat, sleepTimer, setSleepTimer } from '$lib/player.svelte';
+	import { PlayIcon, PauseIcon, PreviousIcon, NextIcon, FavouriteIcon, ShuffleIcon, RepeatIcon, RepeatOne01Icon, ArrowUp01Icon } from '@hugeicons/core-free-icons';
+	import { playback, dragVolume, commitVolume, toggleNowPlayingLike, cycleRepeat, sleepTimer, setSleepTimer, toast, type SleepTimerMode } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 	import * as api from '$lib/api';
 
 	let { onOpenNow, accent = null }: { onOpenNow?: () => void; accent?: string | null } = $props();
@@ -73,6 +74,28 @@
 				: `${Math.floor(sleepTimer.remaining / 60)}:${String(sleepTimer.remaining % 60).padStart(2, '0')}`
 	);
 	let expanded = $state(false);
+	// Audit 25: focus trap + return for the up-next sheet.
+	let expandBtn = $state<HTMLButtonElement>();
+	let sheetEl = $state<HTMLDivElement>();
+	$effect(() => {
+		if (expanded) {
+			// Focus the sheet when it opens so Escape + arrows work immediately.
+			requestAnimationFrame(() => sheetEl?.focus());
+		} else {
+			// Return focus to the expand trigger when the sheet closes.
+			if (sheetEl && document.activeElement instanceof Node && sheetEl.contains(document.activeElement)) {
+				expandBtn?.focus();
+			}
+		}
+	});
+	function closeSheet() {
+		expanded = false;
+		expandBtn?.focus();
+	}
+	function playUpcoming(i: number) {
+		expanded = false;
+		api.playIndex(i).catch((err) => toast.error(String(err)));
+	}
 
 	let pill = $state<HTMLDivElement>();
 
@@ -114,20 +137,41 @@
 		}
 		peaks = null;
 		let live = true;
-		peakGet(id, WAVE_BARS)
-			.then((bars) => {
-				if (live) peaks = bars;
-			})
-			.catch(() => {});
+		let retries = 0;
+		let retryTimer: ReturnType<typeof setTimeout> | null = null;
+		function load() {
+			if (!id) return;
+			peakGet(id, WAVE_BARS)
+				.then((bars) => {
+					if (live) peaks = bars;
+				})
+				.catch(() => {
+					// Audit 28: retry peaks on revisit — one delayed retry while the
+					// track is still current (decode may need the audio bytes first).
+					if (live && retries < 2) {
+						retries += 1;
+						retryTimer = setTimeout(() => {
+							if (live) load();
+						}, 3000);
+					}
+				});
+		}
+		load();
 		return () => {
 			live = false;
+			if (retryTimer) clearTimeout(retryTimer);
 		};
 	});
 
 	function fmt(s: number): string {
-		if (!s || Number.isNaN(s)) return '0:00';
-		const t = Math.max(0, Math.floor(s));
-		return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+		// Shared h:mm:ss contract (same as PlayerBar): hours appear only past 1h.
+		if (!s || s < 0 || Number.isNaN(s)) return '0:00';
+		const t = Math.floor(s);
+		const h = Math.floor(t / 3600);
+		const m = Math.floor((t % 3600) / 60);
+		const sec = t % 60;
+		const mm = h ? String(m).padStart(2, '0') : `${m}`;
+		return `${h ? `${h}:` : ''}${mm}:${String(sec).padStart(2, '0')}`;
 	}
 	function seekRatio(e: MouseEvent): number | null {
 		if (!dur) return null;
@@ -136,13 +180,27 @@
 		return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
 	}
 	function seek(e: MouseEvent) {
+		// Audit 28: pointerdown already seeks (scrub path below); swallow the
+		// post-scrub click so one gesture doesn't fire two seeks.
+		if (justScrubbed) {
+			justScrubbed = false;
+			return;
+		}
 		const ratio = seekRatio(e);
-		if (ratio !== null) api.seek(ratio * dur).catch(() => {});
+		if (ratio !== null) api.seek(ratio * dur).catch((err) => toast.error(String(err)));
 	}
 	// Drag-scrub across the waveform: press seeks, moving with the button held keeps seeking.
 	// Throttled live seeks (150ms) with an exact seek on release — unthrottled pointermove
 	// floods IPC and stutters the audio.
 	let lastScrubAt = 0;
+	let justScrubbed = false;
+	function scrubDown(e: PointerEvent) {
+		const ratio = seekRatio(e);
+		if (ratio === null) return;
+		lastScrubAt = performance.now();
+		justScrubbed = true;
+		api.seek(ratio * dur).catch((err) => toast.error(String(err)));
+	}
 	function scrub(e: PointerEvent) {
 		if (e.buttons !== 1) return;
 		const ratio = seekRatio(e);
@@ -150,11 +208,22 @@
 		const now = performance.now();
 		if (now - lastScrubAt < 150) return;
 		lastScrubAt = now;
-		api.seek(ratio * dur).catch(() => {});
+		justScrubbed = true;
+		api.seek(ratio * dur).catch((err) => toast.error(String(err)));
 	}
 	function scrubEnd(e: PointerEvent) {
 		const ratio = seekRatio(e);
-		if (ratio !== null) api.seek(ratio * dur).catch(() => {});
+		if (ratio !== null) {
+			justScrubbed = true;
+			api.seek(ratio * dur).catch((err) => toast.error(String(err)));
+		}
+	}
+	// Audit 26: sleep chip opens the preset list (15/30/60/end-of-song/off),
+	// mirroring PlayerBar's sleep menu instead of acting as a bare off-switch.
+	let sleepOpen = $state(false);
+	function pickSleep(mode: SleepTimerMode, minutes = 30) {
+		sleepOpen = false;
+		setSleepTimer(mode, minutes);
 	}
 	function openNow() {
 		onOpenNow?.();
@@ -171,7 +240,7 @@
 	>
 		<button class="ps-mini-pill-art" onclick={openNow} title="Open now playing" aria-label="Open now playing">
 			{#if cur.thumbnail}
-				<img decoding="async" src={cur.thumbnail} alt="" />
+				<img decoding="async" src={thumb(cur.thumbnail, 64) ?? cur.thumbnail} alt="" />
 			{:else}
 				<div class="ps-mini-pill-art-fallback"></div>
 			{/if}
@@ -183,13 +252,13 @@
 		{#if !paused}
 			<span class="ps-live-dot" aria-hidden="true" title="Playing"></span>
 		{/if}
-		<button class="ps-mini-pill-btn" onclick={() => api.prevTrack().catch(() => {})} aria-label="Previous">
+		<button class="ps-mini-pill-btn" onclick={() => api.prevTrack().catch((err) => toast.error(String(err)))} aria-label="Previous">
 			<HugeiconsIcon strokeWidth={2} icon={PreviousIcon} />
 		</button>
-		<button class="ps-mini-pill-btn ps-mini-pill-btn--play" onclick={() => api.togglePause().catch(() => {})} aria-label={paused ? 'Play' : 'Pause'}>
+		<button class="ps-mini-pill-btn ps-mini-pill-btn--play" onclick={() => api.togglePause().catch((err) => toast.error(String(err)))} aria-label={paused ? 'Play' : 'Pause'}>
 			<HugeiconsIcon strokeWidth={2} icon={paused ? PlayIcon : PauseIcon} />
 		</button>
-		<button class="ps-mini-pill-btn" onclick={() => api.nextTrack().catch(() => {})} aria-label="Next">
+		<button class="ps-mini-pill-btn" onclick={() => api.nextTrack().catch((err) => toast.error(String(err)))} aria-label="Next">
 			<HugeiconsIcon strokeWidth={2} icon={NextIcon} />
 		</button>
 		<button
@@ -205,14 +274,14 @@
 		<div
 			class="ps-mini-pill-progress"
 			onclick={seek}
-			onpointerdown={scrub}
+			onpointerdown={scrubDown}
 			onpointermove={scrub}
 			onpointerup={scrubEnd}
 			onkeydown={(e) => {
-				if (e.key === 'ArrowLeft') { e.preventDefault(); api.seek(Math.max(0, pos - 5)).catch(() => {}); }
-				if (e.key === 'ArrowRight') { e.preventDefault(); api.seek(Math.min(dur, pos + 5)).catch(() => {}); }
-				if (e.key === 'Home') { e.preventDefault(); api.seek(0).catch(() => {}); }
-				if (e.key === 'End') { e.preventDefault(); api.seek(dur).catch(() => {}); }
+				if (e.key === 'ArrowLeft') { e.preventDefault(); api.seek(Math.max(0, pos - 5)).catch((err) => toast.error(String(err))); }
+				if (e.key === 'ArrowRight') { e.preventDefault(); api.seek(Math.min(dur, pos + 5)).catch((err) => toast.error(String(err))); }
+				if (e.key === 'Home') { e.preventDefault(); api.seek(0).catch((err) => toast.error(String(err))); }
+				if (e.key === 'End') { e.preventDefault(); api.seek(dur).catch((err) => toast.error(String(err))); }
 			}}
 			role="slider"
 			aria-label="Seek"
@@ -255,16 +324,75 @@
 			/>
 		</div>
 		{#if sleepText}
-			<button
-				class="ps-mini-pill-sleep"
-				onclick={() => setSleepTimer('off')}
-				title="Sleep timer on — click to turn off"
-				aria-label="Sleep timer on, activate to turn off"
-			>
-				{sleepText}
-			</button>
+			<span class="ps-mini-pill-sleepwrap">
+				<button
+					class="ps-mini-pill-sleep"
+					onclick={() => (sleepOpen = !sleepOpen)}
+					title="Sleep timer — open presets"
+					aria-label="Sleep timer on, activate to change"
+					aria-expanded={sleepOpen}
+				>
+					{sleepText}
+				</button>
+				{#if sleepOpen}
+					<button
+						class="ps-mini-pill-sleep-scrim"
+						onclick={() => (sleepOpen = false)}
+						aria-label="Close sleep timer menu"
+						tabindex="0"
+						onkeydown={(e) => e.key === 'Escape' && (sleepOpen = false)}
+					></button>
+					<div
+						class="ps-mini-pill-sleep-menu"
+						role="menu"
+						aria-label="Sleep timer presets"
+						tabindex="-1"
+						onkeydown={(e) => e.key === 'Escape' && (sleepOpen = false)}
+					>
+						<button role="menuitem" onclick={() => pickSleep('minutes', 15)}>15 minutes</button>
+						<button role="menuitem" onclick={() => pickSleep('minutes', 30)}>30 minutes</button>
+						<button role="menuitem" onclick={() => pickSleep('minutes', 60)}>60 minutes</button>
+						<button role="menuitem" onclick={() => pickSleep('end_of_song')}>End of song</button>
+						<button role="menuitem" onclick={() => pickSleep('off')}>Cancel timer</button>
+					</div>
+				{/if}
+			</span>
+		{:else}
+			<span class="ps-mini-pill-sleepwrap">
+				<button
+					class="ps-mini-pill-sleep ps-mini-pill-sleep--off"
+					onclick={() => (sleepOpen = !sleepOpen)}
+					title="Sleep timer — open presets"
+					aria-label="Sleep timer off, activate to set"
+					aria-expanded={sleepOpen}
+				>
+					☾
+				</button>
+				{#if sleepOpen}
+					<button
+						class="ps-mini-pill-sleep-scrim"
+						onclick={() => (sleepOpen = false)}
+						aria-label="Close sleep timer menu"
+						tabindex="0"
+						onkeydown={(e) => e.key === 'Escape' && (sleepOpen = false)}
+					></button>
+					<div
+						class="ps-mini-pill-sleep-menu"
+						role="menu"
+						aria-label="Sleep timer presets"
+						tabindex="-1"
+						onkeydown={(e) => e.key === 'Escape' && (sleepOpen = false)}
+					>
+						<button role="menuitem" onclick={() => pickSleep('minutes', 15)}>15 minutes</button>
+						<button role="menuitem" onclick={() => pickSleep('minutes', 30)}>30 minutes</button>
+						<button role="menuitem" onclick={() => pickSleep('minutes', 60)}>60 minutes</button>
+						<button role="menuitem" onclick={() => pickSleep('end_of_song')}>End of song</button>
+					</div>
+				{/if}
+			</span>
 		{/if}
 		<button
+			bind:this={expandBtn}
 			class="ps-mini-pill-btn ps-mini-pill-expand {expanded ? 'open' : ''}"
 			onclick={() => (expanded = !expanded)}
 			aria-label={expanded ? 'Collapse up next' : 'Expand up next'}
@@ -277,17 +405,30 @@
 	{#if expanded}
 		<button
 			class="ps-mini-pill-scrim"
-			onclick={() => (expanded = false)}
+			onclick={() => closeSheet()}
+			onkeydown={(e) => e.key === 'Escape' && closeSheet()}
 			aria-label="Collapse up next"
-			tabindex="-1"
 		></button>
-		<div class="ps-mini-pill-sheet" role="dialog" aria-label="Up next">
+		<div
+			bind:this={sheetEl}
+			class="ps-mini-pill-sheet"
+			role="dialog"
+			aria-modal="false"
+			aria-label="Up next"
+			tabindex="-1"
+			onkeydown={(e) => {
+				if (e.key === 'Escape') {
+					e.stopPropagation();
+					closeSheet();
+				}
+			}}
+		>
 			<div class="ps-mini-pill-sheet-head">
 				<span>Up next</span>
 				<div class="ps-mini-pill-sheet-modes">
 					<button
 						class="ps-mini-pill-btn sm {shuffleOn ? 'is-on' : ''}"
-						onclick={() => api.toggleShuffle().catch(() => {})}
+						onclick={() => api.toggleShuffle().catch((err) => toast.error(String(err)))}
 						aria-label="Toggle shuffle"
 						title="Shuffle"
 					>
@@ -295,17 +436,17 @@
 					</button>
 					<button
 						class="ps-mini-pill-btn sm {repeat !== 'off' ? 'is-on' : ''}"
-						onclick={() => cycleRepeat().catch(() => {})}
+						onclick={() => cycleRepeat().catch((err) => toast.error(String(err)))}
 						aria-label="Cycle repeat mode"
 						title={repeat === 'one' ? 'Repeat one' : repeat === 'all' ? 'Repeat all' : 'Repeat off'}
 					>
-						<HugeiconsIcon strokeWidth={2} icon={RepeatIcon} />
+						<HugeiconsIcon strokeWidth={2} icon={repeat === 'one' ? RepeatOne01Icon : RepeatIcon} />
 					</button>
 				</div>
 			</div>
 			{#if upcoming.length}
 				{#each upcoming as { item, i } (item.video_id + i)}
-					<button class="ps-mini-pill-next" onclick={() => { expanded = false; api.playIndex(i).catch(() => {}); }}>
+					<button class="ps-mini-pill-next" onclick={() => playUpcoming(i)}>
 						<span class="ps-mini-pill-next-title">{item.title}</span>
 						<span class="ps-mini-pill-next-artist">{item.artists}</span>
 					</button>
@@ -424,6 +565,44 @@
 		white-space: nowrap;
 	}
 	.ps-mini-pill-sleep:hover { background: rgba(255, 216, 138, 0.22); }
+	/* Audit 26: preset menu anchored to the chip. */
+	.ps-mini-pill-sleepwrap { position: relative; display: inline-flex; flex: none; }
+	.ps-mini-pill-sleep--off { color: rgba(255, 255, 255, 0.65); background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); }
+	.ps-mini-pill-sleep-scrim {
+		all: unset;
+		position: fixed;
+		inset: 0;
+		z-index: 51;
+		cursor: default;
+	}
+	.ps-mini-pill-sleep-menu {
+		position: absolute;
+		right: 0;
+		bottom: calc(100% + 8px);
+		z-index: 52;
+		display: flex;
+		flex-direction: column;
+		min-width: 150px;
+		padding: 4px;
+		border-radius: var(--r-xl);
+		background: linear-gradient(180deg, rgba(12, 12, 14, 0.95) 0%, rgba(12, 12, 14, 0.88) 100%);
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+	}
+	.ps-mini-pill-sleep-menu button {
+		all: unset;
+		cursor: pointer;
+		padding: 7px 10px;
+		border-radius: var(--r-lg);
+		font-size: 12px;
+		color: #fff;
+		white-space: nowrap;
+	}
+	.ps-mini-pill-sleep-menu button:hover,
+	.ps-mini-pill-sleep-menu button:focus-visible {
+		background: rgba(255, 255, 255, 0.1);
+		outline: none;
+	}
 	/* Live pulse dot: now-playing heartbeat next to the transport. Follows the album
 	   accent when one is sampled (--ps-pill-accent), signature red otherwise. */
 	.ps-live-dot {

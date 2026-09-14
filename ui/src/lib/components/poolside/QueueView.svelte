@@ -5,6 +5,7 @@
 	import { TrashIcon, PlayIcon, ArrowUp02Icon, ArrowDown02Icon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import { playback, toast } from '$lib/player.svelte';
+	import { lt } from '$lib/lt.svelte';
 	import { isSwipe, shouldRemove } from '$lib/swipe';
 	import { burst } from '$lib/fx';
 	import RadioMoods from '$lib/components/RadioMoods.svelte';
@@ -14,12 +15,24 @@
 	const q = $derived(playback.queue);
 	const items = $derived(q.items);
 	const currentIdx = $derived(q.currentIndex);
+	// Audit 12: guests must not reorder/clear — the session host owns the queue.
+	const isGuest = $derived(lt.role === 'guest');
 
 	function playAt(i: number) {
 		api.playIndex(i).catch((e) => toast.error(String(e)));
 	}
 	function removeAt(i: number) {
-		api.removeFromQueue(i).catch((e) => toast.error(String(e)));
+		if (isGuest) return;
+	 const taken = items[i];
+		api.removeFromQueue(i)
+			.then(() => {
+				if (!taken) return;
+				// Undo restores right after the current track (where upcoming items live).
+				toast.action('Removed from queue', 'Undo', () => {
+					api.playNext([taken]).catch((e) => toast.error(String(e)));
+				});
+			})
+			.catch((e) => toast.error(String(e)));
 	}
 	// Horizontal swipe-to-remove on upcoming rows (playing row excluded — the backend
 	// guards it too). Window-level listeners + no pointer capture, same lesson as the
@@ -35,7 +48,7 @@
 	let swipeAte = false;
 
 	function onRowDown(e: PointerEvent, i: number) {
-		if (e.button !== 0) return;
+		if (e.button !== 0 || isGuest) return;
 		pressX = e.clientX;
 		pressY = e.clientY;
 		pressW = (e.currentTarget as HTMLElement).clientWidth || 300;
@@ -108,16 +121,18 @@
 		e.stopPropagation();
 	}
 	function moveUp(i: number) {
-		if (i <= currentIdx) return;
+		if (isGuest || i <= currentIdx) return;
 		api.moveQueueItem(i, i - 1).catch((e) => toast.error(String(e)));
 	}
 	function moveDown(i: number) {
-		if (i <= currentIdx) return;
+		// Audit 12: bounds-check — the last upcoming row has nowhere to move down to.
+		if (isGuest || i <= currentIdx || i >= items.length - 1) return;
 		api.moveQueueItem(i, i + 1).catch((e) => toast.error(String(e)));
 	}
 	function clearUpcoming() {
-		api.clearQueued().catch((e) => toast.error(String(e)));
-		toast.info('Upcoming tracks cleared');
+		if (isGuest) return;
+		// Audit 12: toast only after the backend confirms the clear.
+		api.clearQueued().then(() => toast.info('Upcoming tracks cleared')).catch((e) => toast.error(String(e)));
 	}
 	function burstFromEvent(e: MouseEvent) {
 		const r = (e.currentTarget as HTMLElement | null)
@@ -156,7 +171,7 @@
 				</button>
 			{/if}
 			{#if items.length > currentIdx + 1}
-				<button class="ps-ghost" onclick={clearUpcoming}>Clear upcoming</button>
+				<button class="ps-ghost" disabled={isGuest} title={isGuest ? 'Guests cannot clear the queue' : 'Clear upcoming tracks'} onclick={clearUpcoming}>Clear upcoming</button>
 			{/if}
 		</div>
 	</div>
@@ -215,13 +230,13 @@
 					<span class="sa">{item.artists}</span>
 					{#if item.duration}<span class="sd">{item.duration}</span>{/if}
 					<div class="ps-queue-actions">
-						<button class="ps-qbtn" onclick={() => moveUp(i)} title="Move up" aria-label="Move up">
+						<button class="ps-qbtn" disabled={isGuest} onclick={() => moveUp(i)} title="Move up" aria-label="Move up {item.title}">
 							<HugeiconsIcon icon={ArrowUp02Icon} />
 						</button>
-						<button class="ps-qbtn" onclick={() => moveDown(i)} title="Move down" aria-label="Move down">
+						<button class="ps-qbtn" disabled={isGuest} onclick={() => moveDown(i)} title="Move down" aria-label="Move down {item.title}">
 							<HugeiconsIcon icon={ArrowDown02Icon} />
 						</button>
-						<button class="ps-qbtn" onclick={(e) => { burstFromEvent(e); removeAt(i); }} title="Remove" aria-label="Remove from queue">
+						<button class="ps-qbtn" disabled={isGuest} onclick={(e) => { burstFromEvent(e); removeAt(i); }} title="Remove" aria-label="Remove {item.title} from queue">
 							<HugeiconsIcon icon={TrashIcon} />
 						</button>
 					</div>

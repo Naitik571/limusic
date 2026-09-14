@@ -11,10 +11,12 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { fade, fly } from 'svelte/transition';
+	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
-	let { text, sectionId, duration = 3200 }: { text: string; sectionId: string; duration?: number } =
+	// Durations mirror the shell: visible window matches the shell's 3600ms
+	// callout timer, entrance matches its 260ms scale-in.
+	let { text, sectionId, duration = 3600 }: { text: string; sectionId: string; duration?: number } =
 		$props();
 
 	let visible = $state(true);
@@ -33,7 +35,8 @@
 		class="ps-callout"
 		role="status"
 		aria-live="polite"
-		transition:fly={{ y: -10, duration: 360, easing: cubicOut }}
+		data-section={sectionId}
+		transition:fly={{ y: -10, duration: 260, easing: cubicOut }}
 	>
 		<span class="ps-callout-halo" aria-hidden="true"></span>
 		<span class="ps-callout-text">{text}</span>
@@ -44,10 +47,13 @@
 	.ps-callout {
 		position: absolute;
 		top: 84px;
-		left: 50%;
-		transform: translateX(-50%);
+		left: 0;
+		right: 0;
+		display: flex;
+		justify-content: center;
 		z-index: 30;
 		pointer-events: none;
+		padding: 0 16px;
 	}
 	.ps-callout-halo {
 		position: absolute;
@@ -58,14 +64,16 @@
 	}
 	.ps-callout-text {
 		position: relative;
-		font-family: Georgia, serif;
+		max-width: min(520px, 90vw);
+		text-align: center;
+		text-wrap: balance;
+		font-family: var(--serif, Georgia, serif);
 		font-style: italic;
-		font-size: 22px;
+		font-size: var(--ps-fs-lg, 18px);
 		font-weight: 600;
 		letter-spacing: 0.01em;
-		color: #ff5050;
+		color: var(--red, #ff5050);
 		text-shadow: 0 0 18px rgba(255, 70, 70, 0.7), 0 0 32px rgba(255, 70, 70, 0.4),
 			0 2px 0 rgba(0, 0, 0, 0.4);
-		white-space: nowrap;
 	}
 </style>

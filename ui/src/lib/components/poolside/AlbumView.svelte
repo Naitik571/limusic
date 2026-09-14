@@ -13,10 +13,12 @@
 	import { Spring } from 'svelte/motion';
 	import { untrack } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
-	import { ArrowLeft01Icon, PlayIcon, PauseIcon } from '@hugeicons/core-free-icons';
+	import { ArrowLeft01Icon, PlayIcon, PauseIcon, FavouriteIcon, Download01Icon } from '@hugeicons/core-free-icons';
 	import * as api from '$lib/api';
 	import type { BrowseItem, SongItem } from '$lib/api';
-	import { playback, toast } from '$lib/player.svelte';
+	import { playback, toast, isLiked, toggleLike, downloadedIds } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
+	import TrackMenu from '../TrackMenu.svelte';
 	import Vinyl from './Vinyl.svelte';
 
 	let {
@@ -112,6 +114,26 @@
 		} catch (e) {
 			toast.error(String(e));
 		}
+	}
+
+	// Audit 20: the hero button pauses when this album is the one playing,
+	// otherwise it starts the album.
+	const heroPlaying = $derived(isPlayingThis && !playback.paused);
+	function onHeroPlay() {
+		if (isPlayingThis) {
+			api.togglePause().catch((e) => toast.error(String(e)));
+		} else {
+			onPlayAlbum(album);
+		}
+	}
+
+	// Audit 16: css:* custom-cover tokens resolve to '' (thumbnail fallback).
+	function realArt(a: BrowseItem): string {
+		const u = artFor(a);
+		return u.startsWith('css:') ? '' : u;
+	}
+	function sizedArt(a: BrowseItem, px: number): string {
+		return thumb(realArt(a) || null, px) ?? '';
 	}
 
 	// ====================================================================
@@ -219,7 +241,25 @@
 	}
 
 	function fmtDur(s: string | undefined): string {
-		return s || '';
+		// Audit 29: h:mm:ss durations. Stored durations are strings — either plain
+		// seconds ("245") or already clock-formatted ("4:05", "1:02:30", from YTM).
+		if (!s) return '';
+		const raw = s.trim();
+		if (/^\d+(\.\d+)?$/.test(raw)) {
+			const t = Math.max(0, Math.floor(Number(raw)));
+			const h = Math.floor(t / 3600);
+			const m = Math.floor((t % 3600) / 60);
+			const sec = t % 60;
+			return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+		}
+		const parts = raw.split(':').map(Number);
+		if (parts.some((p) => Number.isNaN(p))) return raw;
+		let total = 0;
+		for (const p of parts) total = total * 60 + p;
+		const h = Math.floor(total / 3600);
+		const m = Math.floor((total % 3600) / 60);
+		const sec = total % 60;
+		return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 	}
 </script>
 
@@ -231,7 +271,7 @@
 	<!-- Hero: cover + meta + play button, all in a clean vertical flow -->
 	<div class="ps-alb-hero">
 		<div class="ps-alb-cover">
-			<img decoding="async" src={artFor(album)} alt={album.title} />
+			<img decoding="async" src={sizedArt(album, 720)} alt={album.title} />
 			{#if album.id.startsWith('LOCALALBUM:')}
 				<div class="ps-alb-cover-badge">LOCAL</div>
 			{/if}
@@ -243,9 +283,9 @@
 				<p class="ps-alb-artist">{album.subtitle}</p>
 			{/if}
 			<div class="ps-alb-actions">
-				<button class="ps-aqua ps-alb-play" onclick={() => onPlayAlbum(album)} aria-label="Play album">
-					<HugeiconsIcon icon={isPlayingThis && !playback.paused ? PauseIcon : PlayIcon} class="w-3.5 h-3.5" />
-					{isPlayingThis && !playback.paused ? 'PAUSE' : 'PLAY ALBUM'}
+				<button class="ps-aqua ps-alb-play" onclick={onHeroPlay} aria-label={heroPlaying ? 'Pause album' : 'Play album'}>
+					<HugeiconsIcon icon={heroPlaying ? PauseIcon : PlayIcon} class="w-3.5 h-3.5" />
+					{heroPlaying ? 'PAUSE' : 'PLAY ALBUM'}
 				</button>
 				<button class="ps-ghost" onclick={onOpenCustom}>Add custom CD cover</button>
 			</div>
@@ -285,6 +325,8 @@
 			<div class="ps-empty">This album has no tracks.</div>
 		{:else}
 			{#each tracks as t, i (t.video_id + i)}
+				{@const liked = isLiked(t)}
+				{@const downloaded = downloadedIds.has(t.video_id)}
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 				<div
 					class="ps-alb-track {playingIndex === i ? 'is-playing' : ''}"
@@ -304,7 +346,32 @@
 					</span>
 					<span class="ps-alb-track-title">{t.title}</span>
 					<span class="ps-alb-track-artist">{t.artists ?? ''}</span>
+					{#if downloaded}
+						<span class="ps-alb-track-dl" title="Downloaded" aria-label="Downloaded">
+							<HugeiconsIcon icon={Download01Icon} class="w-3 h-3" />
+						</span>
+					{/if}
 					<span class="ps-alb-track-dur">{fmtDur(t.duration)}</span>
+					<span
+						class="ps-alb-track-tools"
+						onclick={(e) => e.stopPropagation()}
+						onkeydown={(e) => e.stopPropagation()}
+						role="presentation"
+					>
+						<button
+							class="ps-alb-track-like {liked ? 'is-liked' : ''}"
+							onclick={(e) => {
+								e.stopPropagation();
+								toggleLike(t);
+							}}
+							title={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+							aria-label={liked ? 'Remove from Liked Songs' : 'Save to Liked Songs'}
+							aria-pressed={liked}
+						>
+							<HugeiconsIcon icon={FavouriteIcon} class="w-3.5 h-3.5" />
+						</button>
+						<TrackMenu song={t} triggerClass="ps-alb-track-menu" />
+					</span>
 				</div>
 			{/each}
 		{/if}
@@ -346,14 +413,14 @@
 						}}
 						onmouseleave={() => (tip = '')}
 					>
-						<div class="cov"><img decoding="async" loading="lazy" src={artFor(c.a)} alt={c.a.title} draggable="false" /></div>
+						<div class="cov"><img decoding="async" loading="lazy" src={sizedArt(c.a, 540)} alt={c.a.title} draggable="false" /></div>
 						{#if c.abs < 0.5}
 							<div class="play-chip" title="Play this album">
 								<HugeiconsIcon icon={PlayIcon} class="w-3.5 h-3.5" />
 							</div>
 						{/if}
 						<div class="reflection" aria-hidden="true">
-							<img decoding="async" loading="lazy" src={artFor(c.a)} alt="" draggable="false" />
+							<img decoding="async" loading="lazy" src={sizedArt(c.a, 540)} alt="" draggable="false" />
 						</div>
 					</div>
 				{/each}
@@ -366,6 +433,47 @@
 <style>
 	.ps-fan { touch-action: pan-y; }
 	.ps-fan.dragging { cursor: grabbing; }
+	/* Audit 29: per-row like + menu tools; the downloaded badge reuses .ps-alb-track-dur flow. */
+	.ps-alb-track-tools {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		margin-left: auto;
+	}
+	.ps-alb-track-like {
+		all: unset;
+		cursor: pointer;
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		opacity: 0.55;
+		transition: opacity 0.15s, transform 0.15s;
+	}
+	.ps-alb-track-like:hover { opacity: 1; transform: scale(1.1); }
+	.ps-alb-track-like.is-liked { color: #ff5d7a; opacity: 1; }
+	.ps-alb-track-like.is-liked svg { fill: currentColor; }
+	.ps-alb-track-dl {
+		display: inline-grid;
+		place-items: center;
+		opacity: 0.6;
+	}
+	.ps-alb-track-menu {
+		all: unset;
+		cursor: pointer;
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		opacity: 0.55;
+	}
+	.ps-alb-track-menu:hover { opacity: 1; }
+	.ps-alb-track:hover .ps-alb-track-menu,
+	.ps-alb-track:focus-within .ps-alb-track-menu {
+		opacity: 1;
+	}
 	.ps-fcard { will-change: transform, filter; }
 	.ps-fcard .cov {
 		position: absolute; inset: 0 0 auto 0;
