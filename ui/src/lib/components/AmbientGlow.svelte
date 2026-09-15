@@ -25,22 +25,40 @@
 		document.documentElement.style.removeProperty('--glow-3');
 	}
 
+	let sampleSeq = 0;
+	let sampleTimer: ReturnType<typeof setTimeout> | undefined;
 	function sample(url: string | null | undefined) {
+		const my = ++sampleSeq;
+		clearTimeout(sampleTimer);
 		if (!url || url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url)) {
 			clearGlow();
 			return;
 		}
-		const img = new Image();
-		img.crossOrigin = 'anonymous';
-		img.onload = () => {
-			try {
+		// Debounce: skip-spam fires a sample per track; only the settled one decodes.
+		sampleTimer = setTimeout(() => {
+			if (my !== sampleSeq) return;
+			const img = new Image();
+			img.crossOrigin = 'anonymous';
+			img.onload = () => {
+				// Stale load (track changed mid-decode) must not repaint over current glow.
+				if (my !== sampleSeq) return;
+				sampleLoaded(img);
+			};
+			img.onerror = () => {
+				if (my === sampleSeq) clearGlow();
+			};
+			img.src = url;
+		}, 150);
+	}
+	function sampleLoaded(img: HTMLImageElement) {
+		try {
 				const canvas = document.createElement('canvas');
-				canvas.width = 8;
-				canvas.height = 8;
+				canvas.width = 16;
+				canvas.height = 16;
 				const ctx = canvas.getContext('2d', { willReadFrequently: true });
 				if (!ctx) return;
-				ctx.drawImage(img, 0, 0, 8, 8);
-				const data = ctx.getImageData(0, 0, 8, 8).data;
+				ctx.drawImage(img, 0, 0, 16, 16);
+				const data = ctx.getImageData(0, 0, 16, 16).data;
 				// Bucket by 3-bit-per-channel quantization; weight by luminance so bright areas
 				// (typically the art's real colours) win over black corners.
 				const buckets = new Map<number, { r: number; g: number; b: number; w: number; n: number }>();
@@ -85,9 +103,6 @@
 			} catch {
 				clearGlow();
 			}
-		};
-		img.onerror = clearGlow;
-		img.src = url;
 	}
 
 	$effect(() => {
