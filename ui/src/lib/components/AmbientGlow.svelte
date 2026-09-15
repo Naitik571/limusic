@@ -9,7 +9,9 @@
 	//
 	// Local-library artwork (asset-protocol paths) can't be sampled cross-origin, so those
 	// tracks keep the default accent glow (the CSS var fallbacks below).
+	import { onDestroy } from 'svelte';
 	import { playback } from '$lib/player.svelte';
+	import { thumb } from '$lib/thumb';
 
 	const DIST_THRESHOLD = 90; // squared-ish RGB distance a new pick must beat to join the set
 
@@ -35,6 +37,10 @@
 			return;
 		}
 		// Debounce: skip-spam fires a sample per track; only the settled one decodes.
+		// The 120px variant is plenty for an 8×8 readback — and it is the size the player
+		// bar and the artwork tint already have loaded, so this costs no extra fetch or
+		// decode. (Local paths returned above, before any URL rewrite.)
+		const sized = thumb(url, 120) ?? url;
 		sampleTimer = setTimeout(() => {
 			if (my !== sampleSeq) return;
 			const img = new Image();
@@ -47,9 +53,10 @@
 			img.onerror = () => {
 				if (my === sampleSeq) clearGlow();
 			};
-			img.src = url;
+			img.src = sized;
 		}, 150);
 	}
+	onDestroy(() => clearTimeout(sampleTimer));
 	function sampleLoaded(img: HTMLImageElement) {
 		try {
 				const canvas = document.createElement('canvas');

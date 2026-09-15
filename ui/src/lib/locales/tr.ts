@@ -1,6 +1,28 @@
 import type { Translations } from './en';
 
 export const tr: Translations = {
+	selection: {
+		actions: 'Seçili parça eylemleri',
+		count: '{count} seçildi',
+		selected: 'Seçildi',
+		not_selected: 'Seçilmedi',
+		hidden: '{count} gizli',
+		enter: 'Parça seç',
+		exit: 'Seçim modundan çık',
+		hint: 'Üzerinde işlem yapmak için parça seçin',
+		select_all: 'Tümünü seç ({count})',
+		clear: 'Temizle',
+		track: '{title}. Seçmek için Boşluk, çalmak için Enter.',
+		track_guest: '{title}. Seçmek için Boşluk, oturum sırasına eklemek için Enter.',
+		select_track: '{title} parçasını seç',
+		lost: '{count} seçili parça artık bu listede değil.',
+		pending: 'Yüklenmekte olan sayfalarda {count} seçili parça aranıyor.',
+		local_playlist: 'Yerel dosyalar bir YouTube çalma listesine eklenemez.',
+		account_changed: 'Hesap değiştiği için şarkı ekleme durduruldu.',
+		playlist_partial: '{playlist} listesine {added} eklendi; {duplicates} zaten vardı; {remaining} onaylanmadı. {error}',
+		move: 'Başka bir çalma listesine taşı',
+		remove: 'Bu çalma listesinden kaldır'
+	},
 	common: {
 		loading: 'Yükleniyor...',
 		retry: 'Tekrar Dene',
@@ -63,6 +85,8 @@ export const tr: Translations = {
 		command_description: 'Şarkı, albüm, sanatçı ve çalma listesi ara',
 		shuffle_all: 'Hepsini karıştır',
 		play_all: 'Hepsini oynat',
+		top_result: 'Top result',
+		all_results_for: 'All results for “{query}”'
 	},
 	nav: {
 		home: 'Ana Sayfa',
@@ -79,6 +103,13 @@ export const tr: Translations = {
 		choose_channel_desc: 'Kitaplık, beğeniler ve çalma listeleri bu kanalı kullanacak. Daha sonra tekrar değiştirebilirsiniz.',
 		cancel_sign_in: 'Oturum açmayı iptal et',
 		sign_in_hint: 'Google hesabınızla giriş yaparak YouTube Music kitaplığınıza ve çalma listelerinize ulaşabilirsiniz.',
+		add_account: 'Hesap ekle',
+		remove_account: 'Hesap sil',
+		remove_account_title: 'Limusic\'ten sil?',
+		remove_account_desc: '{name} yalnızca bu listeden kaldırıldı. Google hesabınız bu eylemden etkilenmedi ve istediğiniz zaman onunla giriş yapabilirsiniz.',
+		saved_accounts_hint: 'Geçmek için kaydedilmiş bir hesabı seçin.',
+		history: 'Geçmiş',
+		no_channels: 'YouTube did not return any selectable channels.'
 	},
 	player: {
 		play: 'Oynat',
@@ -127,6 +158,12 @@ export const tr: Translations = {
 		delete_playlist: 'Çalma listesini sil',
 		remove_dislike: 'Beğenmeyi kaldır',
 		add_to_playlist: 'Çalma listesine ekle',
+		theater_mode: 'Tiyatro modu',
+		playing_from: 'Şuradan çalıyor',
+		exit_theater: 'Tiyatro modundan çık',
+		block_artist: 'Sanatçıyı engelle',
+		pin_to_top: 'En üste sabitle',
+		unpin: 'Sabitlemeyi kaldır'
 	},
 	home: {
 		good_morning: 'Günaydın',
@@ -145,11 +182,14 @@ export const tr: Translations = {
 		hide_section: '{title} bölümünü gizle',
 		feed_empty: 'Ana sayfanız bu sefer boş döndü',
 		signed_out_hint: 'Giriş yapın ve ana sayfanız dinlediklerinizle oluşturulan miksler ve çalma sildeleriyle dolsun.',
+		add_to_end: 'Add to the end'
 	},
 	artist: {
 		subscribe: 'Abone ol',
 		subscribed: 'Abone olundu',
-		top_songs: 'En popüler şarkılar'
+		top_songs: 'En popüler şarkılar',
+		subscribe_to: '{name} isimli sanatçıyı takip et',
+		unsubscribe_from: '{name} isimli sanatçıyı takibi bırak'
 	},
 	library: {
 		title: 'Kitaplık',
@@ -183,7 +223,19 @@ export const tr: Translations = {
 		every_song_saved: 'Kaydettiğin bütün şarkılar tek bir listede',
 		every_upload: 'YouTube Music’a yüklediğin bütün parçalar',
 		no_uploads: 'Henüz bir şey yüklemedin. music.youtube.com üzerinden yüklediğin şarkılar burada görünür.',
-		uploads_signed_out: 'YouTube Music’a yüklediğin müzikleri görmek için giriş yap.'
+		uploads_signed_out: 'YouTube Music’a yüklediğin müzikleri görmek için giriş yap.',
+		no_upload_albums: 'Henüz yüklenmiş bir albüm yok. music.youtube.com üzerinde yüklediğiniz albümler burada belirecek.',
+		songs_signed_out: 'Sign in to see the songs saved in your YouTube Music library. Music on this machine is in the Local tab.',
+		no_library_songs: 'No songs in your library yet. Hit the ⋯ on a song and save it, or like it, and it lands here.',
+		empty_signed_out: 'Nothing saved yet. Open a playlist or album and hit Save to library, or sign in for the one on your account.',
+		empty: 'Your library is empty.',
+		no_saved_playlists: 'No playlists yet. Open one and hit Save to library to keep it here.',
+		no_saved_albums: 'No saved albums yet. Open an album and hit Save to library.',
+		no_saved_artists: 'No artists yet. Save one from its page to keep it here.',
+		no_artists: 'No artists yet. They show up once you save their songs or albums.',
+		on_repeat: 'On Repeat',
+		on_repeat_subtitle: '{count} songs you\'ve played most this month',
+		songs_count: '{count} songs'
 	},
 	local: {
 		scanning: 'Klasör taranıyor...',
@@ -194,6 +246,19 @@ export const tr: Translations = {
 		songs_count: 'Şarkılar ({count})',
 		add_folder: 'Klasör ekle',
 		pick_folder_dialog: 'Müzik klasörünü seç',
+		folders: 'Folders',
+		folders_hint: 'Music in these folders plays without an internet connection.',
+		no_folders: 'No folders yet. Add the one your music sits in and it shows up here.',
+		nothing_playable: 'Nothing playable found in those folders yet. Looking for mp3, flac, m4a, aac, ogg, opus, wav, wma, aiff, ape, wv and mka files.'
+	},
+	history: {
+		title: 'Geçmiş',
+		subtitle: 'YouTube Music\'te çaldığınız her şey burada, önce en yenisi.',
+		search: 'Geçmişinizde arayın',
+		matching: '{count} bulundu',
+		songs_count: '{count} şarkı',
+		empty: 'Burada henüz bir şey yok. Giriş yaptıktan sonra dinledikleriniz bu sayfada belirecek.',
+		signed_out: 'YouTube Music dinleme geçmişinizi görmek için giriş yapın.'
 	},
 	settings: {
 		title: 'Ayarlar',
@@ -223,7 +288,10 @@ export const tr: Translations = {
 			network: 'Ağ',
 			storage: 'Depolama',
 			updates: 'Güncellemeler',
-			whats_new: 'Yenilikler'
+			whats_new: 'Yenilikler',
+			blocked: 'Engelli sanatçılar',
+			report: 'Sorun bildir',
+			support: 'Destek'
 		},
 		general: {
 			language: 'Arayüz dili',
@@ -244,7 +312,9 @@ export const tr: Translations = {
 			stream_clients_hint:
 				'Bir istemciyi kapatarak akış çözümlemesinde atlanmasını sağlayın. {var} ortam değişkeni bu ayarı geçersiz kılar.',
 			sounds: 'Arayüz sesleri',
-			sounds_hint: 'Düğmeler ve bildirimler için kısa tıklama ve zil sesleri.'
+			sounds_hint: 'Düğmeler ve bildirimler için kısa tıklama ve zil sesleri.',
+			system_titlebar: 'Sistem başlık çubuğunu kullanın',
+			system_titlebar_hint: 'Masaüstünüz pencere çerçevesini ve butonları çizsin. Limusic kendi araç çubuğunu onun altında saklar.'
 		},
 		themes: {
 			accent_themes: 'Vurgu Temaları',
@@ -284,7 +354,7 @@ export const tr: Translations = {
 			font_filter: 'Yazı Tipleri',
 			experimental: 'Deneysel',
 			preset: 'Hazır tema',
-			preset_hint: 'Midnight gerçek siyah varsayılandır; Aurora kapağı takip eder, Mono gri tonlamadır, Canopy Light sıcak kâğıttır, Catppuccin pasteldir.',
+			preset_hint: 'Midnight gerçek siyah varsayılandır; Aurora kapağı takip eder, Mono gri tonlamadır, Tokyo Night fırtına mavisidir, Canopy Light sıcak kâğıttır, Catppuccin pasteldir.',
 			theme_midnight: 'Midnight',
 			theme_midnight_desc: 'Gerçek siyah OLED + elektrik moru — varsayılan',
 			theme_aurora: 'Aurora',
@@ -295,11 +365,14 @@ export const tr: Translations = {
 			theme_canopy_light_desc: 'Sıcak kâğıt açık tema — mürekkep metin, derin vurgu',
 			theme_catppuccin: 'Catppuccin',
 			theme_catppuccin_desc: 'Pastel topluluk paleti — açık + koyu',
+			theme_tokyonight: 'Tokyo Night',
+			theme_tokyonight_desc: 'Fırtına mavisi koyu tema — soluk indigo vurgu',
 			preset_meta_midnight: 'Koyu · mor · gerçek siyah',
 			preset_meta_aurora: 'Koyu · pembe · yoğun yıkama',
 			preset_meta_mono: 'Koyu · beyaz · keskin',
 			preset_meta_canopy_light: 'Açık · sıcak · yumuşak',
 			preset_meta_catppuccin: 'Koyu · pastel · yumuşak',
+			preset_meta_tokyonight: 'Koyu · indigo · yumuşak',
 			preset_applies_hint: 'Hazır tema tüm görünümü uygular — mod, vurgu, yıkama ve şekil. Sonrasında istediğini değiştir; Sıfırla hazır temaya döndürür.',
 			wash: 'Yıkama yoğunluğu',
 			wash_hint: 'Vurgunun yüzeylere ne kadar karıştığı. 0 nötr, 100 tam renklidir.',
@@ -313,6 +386,11 @@ export const tr: Translations = {
 			geometry_soft: 'Yumuşak',
 			retired_hues: 'Emekli tonlar',
 			retired_hues_hint: 'Tek tıkla emekli vurgular. Özel vurgu geçersiz kılmasını yazar.',
+			app_icon: 'Uygulama simgesi',
+			app_icon_hint: 'Bir PNG görev çubuğu, sistem tepsisi ve bu penceredeki simgenin yerini alır. Kısayollar ve dosya yöneticisi yüklü olanı kullanır.',
+			app_icon_pick: 'Seçin…',
+			app_icon_dialog: 'Bir uygulama simgesi seçin',
+			app_icon_filter: 'PNG görsel'
 		},
 		playback: {
 			audio_quality: 'Ses kalitesi',
@@ -330,7 +408,16 @@ export const tr: Translations = {
 			hide_videos: 'Aramada videoları gizle',
 			hide_videos_hint: 'Arama sonuçlarında yalnızca şarkıları ve resmi albümleri gösterir.',
 			lyrics_provider: 'Senkronize şarkı sözleri (Boidu/LRCLIB)',
-			lyrics_provider_hint: 'Çalan şarkı için topluluk destekli senkronize sözleri çeker.'
+			lyrics_provider_hint: 'Çalan şarkı için topluluk destekli senkronize sözleri çeker.',
+			sticky_shuffle: 'Karıştırmayı sıralar arasında açık tut',
+			sticky_shuffle_hint: 'Kapalıyken karıştırma yalnızca çalmakta olana uygulanır: sonrasında açılan albüm veya çalma listesi kendi sırasıyla çalar.',
+			blocked_artists: 'Engelli sanatçılar',
+			blocked_artists_hint: 'Engelli sanatçılar, radiodan, otomatik çalmadan ve önerilerden çıkarılır. Açtığınız çalma listeleri ile albümlerse içlerindeki her şeyi çalmayı sürdürür.',
+			blocked_artists_empty: 'Henüz kimse engellenmedi. Parçanın ··· menüsünden "Sanatçıyı engelle" seçeneğini kullanın.',
+			blocked_artists_remove: '{name} isimli sanatçının engelini kaldır',
+			blocked_artists_show_all: 'Engelli {count} sanatçıyı göster',
+			blocked_artists_show_less: 'Daha az göster',
+			blocked_artists_copy: 'JSON dosyasını kopyala'
 		},
 		data: {
 			clear_cache: 'Görsel ve akış önbelleğini temizle',
@@ -347,6 +434,21 @@ export const tr: Translations = {
 			install_update: 'Yükle ve Yeniden Başlat',
 			download_page: 'İndirme sayfasını aç',
 			changelog: 'Değişiklik Günlüğü ve Sürüm Notları',
+			update_check_failed: 'Güncelleme denetimi başarısız oldu: {error}',
+			update_packaged: 'Bu derleme paket yöneticisiyle kuruldu, aynı şekilde güncelleyin.',
+			copy: 'Kopyala',
+			diagnostics: 'Tanılama bilgisini kopyala',
+			diagnostics_hint: 'Sürümünüz, bu sistem ve uygulama günlüğünün son bölümü; hata bildirimine yapıştırmaya hazır. Çerezler, jetonlar, imzalı bağlantılar, dosya yolları ve IP adresleri önce temizlenir.',
+			diagnostics_copied: 'Kopyalandı',
+			diagnostics_save: 'Tanılama bilgisini dosyaya kaydet',
+			diagnostics_save_hint: 'Aynı metin .txt olarak; yapıştırmak yerine bildirime sürükleyin.',
+			diagnostics_saved: 'Kaydedildi',
+			report_issue: 'Hata formunu aç',
+			report_issue_hint: 'GitHub tarayıcınızda açılır, sürüm ve sistem doldurulmuş olarak gelir.',
+			report_issue_button: 'Bildir',
+			kofi: 'Bana bir kahve ısmarla',
+			kofi_hint: 'Limusic ücretsiz ve ücretsiz kalacak. Bağışta bulunmak isteyenler Ko-fi\'den yapabilirler.',
+			kofi_button: 'Ko-fi\'yi aç'
 		}
 	},
 	dialogs: {
@@ -628,5 +730,23 @@ export const tr: Translations = {
 		already_in: '{playlist} çalma listesinde zaten var',
 		added_songs: '{playlist} çalma listesine {count} parça eklendi',
 		added_one: '{playlist} çalma listesine eklendi',
+		already_in_library: 'Zaten kitaplığınızda',
+		app_icon_set: 'Uygulama simgesi değişti',
+		blocked_copied: '{count} sayıda engellenmiş sanatçı JSON olarak kopyalandı',
+		blocked_artist: '{name} engellendi',
+		unblocked_artist: '{name} isimli sanatçının engeli kaldırıldı',
+		added_to_shortcuts: 'Added to shortcuts',
+		already_in_shortcuts: 'Already in shortcuts',
+		playing_next_one: 'Playing next',
+		playing_next: '{count} songs play next',
+		added_to_queue_one: 'Added to queue',
+		added_to_queue: 'Added {count} songs to the queue',
+		liked: 'Added to liked songs',
+		disliked: 'Disliked',
+		rating_removed: 'Rating removed',
+		subscribed: 'Subscribed to {name}',
+		unsubscribed: 'Unsubscribed',
+		signed_in_as: 'Signed in as {name}',
+		switched_to: 'Switched to {name}'
 	}
 };

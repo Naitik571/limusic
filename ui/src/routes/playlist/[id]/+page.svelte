@@ -14,8 +14,6 @@
 		ArrowDownWideNarrowIcon,
 		DashboardSquare02Icon,
 		ListRestartIcon,
-		Playlist02Icon,
-		Move01Icon,
 		Download01Icon,
 		PlusSignIcon,
 		RefreshIcon,
@@ -27,6 +25,9 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import { Search01Icon } from '@hugeicons/core-free-icons';
 	import TrackRow from '$lib/components/TrackRow.svelte';
+	import TrackSelectionBar from '$lib/components/TrackSelectionBar.svelte';
+	import TrackSelectButton from '$lib/components/TrackSelectButton.svelte';
+	import { trackSelection } from '$lib/selection.svelte';
 	import EditPlaylistDialog from '$lib/components/EditPlaylistDialog.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -39,19 +40,19 @@
 	import { anchorMenu, claimMenu, ctxHost, fitMenu, nextMenuId, NO_ANCHOR, onOtherMenuClaimed } from '$lib/menu';
 	import {
 		addPick,
+		auth,
 		enqueue,
 		playback,
 		openAddToPlaylist,
+		openMoveToPlaylist,
 		playFrom,
 		startRadio,
-			toast,
+		toast,
 		bumpLibraryTrackCount,
 		patchLibraryPlaylist,
 		lastPlaylistAdd,
 		lastPlaylistMove,
 		noteLike,
-		openAddManyToPlaylist,
-		openMoveToPlaylist,
 		playSong,
 		downloadedIds,
 		loadDownloadedIds,
@@ -352,7 +353,6 @@
 		const prev = pl.items;
 		const keys = new Set(dupes.map(selKey));
 		pl = { ...pl, items: pl.items.filter((t) => !keys.has(selKey(t))) };
-		clearSelection();
 		try {
 			for (const t of dupes) {
 				if (isLiked) {
@@ -757,8 +757,6 @@
 	$effect(() => onOtherMenuClaimed(menuId, () => (menuOpen = false)));
 	const sortMenuId = nextMenuId();
 	$effect(() => onOtherMenuClaimed(sortMenuId, () => (sortOpen = false)));
-	const selMenuId = nextMenuId();
-	$effect(() => onOtherMenuClaimed(selMenuId, () => (selMenuOpen = false)));
 
 	function openMenu(e: MouseEvent) {
 		anchor = anchorMenu(e);
@@ -821,125 +819,76 @@
 		}
 	}
 
-	// --- Multi-select + right-click actions -------------------------------
-	// Ctrl/Cmd-click toggles a row, Shift-click ranges from the anchor, a plain click plays and
-	// clears the selection, right-click selects exactly the row under the cursor and opens the
-	// action menu. Rows are keyed by set_video_id (unique per playlist row) so duplicates and
-	// just-added optimistic rows don't collide; liked music falls back to video_id.
+	// --- Multi-select (upstream selection system) -------------------------------
+	// One list-owned keyed selection: rows address occurrences (set_video_id), so duplicate
+	// rows and just-added optimistic rows select independently. The rows on screen are the
+	// sorted view narrowed by the type-anywhere box; hidden selections survive filtering.
+	// Select-all walks the pages still missing first (shared reentrant loadAll).
+	// `selKey` still identifies dedupe/move removals below by playlist occurrence.
 	const selKey = (t: SongItem) => t.set_video_id ?? t.video_id;
-	let selected = $state<Set<string>>(new Set());
-	let selAnchor = $state(-1);
-	let selMenuOpen = $state(false);
-	let selX = $state(0);
-	let selY = $state(0);
-
-	const selectedItems = $derived(pl?.items.filter((t) => selected.has(selKey(t))) ?? []);
-	const canRemoveSel = $derived(
-		selectedItems.length > 0 && selectedItems.every((t) => isLiked || (editable && t.set_video_id))
+	const selection = trackSelection(
+		() => sortedItems,
+		() => searched.map(({ item }) => item),
+		() => `${auth.epoch}:${id}`,
+		() => !pl?.continuation,
+		() => undefined,
+		loadAll
 	);
-	const canMoveSel = $derived(selectedItems.length > 0 && editable);
 
-	function clearSelection() {
-		selected = new Set();
-		selAnchor = -1;
-		selMenuOpen = false;
-	}
-
-	// Capture phase: modifier clicks select instead of playing; anything else plays (and, once
-	// a selection exists, a plain click means "done with that" â€” clear it).
-	function onRowClickCapture(e: MouseEvent, i: number) {
-		if (!pl) return;
-		const key = selKey(pl.items[i]);
-		if (e.ctrlKey || e.metaKey || e.shiftKey) {
-			e.preventDefault();
-			e.stopPropagation();
-			const next = new Set(selected);
-			if (e.shiftKey && selAnchor >= 0) {
-				const a = Math.min(selAnchor, i);
-				const b = Math.max(selAnchor, i);
-				if (!e.ctrlKey && !e.metaKey) next.clear(); // plain Shift replaces the selection
-				for (let j = a; j <= b; j++) next.add(selKey(pl.items[j]));
-			} else {
-				if (next.has(key)) next.delete(key);
-				else next.add(key);
-				selAnchor = i;
-			}
-			selected = next;
-			return;
-		}
-		if (selected.size) clearSelection();
-	}
-
-	function onRowContextMenu(e: MouseEvent, i: number) {
-		if (!pl) return;
+	// Fork behavior kept: Ctrl/Cmd/Shift-click selects straight from the row, entering select
+	// mode first when it isn't on yet. Inside select mode the row owns clicks (TrackRow):
+	// a plain click there selects, Shift ranges, and Enter is what still plays.
+	function onRowClickCapture(e: MouseEvent, n: number) {
+		if (!pl || selection.active) return;
+		if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
 		e.preventDefault();
-		const key = selKey(pl.items[i]);
-		if (!selected.has(key)) {
-			selected = new Set([key]); // right-click selects exactly this row
-			selAnchor = i;
-		}
-		selX = e.clientX;
-		selY = e.clientY;
-		selMenuOpen = true;
-		claimMenu(selMenuId);
+		e.stopPropagation();
+		const key = selection.visibleKeys[n];
+		if (key === undefined) return;
+		selection.enter();
+		selection.toggle(key, e.shiftKey);
 	}
 
-	function playSelected(items: SongItem[]) {
-		if (!pl || !items.length) return;
-		playFrom(asItem(), items, 0, isOnRepeat ? undefined : id);
-	}
-	function queueSelected(items: SongItem[]) {
-		if (items.length) enqueue(items, false);
-	}
-	async function removeSelected(items: SongItem[]) {
-		if (!pl || !items.length) return;
+	// Bulk remove/move (no upstream equivalent — kept from the fork's old bulk toolbar).
+	// Remove mirrors the single-row path: optimistic filter, per-item backend calls, revert.
+	async function removeSelected() {
+		if (!pl || !selection.count) return;
+		const items = [...selection.songs];
 		const removable = items.filter((t) => isLiked || t.set_video_id);
-		const keys = new Set(items.map(selKey));
+		if (!removable.length) return;
 		const prev = pl.items;
-		pl = { ...pl, items: pl.items.filter((t) => !keys.has(selKey(t))) }; // optimistic
-		clearSelection();
+		const keys = new Set(removable.map(selKey));
+		pl = { ...pl, items: pl.items.filter((t) => !keys.has(selKey(t))) };
+		selection.clear();
 		try {
 			for (const t of removable) {
-				if (isLiked) { await api.like(t.video_id, false); noteLike(t.video_id, false); }
-				else await api.removeFromPlaylist(id, t.video_id, t.set_video_id!);
+				if (isLiked) {
+					noteLike(t.video_id, false);
+					await api.like(t.video_id, false);
+				} else {
+					await api.removeFromPlaylist(id, t.video_id, t.set_video_id!);
+				}
 			}
 			if (!isLiked) bumpLibraryTrackCount(id, -removable.length);
+			cacheCurrent();
 			toast.success(
 				removable.length === 1
-					? 'Removed from ' + (isLiked ? 'Liked Music' : 'playlist')
-					: `Removed ${removable.length} songs`
+					? isLiked
+						? 'Removed from Liked Music'
+						: 'Removed from playlist'
+					: `Removed ${removable.length} tracks`
 			);
-			cacheCurrent();
 		} catch (e) {
-			pl = { ...pl, items: prev }; // revert
+			pl = { ...pl, items: prev };
 			cacheCurrent();
 			toast.error(String(e));
 		}
 	}
-
-	// Toolbar/menu entry points. Play/Queue snap the selection first (they consume it); Add/Move/
-	// Remove keep rows selected so a follow-up action is one click away.
-	function doPlaySel() {
-		const items = [...selectedItems];
-		clearSelection();
-		playSelected(items);
+	function moveSelected() {
+	 if (!pl || !selection.count) return;
+		openMoveToPlaylist([...selection.songs], id);
 	}
-	function doQueueSel() {
-		const items = [...selectedItems];
-		clearSelection();
-		queueSelected(items);
-	}
-	function doAddSel() {
-		openAddManyToPlaylist([...selectedItems]);
-		selMenuOpen = false;
-	}
-	function doMoveSel() {
-		openMoveToPlaylist([...selectedItems], id);
-		selMenuOpen = false;
-	}
-	function doRemoveSel() {
-		removeSelected([...selectedItems]); // clears internally
-	}
+	const canBulkEdit = $derived(!!pl && (editable || isLiked));
 
 	async function deleteThisPlaylist() {
 		try {
@@ -961,10 +910,9 @@
 				search = '';
 				searchInput?.blur();
 			}
-			clearSelection();
+			if (selection.active) selection.exit();
 			menuOpen = false;
 			sortOpen = false;
-			selMenuOpen = false;
 			return;
 		}
 		// Type-anywhere filter: printable alphanumerics focus the search input (Orchard behavior)
@@ -1147,6 +1095,10 @@
 							<HugeiconsIcon icon={MoreVerticalIcon} class="h-5 w-5 text-muted-foreground" />
 						</Button>
 					{/if}
+					<TrackSelectButton
+						{selection}
+						class="-ml-2 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition hover:bg-muted hover:text-foreground"
+					/>
 				</div>
 			</div>
 		</div>
@@ -1158,83 +1110,47 @@
 			ondragleave={() => (pageDrop = false)}
 			ondrop={dropOnPage}
 		>
-			{#if selected.size > 0}
-				<div
-					class="sticky top-0 z-20 -mx-4 mb-1 flex items-center gap-2 border-b bg-background/95 px-4 py-2 backdrop-blur"
-				>
-					<span class="px-1 text-sm font-medium">{selected.size} selected</span>
-					<Button size="sm" class="gap-1.5" onclick={doPlaySel} disabled={!selectedItems.length}>
-						<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play
+			<!-- Search inside the playlist: title, artist (and album). Sticky so it stays reachable
+			     on a long list. Bulk actions live in the floating selection bar, not here. -->
+			<div
+				class="sticky top-0 z-10 -mx-4 mb-1 flex items-center gap-2 border-b bg-background/95 px-4 py-2 backdrop-blur"
+			>
+				<HugeiconsIcon icon={Search01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
+				<Input
+					bind:ref={searchInput}
+					bind:value={search}
+					placeholder="Search songs, artists…"
+					class="h-8 flex-1"
+					aria-label="Search this playlist"
+				/>
+				{#if searching}
+					<Button variant="ghost" size="icon" aria-label="Clear search" onclick={() => (search = '')}>
+						<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-muted-foreground" />
 					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						class="gap-1.5"
-						onclick={doQueueSel}
-						disabled={!selectedItems.length}
-					>
-						<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						class="gap-1.5"
-						onclick={doAddSel}
-						disabled={!selectedItems.length}
-					>
-						<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlistâ€¦
-					</Button>
-					{#if canMoveSel}
-						<Button variant="outline" size="sm" class="gap-1.5" onclick={doMoveSel}>
-							<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlistâ€¦
-						</Button>
-					{/if}
-					{#if canRemoveSel}
-						<Button variant="destructive" size="sm" class="gap-1.5" onclick={doRemoveSel}>
-							<HugeiconsIcon icon={Delete02Icon} class="h-4 w-4" /> Remove
-						</Button>
-					{/if}
-					<div class="flex-1"></div>
-					<Button variant="ghost" size="icon" aria-label="Clear selection" onclick={clearSelection}>
-						<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4" />
-					</Button>
-				</div>
-			{:else}
-				<!-- Search inside the playlist: title, artist (and album). Sticky so it stays reachable
-				     on a long list; selecting rows swaps it for the selection toolbar above. -->
-				<div
-					class="sticky top-0 z-10 -mx-4 mb-1 flex items-center gap-2 border-b bg-background/95 px-4 py-2 backdrop-blur"
-				>
-					<HugeiconsIcon icon={Search01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
-					<Input
-						bind:ref={searchInput}
-						bind:value={search}
-						placeholder="Search songs, artists…"
-						class="h-8 flex-1"
-						aria-label="Search this playlist"
-					/>
-					{#if searching}
-						<Button variant="ghost" size="icon" aria-label="Clear search" onclick={() => (search = '')}>
-							<HugeiconsIcon icon={Cancel01Icon} class="h-4 w-4 text-muted-foreground" />
-						</Button>
-						<span class="shrink-0 text-xs text-muted-foreground">
-							{searchWalking ? `Searching all… ${shown.length} loaded` : `${searched.length} of ${shown.length}`}
-						</span>
-					{/if}
-				</div>
-			{/if}
-			{#each visibleSearched as { item, idx } (item.video_id + idx)}
-				<!-- The row is interactive by design (select/play/right-click); TrackRow inside
-				     provides the keyboard-accessible controls. -->
+					<span class="shrink-0 text-xs text-muted-foreground">
+						{searchWalking ? `Searching all… ${shown.length} loaded` : `${searched.length} of ${shown.length}`}
+					</span>
+				{/if}
+			</div>
+			<TrackSelectionBar
+				{selection}
+				from={pl.title ?? undefined}
+				onMove={editable && !isLiked ? moveSelected : undefined}
+				onRemove={canBulkEdit ? removeSelected : undefined}
+			/>
+			{#each visibleSearched as { item, idx }, n (item.video_id + idx)}
+				<!-- The row is interactive by design (modifier-click selects, plain click plays);
+				     TrackRow inside provides the keyboard-accessible controls. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="rounded-lg {selected.has(selKey(item)) ? 'bg-accent/20 ring-1 ring-primary/40' : ''}"
+					class="rounded-lg"
 					style="content-visibility: auto; contain-intrinsic-size: auto 3.5rem;"
-					onclickcapture={(e) => onRowClickCapture(e, idx)}
-					oncontextmenu={(e) => onRowContextMenu(e, idx)}
+					onclickcapture={(e) => onRowClickCapture(e, n)}
 				>
 					<TrackRow
 						song={item}
+						{selection}
+						selectionKey={selection.visibleKeys[n]}
 						index={idx}
 						active={item.video_id === nowId}
 						highlight={search}
@@ -1380,56 +1296,7 @@
 		</RadioGroup.Root>
 	</div>
 {/if}
-{#if selMenuOpen}
-	<button
-		class="fixed inset-0 z-40 cursor-default"
-		onclick={() => (selMenuOpen = false)}
-		aria-label="Close menu"
-	></button>
-	<div
-		class="fixed z-50 min-w-52 origin-top-left animate-in rounded-xl border-transparent glass-strong p-1 text-popover-foreground shadow-xl duration-150 fade-in-0 zoom-in-95"
-		style="left:{selX}px; top:{selY}px;"
-	>
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={doPlaySel}
-			disabled={!selectedItems.length}
-		>
-			<HugeiconsIcon icon={PlayIcon} class="h-4 w-4" /> Play
-		</button>
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={doQueueSel}
-			disabled={!selectedItems.length}
-		>
-			<HugeiconsIcon icon={ArrowDownWideNarrowIcon} class="h-4 w-4" /> Add to queue
-		</button>
-		<button
-			class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-			onclick={doAddSel}
-			disabled={!selectedItems.length}
-		>
-			<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> Add to playlistâ€¦
-		</button>
-		{#if canMoveSel}
-			<button
-				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/10"
-				onclick={doMoveSel}
-			>
-				<HugeiconsIcon icon={Move01Icon} class="h-4 w-4" /> Move to playlistâ€¦
-			</button>
-		{/if}
-		{#if canRemoveSel}
-			<button
-				class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
-				onclick={doRemoveSel}
-			>
-				<HugeiconsIcon icon={Delete02Icon} class="h-4 w-4" /> Remove
-			</button>
-		{/if}
-	</div>
-	{/if}
-	{#if menuOpen}
+{#if menuOpen}
 	<button
 		class="fixed inset-0 z-40 cursor-default"
 		onclick={() => (menuOpen = false)}

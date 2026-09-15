@@ -15,6 +15,9 @@
         BookmarkCheck02Icon,
     } from "@hugeicons/core-free-icons";
     import TrackRow from "$lib/components/TrackRow.svelte";
+    import TrackSelectionBar from "$lib/components/TrackSelectionBar.svelte";
+    import TrackSelectButton from "$lib/components/TrackSelectButton.svelte";
+    import { trackSelection } from "$lib/selection.svelte";
     import TrackRowSkeleton from "$lib/components/TrackRowSkeleton.svelte";
     import ErrorState from "$lib/components/ErrorState.svelte";
     import ArtistLine from "$lib/components/ArtistLine.svelte";
@@ -59,6 +62,26 @@
     // fetch an artist hero for. Playing, shuffling and Shortcuts all work exactly the same.
     const isLocal = $derived(api.isLocalId(id));
     const nowId = $derived(playback.now?.videoId);
+
+    // Upstream multi-select: one list-owned keyed selection over the album's tracks.
+    const selection = trackSelection(
+        () => album?.items ?? [],
+        () => album?.items ?? [],
+        () => `${auth.epoch}:${id}`,
+    );
+
+    // Ctrl/Cmd/Shift-click selects straight from the row, entering select mode first when it
+    // isn't on yet. Inside select mode the row owns clicks (TrackRow).
+    function onRowClickCapture(e: MouseEvent, n: number) {
+        if (!album || selection.active) return;
+        if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const key = selection.visibleKeys[n];
+        if (key === undefined) return;
+        selection.enter();
+        selection.toggle(key, e.shiftKey);
+    }
 
     async function load(aid: string) {
         const key = `album:${aid}`;
@@ -333,6 +356,10 @@
                         {album.inLibrary ? "In library" : "Save to library"}
                     </button>
                 {/if}
+                <TrackSelectButton
+                    {selection}
+                    class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border transition hover:bg-accent/10 hover:text-foreground"
+                />
                 <button
                     class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent/10 hover:text-foreground"
                     onclick={openMenu}
@@ -422,15 +449,21 @@
 
     <!-- Numbered track list -->
     <div class="content-in p-6 pt-2">
+        <TrackSelectionBar {selection} from={album.title ?? undefined} />
         {#each album.items as item, i (item.video_id + i)}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="rounded-lg" onclickcapture={(e) => onRowClickCapture(e, i)}>
             <TrackRow
                 song={item}
+                {selection}
+                selectionKey={selection.visibleKeys[i]}
                 index={i}
                 hideThumb
                 active={item.video_id === nowId}
                 onplay={() => playAll(i)}
                 onAdd={isLocal ? undefined : () => openAddManyToPlaylist([item])}
             />
+            </div>
         {:else}
             <p class="p-4 text-sm text-muted-foreground">
                 This album is empty.

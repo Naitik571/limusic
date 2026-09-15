@@ -95,7 +95,8 @@
 		aurora: 'settings.themes.preset_meta_aurora',
 		mono: 'settings.themes.preset_meta_mono',
 		'canopy-light': 'settings.themes.preset_meta_canopy_light',
-		catppuccin: 'settings.themes.preset_meta_catppuccin'
+		catppuccin: 'settings.themes.preset_meta_catppuccin',
+		tokyonight: 'settings.themes.preset_meta_tokyonight'
 	} as const;
 
 	// --- Themes tab ---
@@ -171,7 +172,7 @@
 		{ tab: 'general', group: 'gen-lyrics', text: 'Apple Music lyrics Paste two values from a logged-in music.apple.com session to unlock word-level lyrics. Media user token and developer bearer token.' },
 		{ tab: 'general', group: 'gen-remote', text: 'Remote LAN Control Control playback from your phone on the same Wi-Fi. Scan the QR or open the URL. Pairing token stored in the DB; HTTP listens on 0.0.0.0:32145.' },
 		// Appearance
-		{ tab: 'themes', group: 'thm-theme', text: 'Preset Accent colors tint the default look; palettes swap every color. Midnight true-black OLED violet Aurora artwork-follow Mono grayscale Canopy Light warm paper Catppuccin pastel.' },
+		{ tab: 'themes', group: 'thm-theme', text: 'Preset Accent colors tint the default look; palettes swap every color. Midnight true-black OLED violet Aurora artwork-follow Mono grayscale Tokyo Night storm blue Canopy Light warm paper Catppuccin pastel.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Accent color Buttons, highlights and the progress bar. Applies over any preset.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Retired hues One-click retired accents rose blue lime purple teal. Writes the custom accent override.' },
 		{ tab: 'themes', group: 'thm-theme', text: 'Wash intensity How far the accent bleeds into surfaces. Neutral to fully tinted.' },
@@ -1043,8 +1044,8 @@
 							<h3 class={LABEL}>Theme</h3>
 							<div class={CARD}>
 								{@render row({
-									title: 'Preset',
-									desc: 'Midnight is the true-black default; Aurora chases artwork, Mono is grayscale, Canopy Light is warm paper, Catppuccin is pastel.',
+								title: 'Preset',
+								desc: 'Midnight is the true-black default; Aurora chases artwork, Mono is grayscale, Tokyo Night is storm blue, Canopy Light is warm paper, Catppuccin is pastel.',
 									control: presetSelect,
 									below: presetDesc
 								})}

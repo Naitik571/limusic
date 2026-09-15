@@ -8,6 +8,8 @@ export const ro: DeepPartial<Translations> = {
 		subscribe: 'Abonează-te',
 		subscribed: 'Abonat',
 		top_songs: 'Melodii de top',
+		subscribe_to: 'Abonează-te la {name}',
+		unsubscribe_from: 'Dezabonează-te de la {name}'
 	},
 	common: {
 		add: 'Adaugă',
@@ -123,6 +125,7 @@ export const ro: DeepPartial<Translations> = {
 		title: 'Librărie',
 		uploads_signed_out: 'Conectează-te ca să vezi melodii pe care le-ai încărcat pe Youtube Music.',
 		uploads_tab: 'Încărcate',
+		no_upload_albums: 'Niciun album încărcat. Albumele pe care le încarci pe music.youtube.com apar aici.'
 	},
 	local: {
 		add_folder: 'Adaugă un fișier',
@@ -149,6 +152,12 @@ export const ro: DeepPartial<Translations> = {
 		sign_in_hint: 'Conectează-te cu contul tău Google ca să îți apară librăria și playlisturile Youtube Music.',
 		sign_out: 'Deconectează-te',
 		switch_channel: 'Schimbă canalul',
+		add_account: 'Adaugă cont',
+		remove_account: 'Elimină cont',
+		remove_account_title: 'Scoate din Limusic?',
+		remove_account_desc: '{name} a fost scos din lista. Contul de Google nu este afectat, și te poți conecta din nou oriunde dorești.',
+		saved_accounts_hint: 'Alege un cont salvat pentru ca să îl schimbi.',
+		history: 'Istoric'
 	},
 	player: {
 		add_to_playlist: 'Adaugă în playlist',
@@ -197,6 +206,28 @@ export const ro: DeepPartial<Translations> = {
 		start_radio: 'Pornește radio',
 		unmute: 'Cu sonor',
 		volume: 'Volum',
+		theater_mode: 'Modul teatru',
+		playing_from: 'Se reda din',
+		exit_theater: 'Oprește modul teatru',
+		block_artist: 'Blochează artistul',
+		pin_to_top: 'Fixează sus',
+		unpin: 'Scoate fixarea'
+	},
+	history: {
+		title: 'Istoric',
+		subtitle: 'Tot ce asculți pe Youtube Music, cele mai noi înainte.',
+		search: 'Caută în istoric',
+		matching: '{count} găsite',
+		songs_count: '{count} melodii',
+		empty: 'Nimic aici încă. Tot ce asculți când ești conectat va apărea pe această pagină.',
+		signed_out: 'Conectează-te ca să vezi istoricul tău muzical Youtube Music.'
+	},
+	toasts: {
+		already_in_library: 'Deja în librăria ta',
+		app_icon_set: 'Iconița aplicației a fost schimbată',
+		blocked_copied: 'Copiază {count} artiști blocați ca fișier JSON',
+		blocked_artist: '{name} a fost blocat',
+		unblocked_artist: '{name} a fost deblocat'
 	},
 	settings: {
 		about: {
@@ -209,6 +240,21 @@ export const ro: DeepPartial<Translations> = {
 			up_to_date: 'Folosești versiunea cea mai recentă.',
 			update_available: 'Versiunea {version} este disponibilă!',
 			version: 'Versiunea {version}',
+			update_check_failed: 'Verificarea de actualizare a eșuat: {error}',
+			update_packaged: 'Această versiune a fost instalată printr-un package manager; actualizeaz-o folosind aceeași metodă.',
+			copy: 'Copiază',
+			diagnostics: 'Copiază datele de diagnosticare',
+			diagnostics_hint: 'Versiunea ta, sistemul curent și ultima parte din jurnalul aplicației, pregătite pentru a fi inserate într-un raport de eroare. Modulele cookie, tokenurile, linkurile semnate, căile de fișier și adresele IP sunt eliminate în prealabil.',
+			diagnostics_copied: 'Copiat',
+			diagnostics_save: 'Salvează datele de diagnosticare într-un fișier',
+			diagnostics_save_hint: 'Același text în format .txt, pentru a-l trage în raportul de eroare în loc să îl inserezi.',
+			diagnostics_saved: 'Salvat',
+			report_issue: 'Deschide formularul pentru raportarea erorilor',
+			report_issue_hint: 'Deschide GitHub în browser, cu versiunea și sistemul deja adaugăt în raport.',
+			report_issue_button: 'Raportează',
+			kofi: 'Cumpără-mi o cafea',
+			kofi_hint: 'Limusic este gratis și v-a rămâne gratis. Ko-fi este acolo dacă îți dorești să contribui.',
+			kofi_button: 'Deschide Ko-fi'
 		},
 		data: {
 			clear_cache: 'Golește memoria cache pentru imagini și fluxuri',
@@ -234,6 +280,8 @@ export const ro: DeepPartial<Translations> = {
 			sounds_hint: 'Clicuri scurte și semnale pentru butoane și notificări.',
 			update_banner: 'Notificări de actualizare',
 			update_banner_hint: 'Arată un banner când o nouă versiune de Limusic este disponibilă.',
+			system_titlebar: 'Folosește bara de titlu a sistemului',
+			system_titlebar_hint: 'Lăsă desktopul să păstreze cadrul ferestrei și butoanele acesteia. Limusic își păstrează propria bară de instrumente dedesubt.'
 		},
 		playback: {
 			audio_quality: 'Calitate audio',
@@ -252,6 +300,15 @@ export const ro: DeepPartial<Translations> = {
 			quality_auto: 'Auto',
 			quality_high: 'Ridicată',
 			quality_low: 'Scăzută',
+			sticky_shuffle: 'Menține amestecarea în toate listele de redare',
+			sticky_shuffle_hint: 'Lasă oprit și amestecarea see aplică doar la este redat momentan: deschiderea unui album sau a unui playlist se va face în ordine.',
+			blocked_artists: 'Artiști blocați',
+			blocked_artists_hint: 'Artiștii blocați sunt excluși din radio, redare automată și recomandări. Playlisturile și albumele pe care le deschizi vor reda în continuare toate piesele din ele.',
+			blocked_artists_empty: 'Nimeni nu a fost blocat încă. Folosește butonul "Blochează artiști" din meniul unei piese.',
+			blocked_artists_remove: 'Deblochează {name}',
+			blocked_artists_show_all: 'Arată toate {count}',
+			blocked_artists_show_less: 'Arată mai puțin',
+			blocked_artists_copy: 'Copiază JSON'
 		},
 		sections: {
 			activity: 'Activitate',
@@ -267,6 +324,9 @@ export const ro: DeepPartial<Translations> = {
 			typography: 'Tipografie',
 			updates: 'Actualizări',
 			video: 'Video',
+			blocked: 'Blochează artiștii',
+			report: 'Raportează o problemă',
+			support: 'Sprijină'
 		},
 		tabs: {
 			about: 'Despre',
@@ -319,7 +379,7 @@ export const ro: DeepPartial<Translations> = {
 			your_fonts: 'Fonturile tale',
 			// Best-effort Romanian: signature themes + premium mechanics.
 			preset: 'Preset',
-			preset_hint: 'Midnight e negrul adevărat implicit; Aurora urmărește coperta, Mono e gri, Canopy Light e hârtie caldă, Catppuccin e pastel.',
+			preset_hint: 'Midnight e negrul adevărat implicit; Aurora urmărește coperta, Mono e gri, Tokyo Night e albastru-furtună, Canopy Light e hârtie caldă, Catppuccin e pastel.',
 			theme_midnight: 'Midnight',
 			theme_midnight_desc: 'OLED negru adevărat + violet electric — implicit',
 			theme_aurora: 'Aurora',
@@ -330,6 +390,8 @@ export const ro: DeepPartial<Translations> = {
 			theme_canopy_light_desc: 'Temă deschisă hârtie caldă — text cerneală, accent adânc',
 			theme_catppuccin: 'Catppuccin',
 			theme_catppuccin_desc: 'Paletă pastel de comunitate — deschis + închis',
+			theme_tokyonight: 'Tokyo Night',
+			theme_tokyonight_desc: 'Temă întunecată albastru-furtună — accent indigo desaturat',
 			wash: 'Intensitate wash',
 			wash_hint: 'Cât de mult se amestecă accentul în suprafețe. 0 e neutru, 100 e complet.',
 			follow: 'Putere de urmărire',
@@ -347,7 +409,13 @@ export const ro: DeepPartial<Translations> = {
 			preset_meta_mono: 'Întunecat · alb · ascuțit',
 			preset_meta_canopy_light: 'Deschis · cald · rotunjit',
 			preset_meta_catppuccin: 'Întunecat · pastel · rotunjit',
+			preset_meta_tokyonight: 'Întunecat · indigo · rotunjit',
 			preset_applies_hint: 'Un preset aplică tot aspectul — modul, accentul, wash și forma. Poți ajusta după; Reset revine la preset.',
+			app_icon: 'Iconița aplicației',
+			app_icon_hint: 'Un fișier PNG înlocuiește iconița din bara de sarcini, tava de sistem și această fereastră. Scurtăturile și managerul de fișiere o păstrează pe cea instalată.',
+			app_icon_pick: 'Alege…',
+			app_icon_dialog: 'Alege iconița aplicației',
+			app_icon_filter: 'Imagine PNG'
 		},
 		title: 'Setări',
 	},
@@ -367,5 +435,22 @@ export const ro: DeepPartial<Translations> = {
 			start_over: 'Ia-o de la capăt',
 			saving: 'Se salvează…',
 		},
+	},
+	// Best-effort Romanian for the upstream multi-select UI (selection bar, checkboxes).
+	// Missing keys fall back to English per key at runtime (see t() in i18n.svelte.ts).
+	selection: {
+		actions: 'Acțiuni pentru piesele selectate',
+		clear: 'Curăță',
+		count: '{count} selectate',
+		enter: 'Selectează piese',
+		exit: 'Ieși din modul de selecție',
+		hidden: '{count} ascunse',
+		hint: 'Alege piese pentru a acționa asupra lor',
+		not_selected: 'Neselectat',
+		select_all: 'Selectează tot ({count})',
+		select_track: 'Selectează {title}',
+		selected: 'Selectat',
+		move: 'Mută în alt playlist',
+		remove: 'Elimină din acest playlist',
 	},
 };

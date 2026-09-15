@@ -10,6 +10,12 @@ import { contrastRatio, hexToHsv, hsvToHex } from './color.ts';
 
 const SIZE = 32;
 
+/// Successful accent per cover URL (bounded, oldest evicted). Revisits and skip-backs must
+/// not re-decode: only hits are stored — misses (offline, tainted, greyscale) retry next time,
+/// so a transient failure can never pin the default accent for the session.
+const accentCache = new Map<string, string>();
+const ACCENT_CACHE_MAX = 32;
+
 /**
  * Winning colour of an RGBA buffer, normalized into the band an accent has to live in (saturated
  * enough to read as a colour, mid-light so black or white text can sit on it). `null` when the
@@ -66,6 +72,8 @@ export function pickAccent(data: Uint8ClampedArray): string | null {
  * a host that doesn't throws on `getImageData` and lands in the same `null`.
  */
 export async function artworkAccent(url: string): Promise<string | null> {
+	const hit = accentCache.get(url);
+	if (hit !== undefined) return hit;
 	try {
 		const img = new Image();
 		img.crossOrigin = 'anonymous';
@@ -76,7 +84,15 @@ export async function artworkAccent(url: string): Promise<string | null> {
 		const ctx = canvas.getContext('2d', { willReadFrequently: true });
 		if (!ctx) return null;
 		ctx.drawImage(img, 0, 0, SIZE, SIZE);
-		return pickAccent(ctx.getImageData(0, 0, SIZE, SIZE).data);
+		const accent = pickAccent(ctx.getImageData(0, 0, SIZE, SIZE).data);
+		if (accent) {
+			if (accentCache.size >= ACCENT_CACHE_MAX && !accentCache.has(url)) {
+				const oldest = accentCache.keys().next();
+				if (!oldest.done) accentCache.delete(oldest.value);
+			}
+			accentCache.set(url, accent);
+		}
+		return accent;
 	} catch {
 		return null; // offline, 404, throttled, tainted — the current accent just stays
 	}

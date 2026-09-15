@@ -52,6 +52,9 @@
 	import { thumb } from '$lib/thumb';
 	import { fallbackArt } from '$lib/fallbackArt';
 	import { lt } from '$lib/lt.svelte';
+	import { t } from '$lib/i18n.svelte';
+	import type { TrackSelection } from '$lib/selection.svelte';
+	import { Checkbox } from './ui/checkbox';
 	import { isLiked, toggleLike, downloadedIds, likeBursts } from '$lib/player.svelte';
 	import { flyPlus } from '$lib/fx';
 	import TrackMenu from './TrackMenu.svelte';
@@ -70,7 +73,9 @@
 		removeLabel = 'Remove from playlist',
 		highlight = '',
 		draggable = true,
-		fadeNext = null
+		fadeNext = null,
+		selection,
+		selectionKey
 	}: {
 		song: SongItem;
 		/** Position badge when set (playlist/queue); omitted for flat search results. */
@@ -99,6 +104,10 @@
 		/** Queue-only: videoId of the track after this one — enables the "Crossfade into next"
 		    menu item for this pair. Omit everywhere else. */
 		fadeNext?: string | null;
+		/** Optional list-owned selection (upstream multi-select); the key identifies this
+		    occurrence, not the song, so duplicate rows select independently. */
+		selection?: TrackSelection;
+		selectionKey?: string;
 	} = $props();
 
 	function highlightParts(text: string, query: string): { text: string; match: boolean }[] {
@@ -115,6 +124,26 @@
 	// In a session as guest, clicking a song adds it to the shared queue instead of playing it —
 	// reflect that in the hover icon + label so the row doesn't lie.
 	const guestAdd = $derived(lt.role === 'guest');
+	const selectionDescriptionId = $props.id();
+
+	// Only in select mode: at rest the row is a plain click-to-play row, with no checkbox and no
+	// Space/click rebinding.
+	const selectable = $derived(!!selection?.active && selectionKey !== undefined);
+	const selected = $derived(selection?.has(selectionKey) ?? false);
+
+	function select(range = false) {
+		if (selection && selectionKey !== undefined) selection.toggle(selectionKey, range);
+	}
+
+	function clickRow(e: MouseEvent) {
+		// In select mode the row selects; Enter (onKey) is what still plays it.
+		if (selectable) {
+			e.preventDefault();
+			select(e.shiftKey);
+			return;
+		}
+		onplay();
+	}
 
 	// Stable per-row identity for reactive granularity: the backend swaps the whole queue
 	// object on every event, so the `song` object identity churns even when this row's track
@@ -168,7 +197,27 @@
 	// Only when the key lands on the row itself — keydowns bubble up from nested interactive
 	// elements (⋯ menu, artist link), and hijacking those would play the row instead.
 	function onKey(e: KeyboardEvent) {
-		if (e.target !== e.currentTarget) return;
+		if (e.target !== e.currentTarget) {
+			if (e.key === ' ') e.stopPropagation();
+			return;
+		}
+		if (selection && selectable) {
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+				e.preventDefault();
+				e.stopPropagation();
+				selection.selectAll();
+				return;
+			}
+			if (e.key === 'Escape' || e.key === ' ') {
+				e.preventDefault();
+				e.stopPropagation();
+				if (!e.repeat) {
+					if (e.key === 'Escape') selection.exit();
+					else select(e.shiftKey);
+				}
+				return;
+			}
+		}
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			onplay();
@@ -197,13 +246,44 @@
 	draggable={draggable}
 	ondragstart={draggable ? onDragStart : undefined}
 	data-active={active ? 'true' : undefined}
-	onclick={onplay}
+	onclick={clickRow}
 	onkeydown={onKey}
-	aria-label={guestAdd ? `Add ${song.title} to the session queue` : `Play ${song.title}`}
-	class="group flex w-full cursor-pointer items-center gap-3 rounded-xl p-2 transition-colors hover:bg-glass {active
+	data-selection-key={selectionKey}
+	data-selected={selectable ? selected : undefined}
+	aria-describedby={selectable ? selectionDescriptionId : undefined}
+	aria-label={selectable ? t(guestAdd ? 'selection.track_guest' : 'selection.track', { title: song.title }) : guestAdd ? `Add ${song.title} to the session queue` : `Play ${song.title}`}
+	class="group flex w-full cursor-pointer items-center gap-3 rounded-xl p-2 transition-colors hover:bg-glass {selected
+		? 'bg-primary/15'
+		: active
 		? 'bg-accent/10'
 		: ''} {compact ? '' : '[content-visibility:auto] [contain-intrinsic-size:auto_3.5rem]'}"
 >
+	{#if selectable}
+		<span id={selectionDescriptionId} class="sr-only">
+			{t(selected ? 'selection.selected' : 'selection.not_selected')}
+		</span>
+		<Checkbox
+			checked={selected}
+			aria-label={t('selection.select_track', { title: song.title })}
+			class="cursor-pointer"
+			onclick={(e) => {
+				// The list owns checked state, including Shift ranges whose endpoint stays selected.
+				e.preventDefault();
+				e.stopPropagation();
+				select(e.shiftKey);
+			}}
+			onkeydown={(e) => {
+				if (e.key === ' ') {
+					e.preventDefault(); e.stopPropagation();
+					if (!e.repeat) select(e.shiftKey);
+				}
+				if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); selection!.exit(); }
+				if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+					e.preventDefault(); e.stopPropagation(); selection!.selectAll();
+				}
+			}}
+		/>
+	{/if}
 	<div class="flex min-w-0 flex-1 items-center gap-3">
 		<div class="flex min-w-0 shrink-0 items-center gap-3">
 			{#if index !== undefined}
@@ -212,10 +292,10 @@
 						? 'text-primary'
 						: 'text-muted-foreground'}"
 				>
-					<span class="group-hover:opacity-0">{index + 1}</span>
+					<span class={selectable ? '' : 'group-hover:opacity-0'}>{index + 1}</span>
 					<HugeiconsIcon
 						icon={guestAdd ? PlayListAddIcon : PlayIcon}
-						class="absolute inset-0 m-auto h-3.5 w-3.5 opacity-0 group-hover:opacity-100"
+						class="absolute inset-0 m-auto h-3.5 w-3.5 opacity-0 {selectable ? '' : 'group-hover:opacity-100'}"
 					/>
 				</span>
 			{/if}

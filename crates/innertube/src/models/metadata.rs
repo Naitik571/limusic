@@ -794,6 +794,16 @@ fn is_type_label(s: &str) -> bool {
     )
 }
 
+/// True when a subtitle field is a track length ("3:02", "1:02:03"), not a name. Guards the
+/// artist slot: a row whose only field is a length must not report it as the artist — that
+/// string is what the player bar shows and what gets scrobbled. Upstream #216.
+fn looks_like_duration(s: &str) -> bool {
+    let s = s.trim();
+    s.contains(':')
+        && s.split(':')
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// Split a "• "-separated subtitle run list into (artists, album, duration). context/08.
 fn split_subtitle(runs: Option<&Vec<Value>>) -> (String, Option<String>, Option<String>) {
     let Some(runs) = runs else {
@@ -811,6 +821,13 @@ fn split_subtitle(runs: Option<&Vec<Value>>) -> (String, Option<String>, Option<
     }
     let groups: Vec<String> = groups.into_iter().map(|g| g.text).collect();
     let artists = groups.first().cloned().unwrap_or_default();
+    // A length on its own ("Song • 3:02" with no artist linked) is not an artist. Leave it
+    // empty — the player response's author repairs it on play (backfill_metadata in state.rs).
+    let artists = if looks_like_duration(&artists) {
+        String::new()
+    } else {
+        artists
+    };
     // Last group that looks like a duration (contains ':') is the duration; the middle is album.
     let duration = groups.iter().rev().find(|g| g.contains(':')).cloned();
     let album = groups
@@ -1137,6 +1154,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             [("Delara", Some("UCdelara"))]
         );
+    }
+
+    /// Upstream #216: a song row with no artist ("Song • 3:02") must not report the length
+    /// as the artist — that string is what the player bar shows and what gets scrobbled.
+    /// The length stays the duration; the player response's author repairs the artist on play.
+    #[test]
+    fn song_row_without_artist_does_not_use_length_as_artist() {
+        let root = json!({
+            "a": { "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": "abc123" },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Lonely Track" }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Song" }, { "text": " • " }, { "text": "3:02" }
+                    ] } } }
+                ]
+            }}
+        });
+        let s = &parse_search(&root).items[0];
+        assert_eq!(s.artists, "");
+        assert_eq!(s.album, None);
+        assert_eq!(s.duration.as_deref(), Some("3:02"));
+        assert!(s.artist_runs.is_empty());
     }
 
     /// A queue row's byline is a whole descriptor; only its artist field is the artist.

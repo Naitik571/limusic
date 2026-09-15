@@ -19,7 +19,7 @@ import { artworkAccent } from './artcolor';
 import { solveVeil } from './veil';
 import { allowFontFile } from './api';
 
-export type ThemeId = 'midnight' | 'canopy-light' | 'aurora' | 'mono' | 'catppuccin';
+export type ThemeId = 'midnight' | 'canopy-light' | 'aurora' | 'mono' | 'catppuccin' | 'tokyonight';
 
 export type GeometryId = 'sharp' | 'soft';
 
@@ -60,7 +60,13 @@ export const THEMES: Theme[] = [
 	{ id: 'aurora', label: 'Aurora', description: 'Artwork-follow showcase — surfaces chase the cover', kind: 'accent', color: 'oklch(0.68 0.24 320)', fg: 'oklch(0.985 0 0)', className: 'theme-aurora', look: { accent: 'oklch(0.68 0.24 320)', mode: 'dark', wash: 55, followStrength: 80, trueBlack: false, geometry: 'soft' } },
 	{ id: 'mono', label: 'Mono', description: 'Near-white accent, zero-chroma grayscale surfaces', kind: 'accent', color: 'oklch(0.93 0.005 0)', fg: 'oklch(0.205 0 0)', className: 'theme-mono', look: { accent: 'oklch(0.93 0.005 0)', mode: 'dark', wash: 10, followStrength: 30, trueBlack: false, geometry: 'sharp' } },
 	{ id: 'canopy-light', label: 'Canopy Light', description: 'Warm-paper light theme — ink text, deep accent', kind: 'palette', color: 'oklch(0.48 0.16 55)', look: { accent: null, mode: 'light', wash: 25, followStrength: 60, trueBlack: false, geometry: 'soft' } },
-	{ id: 'catppuccin', label: 'Catppuccin', description: 'Pastel community palette — light + dark', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)', look: { accent: null, mode: 'dark', wash: 30, followStrength: 60, trueBlack: false, geometry: 'soft' } }
+	{ id: 'catppuccin', label: 'Catppuccin', description: 'Pastel community palette — light + dark', kind: 'palette', color: 'oklch(0.5547 0.2503 297.0156)', look: { accent: null, mode: 'dark', wash: 30, followStrength: 60, trueBlack: false, geometry: 'soft' } },
+	// Tokyo Night (upstream SimoHypers/limusic v0.7.1): accent-kind, no className hook, so it needs
+	// no layout.css block — the indigo accent layers over the default dark surfaces. `color` and
+	// look.accent are upstream's `.dark.theme-tokyonight --primary` (oklch 0.7190/0.1322/264.20);
+	// the theme.svelte.ts swatch upstream (0.3593/0.0513/273.18) is the light-mode foreground,
+	// too dark to serve as an accent. fg is dark per upstream's --primary-foreground.
+	{ id: 'tokyonight', label: 'Tokyo Night', description: 'Storm-blue dark theme — desaturated indigo accent', kind: 'accent', color: 'oklch(0.7190 0.1322 264.2022)', fg: 'oklch(0.205 0 0)', look: { accent: 'oklch(0.7190 0.1322 264.2022)', mode: 'dark', wash: 30, followStrength: 60, trueBlack: false, geometry: 'soft' } }
 ];
 
 /** Retired single-hue presets (rose/blue/lime/purple/teal). Kept as one-click swatches that write

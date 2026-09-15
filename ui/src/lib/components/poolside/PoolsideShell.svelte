@@ -204,8 +204,12 @@
 	// back to the static pool gradient.
 	let albumHue = $state<number | null>(null);
 	let albumAccent = $state<string | null>(null);
+	// Generation-guarded: skip-spam stacks concurrent decodes and a late load must
+	// not repaint --ps-album-accent over the current track.
+	let hueSeq = 0;
 	$effect(() => {
 		const url = playback.now?.thumbnail;
+		const my = ++hueSeq;
 		if (!url) {
 			albumHue = null;
 			albumAccent = null;
@@ -217,6 +221,7 @@
 		img.crossOrigin = 'anonymous';
 		img.src = url;
 		img.onload = () => {
+			if (my !== hueSeq) return;
 			try {
 				const c = document.createElement('canvas');
 				c.width = 16; c.height = 16;

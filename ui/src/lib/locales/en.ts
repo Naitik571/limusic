@@ -1,4 +1,26 @@
 export const en = {
+	selection: {
+		actions: 'Selected track actions',
+		count: '{count} selected',
+		selected: 'Selected',
+		not_selected: 'Not selected',
+		hidden: '{count} hidden',
+		enter: 'Select tracks',
+		exit: 'Leave select mode',
+		hint: 'Pick tracks to act on them',
+		select_all: 'Select all ({count})',
+		clear: 'Clear',
+		track: '{title}. Space to select, Enter to play.',
+		track_guest: '{title}. Space to select, Enter to add to the session queue.',
+		select_track: 'Select {title}',
+		lost: '{count} selected tracks are no longer in this list.',
+		pending: 'Finding {count} selected tracks in the pages still loading.',
+		local_playlist: 'Local files cannot be added to a YouTube playlist.',
+		account_changed: 'Stopped adding songs because the account changed.',
+		playlist_partial: 'Added {added} to {playlist}; {duplicates} already there; {remaining} unconfirmed. {error}',
+		move: 'Move to another playlist',
+		remove: 'Remove from this playlist'
+	},
 	common: {
 		loading: 'Loading...',
 		retry: 'Retry',
@@ -60,7 +82,9 @@ export const en = {
 		filter_library: 'Filter your library…',
 		command_description: 'Search songs, albums, artists and playlists',
 		shuffle_all: 'Shuffle all',
-		play_all: 'Play all'
+		play_all: 'Play all',
+		top_result: 'Top result',
+		all_results_for: 'All results for “{query}”'
 	},
 	nav: {
 		home: 'Home',
@@ -76,7 +100,14 @@ export const en = {
 		choose_channel: 'Choose a YouTube channel',
 		choose_channel_desc: 'Library, likes and playlists will use this channel. You can switch again later.',
 		cancel_sign_in: 'Cancel sign in',
-		sign_in_hint: 'Sign in with your Google account to reach your YouTube Music library and playlists.'
+		sign_in_hint: 'Sign in with your Google account to reach your YouTube Music library and playlists.',
+		add_account: 'Add account',
+		remove_account: 'Remove account',
+		remove_account_title: 'Remove from Limusic?',
+		remove_account_desc: '{name} is only removed from this list. The Google account itself is not affected, and you can sign in with it again whenever you like.',
+		saved_accounts_hint: 'Pick a saved account to switch to it.',
+		history: 'History',
+		no_channels: 'YouTube did not return any selectable channels.'
 	},
 	player: {
 		play: 'Play',
@@ -124,7 +155,13 @@ export const en = {
 		edit_playlist: 'Edit playlist',
 		delete_playlist: 'Delete playlist',
 		remove_dislike: 'Remove dislike',
-		add_to_playlist: 'Add to playlist'
+		add_to_playlist: 'Add to playlist',
+		theater_mode: 'Theater mode',
+		playing_from: 'Playing from',
+		exit_theater: 'Exit theater mode',
+		block_artist: 'Block artist',
+		pin_to_top: 'Pin to top',
+		unpin: 'Unpin'
 	},
 	home: {
 		good_morning: 'Good morning',
@@ -142,12 +179,15 @@ export const en = {
 		show_section: 'Show {title} on home',
 		hide_section: 'Hide {title} from home',
 		feed_empty: 'Your home feed came back empty this time.',
-		signed_out_hint: 'Sign in and home fills up with mixes and playlists built from what you listen to.'
+		signed_out_hint: 'Sign in and home fills up with mixes and playlists built from what you listen to.',
+		add_to_end: 'Add to the end'
 	},
 	artist: {
 		subscribe: 'Subscribe',
 		subscribed: 'Subscribed',
-		top_songs: 'Top songs'
+		top_songs: 'Top songs',
+		subscribe_to: 'Subscribe to {name}',
+		unsubscribe_from: 'Unsubscribe from {name}'
 	},
 	library: {
 		title: 'Library',
@@ -181,7 +221,19 @@ export const en = {
 		every_song_saved: 'Every song you’ve saved, in one list',
 		every_upload: 'Every track you’ve uploaded to YouTube Music',
 		no_uploads: 'Nothing uploaded yet. Songs you upload at music.youtube.com show up here.',
-		uploads_signed_out: 'Sign in to see the music you’ve uploaded to YouTube Music.'
+		uploads_signed_out: 'Sign in to see the music you’ve uploaded to YouTube Music.',
+		no_upload_albums: 'No uploaded albums yet. Albums you upload at music.youtube.com show up here.',
+		songs_signed_out: 'Sign in to see the songs saved in your YouTube Music library. Music on this machine is in the Local tab.',
+		no_library_songs: 'No songs in your library yet. Hit the ⋯ on a song and save it, or like it, and it lands here.',
+		empty_signed_out: 'Nothing saved yet. Open a playlist or album and hit Save to library, or sign in for the one on your account.',
+		empty: 'Your library is empty.',
+		no_saved_playlists: 'No playlists yet. Open one and hit Save to library to keep it here.',
+		no_saved_albums: 'No saved albums yet. Open an album and hit Save to library.',
+		no_saved_artists: 'No artists yet. Save one from its page to keep it here.',
+		no_artists: 'No artists yet. They show up once you save their songs or albums.',
+		on_repeat: 'On Repeat',
+		on_repeat_subtitle: '{count} songs you\'ve played most this month',
+		songs_count: '{count} songs'
 	},
 	local: {
 		scanning: 'Scanning folder...',
@@ -191,7 +243,20 @@ export const en = {
 		artists_count: 'Artists ({count})',
 		songs_count: 'Songs ({count})',
 		add_folder: 'Add folder',
-		pick_folder_dialog: 'Add a music folder'
+		pick_folder_dialog: 'Add a music folder',
+		folders: 'Folders',
+		folders_hint: 'Music in these folders plays without an internet connection.',
+		no_folders: 'No folders yet. Add the one your music sits in and it shows up here.',
+		nothing_playable: 'Nothing playable found in those folders yet. Looking for mp3, flac, m4a, aac, ogg, opus, wav, wma, aiff, ape, wv and mka files.'
+	},
+	history: {
+		title: 'History',
+		subtitle: 'Everything you\'ve played on YouTube Music, newest first.',
+		search: 'Search your history',
+		matching: '{count} matching',
+		songs_count: '{count} songs',
+		empty: 'Nothing here yet. Anything you play while signed in shows up on this page.',
+		signed_out: 'Sign in to see your YouTube Music listening history.'
 	},
 	settings: {
 		title: 'Settings',
@@ -221,7 +286,10 @@ export const en = {
 			network: 'Network',
 			storage: 'Storage',
 			updates: 'Updates',
-			whats_new: "What's new"
+			whats_new: "What's new",
+			blocked: 'Blocked artists',
+			report: 'Report a problem',
+			support: 'Support'
 		},
 		general: {
 			language: 'Interface language',
@@ -241,7 +309,9 @@ export const en = {
 			stream_clients: 'Stream clients',
 			stream_clients_hint: 'Turn a client off to skip it when resolving streams. Overridden by the {var} env var.',
 			sounds: 'Interface sounds',
-			sounds_hint: 'Short clicks and chimes for buttons and notifications.'
+			sounds_hint: 'Short clicks and chimes for buttons and notifications.',
+			system_titlebar: 'Use system title bar',
+			system_titlebar_hint: 'Let your desktop draw the window frame and its buttons. Limusic keeps its own toolbar below it.'
 		},
 		themes: {
 			accent_themes: 'Accent Themes',
@@ -281,7 +351,7 @@ export const en = {
 			font_filter: 'Fonts',
 			experimental: 'Experimental',
 			preset: 'Preset',
-			preset_hint: 'Midnight is the true-black default; Aurora chases artwork, Mono is grayscale, Canopy Light is warm paper, Catppuccin is pastel.',
+			preset_hint: 'Midnight is the true-black default; Aurora chases artwork, Mono is grayscale, Tokyo Night is storm blue, Canopy Light is warm paper, Catppuccin is pastel.',
 			theme_midnight: 'Midnight',
 			theme_midnight_desc: 'True-black OLED + electric violet — the default',
 			theme_aurora: 'Aurora',
@@ -292,11 +362,14 @@ export const en = {
 			theme_canopy_light_desc: 'Warm-paper light theme — ink text, deep accent',
 			theme_catppuccin: 'Catppuccin',
 			theme_catppuccin_desc: 'Pastel community palette — light + dark',
+			theme_tokyonight: 'Tokyo Night',
+			theme_tokyonight_desc: 'Storm-blue dark theme — desaturated indigo accent',
 			preset_meta_midnight: 'Dark · violet · true black',
 			preset_meta_aurora: 'Dark · pink · strong wash',
 			preset_meta_mono: 'Dark · white · sharp',
 			preset_meta_canopy_light: 'Light · warm · soft',
 			preset_meta_catppuccin: 'Dark · pastel · soft',
+			preset_meta_tokyonight: 'Dark · indigo · soft',
 			preset_applies_hint: 'Choosing a preset applies its full look — mode, accent, wash and shape. Tweak anything afterwards; Reset returns to the preset.',
 			wash: 'Wash intensity',
 			wash_hint: 'How far the accent bleeds into surfaces. 0 is neutral, 100 is fully tinted.',
@@ -309,7 +382,12 @@ export const en = {
 			geometry_sharp: 'Sharp',
 			geometry_soft: 'Soft',
 			retired_hues: 'Retired hues',
-			retired_hues_hint: 'One-click retired accents. Writes the custom accent override.'
+			retired_hues_hint: 'One-click retired accents. Writes the custom accent override.',
+			app_icon: 'App icon',
+			app_icon_hint: 'A PNG replaces the icon in the taskbar, the tray and this window. Shortcuts and the file manager keep the installed one.',
+			app_icon_pick: 'Choose…',
+			app_icon_dialog: 'Choose an app icon',
+			app_icon_filter: 'PNG image'
 		},
 		playback: {
 			audio_quality: 'Audio quality',
@@ -327,7 +405,16 @@ export const en = {
 			hide_videos: 'Hide videos in search',
 			hide_videos_hint: 'Only show audio tracks and official releases in search results.',
 			lyrics_provider: 'Synchronized lyrics (Boidu/LRCLIB)',
-			lyrics_provider_hint: 'Fetch community-synced lyrics for active songs.'
+			lyrics_provider_hint: 'Fetch community-synced lyrics for active songs.',
+			sticky_shuffle: 'Keep shuffle on across queues',
+			sticky_shuffle_hint: 'Leave off and shuffle applies only to what\'s playing: opening an album or playlist afterwards plays it in order.',
+			blocked_artists: 'Blocked artists',
+			blocked_artists_hint: 'Blocked artists are left out of radio, autoplay and recommendations. Playlists and albums you open still play everything in them.',
+			blocked_artists_empty: 'Nobody blocked yet. Use "Block artist" from a track\'s ⋯ menu.',
+			blocked_artists_remove: 'Unblock {name}',
+			blocked_artists_show_all: 'Show all {count}',
+			blocked_artists_show_less: 'Show less',
+			blocked_artists_copy: 'Copy JSON'
 		},
 		data: {
 			clear_cache: 'Clear image and stream cache',
@@ -344,6 +431,21 @@ export const en = {
 			install_update: 'Install and Restart',
 			download_page: 'Open download page',
 			changelog: 'Changelog & Release Notes',
+			update_check_failed: 'Update check failed: {error}',
+			update_packaged: 'This build was installed with a package manager, update it the same way.',
+			copy: 'Copy',
+			diagnostics: 'Copy diagnostics',
+			diagnostics_hint: 'Your version, this system and the last part of the app log, ready to paste into a bug report. Cookies, tokens, signed links, file paths and IP addresses are removed first.',
+			diagnostics_copied: 'Copied',
+			diagnostics_save: 'Save diagnostics to a file',
+			diagnostics_save_hint: 'Same text as a .txt, for dragging into the issue instead of pasting it.',
+			diagnostics_saved: 'Saved',
+			report_issue: 'Open the bug form',
+			report_issue_hint: 'Opens GitHub in your browser, with the version and system filled in.',
+			report_issue_button: 'Report',
+			kofi: 'Buy me a coffee',
+			kofi_hint: 'Limusic is free and stays free. Ko-fi is there if you feel like chipping in.',
+			kofi_button: 'Open Ko-fi'
 		}
 	},
 	dialogs: {
@@ -624,7 +726,25 @@ export const en = {
 		already_in_all: 'All {count} are already in {playlist}',
 		already_in: 'Already in {playlist}',
 		added_songs: 'Added {count} songs to {playlist}',
-		added_one: 'Added to {playlist}'
+		added_one: 'Added to {playlist}',
+		already_in_library: 'Already in your library',
+		app_icon_set: 'App icon changed',
+		blocked_copied: 'Copied {count} blocked artists as JSON',
+		blocked_artist: 'Blocked {name}',
+		unblocked_artist: 'Unblocked {name}',
+		added_to_shortcuts: 'Added to shortcuts',
+		already_in_shortcuts: 'Already in shortcuts',
+		playing_next_one: 'Playing next',
+		playing_next: '{count} songs play next',
+		added_to_queue_one: 'Added to queue',
+		added_to_queue: 'Added {count} songs to the queue',
+		liked: 'Added to liked songs',
+		disliked: 'Disliked',
+		rating_removed: 'Rating removed',
+		subscribed: 'Subscribed to {name}',
+		unsubscribed: 'Unsubscribed',
+		signed_in_as: 'Signed in as {name}',
+		switched_to: 'Switched to {name}'
 	}
 };
 

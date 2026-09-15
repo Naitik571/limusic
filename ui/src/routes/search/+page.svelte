@@ -16,13 +16,16 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import MediaCardSkeleton from '$lib/components/MediaCardSkeleton.svelte';
 	import TrackRow from '$lib/components/TrackRow.svelte';
+	import TrackSelectionBar from '$lib/components/TrackSelectionBar.svelte';
+	import TrackSelectButton from '$lib/components/TrackSelectButton.svelte';
+	import { trackSelection } from '$lib/selection.svelte';
 	import TrackRowSkeleton from '$lib/components/TrackRowSkeleton.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import Shelf from '$lib/components/Shelf.svelte';
 	import * as api from '$lib/api';
 	import type { SearchResults } from '$lib/api';
 	import { getCached, putCached } from '$lib/pagecache';
-	import { openAddToPlaylist, playSong } from '$lib/player.svelte';
+	import { auth, openAddToPlaylist, playSong } from '$lib/player.svelte';
 	import { asSong } from '$lib/browse';
 
 	let query = $state(lastQuery);
@@ -115,6 +118,29 @@
 	});
 
 	// Sections are horizontal card rows, except Songs which is a vertical list. `top` has no "show more".
+	// The Songs shelf rows are stable SongItem objects (derived from the response), so the
+	// upstream keyed selection below survives refetches by video_id.
+	const songRows = $derived((res?.songs ?? []).map(asSong));
+	const previewSongs = $derived(songRows.slice(0, 6));
+	const selection = trackSelection(
+		() => previewSongs,
+		() => previewSongs,
+		() => `${auth.epoch}:${searched}`
+	);
+
+	// Ctrl/Cmd/Shift-click selects straight from the row, entering select mode first when it
+	// isn't on yet. Inside select mode the row owns clicks (TrackRow).
+	function onRowClickCapture(e: MouseEvent, n: number) {
+		if (selection.active) return;
+		if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const key = selection.visibleKeys[n];
+		if (key === undefined) return;
+		selection.enter();
+		selection.toggle(key, e.shiftKey);
+	}
+
 	const sections = $derived(
 		res
 			? [
@@ -123,7 +149,7 @@
 					{ key: 'albums', label: 'Albums', items: res.albums, max: 5, more: true, list: false },
 					{ key: 'artists', label: 'Artists', items: res.artists, max: 3, more: true, list: false },
 					{ key: 'playlists', label: 'Playlists', items: res.playlists, max: 5, more: true, list: false }
-				].filter((s) => s.items.length)
+				].filter((s) => (s.list ? songRows.length : s.items.length))
 			: []
 	);
 
@@ -207,19 +233,33 @@
 					<section>
 						<div class="mb-3 flex items-center justify-between">
 							<h2 class="font-heading text-xl font-bold">{sec.label}</h2>
-							{#if sec.more}
-								<button
-									class="cursor-pointer text-xs font-semibold uppercase text-muted-foreground hover:text-foreground"
-									onclick={() => showMore(sec.key as 'songs' | 'albums' | 'artists' | 'playlists')}
-								>
-									Show more
-								</button>
-							{/if}
+							<div class="flex items-center gap-1">
+								{#if sec.list}
+									<TrackSelectButton {selection} />
+								{/if}
+								{#if sec.more}
+									<button
+										class="cursor-pointer text-xs font-semibold uppercase text-muted-foreground hover:text-foreground"
+										onclick={() => showMore(sec.key as 'songs' | 'albums' | 'artists' | 'playlists')}
+									>
+										Show more
+									</button>
+								{/if}
+							</div>
 						</div>
 						{#if sec.list}
-							{#each sec.items.slice(0, sec.max) as item (item.id)}
-								{@const song = asSong(item)}
-								<TrackRow {song} onplay={() => playSong(song)} onAdd={() => openAddToPlaylist(song)} />
+							<TrackSelectionBar {selection} />
+							{#each previewSongs as song, i (song.video_id + i)}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div class="rounded-lg" onclickcapture={(e) => onRowClickCapture(e, i)}>
+									<TrackRow
+										{song}
+										{selection}
+										selectionKey={selection.visibleKeys[i]}
+										onplay={() => playSong(song)}
+										onAdd={() => openAddToPlaylist(song)}
+									/>
+								</div>
 							{/each}
 						{:else}
 							<Shelf items={sec.items.slice(0, sec.max)} />

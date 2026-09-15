@@ -390,7 +390,11 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
     // A song card's subtitle doubles as its artist string once it's played (and scrobbled), so it
     // carries the artist alone, never the "Song • … • 3:02" descriptor YouTube puts on the row.
     let runs = flex_runs(node, 1);
-    let subtitle = artists_from_runs(runs).or(subtitle);
+    // When runs exist but yield no artist (e.g. a "Song • 3:02" row with nothing linked),
+    // keep None instead of the raw descriptor: a song card's subtitle becomes its artist
+    // string once it plays (and scrobbles), so the descriptor would scrobble as the artist.
+    // Raw text is only the fallback when there were no runs at all.
+    let subtitle = artists_from_runs(runs).or_else(|| if runs.is_some() { None } else { subtitle });
     Some(BrowseItem {
         kind: "song",
         id: vid,
@@ -426,7 +430,12 @@ fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
             .get("subtitle")
             .and_then(|s| s.get("runs"))
             .and_then(Value::as_array);
-        let subtitle = artists_from_runs(runs).or(subtitle);
+        // When runs exist but yield no artist (e.g. a "Song • 3:02" row with nothing linked),
+        // keep None instead of the raw descriptor: a card's subtitle becomes its artist string
+        // once it plays (and scrobbles), so the descriptor would scrobble as the artist.
+        // Raw text is only the fallback when there were no runs at all.
+        let subtitle =
+            artists_from_runs(runs).or_else(|| if runs.is_some() { None } else { subtitle });
         return Some(BrowseItem {
             kind: "song",
             id: vid.to_owned(),
@@ -780,7 +789,12 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
             .get("subtitle")
             .and_then(|s| s.get("runs"))
             .and_then(Value::as_array);
-        let subtitle = artists_from_runs(runs).or(subtitle);
+        // When runs exist but yield no artist (e.g. a "Song • 3:02" row with nothing linked),
+        // keep None instead of the raw descriptor: a card's subtitle becomes its artist string
+        // once it plays (and scrobbles), so the descriptor would scrobble as the artist.
+        // Raw text is only the fallback when there were no runs at all.
+        let subtitle =
+            artists_from_runs(runs).or_else(|| if runs.is_some() { None } else { subtitle });
         return Some(BrowseItem {
             kind: "song",
             id: vid.to_owned(),
@@ -1062,6 +1076,29 @@ mod tests {
         let card = &items(&root)[0];
         assert_eq!(card.kind, "album");
         assert_eq!(card.subtitle.as_deref(), Some("Album • Miley Cyrus"));
+    }
+
+    /// Upstream #216, list-row surface: a song row with no artist ("Song • 3:02") must not
+    /// carry the length as its subtitle — that string becomes the artist (and the scrobble)
+    /// when the card plays. It carries no subtitle instead; the player response's author
+    /// repairs the artist on play.
+    #[test]
+    fn song_row_without_artist_carries_no_subtitle() {
+        let root = json!({
+            "a": { "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": "abc123" },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Lonely Track" }] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Song" }, { "text": " • " }, { "text": "3:02" }
+                    ] } } }
+                ]
+            }}
+        });
+        let items = parse_search_cards(&root);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].kind, "song");
+        assert_eq!(items[0].subtitle, None);
     }
 
     #[test]
