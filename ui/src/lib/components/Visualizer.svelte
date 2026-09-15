@@ -22,6 +22,12 @@
 	});
 	let unsub: (() => void) | null = null;
 	let raf = 0;
+	// Idle-stop: a 60fps canvas loop for flat bars is pure renderer CPU (the WebView2
+	// GPU-process kind). The loop parks itself after 2s of silence and wakes on the
+	// next frame event; hidden tabs stop immediately (rAF would throttle anyway, but
+	// the explicit stop also kills the per-frame canvas/gradient work).
+	let running = false;
+	let flatSince = 0;
 
 	function resize(c: HTMLCanvasElement): void {
 		const r = c.getBoundingClientRect();
@@ -39,15 +45,27 @@
 		const H = c.height;
 		ctx.clearRect(0, 0, W, H);
 		// Ease displayed toward target, then decay — flatlines when events stop.
+		if (document.hidden) {
+			running = false;
+			raf = 0;
+			return;
+		}
 		let alive = false;
 		for (let i = 0; i < barCount; i++) {
 			const t = target[i] ?? 0;
 			shown[i] = Math.max(t, shown[i] * 0.9);
 			if (shown[i] > 0.004) alive = true;
 		}
+		const now = performance.now();
 		if (!alive) {
-			raf = requestAnimationFrame(draw);
-			return;
+			// Park the loop after 2s of flatline instead of painting zeroes forever.
+			if (now - flatSince > 2000) {
+				running = false;
+				raf = 0;
+				return;
+			}
+		} else {
+			flatSince = now;
 		}
 		if (style === 'circular') {
 			const cx = W / 2;
@@ -96,23 +114,41 @@
 		// The subscribe promise can resolve after unmount: only keep the unsubscriber while
 		// still mounted, otherwise unsubscribe immediately so the event can't write into a
 		// dead component.
+		const kick = () => {
+			if (!running && mounted) {
+				running = true;
+				flatSince = performance.now();
+				raf = requestAnimationFrame(draw);
+			}
+		};
 		api.onVisualizerFrame((bands) => {
 			for (let i = 0; i < barCount; i++) target[i] = bands[i] ?? 0;
+			kick();
 		}).then((u) => {
 			if (mounted) unsub = u;
 			else u();
 		}).catch(() => {});
+		const onVis = () => {
+			// Visible again with live targets: resume; flat loop parks itself.
+			if (!document.hidden) kick();
+		};
+		document.addEventListener('visibilitychange', onVis);
+		running = true;
+		flatSince = performance.now();
 		raf = requestAnimationFrame(draw);
 		return () => {
 			mounted = false;
+			running = false;
 			cancelAnimationFrame(raf);
 			raf = 0;
 			ro.disconnect();
+			document.removeEventListener('visibilitychange', onVis);
 			unsub?.();
 			unsub = null;
 		};
 	});
 	onDestroy(() => {
+		running = false;
 		cancelAnimationFrame(raf);
 		raf = 0;
 		unsub?.();

@@ -941,6 +941,13 @@ aside.glass nav a:hover {
 	}
 }
 
+/* Hidden/minimized window: park every CSS animation so an idle background app costs
+   the renderer ~nothing (WebView2 GPU-process CPU). JS rAF loops self-throttle when
+   hidden; this covers the compositor side. Toggled from +layout visibilitychange. */
+html.app-hidden *, html.app-hidden *::before, html.app-hidden *::after {
+	animation-play-state: paused !important;
+}
+
 /* --- Aurora glass (2026-08 redesign round) ---
    Frosted surfaces: translucent fill + backdrop blur + hairline border + a 1px inner
    highlight along the top edge (the "glass catching light" look). Blur is only used on

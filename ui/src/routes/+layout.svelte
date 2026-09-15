@@ -164,8 +164,14 @@
 		const teardownWin = initWin();
 		const teardownZoom = initZoom();
 		const teardownShortcuts = initShortcuts();
+		// Background CPU: park CSS animations while hidden/minimized (see layout.css
+		// html.app-hidden). rAF loops self-throttle; canvases park themselves.
+		const onVis = () => document.documentElement.classList.toggle('app-hidden', document.hidden);
+		onVis();
+		document.addEventListener('visibilitychange', onVis);
 		bootDone();
 		return () => {
+			document.removeEventListener('visibilitychange', onVis);
 			teardownApp();
 			teardownWin();
 			teardownZoom();
